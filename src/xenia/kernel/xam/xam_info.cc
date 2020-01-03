@@ -22,7 +22,10 @@
 #include "xenia/base/platform_win.h"
 #endif
 
-DEFINE_int32(avpack, 8, "Video modes", "Video");
+DEFINE_int32(avpack, 8, "Video modes -> (0 - PAL-60 Component(SD),
+	"1 - PAL-60 SCART, 3 - 480p Component(HD), 4 - HDMI+A,"
+	"5 - PAL-60 Composite/S-Video, 6 - VGA, 7 - TV PAL-60,"
+	"8  - HDMI)", "Video");
 
 namespace xe {
 namespace kernel {
@@ -198,12 +201,18 @@ void XCustomRegisterDynamicActions() {
 DECLARE_XAM_EXPORT1(XCustomRegisterDynamicActions, kNone, kStub);
 
 dword_result_t XGetAVPack() {
-  // Value from https://github.com/Free60Project/libxenon/blob/920146f32a4564006863bbcf6599c1f75ef4be83/libxenon/drivers/xenos/xenos_videomodes.h
-  // DWORD
-  // Not sure what the values are for this, but 6 is VGA.
-  // Other likely values are 3/4/8 for HDMI or something.
-  // Games seem to use this as a PAL check - if the result is not 3/4/6/8
-  // they explode with errors if not in PAL mode.
+  // HD settings (3,4,6,8) appear to read and write their resolution from 
+  // a configuration value in XConfig in the User Category.
+  // If any other value is set, the games will recognize it as PAL-60,
+  // and set the connection type to other.
+  // 0  - PAL-60 Component(SD)
+  // 1  - PAL-60 SCART
+  // 3  - 480p Normal Component(HD)
+  // 4  - HDMI+A (Audio)
+  // 5  - PAL-60 Composite/S-Video
+  // 6  - VGA
+  // 7  - TV PAL-60 None -> Looks like this is Standard PAL-60
+  // 8  - HDMI
   return (cvars::avpack);
 }
 DECLARE_XAM_EXPORT1(XGetAVPack, kNone, kStub);
