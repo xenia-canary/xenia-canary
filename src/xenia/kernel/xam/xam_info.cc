@@ -22,10 +22,10 @@
 #include "xenia/base/platform_win.h"
 #endif
 
-DEFINE_int32(avpack, 8, "Video modes -> (0 - PAL-60 Component(SD),
-	"1 - PAL-60 SCART, 3 - 480p Component(HD), 4 - HDMI+A,"
-	"5 - PAL-60 Composite/S-Video, 6 - VGA, 7 - TV PAL-60,"
-	"8  - HDMI)", "Video");
+DEFINE_int32(avpack, 8, "Video modes. 0 = PAL-60 Component(SD) / "
+	         "1 = PAL-60 SCART / 3 = 480p Component(HD) / 4 = HDMI+A / "
+	         "5 = PAL-60 Composite/S-Video / 6 = VGA / 7 = TV PAL-60 / "
+	         "8 = HDMI", "Video");
 
 namespace xe {
 namespace kernel {
