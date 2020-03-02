@@ -29,7 +29,9 @@ struct X_PROFILEENUMRESULT {
   X_XAMACCOUNTINFO account;
   xe::be<uint32_t> device_id;
 };
+#if XE_PLATFORM_WIN32
 static_assert_size(X_PROFILEENUMRESULT, 0x188);
+#endif
 
 dword_result_t XamProfileCreateEnumerator(dword_t device_id,
                                           lpdword_t handle_out) {
@@ -832,7 +834,7 @@ dword_result_t XamReadTile(dword_t tile_type, dword_t game_id, qword_t item_id,
     auto ret_val = X_ERROR_INSUFFICIENT_BUFFER;
 
     if (passed_size >= *buffer_size_ptr) {
-      memcpy_s(output_ptr, *buffer_size_ptr, data, data_len);
+      std::memcpy(output_ptr, data, data_len);
       ret_val = X_ERROR_SUCCESS;
     }
 

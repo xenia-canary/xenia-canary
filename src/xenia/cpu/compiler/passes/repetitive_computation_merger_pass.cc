@@ -1,6 +1,10 @@
 #include "repetitive_computation_merger_pass.h"
 #include <bitset>
 #include "xenia/cpu/ppc/ppc_context.h"
+#if !XE_PLATFORM_WIN32
+#include <climits>
+#endif
+
 namespace xe {
 namespace cpu {
 namespace compiler {
@@ -68,8 +72,9 @@ static uint64_t extract_constant(Value* v) {
       return v->constant.u32;
     case INT64_TYPE:
       return v->constant.u64;
+    default:
+      return 0;
   }
-  return 0;
 }
 
 static Instr* find_next_use(Value* val, hir::Block* blk, Instr* after,
@@ -136,9 +141,10 @@ static unsigned size_for_typename(TypeName type) {
       return 8;
     case VEC128_TYPE:
       return 16;
+    default:
+      xenia_assert(false);
+      return 0;
   }
-  xenia_assert(false);
-  return 0;
 }
 
 static Value* constant_for_type(HIRBuilder* builder, uint64_t v,
@@ -152,8 +158,9 @@ static Value* constant_for_type(HIRBuilder* builder, uint64_t v,
       return builder->LoadConstantUint32((uint32_t)v);
     case INT64_TYPE:
       return builder->LoadConstantUint64((uint64_t)v);
+    default:
+      return nullptr;
   }
-  return nullptr;
 }
 
 static unsigned bitsize_for_typename(TypeName type) {

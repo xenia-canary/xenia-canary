@@ -52,7 +52,7 @@ enum class XTileType {
 };
 
 // TODO: find filenames of other tile types that are stored in profile
-static const std::map<XTileType, wchar_t*> kTileFileNames = {
+static const std::map<XTileType, const wchar_t*> kTileFileNames = {
     {XTileType::kPersonalGamerTile, L"tile_64.png"},
     {XTileType::kPersonalGamerTileSmall, L"tile_32.png"},
     {XTileType::kAvatarGamerTile, L"avtr_64.png"},
@@ -224,7 +224,7 @@ class UserProfile {
 
   bool UpdateGpd(uint32_t title_id, xdbf::GpdFile& gpd_data);
 
-  bool AddSettingIfNotExist(xdbf::Setting& setting);
+  bool AddSettingIfNotExist(xdbf::Setting&& setting);
 
   KernelState* kernel_state_;
 

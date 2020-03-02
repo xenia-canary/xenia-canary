@@ -170,7 +170,7 @@ std::wstring UserProfile::path() const {
 
 std::wstring UserProfile::path(uint64_t xuid) const {
   wchar_t path[4096];
-  swprintf_s(path, L"%s%llX", base_path_.c_str(), xuid);
+  std::swprintf(path, 4096, L"%s%llX", base_path_.c_str(), xuid);
   return path;
 }
 
@@ -294,7 +294,10 @@ bool UserProfile::Create(X_XAMACCOUNTINFO* account, bool generate_gamertag) {
   xuid_offline_ = 0xE0000000BEEFCAFE + num_xuids;
   account->xuid_online = 0x09000000BEEFCAFE + num_xuids;
   if (generate_gamertag) {
-    swprintf_s(account->gamertag, L"XeniaUser%d", num_xuids);
+    std::swprintf(account->gamertag,
+                  sizeof account->gamertag / sizeof *account->gamertag,
+                  L"XeniaUser%d",
+                  num_xuids);
   }
   num_xuids++;
 
@@ -343,7 +346,7 @@ bool UserProfile::Login(uint64_t offline_xuid) {
 
     auto profiles = Enumerate(kernel_state_, true);
     if (profiles.size() > 0) {
-      auto& profile = profiles.begin();
+      const auto& profile = profiles.begin();
       xuid_offline_ = profile->first;
       profile_path = std::get<0>(profile->second);
     }
@@ -845,7 +848,7 @@ bool UserProfile::UpdateGpd(uint32_t title_id, xdbf::GpdFile& gpd_data) {
   return true;
 }
 
-bool UserProfile::AddSettingIfNotExist(xdbf::Setting& setting) {
+bool UserProfile::AddSettingIfNotExist(xdbf::Setting&& setting) {
   if (dash_gpd_.GetSetting(setting.id, nullptr)) {
     return false;
   }

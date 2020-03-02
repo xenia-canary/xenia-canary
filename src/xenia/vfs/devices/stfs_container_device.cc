@@ -87,7 +87,7 @@ bool StfsContainerDevice::Initialize() {
     case XContentVolumeType::kSvod:
       return ReadSVOD() == Error::kSuccess;
     default:
-      XELOGE("Unknown XContent volume type: %d", header_.metadata.volume_type);
+      XELOGE("Unknown XContent volume type");
       return false;
   }
 }
@@ -137,7 +137,8 @@ StfsContainerDevice::Error StfsContainerDevice::MapFiles() {
 
   if (fragment_files.size() != header_.metadata.data_file_count) {
     XELOGE("SVOD expecting %d data fragments, but %d are present.",
-           header_.metadata.data_file_count, fragment_files.size());
+           static_cast<uint32_t>(header_.metadata.data_file_count),
+           fragment_files.size());
     return Error::kErrorFileMismatch;
   }
 

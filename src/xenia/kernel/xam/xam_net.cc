@@ -66,8 +66,8 @@ typedef struct {
 } XNDNS;
 
 typedef struct {
-  BYTE bFlags;
-  BYTE bReserved;
+  unsigned char bFlags;
+  unsigned char bReserved;
   xe::be<uint16_t> cProbesXmit;
   xe::be<uint16_t> cProbesRecv;
   xe::be<uint16_t> cbData;
