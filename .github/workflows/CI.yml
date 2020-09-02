@@ -51,13 +51,15 @@ jobs:
       with:
         name: xenia-vfs-dump_canary
         path: artifacts\xenia-vfs-dump
+        if-no-files-found: error
     - name: Upload xenia artifacts
       uses: actions/upload-artifact@v2
       with:
         name: xenia_canary_${{ matrix.cpu_arch }}
-        path: artifacts\xenia
+        path: artifacts\xenia_canary
+        if-no-files-found: error
     - uses: actions/create-release@v1
-      if: github.event.action != 'pull_request' && github.ref == 'refs/heads/canary' && matrix.cpu_arch == 'AVX'
+      if: github.repository == 'xenia-canary/xenia-canary' && github.event.action != 'pull_request' && contains(github.ref, 'refs/heads/canary') && matrix.cpu_arch == 'AVX'
       id: create_release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,7 +67,7 @@ jobs:
         tag_name: ${{ env.short_commit_sha }}
         release_name: xenia_canary_${{ env.short_commit_sha }}
     - uses: actions/upload-release-asset@v1
-      if: github.event.action != 'pull_request' && github.ref == 'refs/heads/canary' && matrix.cpu_arch == 'AVX'
+      if: github.repository == 'xenia-canary/xenia-canary' && github.event.action != 'pull_request' && contains(github.ref, 'refs/heads/canary') && matrix.cpu_arch == 'AVX'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
