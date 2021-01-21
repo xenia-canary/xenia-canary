@@ -19,6 +19,7 @@ on:
       - '*.yml'
       - 'docs/**'
       - 'LICENSE'
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -44,7 +45,7 @@ jobs:
         robocopy   build\bin\${{ runner.os }}\Release artifacts\xenia_canary   xenia_canary.exe   xenia_canary.pdb   LICENSE /r:0 /w:0
         robocopy   build\bin\${{ runner.os }}\Release artifacts\xenia-vfs-dump xenia-vfs-dump.exe xenia-vfs-dump.pdb LICENSE /r:0 /w:0
         If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
-        7z a -mx1 xenia_canary.zip                  .\artifacts\xenia_canary\*.exe                                   LICENSE
+        7z a xenia_canary.zip                       .\artifacts\xenia_canary\*.exe                                   LICENSE
         echo "::set-output name=short_commit_sha::$(git rev-parse --short HEAD)"
     - name: Upload xenia-vfs-dump artifacts
       uses: actions/upload-artifact@v2
