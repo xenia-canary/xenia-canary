@@ -57,7 +57,6 @@ jobs:
         name: xenia_canary
         path: artifacts\xenia_canary
         if-no-files-found: error
-    - uses: nelonoel/branch-name@v1
     - uses: softprops/action-gh-release@v1
       if: |
         github.repository == 'xenia-canary/xenia-canary' &&
@@ -66,6 +65,6 @@ jobs:
       with:
         files: '*.zip'
         tag_name: ${{ steps.prepare_artifacts.outputs.short_commit_sha }}
-        name: "${BRANCH_NAME}: ${tag_name}"
+        name: "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/}): ${tag_name}"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
