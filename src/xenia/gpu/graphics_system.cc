@@ -134,7 +134,9 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
             MarkVblank();
             last_frame_time = current_time;
           }
-          xe::threading::Sleep(std::chrono::milliseconds(1));
+          // R500_D1MODE_V_COUNTER
+          WriteRegister(0x6530, ReadRegister(0x6530) + 1);
+          xe::threading::MaybeYield();
         }
         return 0;
       }));
@@ -189,8 +191,6 @@ uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
       return 0x08100748;
     case 0x0F01:  // RB_BC_CONTROL
       return 0x0000200E;
-    case 0x194C:  // R500_D1MODE_V_COUNTER
-      return 0x000002D0;
     case 0x1951:  // interrupt status
       return 1;   // vblank
     case 0x1961:  // AVIVO_D1MODE_VIEWPORT_SIZE
@@ -215,6 +215,7 @@ void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
       command_processor_->UpdateWritePointer(value);
       break;
     case 0x1844:  // AVIVO_D1GRPH_PRIMARY_SURFACE_ADDRESS
+    case 0x194C:  // R500_D1MODE_V_COUNTER
       break;
     default:
       XELOGW("Unknown GPU register {:04X} write: {:08X}", r, value);
