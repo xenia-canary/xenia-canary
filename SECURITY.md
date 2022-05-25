@@ -25,5 +25,7 @@ Sunday: 10:00am-
                                                                   From Monday to Friday:
                                                                   9:00am-9:00pm
                                                                    from saturday
-                                                                   to Sunday: 10: am-
-                                                                    6:00 pm
+                                                                   to Sunday: 10:00am-6:00 pm
+chat online and much more
+Thank you for contacting Xbox and Microsoft support I hope we helped you solve the problem
+Sincerely, Microsoft.
