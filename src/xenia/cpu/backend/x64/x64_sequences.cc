@@ -389,9 +389,15 @@ struct TOSINGLE_F64_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
 
+    Xmm srcreg = i.src1;
+    if (i.src1.is_constant) {
+      e.LoadConstantXmm(e.xmm1, i.src1.constant());
+      srcreg = e.xmm1;
+    }
+
     if (cvars::no_round_to_single) {
-      if (i.dest != i.src1) {
-        e.vmovapd(i.dest, i.src1);
+      if (i.dest != i.src1 || i.src1.is_constant) {
+        e.vmovapd(i.dest, srcreg);
       }
 
     } else {
@@ -399,7 +405,7 @@ struct TOSINGLE_F64_F64
          i compared the results for this cvtss/cvtsd to results generated
          on actual hardware, it looks good to me
       */
-      e.vcvtsd2ss(e.xmm0, i.src1);
+      e.vcvtsd2ss(e.xmm0, srcreg);
       e.vcvtss2sd(i.dest, e.xmm0);
     }
   }
@@ -410,6 +416,7 @@ EMITTER_OPCODE_TABLE(OPCODE_TO_SINGLE, TOSINGLE_F64_F64);
 // ============================================================================
 struct ROUND_F32 : Sequence<ROUND_F32, I<OPCODE_ROUND, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+	  //likely dead code
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     switch (i.instr->flags) {
       case ROUND_TO_ZERO:
@@ -448,6 +455,7 @@ struct ROUND_F64 : Sequence<ROUND_F64, I<OPCODE_ROUND, F64Op, F64Op>> {
 };
 struct ROUND_V128 : Sequence<ROUND_V128, I<OPCODE_ROUND, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+	  //likely dead code
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
     switch (i.instr->flags) {
       case ROUND_TO_ZERO:
@@ -2086,53 +2094,7 @@ struct MUL_ADD_F64
     : Sequence<MUL_ADD_F64, I<OPCODE_MUL_ADD, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-#if 0
 
-    // FMA extension
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      EmitCommutativeBinaryXmmOp(e, i,
-                                 [&i](X64Emitter& e, const Xmm& dest,
-                                      const Xmm& src1, const Xmm& src2) {
-                                   Xmm src3 =
-                                       i.src3.is_constant ? e.xmm1 : i.src3;
-                                   if (i.src3.is_constant) {
-                                     e.LoadConstantXmm(src3, i.src3.constant());
-                                   }
-                                   if (i.dest == src1) {
-                                     e.vfmadd213sd(i.dest, src2, src3);
-                                   } else if (i.dest == src2) {
-                                     e.vfmadd213sd(i.dest, src1, src3);
-                                   } else if (i.dest == i.src3) {
-                                     e.vfmadd231sd(i.dest, src1, src2);
-                                   } else {
-                                     // Dest not equal to anything
-                                     e.vmovsd(i.dest, src1);
-                                     e.vfmadd213sd(i.dest, src2, src3);
-                                   }
-                                 });
-    } else {
-      Xmm src3;
-      if (i.src3.is_constant) {
-        src3 = e.xmm1;
-        e.LoadConstantXmm(src3, i.src3.constant());
-      } else {
-        // If i.dest == i.src3, back up i.src3 so we don't overwrite it.
-        src3 = i.src3;
-        if (i.dest == i.src3) {
-          e.vmovsd(e.xmm1, i.src3);
-          src3 = e.xmm1;
-        }
-      }
-
-      // Multiply operation is commutative.
-      EmitCommutativeBinaryXmmOp(
-          e, i, [&i](X64Emitter& e, Xmm dest, Xmm src1, Xmm src2) {
-            e.vmulsd(dest, src1, src2);  // $0 = $1 * $2
-          });
-
-      e.vaddsd(i.dest, i.dest, src3);  // $0 = $1 + $2
-    }
-#else
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
@@ -2146,7 +2108,7 @@ struct MUL_ADD_F64
       e.vmulsd(e.xmm3, src1, src2);
       e.vaddsd(i.dest, e.xmm3, src3);
     }
-#endif
+
   }
 };
 struct MUL_ADD_V128
@@ -2154,60 +2116,7 @@ struct MUL_ADD_V128
                I<OPCODE_MUL_ADD, V128Op, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-#if 0
-    // TODO(benvanik): the vfmadd sequence produces slightly different results
-    // than vmul+vadd and it'd be nice to know why. Until we know, it's
-    // disabled so tests pass.
-    // chrispy: reenabled, i have added the DAZ behavior that was missing
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      EmitCommutativeBinaryXmmOp(e, i,
-                                 [&i](X64Emitter& e, const Xmm& dest,
-                                      const Xmm& src1, const Xmm& src2) {
-                                   Xmm src3 =
-                                       i.src3.is_constant ? e.xmm1 : i.src3;
-                                   if (i.src3.is_constant) {
-                                     e.LoadConstantXmm(src3, i.src3.constant());
-                                   }
-                                   if (i.dest == src1) {
-                                     e.vfmadd213ps(i.dest, src2, src3);
-                                   } else if (i.dest == src2) {
-                                     e.vfmadd213ps(i.dest, src1, src3);
-                                   } else if (i.dest == i.src3) {
-                                     e.vfmadd231ps(i.dest, src1, src2);
-                                   } else {
-                                     // Dest not equal to anything
-                                     //                                     e.vmovdqa(i.dest,
-                                     //                                     src1);
-                                     // chrispy: vmovdqa was a domain pipeline
-                                     // hazard
-                                     e.vmovaps(i.dest, src1);
-                                     e.vfmadd213ps(i.dest, src2, src3);
-                                   }
-                                 });
-    } else {
-      Xmm src3;
-      if (i.src3.is_constant) {
-        src3 = e.xmm1;
-        e.LoadConstantXmm(src3, i.src3.constant());
-      } else {
-        // If i.dest == i.src3, back up i.src3 so we don't overwrite it.
-        src3 = i.src3;
-        if (i.dest == i.src3) {
-          // e.vmovdqa(e.xmm1, i.src3);
-          e.vmovaps(e.xmm1, i.src3);
-          src3 = e.xmm1;
-        }
-      }
 
-      // Multiply operation is commutative.
-      EmitCommutativeBinaryXmmOp(
-          e, i, [&i](X64Emitter& e, Xmm dest, Xmm src1, Xmm src2) {
-            e.vmulps(dest, src1, src2);  // $0 = $1 * $2
-          });
-
-      e.vaddps(i.dest, i.dest, src3);  // $0 = $1 + $2
-    }
-#else
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
@@ -2221,7 +2130,6 @@ struct MUL_ADD_V128
       e.vmulps(e.xmm3, src1, src2);
       e.vaddps(i.dest, e.xmm3, src3);
     }
-#endif
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);
@@ -2241,107 +2149,14 @@ EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);
 struct MUL_SUB_F32
     : Sequence<MUL_SUB_F32, I<OPCODE_MUL_SUB, F32Op, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-#if 1
     assert_impossible_sequence(MUL_SUB_F32);
-#else
-    e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    // FMA extension
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      EmitCommutativeBinaryXmmOp(e, i,
-                                 [&i](X64Emitter& e, const Xmm& dest,
-                                      const Xmm& src1, const Xmm& src2) {
-                                   Xmm src3 =
-                                       i.src3.is_constant ? e.xmm1 : i.src3;
-                                   if (i.src3.is_constant) {
-                                     e.LoadConstantXmm(src3, i.src3.constant());
-                                   }
-                                   if (i.dest == src1) {
-                                     e.vfmsub213ss(i.dest, src2, src3);
-                                   } else if (i.dest == src2) {
-                                     e.vfmsub213ss(i.dest, src1, src3);
-                                   } else if (i.dest == i.src3) {
-                                     e.vfmsub231ss(i.dest, src1, src2);
-                                   } else {
-                                     // Dest not equal to anything
-                                     e.vmovss(i.dest, src1);
-                                     e.vfmsub213ss(i.dest, src2, src3);
-                                   }
-                                 });
-    } else {
-      Xmm src3;
-      if (i.src3.is_constant) {
-        src3 = e.xmm1;
-        e.LoadConstantXmm(src3, i.src3.constant());
-      } else {
-        // If i.dest == i.src3, back up i.src3 so we don't overwrite it.
-        src3 = i.src3;
-        if (i.dest == i.src3) {
-          e.vmovss(e.xmm1, i.src3);
-          src3 = e.xmm1;
-        }
-      }
-
-      // Multiply operation is commutative.
-      EmitCommutativeBinaryXmmOp(
-          e, i, [&i](X64Emitter& e, Xmm dest, Xmm src1, Xmm src2) {
-            e.vmulss(dest, src1, src2);  // $0 = $1 * $2
-          });
-
-      e.vsubss(i.dest, i.dest, src3);  // $0 = $1 - $2
-    }
-#endif
   }
 };
 struct MUL_SUB_F64
     : Sequence<MUL_SUB_F64, I<OPCODE_MUL_SUB, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-#if 0
-    // FMA extension
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      EmitCommutativeBinaryXmmOp(e, i,
-                                 [&i](X64Emitter& e, const Xmm& dest,
-                                      const Xmm& src1, const Xmm& src2) {
-                                   Xmm src3 =
-                                       i.src3.is_constant ? e.xmm1 : i.src3;
-                                   if (i.src3.is_constant) {
-                                     e.LoadConstantXmm(src3, i.src3.constant());
-                                   }
-                                   if (i.dest == src1) {
-                                     e.vfmsub213sd(i.dest, src2, src3);
-                                   } else if (i.dest == src2) {
-                                     e.vfmsub213sd(i.dest, src1, src3);
-                                   } else if (i.dest == i.src3) {
-                                     e.vfmsub231sd(i.dest, src1, src2);
-                                   } else {
-                                     // Dest not equal to anything
-                                     e.vmovsd(i.dest, src1);
-                                     e.vfmsub213sd(i.dest, src2, src3);
-                                   }
-                                 });
-    } else {
-      Xmm src3;
-      if (i.src3.is_constant) {
-        src3 = e.xmm1;
-        e.LoadConstantXmm(src3, i.src3.constant());
-      } else {
-        // If i.dest == i.src3, back up i.src3 so we don't overwrite it.
-        src3 = i.src3;
-        if (i.dest == i.src3) {
-          e.vmovsd(e.xmm1, i.src3);
-          src3 = e.xmm1;
-        }
-      }
 
-      // Multiply operation is commutative.
-      EmitCommutativeBinaryXmmOp(
-          e, i, [&i](X64Emitter& e, Xmm dest, Xmm src1, Xmm src2) {
-            e.vmulsd(dest, src1, src2);  // $0 = $1 * $2
-          });
-
-      e.vsubsd(i.dest, i.dest, src3);  // $0 = $1 - $2
-    }
-#else
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
@@ -2355,7 +2170,7 @@ struct MUL_SUB_F64
       e.vmulsd(e.xmm3, src1, src2);
       e.vsubsd(i.dest, e.xmm3, src3);
     }
-#endif
+
   }
 };
 struct MUL_SUB_V128
@@ -2363,52 +2178,7 @@ struct MUL_SUB_V128
                I<OPCODE_MUL_SUB, V128Op, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-#if 0
-    // FMA extension
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      EmitCommutativeBinaryXmmOp(e, i,
-                                 [&i](X64Emitter& e, const Xmm& dest,
-                                      const Xmm& src1, const Xmm& src2) {
-                                   Xmm src3 =
-                                       i.src3.is_constant ? e.xmm1 : i.src3;
-                                   if (i.src3.is_constant) {
-                                     e.LoadConstantXmm(src3, i.src3.constant());
-                                   }
-                                   if (i.dest == src1) {
-                                     e.vfmsub213ps(i.dest, src2, src3);
-                                   } else if (i.dest == src2) {
-                                     e.vfmsub213ps(i.dest, src1, src3);
-                                   } else if (i.dest == i.src3) {
-                                     e.vfmsub231ps(i.dest, src1, src2);
-                                   } else {
-                                     // Dest not equal to anything
-                                     e.vmovdqa(i.dest, src1);
-                                     e.vfmsub213ps(i.dest, src2, src3);
-                                   }
-                                 });
-    } else {
-      Xmm src3;
-      if (i.src3.is_constant) {
-        src3 = e.xmm1;
-        e.LoadConstantXmm(src3, i.src3.constant());
-      } else {
-        // If i.dest == i.src3, back up i.src3 so we don't overwrite it.
-        src3 = i.src3;
-        if (i.dest == i.src3) {
-          e.vmovdqa(e.xmm1, i.src3);
-          src3 = e.xmm1;
-        }
-      }
 
-      // Multiply operation is commutative.
-      EmitCommutativeBinaryXmmOp(
-          e, i, [&i](X64Emitter& e, Xmm dest, Xmm src1, Xmm src2) {
-            e.vmulps(dest, src1, src2);  // $0 = $1 * $2
-          });
-
-      e.vsubps(i.dest, i.dest, src3);  // $0 = $1 - $2
-    }
-#else
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
@@ -2422,7 +2192,6 @@ struct MUL_SUB_V128
       e.vmulps(e.xmm3, src1, src2);
       e.vsubps(i.dest, e.xmm3, src3);
     }
-#endif
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_SUB, MUL_SUB_F32, MUL_SUB_F64, MUL_SUB_V128);
@@ -3631,7 +3400,11 @@ struct SET_ROUNDING_MODE_I32
       e.mov(e.ecx, i.src1);
 
       e.mov(e.rax, uintptr_t(mxcsr_table));
-      e.vldmxcsr(e.ptr[e.rax + e.rcx * 4]);
+      e.mov(e.edx, e.ptr[e.rax + e.rcx * 4]);
+	  //this was not here
+      e.mov(e.GetBackendCtxPtr(offsetof(X64BackendContext, mxcsr_fpu)), e.edx);
+
+      e.vldmxcsr(e.GetBackendCtxPtr(offsetof(X64BackendContext, mxcsr_fpu)));
     }
     e.ChangeMxcsrMode(MXCSRMode::Fpu, true);
   }

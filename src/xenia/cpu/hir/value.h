@@ -563,8 +563,7 @@ class Value {
   void MulHi(Value* other, bool is_unsigned);
   void Div(Value* other, bool is_unsigned);
   void Max(Value* other);
-  static void MulAdd(Value* dest, Value* value1, Value* value2, Value* value3);
-  static void MulSub(Value* dest, Value* value1, Value* value2, Value* value3);
+
   void Neg();
   void Abs();
   void Sqrt();

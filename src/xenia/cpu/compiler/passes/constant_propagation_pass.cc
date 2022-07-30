@@ -552,55 +552,6 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
             }
           }
           break;
-		  #if 0
-        case OPCODE_MUL_ADD:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
-            if (i->src3.value->IsConstant()) {
-              v->set_from(i->src1.value);
-              Value::MulAdd(v, i->src1.value, i->src2.value, i->src3.value);
-              i->Remove();
-              result = true;
-            } else {
-              // Multiply part is constant.
-              Value* mul = builder->AllocValue();
-              mul->set_from(i->src1.value);
-              mul->Mul(i->src2.value);
-
-              Value* add = i->src3.value;
-              i->Replace(&OPCODE_ADD_info, 0);
-              i->set_src1(mul);
-              i->set_src2(add);
-
-              result = true;
-            }
-          }
-          break;
-#endif
-		  #if 0
-        case OPCODE_MUL_SUB:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
-            // Multiply part is constant.
-            if (i->src3.value->IsConstant()) {
-              v->set_from(i->src1.value);
-              Value::MulSub(v, i->src1.value, i->src2.value, i->src3.value);
-              i->Remove();
-              result = true;
-            } else {
-              // Multiply part is constant.
-              Value* mul = builder->AllocValue();
-              mul->set_from(i->src1.value);
-              mul->Mul(i->src2.value);
-
-              Value* add = i->src3.value;
-              i->Replace(&OPCODE_SUB_info, 0);
-              i->set_src1(mul);
-              i->set_src2(add);
-
-              result = true;
-            }
-          }
-          break;
-		  #endif
         case OPCODE_MAX:
           if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
             v->set_from(i->src1.value);
