@@ -552,6 +552,7 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
             }
           }
           break;
+		  #if 0
         case OPCODE_MUL_ADD:
           if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
             if (i->src3.value->IsConstant()) {
@@ -574,6 +575,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
             }
           }
           break;
+#endif
+		  #if 0
         case OPCODE_MUL_SUB:
           if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
             // Multiply part is constant.
@@ -597,6 +600,7 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
             }
           }
           break;
+		  #endif
         case OPCODE_MAX:
           if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
             v->set_from(i->src1.value);

@@ -1287,7 +1287,11 @@ void HIRBuilder::SetRoundingMode(Value* value) {
   Instr* i = AppendInstr(OPCODE_SET_ROUNDING_MODE_info, 0);
   i->set_src1(value);
 }
-
+void HIRBuilder::SetNJM(Value* value) {
+  ASSERT_INTEGER_TYPE(value);
+  Instr* i = AppendInstr(OPCODE_SET_NJM_info, 0);
+  i->set_src1(value);
+}
 Value* HIRBuilder::Max(Value* value1, Value* value2) {
   ASSERT_TYPES_EQUAL(value1, value2);
 

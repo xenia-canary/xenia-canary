@@ -65,6 +65,12 @@ enum class SimdDomain : uint32_t {
                // CONFLICTING means its used in multiple domains)
 };
 
+enum class MXCSRMode : uint32_t {
+	Unknown,
+	Fpu,
+	Vmx
+};
+
 static SimdDomain PickDomain2(SimdDomain dom1, SimdDomain dom2) {
   if (dom1 == dom2) {
     return dom1;
@@ -319,6 +325,16 @@ class X64Emitter : public Xbyak::CodeGenerator {
   size_t stack_size() const { return stack_size_; }
   SimdDomain DeduceSimdDomain(const hir::Value* for_value);
 
+  void ForgetMxcsrMode() {
+    mxcsr_mode_ = MXCSRMode::Unknown;
+  }
+  /*
+	returns true if had to load mxcsr. DOT_PRODUCT can use this to skip clearing the overflow flag, as it will never be set in the vmx fpscr
+  */
+  bool ChangeMxcsrMode(MXCSRMode new_mode, bool already_set=false);//already_set means that the caller already did vldmxcsr, used for SET_ROUNDING_MODE
+
+  void LoadFpuMxcsrDirect(); //unsafe, does not change mxcsr_mode_
+  void LoadVmxMxcsrDirect(); //unsafe, does not change mxcsr_mode_
  protected:
   void* Emplace(const EmitFunctionInfo& func_info,
                 GuestFunction* function = nullptr);
@@ -359,6 +375,7 @@ class X64Emitter : public Xbyak::CodeGenerator {
   std::vector<Xbyak::Label*>
       label_cache_;  // for creating labels that need to be referenced much
                      // later by tail emitters
+  MXCSRMode mxcsr_mode_ = MXCSRMode::Unknown;
 };
 
 }  // namespace x64

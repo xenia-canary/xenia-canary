@@ -16,6 +16,7 @@
 
 // For OPCODE_PACK/OPCODE_UNPACK
 #include "third_party/half/include/half.hpp"
+#include "xenia/cpu/backend/x64/x64_stack_layout.h"
 
 namespace xe {
 namespace cpu {
@@ -31,6 +32,7 @@ struct VECTOR_CONVERT_I2F
     : Sequence<VECTOR_CONVERT_I2F,
                I<OPCODE_VECTOR_CONVERT_I2F, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
     // flags = ARITHMETIC_UNSIGNED
     if (i.instr->flags & ARITHMETIC_UNSIGNED) {
       // Round manually to (1.stored mantissa bits * 2^31) or to 2^32 to the
@@ -82,6 +84,7 @@ struct VECTOR_CONVERT_F2I
     : Sequence<VECTOR_CONVERT_F2I,
                I<OPCODE_VECTOR_CONVERT_F2I, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
     if (i.instr->flags & ARITHMETIC_UNSIGNED) {
       // clamp to min 0
       e.vmaxps(e.xmm0, i.src1, e.GetXmmConstPtr(XMMZero));
@@ -131,6 +134,7 @@ struct VECTOR_DENORMFLUSH
     : Sequence<VECTOR_DENORMFLUSH,
                I<OPCODE_VECTOR_DENORMFLUSH, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
     e.vxorps(e.xmm1, e.xmm1, e.xmm1);  // 0.25 P0123
 
     e.vandps(e.xmm0, i.src1,
@@ -352,6 +356,7 @@ struct VECTOR_COMPARE_EQ_V128
               e.vpcmpeqd(dest, src1, src2);
               break;
             case FLOAT32_TYPE:
+              e.ChangeMxcsrMode(MXCSRMode::Vmx);
               e.vcmpeqps(dest, src1, src2);
               break;
           }
@@ -380,6 +385,7 @@ struct VECTOR_COMPARE_SGT_V128
               e.vpcmpgtd(dest, src1, src2);
               break;
             case FLOAT32_TYPE:
+              e.ChangeMxcsrMode(MXCSRMode::Vmx);
               e.vcmpgtps(dest, src1, src2);
               break;
           }
@@ -414,6 +420,7 @@ struct VECTOR_COMPARE_SGE_V128
               e.vpor(dest, e.xmm0);
               break;
             case FLOAT32_TYPE:
+              e.ChangeMxcsrMode(MXCSRMode::Vmx);
               e.vcmpgeps(dest, src1, src2);
               break;
           }
@@ -441,6 +448,7 @@ struct VECTOR_COMPARE_UGT_V128
         sign_addr = e.GetXmmConstPtr(XMMSignMaskI32);
         break;
       case FLOAT32_TYPE:
+        e.ChangeMxcsrMode(MXCSRMode::Vmx);
         sign_addr = e.GetXmmConstPtr(XMMSignMaskF32);
         break;
       default:
@@ -498,6 +506,7 @@ struct VECTOR_COMPARE_UGE_V128
         sign_addr = e.GetXmmConstPtr(XMMSignMaskI32);
         break;
       case FLOAT32_TYPE:
+        e.ChangeMxcsrMode(MXCSRMode::Vmx);
         sign_addr = e.GetXmmConstPtr(XMMSignMaskF32);
         break;
     }
@@ -620,6 +629,7 @@ struct VECTOR_ADD
             case FLOAT32_TYPE:
               assert_false(is_unsigned);
               assert_false(saturate);
+              e.ChangeMxcsrMode(MXCSRMode::Vmx);
               e.vaddps(dest, src1, src2);
               break;
             default:
@@ -711,6 +721,7 @@ struct VECTOR_SUB
               }
               break;
             case FLOAT32_TYPE:
+              e.ChangeMxcsrMode(MXCSRMode::Vmx);
               e.vsubps(dest, src1, src2);
               break;
             default:
@@ -2003,6 +2014,7 @@ EMITTER_OPCODE_TABLE(OPCODE_SWIZZLE, SWIZZLE);
 // ============================================================================
 struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
     switch (i.instr->flags & PACK_TYPE_MODE) {
       case PACK_TYPE_D3DCOLOR:
         EmitD3DCOLOR(e, i);
@@ -2420,6 +2432,7 @@ EMITTER_OPCODE_TABLE(OPCODE_PACK, PACK);
 // ============================================================================
 struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
     switch (i.instr->flags & PACK_TYPE_MODE) {
       case PACK_TYPE_D3DCOLOR:
         EmitD3DCOLOR(e, i);
@@ -2805,6 +2818,32 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_UNPACK, UNPACK);
 
+struct SET_NJM_I8 : Sequence<SET_NJM_I8, I<OPCODE_SET_NJM, VoidOp, I8Op>> {
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    auto addr_vmx = e.GetBackendCtxPtr(offsetof(X64BackendContext, mxcsr_vmx));
+
+    addr_vmx.setBit(32);
+    if (i.src1.is_constant) {
+      if (i.src1.constant() == 0) {
+        // turn off daz/flush2z
+        e.mov(addr_vmx, _MM_MASK_MASK);
+
+      } else {
+        e.mov(addr_vmx, DEFAULT_VMX_MXCSR);
+      }
+
+    } else {
+      e.test(i.src1, i.src1);
+      e.mov(e.edx, DEFAULT_VMX_MXCSR);
+      e.mov(e.eax, _MM_MASK_MASK);
+
+      e.cmove(e.edx, e.eax);
+      e.mov(addr_vmx, e.edx);
+    }
+    e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_SET_NJM, SET_NJM_I8);
 }  // namespace x64
 }  // namespace backend
 }  // namespace cpu

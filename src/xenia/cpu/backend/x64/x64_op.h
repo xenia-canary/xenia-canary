@@ -616,7 +616,16 @@ struct Sequence {
     }
   }
 };
-
+template <typename T>
+static Xmm GetInputRegOrConstant(X64Emitter& e, const T& input,
+                                 Xmm xmm_to_use_if_const) {
+  if (input.is_constant) {
+    e.LoadConstantXmm(xmm_to_use_if_const, input.constant());
+    return xmm_to_use_if_const;
+  } else {
+    return input;
+  }
+}
 }  // namespace x64
 }  // namespace backend
 }  // namespace cpu

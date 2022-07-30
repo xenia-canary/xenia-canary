@@ -284,6 +284,7 @@ enum Opcode {
   OPCODE_TO_SINGLE,  // i could not find a decent name to assign to this opcode,
                      // as we already have OPCODE_ROUND. round double to float (
                      // ppc "single" fpu instruction result rounding behavior )
+	  OPCODE_SET_NJM, 
   __OPCODE_MAX_VALUE,  // Keep at end.
 };
 

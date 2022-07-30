@@ -402,7 +402,7 @@ int InstrEmit_mtfsfx(PPCHIRBuilder& f, const InstrData& i) {
 
     // Update the system rounding mode.
     if (mask & 0x7) {
-      f.SetRoundingMode(v);
+      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(7)));
     }
   }
   if (i.XFL.Rc) {
@@ -425,7 +425,7 @@ int InstrEmit_mtfsfix(PPCHIRBuilder& f, const InstrData& i) {
 
   // Update the system rounding mode.
   if (mask & 0x7) {
-    f.SetRoundingMode(fpscr);
+    f.SetRoundingMode(f.And(fpscr, f.LoadConstantInt32(7)));
   }
 
   if (i.X.Rc) {
