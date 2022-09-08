@@ -37,6 +37,13 @@ DEFINE_int32(user_country, 103,
              " 102=UA 103=US 104=UY 105=UZ 106=VE 107=VN 108=YE 109=ZA\n",
              "XConfig");
 
+DEFINE_string(console_region, "rf",
+             "Console region. [rf, us, eu, jp, asia]\n"
+             "This config variable allows you to change the main region reported\n"
+             "by the console. Only change this from the default rf (region free)\n"
+             "if language settings in game are not working as expected.\n",
+             "XConfig");
+
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
