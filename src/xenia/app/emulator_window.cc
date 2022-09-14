@@ -124,6 +124,9 @@ DEFINE_bool(
     "be added to them - disabling may be recommended for 10bpc, but it "
     "depends on the 10bpc displaying capabilities of the actual display used.",
     "Display");
+DECLARE_string(console_region);
+DECLARE_int32(user_language);
+DECLARE_int32(user_country);
 
 namespace xe {
 namespace app {
@@ -495,6 +498,63 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
   }
 }
 
+void EmulatorWindow::SelectLanguage(int language_id) {
+  XELOGI("Setting user language to {}", language_id);
+  cvars::user_language = language_id;
+}
+
+void EmulatorWindow::SelectLocale(int locale_id) {
+  XELOGI("Setting user country to {}", locale_id);
+  cvars::user_country = locale_id;
+}
+
+void EmulatorWindow::SelectConsoleRegion(int region_idx) {
+  switch (region_idx) {
+  case 0:
+    cvars::console_region = "us";
+    break;
+  case 1:
+    cvars::console_region = "jp";
+    break;
+  case 2:
+    cvars::console_region = "asia";
+    break;
+  case 3:
+    cvars::console_region = "eu";
+    break;
+  case 4:
+  default:
+    cvars::console_region = "rf";
+    break;
+  }
+}
+
+const char* UIGetCountryString(uint8_t id) {
+  static const char* const table[] = {
+      nullptr, "United Arab Emirates (AE)", "Albania (AL)", "Armenia (AM)", "Argentina (AR)", "Austria (AT)",
+      "Australia (AU)", "Azerbaijan (AZ)", "Belgium (BE)", "Bulgaria (BG)", "Bahrain (BH)", "Brunei (BN)",
+      "Bolivia (BO)", "Brazil (BR)", "Belarus (BY)", "Belize (BZ)", "Canada (CA)", nullptr, "Switzerland (CH)",
+      "Chile (CL)", "China (CN)", "Colombia (CO)", "Costa Rica (CR)", "Czechia (CZ)", "Germnany (DE)",
+      "Denmark (DK)", "Dominican Republic (DO)", "Algeria (DZ)", "Ecuador (EC)", "Estonia (EE)", "Egypt (EG)",
+      "Spain (ES)", "Finland (FI)", "Faroe Islands (FO)", "France (FR)", "United Kingdom (GB)", "Georgia (GE)",
+      "Greece (GR)", "Guatemala (GT)", "Hong Kong (HK)", "Honduras (HN)", "Croatia (HR)", "Hungary (HU)",
+      "Indonesia (ID)", "Ireland (IE)", "Israel (IL)", "India (IN)", "Iraq (IQ)", "Iran (IR)", "Iceland (IS)",
+      "Italy (IT)", "Jamaica (JM)", "Jordan (JO)", "Japan (JP)", "Kenya (KE)", "Kyrgyzstan (KG)", "Korea (KR)",
+      "Kuwait (KW)", "Kazakhstan (KZ)", "Lebanon (LB)", "Liechtenstein (LI)", "Lithuania (LT)", "Luxembourg (LU)",
+      "Latvia (LV)", "Libya (LY)", "Morocco (MA)", "Monaco (MC)", "North Macedonia (MK)", "Mongolia (MN)",
+      "Macao (MO)", "Maldives (MV)", "Mexico (MX)", "Malaysia (MY)", "Nicaragua (NI)", "Netherlands (NL)",
+      "Norway (NO)", "New Zealand (NZ)", "Oman (OM)", "Panama (PA)", "Peru (PE)", "Philippines (PH)",
+      "Pakistan (PK)", "Poland (PL)", "Puerto Rico (PR)", "Portugal (PT)", "Paraguay (PY)", "Qatar (QA)",
+      "Romania (RO)", "Russia (RU)", "Saudi Arabia (SA)", "Sweden (SE)", "Singapore (SG)", "Slovenia (SI)",
+      "Slovakia (SK)", nullptr, "El Salvador (SV)", "Syria (SY)", "Thailand (TH)", "Tunisia (TN)",
+      "Turkey (TR)", "Trinidad and Tobago (TT)", "Taiwan (TW)", "Ukraine (UA)", "United States (US)",
+      "Uruguay (UY)", "Uzbekistan (UZ)", "Venezuela (VE)", "Viet Nam (VN)", "Yemen (YE)", "South Africa (ZA)",
+      "Zimbabwe (ZW)", nullptr,
+  };
+#pragma warning(suppress : 6385)
+  return id < xe::countof(table) ? table[id] : nullptr;
+}
+
 bool EmulatorWindow::Initialize() {
   window_->AddListener(&window_listener_);
   window_->AddInputListener(&window_listener_, kZOrderEmulatorWindowInput);
@@ -589,6 +649,72 @@ bool EmulatorWindow::Initialize() {
                          std::bind(&EmulatorWindow::ToggleFullscreen, this)));
   }
   main_menu->AddChild(std::move(display_menu));
+
+  // Language/country/console region menu
+  auto region_language_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, "&Language and region");
+  {
+    auto language_sub_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "User Language", nullptr);
+    auto country_sub_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "User Country", nullptr);
+    auto console_region_sub_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "Console Region", nullptr);
+
+    { // Populate User Language menu
+#define ADD_LANGUAGE(name, abbrev, id) \
+          language_sub_menu->AddChild(MenuItem::Create( \
+          MenuItem::Type::kString, name, abbrev, \
+          std::bind(&EmulatorWindow::SelectLanguage, this, id)));
+      ADD_LANGUAGE("English", "en", 1);
+      ADD_LANGUAGE("Japanese", "jp", 2);
+      ADD_LANGUAGE("German", "de", 3);
+      ADD_LANGUAGE("French", "fr", 4);
+      ADD_LANGUAGE("Spanish", "es", 5);
+      ADD_LANGUAGE("Italian", "it", 6);
+      ADD_LANGUAGE("Korean", "ko", 7);
+      ADD_LANGUAGE("Traditional Chinese", "zh", 8);
+      ADD_LANGUAGE("Portuguese", "pt", 9);
+      ADD_LANGUAGE("Polish", "pl", 11);
+      ADD_LANGUAGE("Russian", "ru", 12);
+      ADD_LANGUAGE("Swedish", "sv", 13);
+      ADD_LANGUAGE("Turkish", "tr", 14);
+      ADD_LANGUAGE("Norwegian", "no", 15);
+      ADD_LANGUAGE("Dutch", "nl", 16);
+      ADD_LANGUAGE("Simplified Chinese", "szh", 17);
+#undef ADD_LANGUAGE
+    }
+    {  // Populate Console Region menu
+#define ADD_REGION(name, abbrev, id) \
+          console_region_sub_menu->AddChild( \
+          MenuItem::Create(MenuItem::Type::kString, name, abbrev, \
+          std::bind(&EmulatorWindow::SelectConsoleRegion, this, id)));
+      ADD_REGION("Region Free", "rf", 4);
+      ADD_REGION("USA (NTSC-U)", "us", 0);
+      ADD_REGION("Japan (NTSC-J)", "jp", 1);
+      ADD_REGION("Asia (NTSC-HK)", "asia", 2);
+      ADD_REGION("Europe (PAL)", "eu", 3);
+#undef ADD_REGION
+    }
+    { // Populate User Country menu (what a mess)
+#define ADD_LOCALE(name, id) \
+          country_sub_menu->AddChild(MenuItem::Create( \
+          MenuItem::Type::kString, name, "", \
+          std::bind(&EmulatorWindow::SelectLocale, this, id)));
+      for (int i = 1; i < 110; i++) {
+        if (UIGetCountryString(i) != nullptr) {
+          std::string locale = std::string(UIGetCountryString(i));
+          ADD_LOCALE(locale, i);
+        }
+      }
+#undef ADD_LOCALE
+    }
+
+    region_language_menu->AddChild(std::move(language_sub_menu));
+    region_language_menu->AddChild(std::move(country_sub_menu));
+    region_language_menu->AddChild(std::move(console_region_sub_menu));
+  }
+  main_menu->AddChild(std::move(region_language_menu));
 
   // HID menu.
   auto hid_menu = MenuItem::Create(MenuItem::Type::kPopup, "&HID");

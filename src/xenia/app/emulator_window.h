@@ -141,6 +141,9 @@ class EmulatorWindow {
   void GpuClearCaches();
   void ToggleDisplayConfigDialog();
   void ToggleControllerVibration();
+  void SelectLanguage(int language_id);
+  void SelectConsoleRegion(int region_idx);
+  void SelectLocale(int locale_id);
   void ShowCompatibility();
   void ShowFAQ();
   void ShowBuildCommit();
