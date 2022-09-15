@@ -13,6 +13,7 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_xconfig.h"
 #include "xenia/xbox.h"
 
 DEFINE_int32(user_language, 1,
@@ -47,6 +48,38 @@ DEFINE_string(console_region, "rf",
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+void xcSaveRegionSetting(xcRegionSettingType type, int32_t setting_value) {
+  switch (type) {
+    case xcRegionSettingType::UserLanguage:  // User Language
+      OVERRIDE_int32(user_language, setting_value);
+      break;
+    case xcRegionSettingType::UserCountry:  // User Country
+      OVERRIDE_int32(user_country, setting_value);
+      break;
+    case xcRegionSettingType::ConsoleRegion:  // Console Region
+      switch (setting_value) {
+        case xcConsoleRegion::US:
+          OVERRIDE_string(console_region, "us");
+          break;
+        case xcConsoleRegion::Japan:
+          OVERRIDE_string(console_region, "jp");
+          break;
+        case xcConsoleRegion::Asia:
+          OVERRIDE_string(console_region, "asia");
+          break;
+        case xcConsoleRegion::Europe:
+          OVERRIDE_string(console_region, "eu");
+          break;
+        case xcConsoleRegion::RegionFree:
+        default:
+          OVERRIDE_string(console_region, "rf");
+          break;
+      }
+      break;
+    default:
+      break;
+  }
+}
 
 X_STATUS xeExGetXConfigSetting(uint16_t category, uint16_t setting,
                                void* buffer, uint16_t buffer_size,
