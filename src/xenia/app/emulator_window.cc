@@ -129,6 +129,11 @@ DECLARE_string(console_region);
 DECLARE_int32(user_language);
 DECLARE_int32(user_country);
 
+// NOTE: If the menu order changes, this needs to be updated, because the menu.
+enum menuIndex {
+    File, CPU, GPU, Display, LanguageRegion, HID, Help,
+};
+
 namespace xe {
 namespace app {
 
@@ -226,6 +231,9 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
 void EmulatorWindow::OnEmulatorInitialized() {
   emulator_initialized_ = true;
   window_->SetMainMenuEnabled(true);
+
+  UpdateRegionMenus();
+
   // When the user can see that the emulator isn't initializing anymore (the
   // menu isn't disabled), enter fullscreen if requested.
   if (cvars::fullscreen) {
@@ -504,6 +512,7 @@ void EmulatorWindow::SelectLanguage(int language_id) {
   if (cvars::user_language != language_id) {
     cvars::user_language = language_id;
     xe::kernel::xboxkrnl::xcSaveRegionSetting(xcRegionSettingType::UserLanguage, language_id);
+    UpdateRegionMenus();
   }
 }
 
@@ -512,6 +521,7 @@ void EmulatorWindow::SelectLocale(int locale_id) {
   if (cvars::user_country != locale_id) {
     cvars::user_country = locale_id;
     xe::kernel::xboxkrnl::xcSaveRegionSetting(xcRegionSettingType::UserCountry, locale_id);
+    UpdateRegionMenus();
   }
 }
 
@@ -536,32 +546,82 @@ void EmulatorWindow::SelectConsoleRegion(int region_idx) {
   }
   xe::kernel::xboxkrnl::xcSaveRegionSetting(xcRegionSettingType::ConsoleRegion,
                                             region_idx);
+  UpdateRegionMenus();
 }
 
 const char* UIGetCountryString(uint8_t id) {
   static const char* const table[] = {
-      nullptr, "United Arab Emirates (AE)", "Albania (AL)", "Armenia (AM)", "Argentina (AR)", "Austria (AT)",
-      "Australia (AU)", "Azerbaijan (AZ)", "Belgium (BE)", "Bulgaria (BG)", "Bahrain (BH)", "Brunei (BN)",
-      "Bolivia (BO)", "Brazil (BR)", "Belarus (BY)", "Belize (BZ)", "Canada (CA)", nullptr, "Switzerland (CH)",
-      "Chile (CL)", "China (CN)", "Colombia (CO)", "Costa Rica (CR)", "Czechia (CZ)", "Germnany (DE)",
-      "Denmark (DK)", "Dominican Republic (DO)", "Algeria (DZ)", "Ecuador (EC)", "Estonia (EE)", "Egypt (EG)",
-      "Spain (ES)", "Finland (FI)", "Faroe Islands (FO)", "France (FR)", "United Kingdom (GB)", "Georgia (GE)",
-      "Greece (GR)", "Guatemala (GT)", "Hong Kong (HK)", "Honduras (HN)", "Croatia (HR)", "Hungary (HU)",
-      "Indonesia (ID)", "Ireland (IE)", "Israel (IL)", "India (IN)", "Iraq (IQ)", "Iran (IR)", "Iceland (IS)",
-      "Italy (IT)", "Jamaica (JM)", "Jordan (JO)", "Japan (JP)", "Kenya (KE)", "Kyrgyzstan (KG)", "Korea (KR)",
-      "Kuwait (KW)", "Kazakhstan (KZ)", "Lebanon (LB)", "Liechtenstein (LI)", "Lithuania (LT)", "Luxembourg (LU)",
-      "Latvia (LV)", "Libya (LY)", "Morocco (MA)", "Monaco (MC)", "North Macedonia (MK)", "Mongolia (MN)",
-      "Macao (MO)", "Maldives (MV)", "Mexico (MX)", "Malaysia (MY)", "Nicaragua (NI)", "Netherlands (NL)",
-      "Norway (NO)", "New Zealand (NZ)", "Oman (OM)", "Panama (PA)", "Peru (PE)", "Philippines (PH)",
-      "Pakistan (PK)", "Poland (PL)", "Puerto Rico (PR)", "Portugal (PT)", "Paraguay (PY)", "Qatar (QA)",
-      "Romania (RO)", "Russia (RU)", "Saudi Arabia (SA)", "Sweden (SE)", "Singapore (SG)", "Slovenia (SI)",
-      "Slovakia (SK)", nullptr, "El Salvador (SV)", "Syria (SY)", "Thailand (TH)", "Tunisia (TN)",
-      "Turkey (TR)", "Trinidad and Tobago (TT)", "Taiwan (TW)", "Ukraine (UA)", "United States (US)",
-      "Uruguay (UY)", "Uzbekistan (UZ)", "Venezuela (VE)", "Viet Nam (VN)", "Yemen (YE)", "South Africa (ZA)",
-      "Zimbabwe (ZW)", nullptr,
+      nullptr, nullptr, "United Arab Emirates", "AE", "Albania", "AL", "Armenia", "AM", "Argentina", "AR", "Austria", "AT",
+      "Australia", "AU", "Azerbaijan", "AZ", "Belgium", "BE", "Bulgaria", "BG", "Bahrain", "BH", "Brunei", "BN",
+      "Bolivia", "BO", "Brazil", "BR", "Belarus", "BY", "Belize", "BZ", "Canada", "CA", nullptr, nullptr, "Switzerland", "CH",
+      "Chile", "CL", "China", "CN", "Colombia", "CO", "Costa Rica", "CR", "Czechia", "CZ", "Germnany", "DE",
+      "Denmark", "DK", "Dominican Republic", "DO", "Algeria", "DZ", "Ecuador", "EC", "Estonia", "EE", "Egypt", "EG",
+      "Spain", "ES", "Finland", "FI", "Faroe Islands", "FO", "France", "FR", "United Kingdom", "GB", "Georgia", "GE",
+      "Greece", "GR", "Guatemala", "GT", "Hong Kong", "HK", "Honduras", "HN", "Croatia", "HR", "Hungary", "HU",
+      "Indonesia", "ID", "Ireland", "IE", "Israel", "IL", "India", "IN", "Iraq", "IQ", "Iran", "IR", "Iceland", "IS",
+      "Italy", "IT", "Jamaica", "JM", "Jordan", "JO", "Japan", "JP", "Kenya", "KE", "Kyrgyzstan", "KG", "Korea", "KR",
+      "Kuwait", "KW", "Kazakhstan", "KZ", "Lebanon", "LB", "Liechtenstein", "LI", "Lithuania", "LT", "Luxembourg", "LU",
+      "Latvia", "LV", "Libya", "LY", "Morocco", "MA", "Monaco", "MC", "North Macedonia", "MK", "Mongolia", "MN",
+      "Macao", "MO", "Maldives", "MV", "Mexico", "MX", "Malaysia", "MY", "Nicaragua", "NI", "Netherlands", "NL",
+      "Norway", "NO", "New Zealand", "NZ", "Oman", "OM", "Panama", "PA", "Peru", "PE", "Philippines", "PH",
+      "Pakistan", "PK", "Poland", "PL", "Puerto Rico", "PR", "Portugal", "PT", "Paraguay", "PY", "Qatar", "QA",
+      "Romania", "RO", "Russia", "RU", "Saudi Arabia", "SA", "Sweden", "SE", "Singapore", "SG", "Slovenia", "SI",
+      "Slovakia", "SK", nullptr, nullptr, "El Salvador", "SV", "Syria", "SY", "Thailand", "TH", "Tunisia", "TN",
+      "Turkey", "TR", "Trinidad and Tobago", "TT", "Taiwan", "TW", "Ukraine", "UA", "United States", "US",
+      "Uruguay", "UY", "Uzbekistan", "UZ", "Venezuela", "VE", "Viet Nam", "VN", "Yemen", "YE", "South Africa", "ZA",
+      "Zimbabwe", "ZW", nullptr, nullptr,
   };
 #pragma warning(suppress : 6385)
   return id < xe::countof(table) ? table[id] : nullptr;
+}
+
+static char* const ui_languages_table[] = {
+    "English",             "en",
+    "Japanese",            "jp",
+    "German",              "de",
+    "French",              "fr",
+    "Spanish",             "es",
+    "Italian",             "it",
+    "Korean",              "ko",
+    "Traditional Chinese", "zh",
+    "Portuguese",          "pt",
+    "Polish",              "pl",
+    "Russian",             "ru",
+    "Swedish",             "sv",
+    "Turkish",             "tr",
+    "Norwegian",           "no",
+    "Dutch",               "nl",
+    "Simplified Chinese",  "szh",
+};
+
+static uint8_t const ui_language_codes[] = {1, 2,  3,  4,  5,  6,  7,  8,
+                                            9, 11, 12, 13, 14, 15, 16, 17};
+
+void EmulatorWindow::UpdateRegionMenus() {
+  MenuItem* lang_menu =
+      window_->GetMainMenu()->child(menuIndex::LanguageRegion);
+  MenuItem* cur_menu = lang_menu->child(0);
+
+  // Update User Language menu
+  for (int i = 0; i < INT_MAX; i++) {
+    if (cur_menu->child(i) == nullptr) break;
+    cur_menu->SetChecked(i, (cvars::user_language == ui_language_codes[i]));
+  }
+
+  cur_menu = lang_menu->child(1);
+  // Update User Country menu
+  std::string chk_locale = UIGetCountryString(cvars::user_country * 2 + 1);
+  for (int i = 0; i < INT_MAX; i++) {
+    if (cur_menu->child(i) == nullptr) break;
+    cur_menu->SetChecked(i, (chk_locale == cur_menu->child(i)->hotkey()));
+  }
+
+  cur_menu = lang_menu->child(2);
+  // Update Console Region menu
+  for (int i = 0; i < INT_MAX; i++) {
+    if (cur_menu->child(i) == nullptr) break;
+    cur_menu->SetChecked(i, cvars::console_region == cur_menu->child(i)->hotkey());
+  }
 }
 
 bool EmulatorWindow::Initialize() {
@@ -675,22 +735,10 @@ bool EmulatorWindow::Initialize() {
           language_sub_menu->AddChild(MenuItem::Create( \
           MenuItem::Type::kString, name, abbrev, \
           std::bind(&EmulatorWindow::SelectLanguage, this, id)));
-      ADD_LANGUAGE("English", "en", 1);
-      ADD_LANGUAGE("Japanese", "jp", 2);
-      ADD_LANGUAGE("German", "de", 3);
-      ADD_LANGUAGE("French", "fr", 4);
-      ADD_LANGUAGE("Spanish", "es", 5);
-      ADD_LANGUAGE("Italian", "it", 6);
-      ADD_LANGUAGE("Korean", "ko", 7);
-      ADD_LANGUAGE("Traditional Chinese", "zh", 8);
-      ADD_LANGUAGE("Portuguese", "pt", 9);
-      ADD_LANGUAGE("Polish", "pl", 11);
-      ADD_LANGUAGE("Russian", "ru", 12);
-      ADD_LANGUAGE("Swedish", "sv", 13);
-      ADD_LANGUAGE("Turkish", "tr", 14);
-      ADD_LANGUAGE("Norwegian", "no", 15);
-      ADD_LANGUAGE("Dutch", "nl", 16);
-      ADD_LANGUAGE("Simplified Chinese", "szh", 17);
+      for (int i = 0; i < xe::countof(ui_languages_table) / 2; i++) {
+        ADD_LANGUAGE(ui_languages_table[i * 2], ui_languages_table[i * 2 + 1],
+                     ui_language_codes[i]);
+      }
 #undef ADD_LANGUAGE
     }
     {  // Populate Console Region menu
@@ -706,14 +754,15 @@ bool EmulatorWindow::Initialize() {
 #undef ADD_REGION
     }
     { // Populate User Country menu (what a mess)
-#define ADD_LOCALE(name, id) \
+#define ADD_LOCALE(name, abbrev, id) \
           country_sub_menu->AddChild(MenuItem::Create( \
-          MenuItem::Type::kString, name, "", \
+          MenuItem::Type::kString, name, abbrev, \
           std::bind(&EmulatorWindow::SelectLocale, this, id)));
       for (int i = 1; i < 110; i++) {
-        if (UIGetCountryString(i) != nullptr) {
-          std::string locale = std::string(UIGetCountryString(i));
-          ADD_LOCALE(locale, i);
+        if (UIGetCountryString(i * 2) != nullptr) {
+          std::string locale = std::string(UIGetCountryString(i * 2));
+          std::string locale_abbrev = std::string(UIGetCountryString(i * 2 + 1));
+          ADD_LOCALE(locale, locale_abbrev, i);
         }
       }
 #undef ADD_LOCALE

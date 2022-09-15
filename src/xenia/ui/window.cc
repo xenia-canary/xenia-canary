@@ -276,6 +276,8 @@ void Window::SetIcon(const void* buffer, size_t size) {
   }
 }
 
+MenuItem* Window::GetMainMenu() { return main_menu_.get(); }
+
 void Window::SetMainMenu(std::unique_ptr<MenuItem> new_main_menu) {
   // The primary reason for this comparison (of two unique pointers) is
   // nullptr == nullptr.

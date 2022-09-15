@@ -298,6 +298,7 @@ class Window {
   // Desired state stored by the common Window, externally modifiable, read-only
   // in the implementation.
   void SetMainMenu(std::unique_ptr<MenuItem> new_main_menu);
+  MenuItem* GetMainMenu();
   void CompleteMainMenuItemsUpdate();
   void SetMainMenuEnabled(bool enabled);
 

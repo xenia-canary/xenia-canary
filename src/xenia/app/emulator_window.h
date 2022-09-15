@@ -144,6 +144,7 @@ class EmulatorWindow {
   void SelectLanguage(int language_id);
   void SelectConsoleRegion(int region_idx);
   void SelectLocale(int locale_id);
+  void UpdateRegionMenus();
   void ShowCompatibility();
   void ShowFAQ();
   void ShowBuildCommit();

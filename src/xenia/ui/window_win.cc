@@ -1318,6 +1318,24 @@ void Win32MenuItem::SetEnabled(bool enabled) {
   }
 }
 
+void Win32MenuItem::SetChecked(int idx, bool checked) {
+  UINT i = 0;
+  MENUITEMINFO menu_item_info = {0};
+  menu_item_info.cbSize = sizeof(MENUITEMINFO);
+  menu_item_info.fMask = MIIM_STATE;
+  menu_item_info.fState = (checked) ? MFS_CHECKED : MFS_UNCHECKED;
+
+  for (auto iter = children_.begin(); iter != children_.end(); ++iter, ++i) {
+    if (idx == i) {
+      if (!SetMenuItemInfo(handle_, i, true, &menu_item_info)) {
+        XELOGI("SetMenuItemInfo failed for some reason: {} ({})",
+               GetLastError(), (uint64_t)handle_);
+      }
+      return;
+    }
+  }
+}
+
 void Win32MenuItem::OnChildAdded(MenuItem* generic_child_item) {
   auto child_item = static_cast<Win32MenuItem*>(generic_child_item);
 
