@@ -13,11 +13,10 @@
 #include "xenia/hid/hid_flags.h"
 #include "xenia/hid/input_driver.h"
 
-namespace xe {
-namespace hid {
-
 DEFINE_bool(vibration, true, "Toggle controller vibration.", "HID");
 
+namespace xe {
+namespace hid {
 InputSystem::InputSystem(xe::ui::Window* window) : window_(window) {}
 
 InputSystem::~InputSystem() = default;

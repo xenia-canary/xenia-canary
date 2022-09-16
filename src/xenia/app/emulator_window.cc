@@ -128,6 +128,7 @@ DEFINE_bool(
 DECLARE_string(console_region);
 DECLARE_int32(user_language);
 DECLARE_int32(user_country);
+DECLARE_bool(vibration);
 
 // NOTE: If the menu order changes, this needs to be updated, because the menu.
 enum menuIndex {
@@ -781,8 +782,9 @@ bool EmulatorWindow::Initialize() {
   auto hid_menu = MenuItem::Create(MenuItem::Type::kPopup, "&HID");
   {
     hid_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Toggle controller vibration", "",
+        MenuItem::Type::kString, "Enable controller vibra&tion", "",
         std::bind(&EmulatorWindow::ToggleControllerVibration, this)));
+    hid_menu->SetChecked(0, cvars::vibration);
   }
   main_menu->AddChild(std::move(hid_menu));
 
@@ -1171,6 +1173,8 @@ void EmulatorWindow::ToggleControllerVibration() {
     auto input_lock = input_sys->lock();
 
     input_sys->ToggleVibration();
+    MenuItem* hid_menu = window_->GetMainMenu()->child(menuIndex::HID);
+    hid_menu->SetChecked(0, cvars::vibration);
   }
 }
 
