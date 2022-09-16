@@ -549,27 +549,29 @@ void EmulatorWindow::SelectConsoleRegion(int region_idx) {
   UpdateRegionMenus();
 }
 
+// Entries for the User Country menu.
+// Prefix a full country name entry with '^' to exclude it from the menu.
 const char* UIGetCountryString(uint8_t id) {
   static const char* const table[] = {
-      nullptr, nullptr, "United Arab Emirates", "AE", "Albania", "AL", "Armenia", "AM", "Argentina", "AR", "Austria", "AT",
-      "Australia", "AU", "Azerbaijan", "AZ", "Belgium", "BE", "Bulgaria", "BG", "Bahrain", "BH", "Brunei", "BN",
-      "Bolivia", "BO", "Brazil", "BR", "Belarus", "BY", "Belize", "BZ", "Canada", "CA", nullptr, nullptr, "Switzerland", "CH",
-      "Chile", "CL", "China", "CN", "Colombia", "CO", "Costa Rica", "CR", "Czechia", "CZ", "Germnany", "DE",
-      "Denmark", "DK", "Dominican Republic", "DO", "Algeria", "DZ", "Ecuador", "EC", "Estonia", "EE", "Egypt", "EG",
-      "Spain", "ES", "Finland", "FI", "Faroe Islands", "FO", "France", "FR", "United Kingdom", "GB", "Georgia", "GE",
-      "Greece", "GR", "Guatemala", "GT", "Hong Kong", "HK", "Honduras", "HN", "Croatia", "HR", "Hungary", "HU",
-      "Indonesia", "ID", "Ireland", "IE", "Israel", "IL", "India", "IN", "Iraq", "IQ", "Iran", "IR", "Iceland", "IS",
-      "Italy", "IT", "Jamaica", "JM", "Jordan", "JO", "Japan", "JP", "Kenya", "KE", "Kyrgyzstan", "KG", "Korea", "KR",
-      "Kuwait", "KW", "Kazakhstan", "KZ", "Lebanon", "LB", "Liechtenstein", "LI", "Lithuania", "LT", "Luxembourg", "LU",
-      "Latvia", "LV", "Libya", "LY", "Morocco", "MA", "Monaco", "MC", "North Macedonia", "MK", "Mongolia", "MN",
-      "Macao", "MO", "Maldives", "MV", "Mexico", "MX", "Malaysia", "MY", "Nicaragua", "NI", "Netherlands", "NL",
-      "Norway", "NO", "New Zealand", "NZ", "Oman", "OM", "Panama", "PA", "Peru", "PE", "Philippines", "PH",
-      "Pakistan", "PK", "Poland", "PL", "Puerto Rico", "PR", "Portugal", "PT", "Paraguay", "PY", "Qatar", "QA",
-      "Romania", "RO", "Russia", "RU", "Saudi Arabia", "SA", "Sweden", "SE", "Singapore", "SG", "Slovenia", "SI",
-      "Slovakia", "SK", nullptr, nullptr, "El Salvador", "SV", "Syria", "SY", "Thailand", "TH", "Tunisia", "TN",
-      "Turkey", "TR", "Trinidad and Tobago", "TT", "Taiwan", "TW", "Ukraine", "UA", "United States", "US",
-      "Uruguay", "UY", "Uzbekistan", "UZ", "Venezuela", "VE", "Viet Nam", "VN", "Yemen", "YE", "South Africa", "ZA",
-      "Zimbabwe", "ZW", nullptr, nullptr,
+      nullptr, nullptr, "^United Arab Emirates", "AE", "Albania", "AL", "^Armenia", "AM", "Argentina", "AR", "Austria", "AT",
+      "Australia", "AU", "^Azerbaijan", "AZ", "Belgium", "BE", "Bulgaria", "BG", "^Bahrain", "BH", "^Brunei", "BN",
+      "Bolivia", "BO", "Brazil", "BR", "Belarus", "BY", "^Belize", "BZ", "Canada", "CA", nullptr, nullptr, "Switzerland", "CH",
+      "Chile", "CL", "China", "CN", "^Colombia", "CO", "^Costa Rica", "CR", "Czechia", "CZ", "Germany", "DE",
+      "Denmark", "DK", "^Dominican Republic", "DO", "^Algeria", "DZ", "Ecuador", "EC", "Estonia", "EE", "Egypt", "EG",
+      "Spain", "ES", "Finland", "FI", "^Faroe Islands", "FO", "France", "FR", "United Kingdom", "GB", "^Georgia", "GE",
+      "Greece", "GR", "^Guatemala", "GT", "Hong Kong", "HK", "^Honduras", "HN", "Croatia", "HR", "Hungary", "HU",
+      "^Indonesia", "ID", "Ireland", "IE", "Israel", "IL", "India", "IN", "^Iraq", "IQ", "^Iran", "IR", "Iceland", "IS",
+      "Italy", "IT", "^Jamaica", "JM", "^Jordan", "JO", "Japan", "JP", "^Kenya", "KE", "^Kyrgyzstan", "KG", "Korea", "KR",
+      "^Kuwait", "KW", "^Kazakhstan", "KZ", "Lebanon", "LB", "Liechtenstein", "LI", "Lithuania", "LT", "Luxembourg", "LU",
+      "Latvia", "LV", "^Libya", "LY", "^Morocco", "MA", "^Monaco", "MC", "^North Macedonia", "MK", "^Mongolia", "MN",
+      "Macao", "MO", "^Maldives", "MV", "Mexico", "MX", "^Malaysia", "MY", "Nicaragua", "NI", "Netherlands", "NL",
+      "Norway", "NO", "New Zealand", "NZ", "^Oman", "OM", "^Panama", "PA", "^Peru", "PE", "Philippines", "PH",
+      "^Pakistan", "PK", "Poland", "PL", "^Puerto Rico", "PR", "Portugal", "PT", "Paraguay", "PY", "^Qatar", "QA",
+      "Romania", "RO", "Russia", "RU", "^Saudi Arabia", "SA", "Sweden", "SE", "Singapore", "SG", "Slovenia", "SI",
+      "Slovakia", "SK", nullptr, nullptr, "^El Salvador", "SV", "^Syria", "SY", "Thailand", "TH", "^Tunisia", "TN",
+      "Turkey", "TR", "^Trinidad and Tobago", "TT", "Taiwan", "TW", "Ukraine", "UA", "United States", "US",
+      "Uruguay", "UY", "^Uzbekistan", "UZ", "^Venezuela", "VE", "^Viet Nam", "VN", "^Yemen", "YE", "South Africa", "ZA",
+      "^Zimbabwe", "ZW", nullptr, nullptr,
   };
 #pragma warning(suppress : 6385)
   return id < xe::countof(table) ? table[id] : nullptr;
@@ -759,7 +761,8 @@ bool EmulatorWindow::Initialize() {
           MenuItem::Type::kString, name, abbrev, \
           std::bind(&EmulatorWindow::SelectLocale, this, id)));
       for (int i = 1; i < 110; i++) {
-        if (UIGetCountryString(i * 2) != nullptr) {
+        if (UIGetCountryString(i * 2) != nullptr &&
+            UIGetCountryString(i * 2)[0] != '^') {
           std::string locale = std::string(UIGetCountryString(i * 2));
           std::string locale_abbrev = std::string(UIGetCountryString(i * 2 + 1));
           ADD_LOCALE(locale, locale_abbrev, i);
