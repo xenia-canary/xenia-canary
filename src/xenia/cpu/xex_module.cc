@@ -1084,11 +1084,10 @@ bool XexModule::LoadContinue() {
     switch (desc.info) {
       case XEX_SECTION_CODE:
       case XEX_SECTION_READONLY_DATA:
-        if (cvars::writable_code_segments)
-          heap->Protect(address, size,
-                        kMemoryProtectRead | kMemoryProtectWrite);
-        else
-          heap->Protect(address, size, kMemoryProtectRead);
+        heap->Protect(address, size,
+                      cvars::writable_code_segments
+                          ? kMemoryProtectRead | kMemoryProtectWrite
+                          : kMemoryProtectRead);
         break;
       case XEX_SECTION_DATA:
         heap->Protect(address, size, kMemoryProtectRead | kMemoryProtectWrite);
