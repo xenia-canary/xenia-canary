@@ -25,6 +25,8 @@
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
+#define MAX_USERS 4
+
 namespace xe {
 namespace app {
 
@@ -69,6 +71,40 @@ class EmulatorWindow {
   void ToggleFullscreen();
   void SetInitializingShaderStorage(bool initializing);
 
+    // Types of button functions for hotkeys.
+  enum class ButtonFunctions {
+    ToggleFullscreen,
+    RunPreviouslyPlayedTitle,
+    CpuTimeScalarSetHalf,
+    CpuTimeScalarSetDouble,
+    CpuTimeScalarReset,
+    ToggleControllerVibration,
+    ClearMemoryPageState,
+    ReadbackResolve,
+    CloseWindow,
+    Unknown
+  };
+
+  enum class gpu_cvar {
+    ClearMemoryPageState,
+    ReadbackResolve,
+  };
+
+  class ControllerHotKey {
+   public:
+    // If true the hotkey can be activated while a title is running, otherwise false.
+    bool title_passthru = false;
+    std::string pretty;
+    ButtonFunctions function = ButtonFunctions::Unknown;
+
+    ControllerHotKey(ButtonFunctions fn, std::string pretty_desc,
+                     bool active = true) {
+      function = fn;
+      pretty = pretty_desc;
+      title_passthru = active;
+    }
+  };
+  
  private:
   class EmulatorWindowListener final : public ui::WindowListener,
                                        public ui::WindowInputListener {
@@ -152,6 +188,12 @@ class EmulatorWindow {
   void ShowFAQ();
   void ShowBuildCommit();
 
+  void ProcessControllerHotkey(int buttons);
+  void GamepadHotKeys();
+  void ToggleGPUSetting(gpu_cvar index);
+  bool IsUseNexusForGameBarEnabled();
+  void DisplayHotKeysConfig();
+  
   xe::X_STATUS RunTitle(std::filesystem::path path);
   void RunPreviouslyPlayedTitle();
   void FillRecentlyLaunchedTitlesMenu(xe::ui::MenuItem* recent_menu);
