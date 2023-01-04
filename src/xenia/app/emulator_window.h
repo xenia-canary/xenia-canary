@@ -55,6 +55,8 @@ class EmulatorWindow {
   static std::unique_ptr<EmulatorWindow> Create(
       Emulator* emulator, ui::WindowedAppContext& app_context);
 
+  std::unique_ptr<xe::threading::Thread> Gamepad_HotKeys_Listener;
+      
   Emulator* emulator() const { return emulator_; }
   ui::WindowedAppContext& app_context() const { return app_context_; }
   ui::Window* window() const { return window_.get(); }
@@ -92,16 +94,23 @@ class EmulatorWindow {
 
   class ControllerHotKey {
    public:
-    // If true the hotkey can be activated while a title is running, otherwise false.
-    bool title_passthru = false;
-    std::string pretty;
-    ButtonFunctions function = ButtonFunctions::Unknown;
+    // If true the hotkey can be activated while a title is running, otherwise
+    // false.
+    bool title_passthru;
 
-    ControllerHotKey(ButtonFunctions fn, std::string pretty_desc,
+    // If true vibrate the controller after activating the hotkey, otherwise
+    // false.
+    bool rumble;
+    std::string pretty;
+    ButtonFunctions function;
+
+    ControllerHotKey(ButtonFunctions fn = ButtonFunctions::Unknown,
+                     std::string pretty = "", bool rumble = false,
                      bool active = true) {
       function = fn;
-      pretty = pretty_desc;
+      this->pretty = pretty;
       title_passthru = active;
+      this->rumble = rumble;
     }
   };
   
@@ -188,7 +197,8 @@ class EmulatorWindow {
   void ShowFAQ();
   void ShowBuildCommit();
 
-  void ProcessControllerHotkey(int buttons);
+  EmulatorWindow::ControllerHotKey ProcessControllerHotkey(int buttons);
+  void VibrateController(xe::hid::InputSystem* input_sys, bool vibrate = true);
   void GamepadHotKeys();
   void ToggleGPUSetting(gpu_cvar index);
   bool IsUseNexusForGameBarEnabled();

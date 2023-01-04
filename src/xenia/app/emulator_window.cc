@@ -248,7 +248,9 @@ void EmulatorWindow::OnEmulatorInitialized() {
   }
 
   // Create a thread to listen for controller hotkeys.
-  threading::Thread::Create({}, [&] { GamepadHotKeys(); });
+  Gamepad_HotKeys_Listener =
+      threading::Thread::Create({}, [&] { GamepadHotKeys(); });
+  Gamepad_HotKeys_Listener->set_name("Gamepad HotKeys Listener");
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
@@ -905,11 +907,10 @@ void EmulatorWindow::InstallContent() {
       if (result != X_STATUS_SUCCESS) {
         XELOGE("Failed to install content! Error code: {:08X}", result);
 
-        MessageBoxA(
-            nullptr,
+        xe::ui::ImGuiDialog::ShowMessageBox(
+            imgui_drawer_.get(), "Failed to install content!",
             "Failed to install content!\n\nCheck xenia.log for technical "
-            "details.",
-            "Failed to install content!", MB_ICONERROR);
+            "details.");
       }
     }
   }
@@ -1115,82 +1116,84 @@ void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
 // problem since both these buttons are reserved.
 const std::map<int, EmulatorWindow::ControllerHotKey> controller_hotkey_map = {
     // Must use the Guide Button for all pass through hotkeys
-    {X_INPUT_GAMEPAD_A + X_INPUT_GAMEPAD_GUIDE,
+    {X_INPUT_GAMEPAD_A | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::ReadbackResolve,
-         "A + Guide = Toggle Readback Resolve")},
-    {X_INPUT_GAMEPAD_B + X_INPUT_GAMEPAD_GUIDE,
+         "A + Guide = Toggle Readback Resolve", true)},
+    {X_INPUT_GAMEPAD_B | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CloseWindow,
          "B + Guide = Close Window")},
-    {X_INPUT_GAMEPAD_Y + X_INPUT_GAMEPAD_GUIDE,
+    {X_INPUT_GAMEPAD_Y | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::ToggleFullscreen,
-         "Y + Guide = Toggle Fullscreen")},
-    {X_INPUT_GAMEPAD_X + X_INPUT_GAMEPAD_GUIDE,
+         "Y + Guide = Toggle Fullscreen", true)},
+    {X_INPUT_GAMEPAD_X | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::ClearMemoryPageState,
-         "X + Guide = Toggle Clear Memory Page State")},
+         "X + Guide = Toggle Clear Memory Page State", true)},
 
-    {X_INPUT_GAMEPAD_RIGHT_SHOULDER + X_INPUT_GAMEPAD_GUIDE,
+    {X_INPUT_GAMEPAD_RIGHT_SHOULDER | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::ToggleControllerVibration,
-         "Right Shoulder + Guide = Toggle Controller Vibration")},
+         "Right Shoulder + Guide = Toggle Controller Vibration", true)},
 
     // CPU Time Scalar
-    {X_INPUT_GAMEPAD_DPAD_DOWN + X_INPUT_GAMEPAD_GUIDE,
+    {X_INPUT_GAMEPAD_DPAD_DOWN | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarSetHalf,
-         "D-PAD Down + Guide = Half CPU Scalar")},
-    {X_INPUT_GAMEPAD_DPAD_UP + X_INPUT_GAMEPAD_GUIDE,
+         "D-PAD Down + Guide = Half CPU Scalar", true)},
+    {X_INPUT_GAMEPAD_DPAD_UP | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarSetDouble,
-         "D-PAD Up + Guide = Double CPU Scalar")},
-    {X_INPUT_GAMEPAD_DPAD_RIGHT + X_INPUT_GAMEPAD_GUIDE,
+         "D-PAD Up + Guide = Double CPU Scalar", true)},
+    {X_INPUT_GAMEPAD_DPAD_RIGHT | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarReset,
-         "D-PAD Right + Guide = Reset CPU Scalar")},
+         "D-PAD Right + Guide = Reset CPU Scalar", true)},
 
     // non-pass through hotkeys
     {X_INPUT_GAMEPAD_Y, EmulatorWindow::ControllerHotKey(
                             EmulatorWindow::ButtonFunctions::ToggleFullscreen,
-                            "Y = Toggle Fullscreen", false)},
+                            "Y = Toggle Fullscreen", true, false)},
     {X_INPUT_GAMEPAD_START,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::RunPreviouslyPlayedTitle,
-         "Start = Run previously played title", false)},
-    {X_INPUT_GAMEPAD_BACK + X_INPUT_GAMEPAD_START,
+         "Start = Run previously played title", false, false)},
+    {X_INPUT_GAMEPAD_BACK | X_INPUT_GAMEPAD_START,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CloseWindow,
-         "Back + Start = Close Window", false)}};
+         "Back + Start = Close Window", false, false)}};
 
-void EmulatorWindow::ProcessControllerHotkey(int buttons) {
-  if (buttons == 0) return;
+EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
+    int buttons) {
+  // Default return value
+  EmulatorWindow::ControllerHotKey Unknown_hotkey = {};
+
+  if (buttons == 0) return Unknown_hotkey;
 
   // Hotkey cool-down to prevent toggling too fast
   const std::chrono::milliseconds delay(75);
 
-  // Guide button is only used while title is running
-  if (emulator_->is_title_open()) {
-    // If the Xbox Gamebar is enabled or the GUIDE button is disabled then
-    // replace the guide button with the BACK button without redeclaring the key
-    // mappings
-    if (IsUseNexusForGameBarEnabled() || !cvars::guide_button) {
-      if (buttons & X_INPUT_GAMEPAD_BACK) {
-        buttons -= X_INPUT_GAMEPAD_BACK;
-        buttons += X_INPUT_GAMEPAD_GUIDE;
-      }
+  // If the Xbox Gamebar is enabled or the Guide button is disabled then
+  // replace the Guide button with the Back button without redeclaring the key
+  // mappings
+  if (IsUseNexusForGameBarEnabled() || !cvars::guide_button) {
+    if ((buttons & X_INPUT_GAMEPAD_BACK) == X_INPUT_GAMEPAD_BACK) {
+      buttons &= ~X_INPUT_GAMEPAD_BACK;
+      buttons |= X_INPUT_GAMEPAD_GUIDE;
     }
   }
 
   auto it = controller_hotkey_map.find(buttons);
   if (it == controller_hotkey_map.end()) {
-    return;
+    return Unknown_hotkey;
   }
 
-  // Do not activate hotkeys that are not intended for activation during gameplay
+  // Do not activate hotkeys that are not intended for activation during
+  // gameplay
   if (emulator_->is_title_open() && !it->second.title_passthru) {
-    return;
+    return Unknown_hotkey;
   }
 
   EmulatorWindow::ControllerHotKey button_combination = it->second;
@@ -1246,6 +1249,27 @@ void EmulatorWindow::ProcessControllerHotkey(int buttons) {
   }
 
   std::this_thread::sleep_for(delay);
+
+  return it->second;
+}
+
+void EmulatorWindow::VibrateController(xe::hid::InputSystem* input_sys,
+                                       bool toggle_rumble) {
+  const std::chrono::milliseconds rumble_duration(100);
+
+  auto input_lock = input_sys->lock();
+
+  X_INPUT_VIBRATION vibration;
+
+  vibration.left_motor_speed = toggle_rumble ? UINT16_MAX : 0;
+  vibration.right_motor_speed = toggle_rumble ? UINT16_MAX : 0;
+
+  input_sys->SetState(0, &vibration);
+
+  // Vibration duration
+  if (toggle_rumble) {
+    std::this_thread::sleep_for(rumble_duration);
+  }
 }
 
 void EmulatorWindow::GamepadHotKeys() {
@@ -1267,7 +1291,13 @@ void EmulatorWindow::GamepadHotKeys() {
         }
       }
 
-      ProcessControllerHotkey(state.gamepad.buttons);
+      if (ProcessControllerHotkey(state.gamepad.buttons).rumble) {
+        // Enable Vibration
+        VibrateController(input_sys, true);
+
+        // Disable Vibration
+        VibrateController(input_sys, false);
+      }
 
       std::this_thread::sleep_for(thread_delay);
     }
@@ -1306,7 +1336,8 @@ bool EmulatorWindow::IsUseNexusForGameBarEnabled() {
 }
 
 void EmulatorWindow::DisplayHotKeysConfig() {
-  std::string msg;
+  std::string msg = "";
+  std::string msg_passthru = "";
 
   bool guide_enabled = !IsUseNexusForGameBarEnabled() && cvars::guide_button;
 
@@ -1324,9 +1355,20 @@ void EmulatorWindow::DisplayHotKeysConfig() {
       pretty_text += " (Disabled)";
     }
 
-    msg += pretty_text + "\n";
+    if (val.title_passthru) {
+      msg += pretty_text + "\n";
+    } else {
+      msg_passthru += pretty_text + "\n";
+    }
   }
-  
+
+  // Add Title
+  msg.insert(0, "Gameplay Hotkeys\n");
+
+  // Prepend non-passthru hotkeys
+  msg_passthru += "\n";
+  msg.insert(0, msg_passthru);
+
   msg += "\n";
   msg += "Readback Resolve: " +
          std::string(cvars::d3d12_readback_resolve ? "true\n" : "false\n");
@@ -1342,12 +1384,13 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path) {
   bool titleExists = !std::filesystem::exists(path);
 
   if (path.empty() || titleExists) {
-    char* log_msg = path.empty() ? "Failed to launch title path is empty"
-                                 : "Failed to launch title path is invalid";
+    char* log_msg = path.empty() ? "Failed to launch title path is empty."
+                                 : "Failed to launch title path is invalid.";
 
     XELOGE(log_msg);
 
-    MessageBoxA(nullptr, log_msg, "Title Launch Failed!", MB_ICONERROR);
+    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
+                                        "Title Launch Failed!", log_msg);
 
     return X_STATUS_NO_SUCH_FILE;
   }
@@ -1369,10 +1412,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path) {
   if (result) {
     XELOGE("Failed to launch target: {:08X}", result);
 
-    MessageBoxA(
-        nullptr,
-        "Failed to launch title.\n\nCheck xenia.log for technical details.",
-        "Title Launch Failed!", MB_ICONERROR);
+    xe::ui::ImGuiDialog::ShowMessageBox(
+        imgui_drawer_.get(), "Title Launch Failed!",
+        "Failed to launch title.\n\nCheck xenia.log for technical details.");
   } else {
     AddRecentlyLaunchedTitle(path, emulator_->title_name());
   }

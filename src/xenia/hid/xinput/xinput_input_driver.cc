@@ -140,14 +140,18 @@ X_RESULT XInputInputDriver::GetState(uint32_t user_index,
   if (skipper) {
     return skipper;
   }
-  XINPUT_STATE native_state;
+  
+  struct {
+    XINPUT_STATE state;
+    unsigned int xinput_state_ex_padding; // Add padding in case we are using XInputGetStateEx
+  } native_state;
 
   // If the guide button is enabled use XInputGetStateEx, otherwise use the default XInputGetState.
   auto xigs = cvars::guide_button
                   ? (decltype(&XInputGetState))XInputGetStateEx_
                   : (decltype(&XInputGetState))XInputGetState_;
 
-  DWORD result = xigs(user_index, &native_state);
+  DWORD result = xigs(user_index, &native_state.state);
   if (result) {
     if (result == ERROR_DEVICE_NOT_CONNECTED) {
       set_skip(user_index);
@@ -155,14 +159,14 @@ X_RESULT XInputInputDriver::GetState(uint32_t user_index,
     return result;
   }
 
-  out_state->packet_number = native_state.dwPacketNumber;
-  out_state->gamepad.buttons = native_state.Gamepad.wButtons;
-  out_state->gamepad.left_trigger = native_state.Gamepad.bLeftTrigger;
-  out_state->gamepad.right_trigger = native_state.Gamepad.bRightTrigger;
-  out_state->gamepad.thumb_lx = native_state.Gamepad.sThumbLX;
-  out_state->gamepad.thumb_ly = native_state.Gamepad.sThumbLY;
-  out_state->gamepad.thumb_rx = native_state.Gamepad.sThumbRX;
-  out_state->gamepad.thumb_ry = native_state.Gamepad.sThumbRY;
+  out_state->packet_number = native_state.state.dwPacketNumber;
+  out_state->gamepad.buttons = native_state.state.Gamepad.wButtons;
+  out_state->gamepad.left_trigger = native_state.state.Gamepad.bLeftTrigger;
+  out_state->gamepad.right_trigger = native_state.state.Gamepad.bRightTrigger;
+  out_state->gamepad.thumb_lx = native_state.state.Gamepad.sThumbLX;
+  out_state->gamepad.thumb_ly = native_state.state.Gamepad.sThumbLY;
+  out_state->gamepad.thumb_rx = native_state.state.Gamepad.sThumbRX;
+  out_state->gamepad.thumb_ry = native_state.state.Gamepad.sThumbRY;
 
   return result;
 }

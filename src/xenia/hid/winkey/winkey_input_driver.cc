@@ -157,7 +157,7 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
             buttons |= X_INPUT_GAMEPAD_X;
             break;
           case ui::VirtualKey::kXInputPadGuide:
-            buttons = X_INPUT_GAMEPAD_GUIDE;
+            buttons |= X_INPUT_GAMEPAD_GUIDE;
             break;
           case ui::VirtualKey::kXInputPadDpadLeft:
             buttons |= X_INPUT_GAMEPAD_DPAD_LEFT;
