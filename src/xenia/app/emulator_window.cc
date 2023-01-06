@@ -1138,19 +1138,19 @@ const std::map<int, EmulatorWindow::ControllerHotKey> controller_hotkey_map = {
          EmulatorWindow::ButtonFunctions::ToggleControllerVibration,
          "Right Shoulder + Guide = Toggle Controller Vibration", true)},
 
-    // CPU Time Scalar
+    // CPU Time Scalar with no rubmle feedback
     {X_INPUT_GAMEPAD_DPAD_DOWN | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarSetHalf,
-         "D-PAD Down + Guide = Half CPU Scalar", true)},
+         "D-PAD Down + Guide = Half CPU Scalar")},
     {X_INPUT_GAMEPAD_DPAD_UP | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarSetDouble,
-         "D-PAD Up + Guide = Double CPU Scalar", true)},
+         "D-PAD Up + Guide = Double CPU Scalar")},
     {X_INPUT_GAMEPAD_DPAD_RIGHT | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarReset,
-         "D-PAD Right + Guide = Reset CPU Scalar", true)},
+         "D-PAD Right + Guide = Reset CPU Scalar")},
 
     // non-pass through hotkeys
     {X_INPUT_GAMEPAD_Y, EmulatorWindow::ControllerHotKey(
@@ -1203,7 +1203,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       ToggleFullscreen();
 
       // Extra Sleep
-      std::this_thread::sleep_for(delay);
+      xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::RunPreviouslyPlayedTitle:
       RunPreviouslyPlayedTitle();
@@ -1217,13 +1217,13 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       }
 
       // Extra Sleep
-      std::this_thread::sleep_for(delay);
+      xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::ReadbackResolve:
       ToggleGPUSetting(gpu_cvar::ReadbackResolve);
 
       // Extra Sleep
-      std::this_thread::sleep_for(delay);
+      xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::CpuTimeScalarSetHalf:
       CpuTimeScalarSetHalf();
@@ -1238,7 +1238,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       ToggleControllerVibration();
 
       // Extra Sleep
-      std::this_thread::sleep_for(delay);
+      xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::CloseWindow:
       window_->RequestClose();
@@ -1248,7 +1248,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       break;
   }
 
-  std::this_thread::sleep_for(delay);
+  xe::threading::Sleep(delay);
 
   return it->second;
 }
@@ -1257,6 +1257,8 @@ void EmulatorWindow::VibrateController(xe::hid::InputSystem* input_sys,
                                        bool toggle_rumble) {
   const std::chrono::milliseconds rumble_duration(100);
 
+  // Hold lock while sleeping this thread for the duration of the rumble,
+  // otherwise the rumble may fail.
   auto input_lock = input_sys->lock();
 
   X_INPUT_VIBRATION vibration;
@@ -1268,7 +1270,7 @@ void EmulatorWindow::VibrateController(xe::hid::InputSystem* input_sys,
 
   // Vibration duration
   if (toggle_rumble) {
-    std::this_thread::sleep_for(rumble_duration);
+    xe::threading::Sleep(rumble_duration);
   }
 }
 
@@ -1299,7 +1301,7 @@ void EmulatorWindow::GamepadHotKeys() {
         VibrateController(input_sys, false);
       }
 
-      std::this_thread::sleep_for(thread_delay);
+      xe::threading::Sleep(thread_delay);
     }
   }
 }
@@ -1330,7 +1332,7 @@ bool EmulatorWindow::IsUseNexusForGameBarEnabled() {
               &dataSize);
 
   return (bool)value;
-#elif __linux__
+#else
   return false;
 #endif
 }
