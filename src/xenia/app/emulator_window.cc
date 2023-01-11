@@ -1138,7 +1138,7 @@ const std::map<int, EmulatorWindow::ControllerHotKey> controller_hotkey_map = {
          EmulatorWindow::ButtonFunctions::ToggleControllerVibration,
          "Right Shoulder + Guide = Toggle Controller Vibration", true)},
 
-    // CPU Time Scalar with no rubmle feedback
+    // CPU Time Scalar with no rumble feedback
     {X_INPUT_GAMEPAD_DPAD_DOWN | X_INPUT_GAMEPAD_GUIDE,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::CpuTimeScalarSetHalf,
