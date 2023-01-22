@@ -21,6 +21,8 @@
 #include "xenia/kernel/xobject.h"
 #include "xenia/vfs/devices/host_path_device.h"
 
+DECLARE_string(user_profile);
+
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -69,14 +71,14 @@ std::filesystem::path ContentManager::ResolvePackageRoot(
   auto content_type_str = fmt::format("{:08X}", uint32_t(content_type));
 
   // Package root path:
-  // content_root/title_id/content_type/
-  return root_path_ / title_id_str / content_type_str;
+  // content/user_id/title_id/content_type
+  return root_path_ / cvars::user_profile / title_id_str / content_type_str;
 }
 
 std::filesystem::path ContentManager::ResolvePackagePath(
     const XCONTENT_AGGREGATE_DATA& data, const uint32_t disc_number) {
   // Content path:
-  // content_root/title_id/content_type/data_file_name/
+  // content_root/user_id/title_id/content_type/data_file_name/
   auto package_root = ResolvePackageRoot(data.content_type, data.title_id);
   std::string disc_directory = "";
   std::filesystem::path package_path =
@@ -97,7 +99,7 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(
   }
 
   // Search path:
-  // content_root/title_id/type_name/*
+  // content_root/user_id/title_id/type_name/*
   auto package_root = ResolvePackageRoot(content_type, title_id);
   auto file_infos = xe::filesystem::ListFiles(package_root);
   for (const auto& file_info : file_infos) {
@@ -148,8 +150,8 @@ X_RESULT ContentManager::WriteContentHeaderFile(
   auto title_id = fmt::format("{:08X}", kernel_state_->title_id());
   auto content_type =
       fmt::format("{:08X}", load_and_swap<uint32_t>(&data->content_type));
-  auto header_path =
-      root_path_ / title_id / kGameContentHeaderDirName / content_type;
+  auto header_path = root_path_ / cvars::user_profile / title_id / 
+                     kGameContentHeaderDirName / content_type;
 
   if (!std::filesystem::exists(header_path)) {
     if (!std::filesystem::create_directories(header_path)) {
@@ -179,7 +181,7 @@ X_RESULT ContentManager::ReadContentHeaderFile(const std::string_view file_name,
   }
 
   auto content_type_directory = fmt::format("{:08X}", content_type);
-  auto header_file_path = root_path_ / title_id_str /
+  auto header_file_path = root_path_ / cvars::user_profile / title_id_str /
                           kGameContentHeaderDirName / content_type_directory /
                           file_name;
   constexpr uint32_t header_size = sizeof(XCONTENT_AGGREGATE_DATA);
@@ -337,8 +339,9 @@ std::filesystem::path ContentManager::ResolveGameUserContentPath() {
       xe::to_path(kernel_state_->user_profile(uint32_t(0))->name());
 
   // Per-game per-profile data location:
-  // content_root/title_id/profile/user_name
-  return root_path_ / title_id / kGameUserContentDirName / user_name;
+  // content_root/user_id/title_id/profile/user_name
+  return root_path_ / cvars::user_profile / title_id / kGameUserContentDirName /
+         user_name;
 }
 
 bool ContentManager::IsContentOpen(const XCONTENT_AGGREGATE_DATA& data) const {

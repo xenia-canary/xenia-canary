@@ -15,6 +15,8 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 
+DEFINE_string(user_profile, "User", "The name of your user profile.", "General");
+
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -24,9 +26,14 @@ UserProfile::UserProfile(uint8_t index) {
   // if non-zero, it prevents the user from playing the game.
   // "You do not have permissions to perform this operation."
   xuid_ = 0xB13EBABEBABEBABE + index;
-  name_ = "User";
+
+  if (cvars::user_profile.empty()) {
+    OVERRIDE_string(user_profile, "User");
+  }
+  
+  name_ = cvars::user_profile;
   if (index) {
-    name_ = "User_" + std::to_string(index);
+    name_ = fmt::format("{0}_{1}", cvars::user_profile, std::to_string(index));
   }
 
   // https://cs.rin.ru/forum/viewtopic.php?f=38&t=60668&hilit=gfwl+live&start=195
