@@ -59,6 +59,9 @@ DECLARE_bool(d3d12_clear_memory_page_state);
 DEFINE_bool(fullscreen, false, "Whether to launch the emulator in fullscreen.",
             "Display");
 
+DEFINE_bool(controller_hotkeys, true,
+            "Toggle hotkeys for Xbox and PS controllers.", "General");
+
 DEFINE_string(
     postprocess_antialiasing, "",
     "Post-processing anti-aliasing effect to apply to the image output of the "
@@ -244,7 +247,9 @@ void EmulatorWindow::OnEmulatorInitialized() {
   }
 
   if (IsUseNexusForGameBarEnabled()) {
-    XELOGE("Xbox Gamebar Enabled, using BACK button instead of GUIDE!!!");
+    XELOGE(
+        "Xbox Gamebar Enabled, using BACK button instead of GUIDE for "
+        "controller hotkeys!!!");
   }
 
   // Create a thread to listen for controller hotkeys.
@@ -1217,8 +1222,11 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
 
   // Do not activate hotkeys that are not intended for activation during
   // gameplay
-  if (emulator_->is_title_open() && !it->second.title_passthru) {
-    return Unknown_hotkey;
+  if (emulator_->is_title_open()) {
+    // If non-pass through (menu hoykeys) or hotkeys disabled then return
+    if (!it->second.title_passthru || !cvars::controller_hotkeys) {
+      return Unknown_hotkey;
+    }
   }
 
   EmulatorWindow::ControllerHotKey button_combination = it->second;
@@ -1239,9 +1247,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       if (title_success == X_ERROR_SUCCESS) {
         imgui_drawer_.get()->ClearDialogs();
       }
-    }
-    // RunPreviouslyPlayedTitle();
-    break;
+    } break;
     case ButtonFunctions::ClearMemoryPageState:
       ToggleGPUSetting(gpu_cvar::ClearMemoryPageState);
 
@@ -1346,9 +1352,6 @@ void EmulatorWindow::GamepadHotKeys() {
 
   auto input_sys = emulator_->input_system();
 
-  // uint8_t users = emulator_->kernel_state()->GetConnectedUsers();
-  // uint8_t users = input_sys->GetConnectedSlots();
-
   if (input_sys) {
     while (true) {
       auto input_lock = input_sys->lock();
@@ -1407,6 +1410,10 @@ bool EmulatorWindow::IsUseNexusForGameBarEnabled() {
 #endif
 }
 
+std::string BoolToString(bool value) {
+  return std::string(value ? "true\n" : "false\n");
+}
+
 void EmulatorWindow::DisplayHotKeysConfig() {
   std::string msg = "";
   std::string msg_passthru = "";
@@ -1427,6 +1434,10 @@ void EmulatorWindow::DisplayHotKeysConfig() {
       pretty_text += " (Disabled)";
     }
 
+    if (val.title_passthru && !cvars::controller_hotkeys) {
+      pretty_text += " (Disabled)";
+    }
+
     if (val.title_passthru) {
       msg += pretty_text + "\n";
     } else {
@@ -1442,14 +1453,12 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   msg.insert(0, msg_passthru);
 
   msg += "\n";
-  msg += "Readback Resolve: " +
-         std::string(cvars::d3d12_readback_resolve ? "true\n" : "false\n");
-  msg +=
-      "Clear Memory Page State: " +
-      std::string(cvars::d3d12_clear_memory_page_state ? "true\n" : "false\n");
+  msg += "Readback Resolve: " + BoolToString(cvars::d3d12_readback_resolve);
+  msg += "Clear Memory Page State: " +
+         BoolToString(cvars::d3d12_clear_memory_page_state);
+  msg += "Controller Hotkeys: " + BoolToString(cvars::controller_hotkeys);
 
   imgui_drawer_.get()->ClearDialogs();
-
   xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Controller Hotkeys",
                                       msg);
 }
@@ -1487,6 +1496,8 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path) {
 
   if (result) {
     XELOGE("Failed to launch target: {:08X}", result);
+
+    imgui_drawer_.get()->ClearDialogs();
 
     xe::ui::ImGuiDialog::ShowMessageBox(
         imgui_drawer_.get(), "Title Launch Failed!",
