@@ -1359,11 +1359,11 @@ void EmulatorWindow::GamepadHotKeys() {
       for (uint32_t user_index = 0; user_index < MAX_USERS; ++user_index) {
         X_RESULT result = input_sys->GetState(user_index, &state);
 
+        // Release the lock before processing the hotkey
+        input_lock.mutex()->unlock();
+        
         // Check if the controller is connected
         if (result == X_ERROR_SUCCESS) {
-          // Release the lock before processing the hotkey
-          input_lock.mutex()->unlock();
-
           if (ProcessControllerHotkey(state.gamepad.buttons).rumble) {
             // Enable Vibration
             VibrateController(input_sys, user_index, true);
@@ -1410,8 +1410,8 @@ bool EmulatorWindow::IsUseNexusForGameBarEnabled() {
 #endif
 }
 
-std::string BoolToString(bool value) {
-  return std::string(value ? "true\n" : "false\n");
+std::string EmulatorWindow::BoolToString(bool value) {
+  return std::string(value ? "true" : "false");
 }
 
 void EmulatorWindow::DisplayHotKeysConfig() {
@@ -1451,11 +1451,15 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   // Prepend non-passthru hotkeys
   msg_passthru += "\n";
   msg.insert(0, msg_passthru);
-
   msg += "\n";
+
   msg += "Readback Resolve: " + BoolToString(cvars::d3d12_readback_resolve);
+  msg += "\n";
+
   msg += "Clear Memory Page State: " +
          BoolToString(cvars::d3d12_clear_memory_page_state);
+  msg += "\n";
+
   msg += "Controller Hotkeys: " + BoolToString(cvars::controller_hotkeys);
 
   imgui_drawer_.get()->ClearDialogs();
