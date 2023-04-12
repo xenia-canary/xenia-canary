@@ -60,6 +60,8 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 #endif  // XE_ARCH
 
+DECLARE_string(user_profile);
+
 DEFINE_double(time_scalar, 1.0,
               "Scalar used to speed or slow time (1x, 2x, 1/2x, etc).",
               "General");
@@ -82,6 +84,7 @@ DECLARE_int32(user_language);
 DECLARE_bool(allow_plugins);
 
 namespace xe {
+
 using namespace xe::literals;
 
 Emulator::GameConfigLoadCallback::GameConfigLoadCallback(Emulator& emulator)
@@ -491,11 +494,13 @@ X_STATUS Emulator::InstallContentPackage(const std::filesystem::path& path) {
       (vfs::XContentContainerDevice*)device.get();
 
   std::filesystem::path installation_path =
-      content_root() / fmt::format("{:08X}", dev->title_id()) /
+      content_root() / cvars::user_profile /
+      fmt::format("{:08X}", dev->title_id()) /
       fmt::format("{:08X}", dev->content_type()) / path.filename();
 
   std::filesystem::path header_path =
-      content_root() / fmt::format("{:08X}", dev->title_id()) / "Headers" /
+      content_root() / cvars::user_profile /
+      fmt::format("{:08X}", dev->title_id()) / "Headers" /
       fmt::format("{:08X}", dev->content_type()) / path.filename();
 
   if (std::filesystem::exists(installation_path)) {
