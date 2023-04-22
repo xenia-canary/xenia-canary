@@ -67,7 +67,20 @@ KernelState::KernelState(Emulator* emulator)
   // Hardcoded maximum of 2048 TLS slots.
   tls_bitmap_.Resize(2048);
 
+  auto hc_loc_heap = memory_->LookupHeap(strange_hardcoded_page_);
+  bool fixed_alloc_worked = hc_loc_heap->AllocFixed(
+      strange_hardcoded_page_, 65536, 0,
+      kMemoryAllocationCommit | kMemoryAllocationReserve,
+      kMemoryProtectRead | kMemoryProtectWrite);
+
+  xenia_assert(fixed_alloc_worked);
+
   xam::AppManager::RegisterApps(this, app_manager_.get());
+
+  XObject* dvd_device = new XObject(this, XObject::Type::Device, false);
+
+  this->object_table()->AddNameMapping("\\Device\\HdDvdRom",
+                                       dvd_device->handle());
 }
 
 KernelState::~KernelState() {
@@ -954,9 +967,7 @@ void KernelState::UpdateKeTimestampBundle() {
 }
 
 uint32_t KernelState::GetKeTimestampBundle() {
-  XE_LIKELY_IF(ke_timestamp_bundle_ptr_) { 
-	  return ke_timestamp_bundle_ptr_; 
-  }
+  XE_LIKELY_IF(ke_timestamp_bundle_ptr_) { return ke_timestamp_bundle_ptr_; }
   else {
     global_critical_region::PrepareToAcquire();
     return CreateKeTimestampBundle();

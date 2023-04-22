@@ -451,7 +451,6 @@ static_assert_size(X_SWAPDISC_ERROR_MESSAGE, 12);
 dword_result_t XamSwapDisc_entry(
     dword_t disc_number, pointer_t<X_KEVENT> completion_handle,
     pointer_t<X_SWAPDISC_ERROR_MESSAGE> error_message) {
-
   xex2_opt_execution_info* info = nullptr;
   kernel_state()->GetExecutableModule()->GetOptHeader(XEX_HEADER_EXECUTION_INFO,
                                                       &info);
@@ -475,7 +474,7 @@ dword_result_t XamSwapDisc_entry(
     completion_event();
     return X_ERROR_SUCCESS;
   }
-							 
+
   auto filesystem = kernel_state()->file_system();
   auto mount_path = "\\Device\\LauncherData";
 
@@ -497,6 +496,14 @@ dword_result_t XamSwapDisc_entry(
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamSwapDisc, kContent, kSketchy);
+
+dword_result_t XamLoaderGetMediaInfoEx_entry(dword_t unk1, dword_t unk2,
+                                             lpdword_t unk3) {
+  *unk3 = 0;
+  return 0;
+}
+
+DECLARE_XAM_EXPORT1(XamLoaderGetMediaInfoEx, kContent, kStub);
 
 }  // namespace xam
 }  // namespace kernel
