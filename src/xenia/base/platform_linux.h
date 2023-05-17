@@ -17,4 +17,27 @@
 
 #include "xenia/base/platform.h"
 
+#include <cstdint>
+#include <glib.h>
+
+typedef uint8_t BYTE;
+typedef uint32_t DWORD;
+typedef int32_t LONG;
+typedef int64_t LONGLONG;
+
+typedef union _LARGE_INTEGER {
+  struct {
+    DWORD LowPart;
+    LONG  HighPart;
+  };
+  struct {
+    DWORD LowPart;
+    LONG  HighPart;
+  } u;
+  LONGLONG QuadPart;
+} LARGE_INTEGER, *PLARGE_INTEGER;
+
+static constexpr size_t KUSER_SHARED_INTERRUPTTIME_OFFSET = 8;
+static unsigned char* KUserShared() { return (unsigned char*)0x7FFE0000ULL; }
+
 #endif  // XENIA_BASE_PLATFORM_LINUX_H_

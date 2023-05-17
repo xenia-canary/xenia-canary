@@ -9,6 +9,7 @@
 
 #include <sys/time.h>
 
+#include "platform_linux.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
 
@@ -53,4 +54,8 @@ uint64_t Clock::QueryHostUptimeMillis() {
   return host_tick_count_platform() * 1000 / host_tick_frequency_platform();
 }
 
+uint64_t Clock::QueryHostInterruptTime() {
+  return *reinterpret_cast<uint64_t*>(KUserShared() +
+                                      KUSER_SHARED_INTERRUPTTIME_OFFSET);
+}
 }  // namespace xe

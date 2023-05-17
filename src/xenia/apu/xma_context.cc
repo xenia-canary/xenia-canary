@@ -691,6 +691,10 @@ void XmaContext::Decode(XMA_CONTEXT_DATA* data) {
       data->output_buffer_write_offset = output_rb.write_offset() / 256;
 
       total_samples += id_ == 0 ? kSamplesPerFrame : 0;
+//FIXME(RodoMa92): Linux errors out with undef ref to kBitsPerHeader, for whatever reason
+#ifdef XE_PLATFORM_LINUX
+      static const uint32_t kBitsPerHeader = 32;
+#endif
 
       uint32_t offset =
           std::max(kBitsPerHeader, data->input_buffer_read_offset);

@@ -164,8 +164,10 @@ class CommandProcessor {
   XE_FORCEINLINE
   virtual void WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
                                      uint32_t num_registers);
-
+  //FIXME(RodoMa92): This errors out if forced inline on linux
+#ifdef XE_PLATFORM_WINDOWS
   XE_FORCEINLINE
+#endif
   virtual void WriteRegisterRangeFromRing(xe::RingBuffer* ring, uint32_t base,
                                           uint32_t num_registers);
 

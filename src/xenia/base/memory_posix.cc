@@ -85,8 +85,14 @@ void* AllocFixed(void* base_address, size_t length,
                  AllocationType allocation_type, PageAccess access) {
   // mmap does not support reserve / commit, so ignore allocation_type.
   uint32_t prot = ToPosixProtectFlags(access);
-  void* result = mmap(base_address, length, prot,
-                      MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+  void * result;
+  if (base_address) {
+    result = mmap(base_address, length, prot,
+                  MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+  } else {
+    result = mmap(base_address, length, prot,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  }
   if (result == MAP_FAILED) {
     return nullptr;
   } else {

@@ -6,7 +6,7 @@
 
 using namespace xe::gpu::xenos;
 void COMMAND_PROCESSOR::ExecuteIndirectBuffer(uint32_t ptr,
-                                              uint32_t count) XE_RESTRICT {
+                                              uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   trace_writer_.WriteIndirectBufferStart(ptr, count * sizeof(uint32_t));
@@ -79,7 +79,7 @@ std::string GenerateRegnameForPm4Print(uint32_t reg) {
 }
 
 XE_NOINLINE
-void COMMAND_PROCESSOR::DisassembleCurrentPacket() XE_RESTRICT {
+void COMMAND_PROCESSOR::DisassembleCurrentPacket() {
   xe::gpu::PacketInfo packet_info;
 
   logging::LoggerBatch<LogLevel::Debug> logger{};
@@ -325,7 +325,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType0_CountOverflow(uint32_t count) {
    the most frequently called functions for PM4
 */
 XE_NOINLINE
-bool COMMAND_PROCESSOR::ExecutePacketType0(uint32_t packet) XE_RESTRICT {
+bool COMMAND_PROCESSOR::ExecutePacketType0(uint32_t packet) {
   // Type-0 packet.
   // Write count registers in sequence to the registers starting at
   // (base_index << 2).
@@ -354,7 +354,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType0(uint32_t packet) XE_RESTRICT {
   }
 }
 XE_NOINLINE
-bool COMMAND_PROCESSOR::ExecutePacketType1(uint32_t packet) XE_RESTRICT {
+bool COMMAND_PROCESSOR::ExecutePacketType1(uint32_t packet) {
   // Type-1 packet.
   // Contains two registers of data. Type-0 should be more common.
   trace_writer_.WritePacketStart(uint32_t(reader_.read_ptr() - 4), 3);
@@ -368,7 +368,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType1(uint32_t packet) XE_RESTRICT {
   return true;
 }
 
-bool COMMAND_PROCESSOR::ExecutePacketType2(uint32_t packet) XE_RESTRICT {
+bool COMMAND_PROCESSOR::ExecutePacketType2(uint32_t packet) {
   // Type-2 packet.
   // No-op. Do nothing.
   trace_writer_.WritePacketStart(uint32_t(reader_.read_ptr() - 4), 1);
@@ -389,7 +389,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_CountOverflow(uint32_t count) {
   return false;
 }
 XE_NOINLINE
-bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
+bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) {
   // Type-3 packet.
   uint32_t opcode = (packet >> 8) & 0x7F;
   uint32_t count = ((packet >> 16) & 0x3FFF) + 1;
@@ -601,7 +601,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
 XE_NOINLINE
 XE_COLD
 bool COMMAND_PROCESSOR::HitUnimplementedOpcode(uint32_t opcode,
-                                               uint32_t count) XE_RESTRICT {
+                                               uint32_t count) {
   XELOGGPU("Unimplemented GPU OPCODE: 0x{:02X}\t\tCOUNT: {}\n", opcode, count);
   assert_always();
   reader_.AdvanceRead(count * sizeof(uint32_t));
@@ -610,7 +610,7 @@ bool COMMAND_PROCESSOR::HitUnimplementedOpcode(uint32_t opcode,
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_ME_INIT(uint32_t packet,
-                                                   uint32_t count) XE_RESTRICT {
+                                                   uint32_t count) {
   // initialize CP's micro-engine
   me_bin_.resize(count);
   for (uint32_t i = 0; i < count; i++) {
@@ -620,7 +620,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_ME_INIT(uint32_t packet,
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_NOP(uint32_t packet,
-                                               uint32_t count) XE_RESTRICT {
+                                               uint32_t count) {
   // skip N 32-bit words to get to the next packet
   // No-op, ignore some data.
   reader_.AdvanceRead(count * sizeof(uint32_t));
@@ -628,7 +628,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_NOP(uint32_t packet,
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_INTERRUPT(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   // generate interrupt from the command stream
@@ -642,7 +642,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INTERRUPT(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
-                                                   uint32_t count) XE_RESTRICT {
+                                                   uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   Profiler::Flip();
@@ -668,7 +668,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_INDIRECT_BUFFER(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // indirect buffer dispatch
   uint32_t list_ptr = CpuToGpu(reader_.ReadAndSwap<uint32_t>());
   uint32_t list_length = reader_.ReadAndSwap<uint32_t>();
@@ -721,7 +721,7 @@ static bool MatchValueAndRef(uint32_t value, uint32_t ref, uint32_t wait_info) {
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   // wait until a register or memory location is a specific value
@@ -776,7 +776,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_REG_RMW(uint32_t packet,
-                                                   uint32_t count) XE_RESTRICT {
+                                                   uint32_t count) {
   // register read/modify/write
   // ? (used during shader upload and edram setup)
   uint32_t rmw_info = reader_.ReadAndSwap<uint32_t>();
@@ -802,7 +802,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_REG_RMW(uint32_t packet,
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_REG_TO_MEM(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // Copy Register to Memory (?)
   // Count is 2, assuming a Register Addr and a Memory Addr.
 
@@ -824,7 +824,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_REG_TO_MEM(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_MEM_WRITE(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   uint32_t write_addr = reader_.ReadAndSwap<uint32_t>();
   for (uint32_t i = 0; i < count - 1; i++) {
     uint32_t write_data = reader_.ReadAndSwap<uint32_t>();
@@ -841,7 +841,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_MEM_WRITE(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_COND_WRITE(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // conditional write to memory or register
   uint32_t wait_info = reader_.ReadAndSwap<uint32_t>();
   uint32_t poll_reg_addr = reader_.ReadAndSwap<uint32_t>();
@@ -881,11 +881,11 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_COND_WRITE(
   return true;
 }
 XE_FORCEINLINE
-void COMMAND_PROCESSOR::WriteEventInitiator(uint32_t value) XE_RESTRICT {
+void COMMAND_PROCESSOR::WriteEventInitiator(uint32_t value) {
   register_file_->values[XE_GPU_REG_VGT_EVENT_INITIATOR].u32 = value;
 }
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // generate an event that creates a write to memory when completed
   uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
   // Writeback initiator.
@@ -902,7 +902,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // generate a VS|PS_done event
   uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
   uint32_t address = reader_.ReadAndSwap<uint32_t>();
@@ -926,7 +926,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // generate a screen extent event
   uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
   uint32_t address = reader_.ReadAndSwap<uint32_t>();
@@ -962,7 +962,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // Set by D3D as BE but struct ABI is LE
   const uint32_t kQueryFinished = xe::byte_swap(0xFFFFFEED);
   assert_true(count == 1);
@@ -997,7 +997,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
 
 bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
     uint32_t packet, const char* opcode_name, uint32_t viz_query_condition,
-    uint32_t count_remaining) XE_RESTRICT {
+    uint32_t count_remaining) {
   // if viz_query_condition != 0, this is a conditional draw based on viz query.
   // This ID matches the one issued in PM4_VIZ_QUERY
   // uint32_t viz_id = viz_query_condition & 0x3F;
@@ -1112,7 +1112,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_DRAW_INDX(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // "initiate fetch of index buffer and draw"
   // Generally used by Xbox 360 Direct3D 9 for kDMA and kAutoIndex sources.
   // With a viz query token as the first one.
@@ -1129,7 +1129,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_DRAW_INDX(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_DRAW_INDX_2(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // "draw using supplied indices in packet"
   // Generally used by Xbox 360 Direct3D 9 for kAutoIndex source.
   // No viz query token.
@@ -1138,7 +1138,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_DRAW_INDX_2(
 }
 XE_FORCEINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_SET_CONSTANT(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // load constant into chip and to memory
   // PM4_REG(reg) ((0x4 << 16) | (GSL_HAL_SUBBLOCK_OFFSET(reg)))
   //                                     reg - 0x2000
@@ -1181,7 +1181,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_SET_CONSTANT(
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_SET_CONSTANT2(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   uint32_t offset_type = reader_.ReadAndSwap<uint32_t>();
   uint32_t index = offset_type & 0xFFFF;
   uint32_t countm1 = count - 1;
@@ -1192,7 +1192,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_SET_CONSTANT2(
 }
 XE_FORCEINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_LOAD_ALU_CONSTANT(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // load constants from memory
   uint32_t address = reader_.ReadAndSwap<uint32_t>();
   address &= 0x3FFFFFFF;
@@ -1245,7 +1245,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_LOAD_ALU_CONSTANT(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_SET_SHADER_CONSTANTS(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   uint32_t offset_type = reader_.ReadAndSwap<uint32_t>();
   uint32_t index = offset_type & 0xFFFF;
   uint32_t countm1 = count - 1;
@@ -1255,7 +1255,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_SET_SHADER_CONSTANTS(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_IM_LOAD(uint32_t packet,
-                                                   uint32_t count) XE_RESTRICT {
+                                                   uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   // load sequencer instruction memory (pointer-based)
@@ -1285,7 +1285,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_IM_LOAD(uint32_t packet,
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_IM_LOAD_IMMEDIATE(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   SCOPE_profile_cpu_f("gpu");
 
   // load sequencer instruction memory (code embedded in packet)
@@ -1321,7 +1321,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_IM_LOAD_IMMEDIATE(
 */
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_INVALIDATE_STATE(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // selective invalidation of state pointers
   /*uint32_t mask =*/reader_.ReadAndSwap<uint32_t>();
   // driver_->InvalidateState(mask);
@@ -1329,7 +1329,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INVALIDATE_STATE(
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_VIZ_QUERY(
-    uint32_t packet, uint32_t count) XE_RESTRICT {
+    uint32_t packet, uint32_t count) {
   // begin/end initiator for viz query extent processing
   // https://www.google.com/patents/US20050195186
   assert_true(count == 1);

@@ -166,7 +166,7 @@
 
 #define XE_RESTRICT __restrict
 #else
-#define XE_RESTRICT
+#define XE_RESTRICT __restrict__
 #endif
 
 #if XE_ARCH_AMD64 == 1

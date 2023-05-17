@@ -77,6 +77,9 @@ static void XeCopy16384StreamingAVX(CacheLine* XE_RESTRICT to,
   XE_MSVC_REORDER_BARRIER();
 }
 XE_FORCEINLINE
+#ifdef XE_PLATFORM_LINUX
+__attribute__((__target__("movdir64b")))
+#endif
 static void XeCopy16384Movdir64M(CacheLine* XE_RESTRICT to,
                                  CacheLine* XE_RESTRICT from) {
   uint32_t num_lines_for_8k = 4096 / XE_HOST_CACHE_LINE_SIZE;
@@ -142,7 +145,9 @@ static void vastcpy_impl_avx(CacheLine* XE_RESTRICT physaddr,
     xe::swcache::WriteLineNT(physaddr + i, &line0);
   }
 }
-
+#ifdef XE_PLATFORM_LINUX
+__attribute__((__target__("movdir64b")))
+#endif
 static void vastcpy_impl_movdir64m(CacheLine* XE_RESTRICT physaddr,
                                    CacheLine* XE_RESTRICT rdmapping,
                                    uint32_t written_length) {
@@ -176,8 +181,12 @@ static void vastcpy_impl_movdir64m(CacheLine* XE_RESTRICT physaddr,
 static void vastcpy_impl_repmovs(CacheLine* XE_RESTRICT physaddr,
                                  CacheLine* XE_RESTRICT rdmapping,
                                  uint32_t written_length) {
+#if XE_PLATFORM_WINDOWS
   __movsq((unsigned long long*)physaddr, (unsigned long long*)rdmapping,
           written_length / 8);
+#else
+  memcpy(physaddr, rdmapping, written_length);
+#endif
 }
 XE_COLD
 static void first_vastcpy(CacheLine* XE_RESTRICT physaddr,
@@ -305,6 +314,11 @@ void copy_and_swap_32_aligned(void* dest_ptr, const void* src_ptr,
   }
 }
 
+
+
+#ifdef XE_PLATFORM_LINUX
+__attribute__((__target__("avx2")))
+#endif
 void copy_and_swap_32_unaligned(void* dest_ptr, const void* src_ptr,
                                 size_t count) {
   auto dest = reinterpret_cast<uint32_t*>(dest_ptr);

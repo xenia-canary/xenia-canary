@@ -100,6 +100,10 @@ filter("configurations:Release")
   -- including handling of specials since games make assumptions about them.
 filter("platforms:Linux")
   system("linux")
+-- Ccache seems to randomly break the build process, disable it
+  defines({
+    "CCACHE_DISABLE=1"
+  })
   toolset("clang")
   buildoptions({
     -- "-mlzcnt",  -- (don't) Assume lzcnt is supported.
@@ -135,8 +139,15 @@ filter({"platforms:Linux", "toolset:gcc"})
 
 filter({"platforms:Linux", "language:C++", "toolset:clang"})
   disablewarnings({
-    "deprecated-register"
+    "deprecated-register",
+    "attributes"
   })
+  removeflags({
+    "FatalWarnings"
+  })
+  --buildoptions({
+  --  "-fpermissive"
+  --})
 filter({"platforms:Linux", "language:C++", "toolset:clang", "files:*.cc or *.cpp"})
   buildoptions({
     "-stdlib=libstdc++",

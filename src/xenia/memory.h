@@ -274,7 +274,7 @@ class PhysicalHeap : public BaseHeap {
   template <bool enable_invalidation_notifications>
   XE_NOINLINE void EnableAccessCallbacksInner(
       const uint32_t system_page_first, const uint32_t system_page_last,
-      xe::memory::PageAccess protect_access) XE_RESTRICT;
+      xe::memory::PageAccess protect_access);
 
   // Returns true if any page in the range was watched.
   bool TriggerCallbacks(global_unique_lock_type global_lock_locked_once,

@@ -98,13 +98,7 @@ constexpr bool IsPrimitivePolygonal(bool vgt_output_path_is_tessellation_enable,
 
   return (primitive_polygonal_table & (1U << static_cast<uint32_t>(type))) != 0;
 }
-XE_FORCEINLINE
-bool IsPrimitivePolygonal(const RegisterFile& regs) {
-  return IsPrimitivePolygonal(
-      regs.Get<reg::VGT_OUTPUT_PATH_CNTL>().path_select ==
-          xenos::VGTOutputPath::kTessellationEnable,
-      regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type);
-}
+bool IsPrimitivePolygonal(const RegisterFile& regs);
 
 // Whether with the current state, any samples to rasterize (for any reason, not
 // only to write something to a render target, but also to do sample counting or

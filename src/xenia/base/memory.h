@@ -701,10 +701,17 @@ static void ReadLineNT(CacheLine* XE_RESTRICT destination,
                        const CacheLine* XE_RESTRICT source) {
   assert_true((reinterpret_cast<uintptr_t>(source) & 63ULL) == 0);
 
+#ifdef XE_PLATFORM_WINDOWS
   __m128i first = _mm_stream_load_si128(&source->xmms[0]);
   __m128i second = _mm_stream_load_si128(&source->xmms[1]);
   __m128i third = _mm_stream_load_si128(&source->xmms[2]);
   __m128i fourth = _mm_stream_load_si128(&source->xmms[3]);
+#else
+  __m128i first = _mm_stream_load_si128((__m128i *) &source->xmms[0]);
+  __m128i second = _mm_stream_load_si128((__m128i *) &source->xmms[1]);
+  __m128i third = _mm_stream_load_si128((__m128i *) &source->xmms[2]);
+  __m128i fourth = _mm_stream_load_si128((__m128i *) &source->xmms[3]);
+#endif
 
   destination->xmms[0] = first;
   destination->xmms[1] = second;

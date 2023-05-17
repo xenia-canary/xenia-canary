@@ -78,8 +78,10 @@ static const size_t kMaxCodeSize = 1_MiB;
 
 const uint32_t X64Emitter::gpr_reg_map_[X64Emitter::GPR_COUNT] = {
     Xbyak::Operand::RBX, Xbyak::Operand::R10, Xbyak::Operand::R11,
-    Xbyak::Operand::R12, Xbyak::Operand::R13, Xbyak::Operand::R14,
-    Xbyak::Operand::R15,
+    Xbyak::Operand::R12, Xbyak::Operand::R13,
+#if XE_PLATFORM_WIN32
+    Xbyak::Operand::R14, Xbyak::Operand::R15,
+#endif
 };
 
 const uint32_t X64Emitter::xmm_reg_map_[X64Emitter::XMM_COUNT] = {
@@ -224,7 +226,7 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   mov(qword[rsp + StackLayout::GUEST_CTX_HOME], GetContextReg());
   */
 
-  mov(qword[rsp + StackLayout::GUEST_RET_ADDR], rcx);
+  mov(qword[rsp + StackLayout::GUEST_RET_ADDR], GetNativeReg(0));
 
   mov(qword[rsp + StackLayout::GUEST_CALL_RET_ADDR], rax);  // 0
 
@@ -691,7 +693,7 @@ void X64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
       EmitTraceUserCallReturn();
       EmitProfilerEpilogue();
       // Pass the callers return address over.
-      mov(rcx, qword[rsp + StackLayout::GUEST_RET_ADDR]);
+      mov(GetNativeReg(0), qword[rsp + StackLayout::GUEST_RET_ADDR]);
 
       add(rsp, static_cast<uint32_t>(stack_size()));
       PopStackpoint();
@@ -718,7 +720,7 @@ void X64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
     EmitTraceUserCallReturn();
     EmitProfilerEpilogue();
     // Pass the callers return address over.
-    mov(rcx, qword[rsp + StackLayout::GUEST_RET_ADDR]);
+    mov(GetNativeReg(0), qword[rsp + StackLayout::GUEST_RET_ADDR]);
 
     add(rsp, static_cast<uint32_t>(stack_size()));
     PopStackpoint();
@@ -752,9 +754,13 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
   } else {
     // Old-style resolve.
     // Not too important because indirection table is almost always available.
+#if XE_PLATFORM_WIN32
     mov(edx, reg.cvt32());
+#else
+    mov(esi, reg.cvt32());
+#endif
     mov(rax, reinterpret_cast<uint64_t>(ResolveFunction));
-    mov(rcx, GetContextReg());
+    mov(GetNativeReg(0), GetContextReg());
     call(rax);
   }
 
@@ -764,14 +770,14 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
     EmitTraceUserCallReturn();
     EmitProfilerEpilogue();
     // Pass the callers return address over.
-    mov(rcx, qword[rsp + StackLayout::GUEST_RET_ADDR]);
+    mov(GetNativeReg(0), qword[rsp + StackLayout::GUEST_RET_ADDR]);
 
     add(rsp, static_cast<uint32_t>(stack_size()));
     PopStackpoint();
     jmp(rax);
   } else {
     // Return address is from the previous SET_RETURN_ADDRESS.
-    mov(rcx, qword[rsp + StackLayout::GUEST_CALL_RET_ADDR]);
+    mov(GetNativeReg(0), qword[rsp + StackLayout::GUEST_CALL_RET_ADDR]);
 
     call(rax);
     synchronize_stack_on_next_instruction_ = true;
@@ -857,16 +863,36 @@ void X64Emitter::SetReturnAddress(uint64_t value) {
   mov(qword[rsp + StackLayout::GUEST_CALL_RET_ADDR], rax);
 }
 
-Xbyak::Reg64 X64Emitter::GetNativeParam(uint32_t param) {
-  if (param == 0)
+Xbyak::Reg64 X64Emitter::GetNativeReg(uint32_t reg) {
+#if XE_PLATFORM_WIN32
+  if (reg == 0)
+    return rcx;
+  else if (reg == 1)
     return rdx;
-  else if (param == 1)
+  else if (reg == 2)
     return r8;
-  else if (param == 2)
+  else if (reg == 3)
     return r9;
 
   assert_always();
   return r9;
+#else
+  if (reg == 0)
+    return rdi;
+  else if (reg == 1)
+    return rsi;
+  else if (reg == 2)
+    return rdx;
+  else if (reg == 3)
+    return rcx;
+
+  assert_always();
+  return rcx;
+#endif
+}
+
+Xbyak::Reg64 X64Emitter::GetNativeParam(uint32_t param) {
+  return GetNativeReg(param + 1);
 }
 
 // Important: If you change these, you must update the thunks in x64_backend.cc!

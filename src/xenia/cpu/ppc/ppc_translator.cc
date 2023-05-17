@@ -139,7 +139,11 @@ void PPCTranslator::DumpHIR(GuestFunction* function, PPCHIRBuilder* builder) {
 
     {
       wchar_t tmpbuf[64];
+#ifdef XE_PLATFORM_WINDOWS
       _snwprintf(tmpbuf, 64, L"%X", function->address());
+#else
+      swprintf(tmpbuf, 64, L"%X", function->address());
+#endif
       folder_path.append(&tmpbuf[0]);
     }
 

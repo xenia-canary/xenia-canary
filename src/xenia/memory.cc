@@ -1714,7 +1714,7 @@ void PhysicalHeap::EnableAccessCallbacks(uint32_t physical_address,
 template <bool enable_invalidation_notifications>
 XE_NOINLINE void PhysicalHeap::EnableAccessCallbacksInner(
     const uint32_t system_page_first, const uint32_t system_page_last,
-    xe::memory::PageAccess protect_access) XE_RESTRICT {
+    xe::memory::PageAccess protect_access) {
   uint8_t* protect_base = membase_ + heap_base_;
   uint32_t protect_system_page_first = UINT32_MAX;
 

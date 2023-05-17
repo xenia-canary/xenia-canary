@@ -23,6 +23,8 @@
 
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
+#elif XE_PLATFORM_LINUX
+#include "xenia/base/platform_linux.h"
 #endif
 
 #include "third_party/fmt/include/fmt/format.h"

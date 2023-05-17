@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_HIR_VALUE_H_
 #define XENIA_CPU_HIR_VALUE_H_
 
+#include <climits>
 #include "xenia/base/arena.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/vec128.h"

@@ -447,12 +447,12 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
     StashHandle(header, object->handle());
     result = object;
 
-  return_result:
-    if (!already_locked) {
-      global_critical_region::mutex().unlock();
-    }
-    return object_ref<XObject>(result);
   }
+return_result:
+  if (!already_locked) {
+    global_critical_region::mutex().unlock();
+  }
+  return object_ref<XObject>(result);
 }
 
 }  // namespace kernel

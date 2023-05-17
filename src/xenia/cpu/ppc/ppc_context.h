@@ -438,8 +438,8 @@ typedef struct alignas(64) PPCContext_s {
     }
     return reinterpret_cast<T>(host_address);
 #else
-    return processor->memory()->TranslateVirtual<T>(guest_address);
-
+    uint8_t* host_address = virtual_membase + guest_address;
+    return reinterpret_cast<T>(host_address);
 #endif
   }
   //for convenience in kernel functions, version that auto narrows to uint32

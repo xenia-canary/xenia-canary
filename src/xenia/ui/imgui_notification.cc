@@ -13,6 +13,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/ui/imgui_notification.h"
+#include "xenia/cpu/ppc/ppc_context.h"
 
 #if XE_PLATFORM_WIN32
 #include <playsoundapi.h>
@@ -89,6 +90,9 @@ const ImVec2 CalculateNotificationScreenPosition(
 }
 
 const ImVec2 CalculateNotificationSize(ImVec2 text_size, float scale) {
+  //FIXME(RodoMa92): Workaround a GCC bug where floorf is not defined in the
+  //std namespace (ref:https://stackoverflow.com/questions/54623100/c-gcc-floorf-not-a-member-of-std)
+#ifdef XE_PLATFORM_WINDOWS
   const ImVec2 result =
       ImVec2(std::floorf((default_notification_icon_size.x +
                           default_notification_margin_size.x) *
@@ -97,6 +101,16 @@ const ImVec2 CalculateNotificationSize(ImVec2 text_size, float scale) {
              std::floorf((default_notification_icon_size.y +
                           default_notification_margin_size.y) *
                          scale));
+#else
+  const ImVec2 result =
+      ImVec2(floorf((default_notification_icon_size.x +
+                          default_notification_margin_size.x) *
+                         scale) +
+                 text_size.x,
+             floorf((default_notification_icon_size.y +
+                          default_notification_margin_size.y) *
+                         scale));
+#endif
 
   return result;
 }
@@ -200,13 +214,23 @@ void AchievementNotificationWindow::OnDraw(ImGuiIO& io) {
   const ImVec2 notification_position = CalculateNotificationScreenPosition(
       screen_size, final_notification_size, GetPositionId());
 
+#ifdef XE_PLATFORM_WINDOWS
   if (isnan(notification_position.x) || isnan(notification_position.y)) {
     return;
   }
+#else
+  if (std::isnan(notification_position.x) || std::isnan(notification_position.y)) {
+    return;
+  }
+#endif
 
   ImVec2 current_notification_size = final_notification_size;
   current_notification_size.x *= notification_draw_progress_;
+#ifdef XE_PLATFORM_WINDOWS
   current_notification_size.x = std::floorf(current_notification_size.x);
+#else
+  current_notification_size.x = floorf(current_notification_size.x);
+#endif
 
   // Initialize position and window size
   ImGui::SetNextWindowSize(current_notification_size);

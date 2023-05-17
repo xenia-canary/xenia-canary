@@ -506,7 +506,7 @@ TEST_CASE("copy_and_swap_16_in_32_unaligned", "[copy_and_swap]") {
   }
 }
 
-TEST_CASE("create_and_close_file_mapping", "Virtual Memory Mapping") {
+TEST_CASE("create_and_close_file_mapping", "[virtual_memory_mapping]") {
   auto path = fmt::format("xenia_test_{}", Clock::QueryHostTickCount());
   auto memory = xe::memory::CreateFileMappingHandle(
       path, 0x100, xe::memory::PageAccess::kReadWrite, true);

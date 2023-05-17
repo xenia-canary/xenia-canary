@@ -75,8 +75,13 @@ X_STATUS XSocket::Close() {
 
 X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
                             int* optlen) {
+#ifdef XE_PLATFORM_WINDOWS
   int ret =
       getsockopt(native_handle_, level, optname, (char*)optval_ptr, optlen);
+#else
+  int ret =
+      getsockopt(native_handle_, level, optname, (char*)optval_ptr, (unsigned int *)optlen);
+#endif
   if (ret < 0) {
     // TODO: WSAGetLastError()
     return X_STATUS_UNSUCCESSFUL;

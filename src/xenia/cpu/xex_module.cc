@@ -1114,7 +1114,11 @@ void XexModule::Precompile() {
   char fmtbuf[16];
 
   for (unsigned i = 0; i < 16; ++i) {
+#ifdef XE_PLATFORM_WINDOWS
     sprintf_s(fmtbuf, "%X", image_sha_bytes_[i]);
+#else
+    sprintf(fmtbuf, "%X", image_sha_bytes_[i]);
+#endif
     image_sha_str_ += &fmtbuf[0];
   }
 

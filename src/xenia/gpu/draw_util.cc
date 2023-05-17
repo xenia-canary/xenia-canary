@@ -765,6 +765,13 @@ uint32_t GetNormalizedColorMask(const RegisterFile& regs,
   }
   return normalized_color_mask;
 }
+XE_FORCEINLINE
+bool IsPrimitivePolygonal(const RegisterFile& regs) {
+  return IsPrimitivePolygonal(
+      regs.Get<reg::VGT_OUTPUT_PATH_CNTL>().path_select ==
+          xenos::VGTOutputPath::kTessellationEnable,
+      regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type);
+}
 XE_NOINLINE
 XE_NOALIAS
 xenos::CopySampleSelect SanitizeCopySampleSelect(
