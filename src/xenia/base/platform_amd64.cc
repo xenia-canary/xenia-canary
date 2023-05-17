@@ -36,7 +36,6 @@ namespace amd64 {
 static uint64_t g_feature_flags = 0U;
 static bool g_did_initialize_feature_flags = false;
 uint64_t GetFeatureFlags() {
-  InitFeatureFlags();
   xenia_assert(g_did_initialize_feature_flags);
   return g_feature_flags;
 }
