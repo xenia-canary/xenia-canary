@@ -37,7 +37,4 @@ typedef union _LARGE_INTEGER {
   LONGLONG QuadPart;
 } LARGE_INTEGER, *PLARGE_INTEGER;
 
-static constexpr size_t KUSER_SHARED_INTERRUPTTIME_OFFSET = 8;
-static unsigned char* KUserShared() { return (unsigned char*)0x7FFE0000ULL; }
-
 #endif  // XENIA_BASE_PLATFORM_LINUX_H_

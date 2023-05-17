@@ -55,7 +55,6 @@ uint64_t Clock::QueryHostUptimeMillis() {
 }
 
 uint64_t Clock::QueryHostInterruptTime() {
-  return *reinterpret_cast<uint64_t*>(KUserShared() +
-                                      KUSER_SHARED_INTERRUPTTIME_OFFSET);
+    return host_tick_count_platform();
 }
 }  // namespace xe
