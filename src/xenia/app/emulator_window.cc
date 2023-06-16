@@ -1193,7 +1193,7 @@ const std::map<int, EmulatorWindow::ControllerHotKey> controller_hotkey_map = {
     {X_INPUT_GAMEPAD_BACK | X_INPUT_GAMEPAD_START,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::ToggleLogging,
-         "Back + Start = Close Window", false, false)},
+         "Back + Start = Toggle between loglevel set in config and the 'Disabled' loglevel.", false, false)},
     {X_INPUT_GAMEPAD_DPAD_DOWN,
      EmulatorWindow::ControllerHotKey(
          EmulatorWindow::ButtonFunctions::IncTitleSelect,
@@ -1307,8 +1307,9 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       break;
   }
 
-  if (button_combination.function == ButtonFunctions::IncTitleSelect ||
-      button_combination.function == ButtonFunctions::DecTitleSelect) {
+  if ((button_combination.function == ButtonFunctions::IncTitleSelect ||
+      button_combination.function == ButtonFunctions::DecTitleSelect) &&
+      recently_launched_titles_.size() > 0) {
     selected_title_index = std::clamp(
         selected_title_index, 0, (int)recently_launched_titles_.size() - 1);
 
