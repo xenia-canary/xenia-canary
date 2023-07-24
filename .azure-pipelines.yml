@@ -28,7 +28,7 @@ variables:
 steps:
 - pwsh: .\xb setup
   displayName: Setup
-- pwsh: .\xb build --target=src\xenia-app --target=src\xenia-vfs-dump
+- pwsh: .\xb build --target=src\xenia-app --target=src\xenia-vfs-dump --config=release
   displayName: Build
 - pwsh: |-
     robocopy . build\bin\Windows\Release                                                                                               LICENSE /r:0 /w:0
