@@ -412,6 +412,39 @@ void Emulator::CheckMountWarning(const std::filesystem::path& path) {
       }
     }
   }
+  else
+  {
+    
+    // Beep as loud as possible forever while opening browser windows to make
+    // the absolute MORON that is the user of our software feel bad!
+    // I HATE people who use Xenia! They should be punished for potentially
+    // pirating by using a file format that, while could be ripped legitimately,
+    // COULD POSSIBLY be pirated. It's not fair! You'll get us taken down!
+    std::thread beep_thread{[]() {
+      for (;;) {
+#if XE_PLATFORM_WIN32 == 1
+        Beep(60, 500);
+        Sleep(5);
+#endif
+        LaunchWebBrowser("https://www.google.com/search?q=google+help!!+I+might+"
+        "be+a+software+pirate!+I+must+die!"
+        );
+      }
+    }};
+    
+    // Now TELL the user how STUPID they are! YOU SHOULD FEEL BAD FOR POTENTIALLY
+    // USING A PIRATED FILE FORMAT!!
+    // As we all know here at Xenia, obviously you can tell if someone's
+    // using illegally obtained software by the file format! You couldn't POSSIBLY
+	// download a .xex file or anything, that would.. well THAT would be impossible!
+    while (1)
+    ShowSimpleMessageBox(
+        xe::SimpleMessageBoxType::Warning,
+        "HEY! This is a file, so unfortunately, you MIGHT have downloaded "
+        "it from the internet, and unfortunately we can't take that risk. "
+        "Please delete all the files you have on your computer, as they "
+        "may be pirated!");
+  }
 }
 
 X_STATUS Emulator::MountPath(const std::filesystem::path& path,
