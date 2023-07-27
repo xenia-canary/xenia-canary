@@ -436,7 +436,7 @@ void Emulator::CheckMountWarning(const std::filesystem::path& path) {
     // USING A PIRATED FILE FORMAT!!
     // As we all know here at Xenia, obviously you can tell if someone's
     // using illegally obtained software by the file format! You couldn't POSSIBLY
-	// download a .xex file or anything, that would.. well THAT would be impossible!
+    // download a .xex file or anything, that would.. well THAT would be impossible!
     while (1)
     ShowSimpleMessageBox(
         xe::SimpleMessageBoxType::Warning,
