@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <cinttypes>
 
+#ifdef XE_PLATFORM_LINUX
+#include "xenia/ui/window_gtk.h"
+#endif
+
 #include "config.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/apu/audio_system.h"
@@ -134,6 +138,28 @@ Emulator::Emulator(const std::filesystem::path& command_line,
           "https://github.com/xenia-project/xenia/wiki/"
           "Quickstart#how-to-rip-games");
     }
+    SetPersistentEmulatorFlags(persistent_flags |
+                               EmulatorFlagDisclaimerAcknowledged);
+  }
+#else
+  uint64_t persistent_flags = GetPersistentEmulatorFlags();
+  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+    auto dialog =
+        gtk_message_dialog_new(
+            nullptr, GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_QUESTION,GTK_BUTTONS_YES_NO,
+            "DISCLAIMER: Xenia is not for enabling illegal activity, and "
+            "support is unavailable for illegally obtained software.\n\n"
+            "Please respect this policy as no further reminders will be "
+            "given.\n\nThe quickstart guide explains how to use digital or "
+            "physical games from your Xbox 360 console.\n\nWould you like "
+            "to open it?");
+    if(gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_YES) {
+      LaunchWebBrowser(
+          "https://github.com/xenia-project/xenia/wiki/"
+          "Quickstart#how-to-rip-games");
+    };
+    gtk_widget_destroy(dialog);
     SetPersistentEmulatorFlags(persistent_flags |
                                EmulatorFlagDisclaimerAcknowledged);
   }
