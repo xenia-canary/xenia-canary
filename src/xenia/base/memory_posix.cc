@@ -61,7 +61,7 @@ void AndroidShutdown() {
 size_t page_size() { return getpagesize(); }
 size_t allocation_granularity() { return page_size(); }
 
-uint32_t ToPosixProtectFlags(PageAccess access) {
+int32_t ToPosixProtectFlags(PageAccess access) {
   switch (access) {
     case PageAccess::kNoAccess:
       return PROT_NONE;
@@ -84,9 +84,9 @@ bool IsWritableExecutableMemorySupported() { return true; }
 void* AllocFixed(void* base_address, size_t length,
                  AllocationType allocation_type, PageAccess access) {
   // mmap does not support reserve / commit, so ignore allocation_type.
-  uint32_t prot = ToPosixProtectFlags(access);
+  int32_t prot = ToPosixProtectFlags(access);
   void * result;
-  if (base_address) {
+  if (base_address != nullptr) {
     result = mmap(base_address, length, prot,
                   MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
   } else {
@@ -94,6 +94,7 @@ void* AllocFixed(void* base_address, size_t length,
                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   }
   if (result == MAP_FAILED) {
+    assert_always();
     return nullptr;
   } else {
     return result;
@@ -110,7 +111,7 @@ bool Protect(void* base_address, size_t length, PageAccess access,
   // Linux does not have a syscall to query memory permissions.
   assert_null(out_old_access);
 
-  uint32_t prot = ToPosixProtectFlags(access);
+  int32_t prot = ToPosixProtectFlags(access);
   return mprotect(base_address, length, prot) == 0;
 }
 
@@ -183,7 +184,7 @@ void CloseFileMappingHandle(FileMappingHandle handle,
 
 void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
                   PageAccess access, size_t file_offset) {
-  uint32_t prot = ToPosixProtectFlags(access);
+  int32_t prot = ToPosixProtectFlags(access);
   return mmap64(base_address, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, handle,
                 file_offset);
 }
