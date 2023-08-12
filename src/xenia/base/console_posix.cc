@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include <stdio.h>
+#include <cstdio>
 #include <unistd.h>
 
 #include "xenia/base/console.h"

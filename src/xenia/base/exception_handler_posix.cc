@@ -9,7 +9,7 @@
 
 #include "xenia/base/exception_handler.h"
 
-#include <signal.h>
+#include <csignal>
 #include <ucontext.h>
 #include <cstdint>
 

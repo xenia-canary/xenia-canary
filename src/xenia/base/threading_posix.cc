@@ -16,7 +16,7 @@
 
 #include <pthread.h>
 #include <sched.h>
-#include <signal.h>
+#include <csignal>
 #include <sys/eventfd.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
@@ -129,8 +129,10 @@ void install_signal_handler(SignalType type) {
     signal_handler_installed[static_cast<size_t>(type)] = true;
 }
 
-// TODO(dougvj)
-void EnableAffinityConfiguration() {}
+// FIXME: The process is already enabled to run all all cores of the machine
+// by default.
+void EnableAffinityConfiguration() {
+}
 
 // uint64_t ticks() { return mach_absolute_time(); }
 
@@ -219,7 +221,7 @@ class PosixConditionBase {
   static std::pair<WaitResult, size_t> WaitMultiple(
       std::vector<PosixConditionBase*>&& handles, bool wait_all,
       std::chrono::milliseconds timeout) {
-    assert_true(handles.size() > 0);
+    assert_true(!handles.empty());
 
     // Construct a condition for all or any depending on wait_all
     std::function<bool()> predicate;
@@ -267,10 +269,10 @@ class PosixConditionBase {
     }
   }
 
-  virtual void* native_handle() const { return cond_.native_handle(); }
+  [[nodiscard]] virtual void* native_handle() const { return cond_.native_handle(); }
 
  protected:
-  inline virtual bool signaled() const = 0;
+  [[nodiscard]] inline virtual bool signaled() const = 0;
   inline virtual void post_execution() = 0;
   static std::condition_variable cond_;
   static std::mutex mutex_;
@@ -306,7 +308,7 @@ class PosixCondition<Event> : public PosixConditionBase {
   }
 
  private:
-  inline bool signaled() const override { return signal_; }
+  [[nodiscard]] inline bool signaled() const override { return signal_; }
   inline void post_execution() override {
     if (!manual_reset_) {
       signal_ = false;
@@ -336,7 +338,7 @@ class PosixCondition<Semaphore> : public PosixConditionBase {
   }
 
  private:
-  inline bool signaled() const override { return count_ > 0; }
+  [[nodiscard]] inline bool signaled() const override { return count_ > 0; }
   inline void post_execution() override {
     count_--;
     cond_.notify_all();
@@ -370,10 +372,10 @@ class PosixCondition<Mutant> : public PosixConditionBase {
     return false;
   }
 
-  void* native_handle() const override { return mutex_.native_handle(); }
+  [[nodiscard]] void* native_handle() const override { return mutex_.native_handle(); }
 
  private:
-  inline bool signaled() const override {
+  [[nodiscard]] inline bool signaled() const override {
     return count_ == 0 || owner_ == std::this_thread::get_id();
   }
   inline void post_execution() override {
@@ -429,7 +431,7 @@ class PosixCondition<Timer> : public PosixConditionBase {
     }
   }
 
-  void* native_handle() const override {
+  [[nodiscard]] void* native_handle() const override {
     assert_always();
     return nullptr;
   }
@@ -451,7 +453,7 @@ class PosixCondition<Timer> : public PosixConditionBase {
   }
 
  private:
-  inline bool signaled() const override { return signal_; }
+  [[nodiscard]] inline bool signaled() const override { return signal_; }
   inline void post_execution() override {
     if (!manual_reset_) {
       signal_ = false;
@@ -601,7 +603,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
 
   uint32_t system_id() const { return static_cast<uint32_t>(thread_); }
 
-  uint64_t affinity_mask() {
+  uint64_t affinity_mask() const {
     WaitStarted();
     cpu_set_t cpu_set;
 #if XE_PLATFORM_ANDROID
@@ -623,7 +625,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
     return result;
   }
 
-  void set_affinity_mask(uint64_t mask) {
+  void set_affinity_mask(uint64_t mask) const {
     WaitStarted();
     cpu_set_t cpu_set;
     CPU_ZERO(&cpu_set);
@@ -644,7 +646,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
 #endif
   }
 
-  int priority() {
+  int priority() const {
     WaitStarted();
     int policy;
     sched_param param{};
@@ -656,7 +658,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
     return param.sched_priority;
   }
 
-  void set_priority(int new_priority) {
+  void set_priority(int new_priority) const {
     WaitStarted();
     sched_param param{};
     param.sched_priority = new_priority;
@@ -817,7 +819,7 @@ class PosixConditionHandle : public T, public PosixWaitHandle {
   ~PosixConditionHandle() override = default;
 
   PosixCondition<T>& condition() override { return handle_; }
-  void* native_handle() const override { return handle_.native_handle(); }
+  [[nodiscard]] void* native_handle() const override { return handle_.native_handle(); }
 
  protected:
   PosixCondition<T> handle_;

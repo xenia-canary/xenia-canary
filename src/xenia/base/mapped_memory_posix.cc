@@ -48,7 +48,7 @@ class PosixMappedMemory : public MappedMemory {
 
     size_t map_length = length;
     if (!length) {
-      struct stat64 file_stat;
+      struct stat64 file_stat{};
       if (fstat64(file_descriptor, &file_stat)) {
         close(file_descriptor);
         return nullptr;
