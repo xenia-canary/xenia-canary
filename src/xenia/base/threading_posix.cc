@@ -129,7 +129,7 @@ void install_signal_handler(SignalType type) {
     signal_handler_installed[static_cast<size_t>(type)] = true;
 }
 
-// FIXME: The process is already enabled to run all all cores of the machine
+// FIXME: The process is already enabled to run on all cores of the machine
 // by default.
 void EnableAffinityConfiguration() {
 }

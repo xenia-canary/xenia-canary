@@ -1,17 +1,16 @@
+/**
+******************************************************************************
+* Xenia : Xbox 360 Emulator Research Project                                 *
+******************************************************************************
+* Copyright 2023 Ben Vanik. All rights reserved.                             *
+* Released under the BSD license - see LICENSE in the root for more details. *
+******************************************************************************
+*/
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 #include <xbyak/xbyak/xbyak_util.h>
 
 #include "xenia/ui/window_gtk.h"
-
-/**
- ******************************************************************************
- * Xenia : Xbox 360 Emulator Research Project                                 *
- ******************************************************************************
- * Copyright 2021 Ben Vanik. All rights reserved.                             *
- * Released under the BSD license - see LICENSE in the root for more details. *
- ******************************************************************************
- */
 
 class StartupCpuFeatureCheck {
  public:
