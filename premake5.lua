@@ -100,7 +100,7 @@ filter("configurations:Release")
   -- including handling of specials since games make assumptions about them.
 filter("platforms:Linux")
   system("linux")
--- Ccache seems to randomly break the build process, disable it
+  -- Ccache seems to randomly break the build process, disable it
   defines({
     "CCACHE_DISABLE=1"
   })
