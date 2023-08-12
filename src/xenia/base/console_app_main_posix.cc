@@ -12,7 +12,7 @@
 
 #include "xenia/base/console_app_main.h"
 #include "xenia/base/cvar.h"
-#include "xenia/base/logging.h"
+#include "xenia/base/main_gnulinux.h"
 
 extern "C" int main(int argc, char** argv) {
   xe::ConsoleAppEntryInfo entry_info = xe::GetConsoleAppEntryInfo();
@@ -23,7 +23,7 @@ extern "C" int main(int argc, char** argv) {
   }
 
   // Initialize logging. Needs parsed cvars.
-  xe::InitializeLogging(entry_info.name);
+  xe::InitializeGNULinuxApp(entry_info.name);
 
   std::vector<std::string> args;
   for (int n = 0; n < argc; n++) {
@@ -32,7 +32,7 @@ extern "C" int main(int argc, char** argv) {
 
   int result = entry_info.entry_point(args);
 
-  xe::ShutdownLogging();
+  xe::ShutdownGNULinuxApp();
 
   return result;
 }
