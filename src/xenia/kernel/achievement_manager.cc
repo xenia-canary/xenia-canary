@@ -53,14 +53,11 @@ void AchievementManager::EarnAchievement(uint64_t xuid, uint32_t title_id,
       if (!cvars::show_achievement_notification) {
         continue;
       }
-      //FIXME(RodoMa92): This call fails to compile under linux, disabled for now
-#ifdef XE_PLATFORM_WINDOWS
       app_context.CallInUIThread([imgui_drawer, description]() {
         new ui::AchievementNotificationWindow(
             imgui_drawer, "Achievement unlocked", description, 0,
             kernel_state()->notification_position_);
       });
-#endif
     }
   }
 }
