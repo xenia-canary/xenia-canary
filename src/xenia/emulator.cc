@@ -31,6 +31,7 @@
 #include "xenia/cpu/backend/null_backend.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/thread_state.h"
+#include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_driver.h"
 #include "xenia/hid/input_system.h"
@@ -56,22 +57,26 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 #endif  // XE_ARCH
 
-DECLARE_int32(user_language);
-
 DEFINE_double(time_scalar, 1.0,
               "Scalar used to speed or slow time (1x, 2x, 1/2x, etc).",
               "General");
+
 DEFINE_string(
     launch_module, "",
     "Executable to launch from the .iso or the package instead of default.xex "
     "or the module specified by the game. Leave blank to launch the default "
     "module.",
     "General");
+
 DEFINE_bool(allow_game_relative_writes, false,
             "Not useful to non-developers. Allows code to write to paths "
             "relative to game://. Used for "
             "generating test data to compare with original hardware. ",
             "General");
+
+DECLARE_int32(user_language);
+
+DECLARE_bool(allow_plugins);
 
 namespace xe {
 using namespace xe::literals;
@@ -111,13 +116,28 @@ Emulator::Emulator(const std::filesystem::path& command_line,
       paused_(false),
       restoring_(false),
       restore_fence_() {
-  // show the quickstart guide the first time they ever open the emulator
+#if XE_PLATFORM_WIN32 == 1
+  // Show a disclaimer that links to the quickstart
+  // guide the first time they ever open the emulator
   uint64_t persistent_flags = GetPersistentEmulatorFlags();
-  if (!(persistent_flags & EmulatorFlagQuickstartShown)) {
-    LaunchWebBrowser(
-        "https://github.com/xenia-canary/xenia-canary/wiki/Quickstart#how-to-rip-games");
-    SetPersistentEmulatorFlags(persistent_flags | EmulatorFlagQuickstartShown);
+  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+    if ((MessageBoxW(
+             nullptr,
+             L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
+             "support is unavailable for illegally obtained software.\n\n"
+             "Please respect this policy as no further reminders will be "
+             "given.\n\nThe quickstart guide explains how to use digital or "
+             "physical games from your Xbox 360 console.\n\nWould you like "
+             "to open it?",
+             L"Xenia", MB_YESNO | MB_ICONQUESTION) == IDYES)) {
+      LaunchWebBrowser(
+          "https://github.com/xenia-project/xenia/wiki/"
+          "Quickstart#how-to-rip-games");
+    }
+    SetPersistentEmulatorFlags(persistent_flags |
+                               EmulatorFlagDisclaimerAcknowledged);
   }
+#endif
 }
 
 Emulator::~Emulator() {
@@ -246,6 +266,9 @@ X_STATUS Emulator::Setup(
   // Shared kernel state.
   kernel_state_ = std::make_unique<xe::kernel::KernelState>(this);
 
+  plugin_loader_ = std::make_unique<xe::patcher::PluginLoader>(
+      kernel_state_.get(), storage_root() / "plugins");
+
   // Setup the core components.
   result = graphics_system_->Setup(
       processor_.get(), kernel_state_.get(),
@@ -304,19 +327,12 @@ const std::unique_ptr<vfs::Device> Emulator::CreateVfsDeviceBasedOnPath(
     auto parent_path = path.parent_path();
     return std::make_unique<vfs::HostPathDevice>(
         mount_path, parent_path, !cvars::allow_game_relative_writes);
-  } else if (extension == ".7z" || extension == ".zip" || extension == ".rar") {
+  } else if (extension == ".7z" || extension == ".zip" || extension == ".rar" ||
+             extension == ".tar" || extension == ".gz") {
     xe::ShowSimpleMessageBox(
         xe::SimpleMessageBoxType::Error,
-        fmt::format("Xenia does not support running {} files, the file you "
-                    "actually want to run is inside of this {} file.",
-                    extension, extension));
-    // user likely compressed the file themselves, then suffered a traumatic
-    // brain injury that caused them to forget how archives work
-
-    LaunchWebBrowser(fmt::format(
-        "https://www.google.com/search?q=how+to+extract+{}+file", extension));
-
-    xe::FatalError("Terminating due to user's lack of basic computer skills.");
+        fmt::format("Unsupported format!"
+            "Xenia does not support running software in an archived format."));
   }
   return std::make_unique<vfs::DiscImageDevice>(mount_path, path);
 }
@@ -342,7 +358,7 @@ uint64_t Emulator::GetPersistentEmulatorFlags() {
   }
   return value;
 #else
-  return EmulatorFlagQuickstartShown | EmulatorFlagIsoWarningAcknowledged;
+  return EmulatorFlagDisclaimerAcknowledged;
 #endif
 }
 void Emulator::SetPersistentEmulatorFlags(uint64_t new_flags) {
@@ -363,60 +379,8 @@ void Emulator::SetPersistentEmulatorFlags(uint64_t new_flags) {
 #endif
 }
 
-void Emulator::ClearStickyPersistentFlags() {
-  SetPersistentEmulatorFlags(GetPersistentEmulatorFlags() &
-                             ~EmulatorFlagIsoWarningSticky);
-}
-
-void Emulator::CheckMountWarning(const std::filesystem::path& path) {
-  auto extension = CanonicalizeFileExtension(path);
-
-  uint64_t emu_flags = GetPersistentEmulatorFlags();
-
-  bool moron_flag_set = (emu_flags & EmulatorFlagIsoWarningSticky) != 0ULL;
-
-  if (!(emu_flags & EmulatorFlagIsoWarningAcknowledged) &&
-      extension == ".iso") {
-    // get their attention, they're more likely to read the message if they're
-    // worried something is wrong with their computer
-    uint64_t time_started_reading = Clock::QueryHostUptimeMillis();
-    // this isn't true really, they just won't be able to speak in discussion
-    // channels, and they can prove they have a physical copy
-    ShowSimpleMessageBox(
-        xe::SimpleMessageBoxType::Warning,
-        "PIRACY IS ILLEGAL, STAY OUT OF OUR DISCORD: ISO files are commonly "
-        "associated with piracy, which the "
-        "Xenia team "
-        "does not support or condone. Any users who come to the Xenia discord "
-        "for support who are found to be using pirated games will be banned "
-        "immediately, regardless of whether they own a physical copy.");
-    uint64_t time_finished_reading = Clock::QueryHostUptimeMillis();
-    /*
-            we only show them this warning once.
-            if they immediately skipped it, assume they're an idiot and force
-       the warning every time they open the file don't do the check though if
-       we've already given them the moron flag
-    */
-    if (!moron_flag_set &&
-        (time_finished_reading - time_started_reading) < 2000) {
-      ShowSimpleMessageBox(xe::SimpleMessageBoxType::Warning,
-                           "You clearly didn't read the warning. It will now "
-                           "show every time you open an ISO file.");
-      SetPersistentEmulatorFlags(emu_flags | EmulatorFlagIsoWarningSticky);
-    } else {
-      // dont set the warning acknowledged bit, ever, if they skipped the first
-      // warning without reading it
-      if (!moron_flag_set) {
-        SetPersistentEmulatorFlags(emu_flags |
-                                   EmulatorFlagIsoWarningAcknowledged);
-      }
-    }
-  }
-}
-
 X_STATUS Emulator::MountPath(const std::filesystem::path& path,
                              const std::string_view mount_path) {
-  CheckMountWarning(path);
   auto device = CreateVfsDeviceBasedOnPath(path, mount_path);
   if (!device->Initialize()) {
     xe::FatalError(
@@ -432,9 +396,12 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
 
   file_system_->UnregisterSymbolicLink("d:");
   file_system_->UnregisterSymbolicLink("game:");
+  file_system_->UnregisterSymbolicLink("plugins:");
+
   // Create symlinks to the device.
   file_system_->RegisterSymbolicLink("game:", mount_path);
   file_system_->RegisterSymbolicLink("d:", mount_path);
+
   return X_STATUS_SUCCESS;
 }
 
@@ -976,7 +943,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       title_version_ = format_version(title_version);
     }
   }
-
+ 
   // Try and load the resource database (xex only).
   if (module->title_id()) {
     auto title_id = fmt::format("{:08X}", module->title_id());
@@ -1036,6 +1003,16 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   }
   main_thread_ = main_thread;
   on_launch(title_id_.value(), title_name_);
+
+  // Plugins must be loaded after calling LaunchModule() and
+  // FinishLoadingUserModule() which will apply TUs and patching to the main
+  // xex.
+  if (cvars::allow_plugins) {
+    if (plugin_loader_->IsAnyPluginForTitleAvailable(title_id_.value(),
+                                                     module->hash().value())) {
+      plugin_loader_->LoadTitlePlugins(title_id_.value());
+    }
+  }
 
   return X_STATUS_SUCCESS;
 }

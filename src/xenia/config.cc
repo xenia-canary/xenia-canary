@@ -68,12 +68,48 @@ std::shared_ptr<cpptoml::table> ParseConfig(
   }
 }
 
+void PrintConfigToLog(const std::filesystem::path& file_path) {
+  std::ifstream file(file_path);
+  if (!file.is_open()) {
+    return;
+  }
+
+  std::string config_dump = "----------- CONFIG DUMP -----------\n";
+  std::string config_line = "";
+  while (std::getline(file, config_line)) {
+    if (config_line.empty()) {
+      continue;
+    }
+
+    // Find place where comment begins and cut that part.
+    const size_t comment_mark_position = config_line.find_first_of("#");
+    if (comment_mark_position != std::string::npos) {
+      config_line.erase(comment_mark_position, config_line.length());
+    }
+
+    // Check if remaining part of line is empty.
+    if (std::all_of(config_line.cbegin(), config_line.cend(), isspace)) {
+      continue;
+    }
+    // Check if line is a category mark. If it is add new line on start for
+    // improved visibility.
+    const bool category_mark = config_line.at(0) == '[';
+    config_dump += (category_mark ? "\n" : "") + config_line + "\n";
+  }
+  config_dump += "----------- END OF CONFIG DUMP ----";
+  XELOGI("{}", config_dump);
+
+  file.close();
+}
+
 void ReadConfig(const std::filesystem::path& file_path,
                 bool update_if_no_version_stored) {
   if (!cvar::ConfigVars) {
     return;
   }
   const auto config = ParseConfig(file_path);
+
+  PrintConfigToLog(file_path);
   // Loading an actual global config file that exists - if there's no
   // defaults_date in it, it's very old (before updating was added at all, thus
   // all defaults need to be updated).
@@ -92,6 +128,7 @@ void ReadConfig(const std::filesystem::path& file_path,
   if (update_if_no_version_stored || config_defaults_date) {
     cvar::IConfigVarUpdate::ApplyUpdates(config_defaults_date);
   }
+
   XELOGI("Loaded config: {}", xe::path_to_utf8(file_path));
 }
 
