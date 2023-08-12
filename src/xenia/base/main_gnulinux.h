@@ -15,12 +15,6 @@
 
 namespace xe {
 
-// Functions for calling in both windowed and console entry points.
-bool ParseGNULinuxLaunchArguments(
-   bool transparent_options, std::string_view positional_usage,
-   const std::vector<std::string>& positional_options,
-   std::vector<std::string>* args_out);
-// InitializeWin32App uses cvars, call ParseWin32LaunchArguments before.
 int InitializeGNULinuxApp(std::string_view app_name);
 void ShutdownGNULinuxApp();
 
