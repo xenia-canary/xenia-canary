@@ -18,50 +18,6 @@
 #include "build/version.h"
 
 namespace xe {
-  bool ParseGNULinuxLaunchArguments(
-      bool transparent_options, const std::string_view positional_usage,
-      const std::vector<std::string>& positional_options,
-      std::vector<std::string>* args_out) {
-    auto size = static_cast<std::streamsize>(std::filesystem::file_size("/proc/self/cmdline"));
-    std::ifstream ifs("/proc/self/cmdline", std::ifstream::in);
-    std::regex del("\0");
-    std::string raw_par(size, '\0');
-    std::vector<std::string> arg_split(size);
-    int argc = 0;
-    while (ifs.read(raw_par.data(), size)) {
-      auto split_arg = std::vector<std::string>(std::sregex_token_iterator(raw_par.begin(), raw_par.end(), del, -1),
-                                                std::sregex_token_iterator());
-      bool par_found = false;
-      for (auto & elem : arg_split){
-        if (elem.find("xenia-app")){
-          par_found = true;
-        } else if (par_found){
-          arg_split.push_back(elem);
-          argc += 1;
-        }
-      }
-    }
-    ifs.close();
-
-    char** argv = reinterpret_cast<char**>(alloca(sizeof(char*) * argc));
-    for (int n = 0; n < argc; n++) {
-      size_t len = strlen(arg_split[n].c_str());
-      argv[n] = reinterpret_cast<char*>(alloca(sizeof(char) * (len + 1)));
-      strcpy(argv[n], arg_split[n].c_str());
-    }
-    if (!transparent_options) {
-      cvar::ParseLaunchArguments(argc, argv, positional_usage,
-                                 positional_options);
-    }
-    if (args_out) {
-      args_out->clear();
-      for (int n = 0; n < argc; n++) {
-        args_out->push_back(std::string(argv[n]));
-      }
-    }
-
-    return true;
-  }
   int InitializeGNULinuxApp(const std::string_view app_name) {
     // Initialize logging. Needs parsed FLAGS.
     xe::InitializeLogging(app_name);
