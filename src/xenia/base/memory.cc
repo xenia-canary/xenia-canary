@@ -180,7 +180,7 @@ static void vastcpy_impl_repmovs(CacheLine* XE_RESTRICT physaddr,
   __movsq((unsigned long long*)physaddr, (unsigned long long*)rdmapping,
           written_length / 8);
 #else
-  memcpy((unsigned long long*)physaddr, (unsigned long long*)rdmapping, written_length / 8);
+  memcpy((unsigned char*)physaddr, (const unsigned char*)rdmapping, written_length);
 #endif
 }
 XE_COLD
