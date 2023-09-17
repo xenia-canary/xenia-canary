@@ -507,7 +507,6 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
       case PM4_VIZ_QUERY:
         result = COMMAND_PROCESSOR::ExecutePacketType3_VIZ_QUERY(packet, count);
         break;
-
       case PM4_SET_BIN_MASK_LO: {
         uint32_t value = reader_.ReadAndSwap<uint32_t>();
         bin_mask_ = (bin_mask_ & 0xFFFFFFFF00000000ull) | value;
@@ -677,47 +676,35 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INDIRECT_BUFFER(
   COMMAND_PROCESSOR::ExecuteIndirectBuffer(GpuToCpu(list_ptr), list_length);
   return true;
 }
-
-/*
-        chrispy: this is fine to inline, as a noinline function it compiled down
-   to 54 bytes
-*/
 static bool MatchValueAndRef(uint32_t value, uint32_t ref, uint32_t wait_info) {
-// smaller code is generated than the #else path, although whether it is faster
-// i do not know. i don't think games do an enormous number of cond_write
-// though, so we have picked
-// the path with the smaller codegen.
-// we do technically have more instructions executed vs the switch case method,
-// but we have no mispredicts and most of our instructions are 0.25/0.3
-// throughput
-#if 1
-  uint32_t value_minus_ref =
-      static_cast<uint32_t>(static_cast<int32_t>(value - ref) >> 31);
-  uint32_t ref_minus_value =
-      static_cast<uint32_t>(static_cast<int32_t>(ref - value) >> 31);
-  uint32_t eqmask = ~(value_minus_ref | ref_minus_value);
-  uint32_t nemask = (value_minus_ref | ref_minus_value);
-
-  uint32_t value_lt_mask = value_minus_ref;
-  uint32_t value_gt_mask = ref_minus_value;
-  uint32_t value_lte_mask = value_lt_mask | eqmask;
-  uint32_t value_gte_mask = value_gt_mask | eqmask;
-
-  uint32_t bits_for_selecting =
-      (value_lt_mask & (1 << 1)) | (value_lte_mask & (1 << 2)) |
-      (eqmask & (1 << 3)) | (nemask & (1 << 4)) | (value_gte_mask & (1 << 5)) |
-      (value_gt_mask & (1 << 6)) | (1 << 7);
-
-  return (bits_for_selecting >> (wait_info & 7)) & 1;
-
-#else
-
-  return ((((value < ref) << 1) | ((value <= ref) << 2) |
-           ((value == ref) << 3) | ((value != ref) << 4) |
-           ((value >= ref) << 5) | ((value > ref) << 6) | (1 << 7)) >>
-          (wait_info & 7)) &
-         1;
-#endif
+  bool matched = false;
+  switch (wait_info & 0x7) {
+    case 0x0:  // Never.
+      matched = false;
+      break;
+    case 0x1:  // Less than reference.
+      matched = value < ref;
+      break;
+    case 0x2:  // Less than or equal to reference.
+      matched = value <= ref;
+      break;
+    case 0x3:  // Equal to reference.
+      matched = value == ref;
+      break;
+    case 0x4:  // Not equal to reference.
+      matched = value != ref;
+      break;
+    case 0x5:  // Greater than or equal to reference.
+      matched = value >= ref;
+      break;
+    case 0x6:  // Greater than reference.
+      matched = value > ref;
+      break;
+    case 0x7:  // Always
+      matched = true;
+      break;
+  }
+  return matched;
 }
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
@@ -920,7 +907,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(
   auto endianness = static_cast<xenos::Endian>(address & 0x3);
   address &= ~0x3;
   data_value = GpuSwap(data_value, endianness);
-  xe::store(memory_->TranslatePhysical(address), data_value);
+    xe::store(memory_->TranslatePhysical(address), data_value);
   trace_writer_.WriteMemoryWrite(CpuToGpu(address), 4);
   return true;
 }
