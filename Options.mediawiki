@@ -81,7 +81,7 @@ __TOC__
 * Games that require this have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_mount_cache requires_mount_cache] label.
 
 {|
-! <code>d3d12_allow_variable_refresh_rate_and_tearing</code> =
+! <code>mount_cache</code> =
 ! <code>bool</code>
 |-
 | Off (''default'')
