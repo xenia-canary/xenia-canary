@@ -389,18 +389,18 @@ Newer Canary versions always have the config in the same place as the executable
 |}
 
 == Video ==
-=== Vsync interval ===
+=== Vsync FPS ===
 If a game speeds up when [https://github.com/xenia-canary/xenia-canary/wiki/Options#vsync vsync] is disabled this will also affect game speed.
 
 {|
-! <code>vsync_interval</code> =
-! <code>#</code> (frametime in milliseconds)
+! <code>vsync_fps</code> =
+! <code>#</code> (frames per second)
 |-
-| x1 (60 FPS, ''default'')
-| <code>16</code>
+| x1 (60 FPS; 30 FPS for 30 FPS games, ''default'')
+| <code>60</code>
 |-
 | x2 (120 FPS; 60 FPS for 30 FPS games)
-| <code>8</code>
+| <code>120</code>
 |}
 
 === Internal display resolution ===
