@@ -2,31 +2,23 @@
 
 **Meeting recommended specifications won't guarantee perfect performance.**
 
-## Recommended:
+Recommended |   |
+----------- | -
+OS          | Windows 11 x64 or later
+CPU         | 6 or more cores<br>You can check with [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html)
+GPU         | NVIDIA GTX 980 Ti or later<br>You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)
+RAM         | 6 GB or more
 
-* OS: Windows 10+ x64
-* CPU: 12th generation or later i5-i9
-  * You can check with [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html)
-* GPU: GTX 980 Ti or later
-  * You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)
-* RAM: 6GB or more
-* [Microsoft Visual C++ Redistributable for Visual Studio 2015-2022](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+[Microsoft Visual C++ Redistributable for Visual Studio 2015-2022](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
-### Minimum:
+Minimum |   |
+------- | -
+OS      | Windows 10 x64 or later<br>Linux with Proton. Vulkan is recommended due to VKD3D potentially having graphical issues.
+CPU     | 64-bit x86 processor with AVX or AVX2 support<br>You can check with [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html)
+GPU     | Direct3D **12**-compatible or **Vulkan**-compatible GPU<br>You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)<br>OpenGL and Direct3D 11 or lower are not, and never will be supported.<br>AMD GPUs are not recommended due to having driver bugs that can cause crashes with Xenia.<br>Integrated GPUs generally provide frame rates too low for comfortable playing.
+RAM     | 4 GB
 
-* OS: Windows 7+ x64 (Linux/macOS not *natively* supported)
-  * **Windows <10 support is limited. *Don't expect anything to work.***
-  * Runs on Linux with Proton/Wine. Vulkan is recommended due to VKD3D having graphical issues.
-* CPU: 64-bit x86 processor with AVX or AVX2 support
-  * You can check with [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html)
-* GPU: Direct3D 12-compatible or Vulkan-compatible GPU from [this list](https://vulkan.gpuinfo.org/)
-  * You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)
-  * ***OpenGL and Direct3D 11 or lower are not, and never will be supported.***
-  * AMD GPUs are not recommended due to having driver bugs that can cause crashes with Xenia.
-  * Direct3D 12 is only supported on Windows 10+ due to D3D12on7 not being supported.
-  * Integrated GPUs generally provide frame rates too low for comfortable playing.
-* RAM: 4GB
-* [2015-2022 x64 Visual C++ Redistributable](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
+[2015-2022 x64 Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
 Xenia doesn't require any Xbox 360 system files.
 
@@ -44,12 +36,16 @@ Windows Update tends to lag behind, so download GPU drivers from your manufactur
 
 ## Where do I download Xenia?
 
-  * **[Master](https://github.com/xenia-project/release-builds-windows/releases/latest/download/xenia_master.zip)**
-  * *[Canary](https://github.com/xenia-canary/xenia-canary/releases/download/experimental/xenia_canary.zip)*
+  * **[Xenia Canary](https://github.com/xenia-canary/xenia-canary/releases/download/experimental/xenia_canary.zip)**
+* <details><summary>Xenia Master (click to expand)</summary>
+  Xenia Master is infrequently updated, but if you're experiencing problems with Canary you can try it:
+
+  *[Xenia Master](https://github.com/xenia-project/release-builds-windows/releases/latest/download/xenia_master.zip)*
+</details>
 
 Xenia is sometimes detected as a virus. If it was downloaded from an official source it is a false positive and can be ignored.
 
-Xenia Canary is a fork of Xenia with changes not present in master.
+Xenia Canary is a fork of Xenia that is more frequently updated and has changes not present in master.
 
 For more information: *[What is the difference between Xenia Canary and Xenia master?](https://github.com/xenia-canary/xenia-canary/wiki/FAQ#what-is-the-difference-between-xenia-canary-and-xenia-master)*
 
@@ -174,6 +170,8 @@ Once it's done you can take the USB out of the console.
       * (Optional) If the game crashes you can try extracting the game using Velocity.
       * If the game is extracted you will need to drag `default.xex` onto Xenia.
       * Some games have multiple .xex files, so if you can't find `default.xex` or it just doesn't work, try another one.
+
+It is not recommended to convert games to ISO due to wasting space.
 
 ### Section 4. Activating games
 
