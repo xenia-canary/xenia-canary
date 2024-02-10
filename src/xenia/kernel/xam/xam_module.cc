@@ -63,6 +63,70 @@ void XamModule::RegisterExportTable(xe::cpu::ExportResolver* export_resolver) {
 
 XamModule::~XamModule() {}
 
+void XamModule::LoadLoaderData() {
+  std::ifstream file("launch_data.bin");
+
+  if (!file.is_open()) {
+    loader_data_.launch_data_present = false;
+    return;
+  }
+
+  loader_data_.launch_data_present = true;
+
+  std::getline(file, loader_data_.host_path);
+  std::getline(file, loader_data_.launch_path);
+
+  std::string launch_flags_str = "";
+  std::getline(file, launch_flags_str);
+  loader_data_.launch_flags =
+      xe::string_util::from_string<uint32_t>(launch_flags_str);
+
+  std::string data_size_str = "";
+  std::getline(file, data_size_str);
+
+  const uint32_t data_size =
+      xe::string_util::from_string<uint32_t>(data_size_str);
+
+  // Highest possible value for launch data is 4kb
+  if (data_size > 0 && data_size < 0x1000) {
+    loader_data_.launch_data.resize(data_size);
+
+    file.read(reinterpret_cast<char*>(loader_data_.launch_data.data()),
+              data_size);
+  }
+
+  file.close();
+
+  // We read launch data. Let's remove it till next request.
+  std::filesystem::remove("launch_data.bin");
+}
+
+void XamModule::SaveLoaderData() {
+  std::ofstream file("launch_data.bin");
+
+  if (!file.is_open()) {
+    return;
+  }
+
+  std::filesystem::path host_path = loader_data_.host_path;
+  if (host_path.extension() == ".xex") {
+    host_path.remove_filename();
+    host_path = host_path / loader_data_.launch_path;
+    loader_data_.launch_path = "";
+  }
+
+  file << xe::path_to_utf8(host_path) << std::endl;
+  file << loader_data_.launch_path << std::endl;
+  file << loader_data_.launch_flags << std::endl;
+  file << loader_data_.launch_data.size() << std::endl;
+  if (!loader_data_.launch_data.empty()) {
+    file.write((const char*)(loader_data_.launch_data.data()),
+               loader_data_.launch_data.size());
+  }
+
+  file.close();
+}
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
