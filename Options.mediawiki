@@ -5,7 +5,7 @@ __TOC__
 # [https://social.technet.microsoft.com/wiki/contents/articles/1784.windows-how-to-view-file-name-extensions.aspx Show file name extensions in Explorer].
 # Go to <code>Documents\Xenia</code> and open <code>xenia.config.toml</code> in a text editor like [https://notepad-plus-plus.org/download/ Notepad++].
 #* The config should be saved while Xenia is closed to prevent it from being overwritten.
-#* If a <code>portable.txt</code> file is present in the same directory as xenia.exe it will be in the same directory as xenia.exe.
+#* If a <code>portable.txt</code> file is present in the same directory as xenia.exe or you are using Xenia Canary it will be in the same directory as xenia.exe.
 #* Per-game configs go in <code>config\TitleID.config.toml</code>. Note that '''per-game configs are highly unstable''', only very few options can be changed from it safely or at all, as most emulator subsystems are initialized before per-game configs are loaded.
 # For launchers/frontends like [https://github.com/quinton-ashley/bottlenose Bottlenose] you can use the <code>--config</code> launch parameter to specify what config to use.
 #* To launch specific games, add the path to the game before the launch options. For example: <code>xenia.exe path/to/game/default.xex --vsync=false</code>
