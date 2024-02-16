@@ -64,12 +64,16 @@ Check the [https://github.com/xenia-project/game-compatibility#game-compatibilit
 === Why aren't saves working? (Storage device not found/full/not detected, etc) ===
 Saves are broken in some games in Xenia, especially ones with user profile saves.
 
-As for saves, etc that worked previously in older builds of Xenia, create a text file in the same directory as xenia.exe named <code>portable.txt</code>.
+As for saves, etc that worked previously in older builds of Xenia:
+
+Create a text file in the same directory as xenia.exe named <code>portable.txt</code>.
+
+**This won't do anything with Xenia Canary since it's already in portable mode by default.**
 
 === Where are saves stored? ===
 Saves are in <code>Documents\xenia\content</code> by default.
 
-If a <code>portable.txt</code> file is in the same directory as xenia.exe the <code>content</code> folder will be in the same directory as xenia.exe.
+If a <code>portable.txt</code> file is in the same directory as xenia.exe or you are using Xenia Canary the <code>content</code> folder will be in the same directory as xenia.exe.
 
 <!--=== How do I transfer saves to/from Xenia? ===
 [[How-to-transfer-saves-to-or-from-Xenia]]-->
