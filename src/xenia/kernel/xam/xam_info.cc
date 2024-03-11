@@ -339,7 +339,8 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
     if (path.empty()) {
       loader_data.launch_path = "game:\\default.xex";
     } else {
-      loader_data.launch_path = xe::path_to_utf8(path);
+      const auto& filename = std::filesystem::path(path).filename();
+      loader_data.launch_path = path_to_utf8(filename);
       loader_data.launch_data_present = true;
     }
 
