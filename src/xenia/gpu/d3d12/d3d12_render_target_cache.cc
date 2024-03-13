@@ -447,7 +447,9 @@ bool D3D12RenderTargetCache::Initialize() {
   // Using the cvar on emulator initialization so used pipelines are consistent
   // across different titles launched in one emulator instance.
   use_stencil_reference_output_ =
+      #ifdef DEBUG
       cvars::native_stencil_value_output &&
+      #endif
       provider.IsPSSpecifiedStencilReferenceSupported() &&
       (cvars::native_stencil_value_output_d3d12_intel ||
        provider.GetAdapterVendorID() !=
@@ -464,6 +466,7 @@ bool D3D12RenderTargetCache::Initialize() {
 
     // Check if 2x MSAA is supported or needs to be emulated with 4x MSAA
     // instead.
+    #ifdef DEBUG
     if (cvars::native_2x_msaa) {
       msaa_2x_supported_ = true;
       static const DXGI_FORMAT kRenderTargetDXGIFormats[] = {
@@ -502,6 +505,42 @@ bool D3D12RenderTargetCache::Initialize() {
     } else {
       msaa_2x_supported_ = false;
     }
+    #else // DEBUG
+    msaa_2x_supported_ = true;
+    static const DXGI_FORMAT kRenderTargetDXGIFormats[] = {
+        DXGI_FORMAT_R16G16B16A16_FLOAT,
+        DXGI_FORMAT_R16G16B16A16_SNORM,
+        DXGI_FORMAT_R32G32_FLOAT,
+        DXGI_FORMAT_D32_FLOAT_S8X24_UINT,
+        DXGI_FORMAT_R10G10B10A2_UNORM,
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_FORMAT_R16G16_FLOAT,
+        DXGI_FORMAT_R16G16_SNORM,
+        DXGI_FORMAT_R32_FLOAT,
+        DXGI_FORMAT_D24_UNORM_S8_UINT,
+        // For ownership transfer.
+        DXGI_FORMAT_R16G16B16A16_UINT,
+        DXGI_FORMAT_R32G32_UINT,
+        DXGI_FORMAT_R16G16_UINT,
+        DXGI_FORMAT_R32_UINT,
+    };
+    D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS multisample_quality_levels;
+    multisample_quality_levels.SampleCount = 2;
+    multisample_quality_levels.Flags =
+        D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+    for (size_t i = 0; i < xe::countof(kRenderTargetDXGIFormats); ++i) {
+      multisample_quality_levels.Format = kRenderTargetDXGIFormats[i];
+      multisample_quality_levels.NumQualityLevels = 0;
+      if (FAILED(device->CheckFeatureSupport(
+              D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
+              &multisample_quality_levels,
+              sizeof(multisample_quality_levels))) ||
+          !multisample_quality_levels.NumQualityLevels) {
+        msaa_2x_supported_ = false;
+        break;
+      }
+    }
+    #endif // DEBUG
     if (!msaa_2x_supported_) {
       XELOGW(
           "2x MSAA is not supported, emulated via top-left and bottom-right "

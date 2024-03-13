@@ -172,6 +172,7 @@ DEFINE_bool(
     "GPU");
 DEFINE_bool(
     native_2x_msaa, true,
+    "Only does anything in debug builds."
     "Use host 2x MSAA when available. Can be disabled for scalability testing "
     "on host GPU APIs where 2x is not mandatory, in this case, 2 samples of 4x "
     "MSAA will be used instead (with similar or worse quality and higher "
@@ -179,6 +180,7 @@ DEFINE_bool(
     "GPU");
 DEFINE_bool(
     native_stencil_value_output, true,
+    "Only does anything in debug builds."
     "Use pixel shader stencil reference output where available for purposes "
     "like copying between render targets. Can be disabled for scalability "
     "testing, in this case, much more expensive drawing of 8 quads will be "

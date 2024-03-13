@@ -45,7 +45,12 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
   assembler_ = backend->CreateAssembler();
   assembler_->Initialize();
 
-  bool validate = cvars::validate_hir;
+  bool validate =
+    #ifdef DEBUG
+    cvars::validate_hir;
+    #else
+    0;
+    #endif
 
   // Merge blocks early. This will let us use more context in other passes.
   // The CFG is required for simplification and dirtied by it.

@@ -9,7 +9,7 @@
 
 #include "xenia/cpu/cpu_flags.h"
 
-DEFINE_string(cpu, "any", "CPU backend [any, x64].", "CPU");
+DEFINE_string(cpu, "any", "Does nothing. CPU backend [any, x64].", "CPU");
 
 DEFINE_string(
     load_module_map, "",
@@ -31,6 +31,7 @@ DEFINE_bool(trace_function_data, false,
             "Generate tracing for function result data.", "CPU");
 
 DEFINE_bool(validate_hir, false,
+            "Only does anything on debug builds. "
             "Perform validation checks on the HIR during compilation.", "CPU");
 
 DEFINE_uint64(
