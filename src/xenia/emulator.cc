@@ -118,6 +118,7 @@ Emulator::Emulator(const std::filesystem::path& command_line,
       kernel_state_(),
       main_thread_(),
       title_id_(std::nullopt),
+      title_xlast_(),
       paused_(false),
       restoring_(false),
       restore_fence_() {
@@ -1179,6 +1180,13 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       }
       XELOGI("-------------------- CONTEXTS --------------------\n{}",
              table.str());
+
+      uint32_t compressed_size, decompressed_size = 0;
+      const uint8_t* xlast_ptr =
+          db.ReadXLast(compressed_size, decompressed_size);
+
+      title_xlast_ =
+          kernel::util::XLast(xlast_ptr, compressed_size, decompressed_size);
 
       auto icon_block = db.icon();
       if (icon_block) {
