@@ -10,6 +10,7 @@ project("xenia-kernel")
     "aes_128",
     "fmt",
     "zlib",
+    "pugixml",
     "xenia-apu",
     "xenia-base",
     "xenia-cpu",
