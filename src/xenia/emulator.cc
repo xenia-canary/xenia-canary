@@ -1185,8 +1185,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       const uint8_t* xlast_ptr =
           db.ReadXLast(compressed_size, decompressed_size);
 
-      title_xlast_ =
-          kernel::util::XLast(xlast_ptr, compressed_size, decompressed_size);
+      title_xlast_ = std::make_unique<kernel::util::XLast>(
+          xlast_ptr, compressed_size, decompressed_size);
 
       auto icon_block = db.icon();
       if (icon_block) {

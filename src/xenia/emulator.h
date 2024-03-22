@@ -299,7 +299,7 @@ class Emulator {
   kernel::object_ref<kernel::XThread> main_thread_;
   kernel::object_ref<kernel::XHostThread> plugin_loader_thread_;
   std::optional<uint32_t> title_id_;  // Currently running title ID
-  kernel::util::XLast title_xlast_;
+  std::unique_ptr<kernel::util::XLast> title_xlast_;
 
   bool paused_;
   bool restoring_;
