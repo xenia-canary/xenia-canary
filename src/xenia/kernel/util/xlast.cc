@@ -86,7 +86,7 @@ XLast::XLast(const uint8_t* compressed_xml_data,
 
 XLast::~XLast() {}
 
-std::u16string XLast::GetTitleName() {
+std::u16string XLast::GetTitleName() const {
   std::string xpath = "/XboxLiveSubmissionProject/GameConfigProject";
 
   const pugi::xpath_node node = parsed_xlast_->select_node(xpath.c_str());
@@ -97,8 +97,70 @@ std::u16string XLast::GetTitleName() {
   return xe::to_utf16(node.node().attribute("titleName").value());
 }
 
+std::map<ProductInformationEntry, uint32_t>
+XLast::GetProductInformationAttributes() const {
+  std::map<ProductInformationEntry, uint32_t> attributes;
+
+  std::string xpath =
+      "/XboxLiveSubmissionProject/GameConfigProject/ProductInformation";
+
+  const pugi::xpath_node node = parsed_xlast_->select_node(xpath.c_str());
+  if (!node) {
+    return attributes;
+  }
+
+  const auto node_attributes = node.node().attributes();
+  for (const auto& attribute : node_attributes) {
+    const auto entry =
+        product_information_entry_string_to_enum.find(attribute.name());
+    if (entry == product_information_entry_string_to_enum.cend()) {
+      XELOGW("GetProductInformationAttributes: Missing attribute: {}",
+             attribute.name());
+      continue;
+    }
+
+    std::string attribute_value = std::string(attribute.value());
+    if (attribute_value.empty()) {
+      XELOGW(
+          "GetProductInformationAttributes: Attribute: {} Contains no value!",
+          attribute.name());
+      continue;
+    }
+
+    attributes.emplace(entry->second,
+                       xe::string_util::from_string<uint32_t>(attribute_value));
+  }
+
+  return attributes;
+}
+
+std::vector<XLanguage> XLast::GetSupportedLanguages() const {
+  std::vector<XLanguage> launguages;
+
+  std::string xpath = fmt::format(
+      "/XboxLiveSubmissionProject/GameConfigProject/LocalizedStrings");
+
+  const pugi::xpath_node node = parsed_xlast_->select_node(xpath.c_str());
+  if (!node) {
+    return launguages;
+  }
+
+  const auto locale = node.node().children("SupportedLocale");
+  for (auto itr = locale.begin(); itr != locale.end(); itr++) {
+    const std::string locale_name = itr->attribute("locale").value();
+
+    for (const auto& language : language_mapping) {
+      if (language.second == locale_name) {
+        launguages.push_back(language.first);
+      }
+    }
+  }
+
+  return launguages;
+}
+
 std::u16string XLast::GetLocalizedString(uint32_t string_id,
-                                         XLanguage language) {
+                                         XLanguage language) const {
   std::string xpath = fmt::format(
       "/XboxLiveSubmissionProject/GameConfigProject/LocalizedStrings/"
       "LocalizedString[@id = \"{}\"]",
@@ -120,7 +182,8 @@ std::u16string XLast::GetLocalizedString(uint32_t string_id,
   return xe::to_utf16(locale_node.child_value());
 }
 
-XLastMatchmakingQuery* XLast::GetMatchmakingQuery(const uint32_t query_id) {
+XLastMatchmakingQuery* XLast::GetMatchmakingQuery(
+    const uint32_t query_id) const {
   std::string xpath = fmt::format(
       "/XboxLiveSubmissionProject/GameConfigProject/Matchmaking/Queries/"
       "Query[@id = \"{}\"]",
@@ -151,7 +214,7 @@ std::vector<uint32_t> XLast::GetAllValuesFromNode(
   return result;
 }
 
-void XLast::Dump(std::string file_name) {
+void XLast::Dump(std::string file_name) const {
   if (xlast_decompressed_xml_.empty()) {
     return;
   }
@@ -171,7 +234,7 @@ void XLast::Dump(std::string file_name) {
   fclose(outfile);
 }
 
-std::string XLast::GetLocaleStringFromLanguage(XLanguage language) {
+std::string XLast::GetLocaleStringFromLanguage(XLanguage language) const {
   const auto value = language_mapping.find(language);
   if (value != language_mapping.cend()) {
     return value->second;
