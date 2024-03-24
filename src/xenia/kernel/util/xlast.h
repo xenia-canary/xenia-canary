@@ -21,6 +21,27 @@ namespace xe {
 namespace kernel {
 namespace util {
 
+enum class ProductInformationEntry {
+  MaxOfflinePlayers,
+  MaxSystemLinkPlayers,
+  MaxLivePlayers,
+  PublisherString,
+  DeveloperString,
+  MarketingString,
+  GenreTypeString
+};
+
+static const std::map<std::string, ProductInformationEntry>
+    product_information_entry_string_to_enum = {
+        {"offlinePlayersMax", ProductInformationEntry::MaxOfflinePlayers},
+        {"systemLinkPlayersMax", ProductInformationEntry::MaxSystemLinkPlayers},
+        {"livePlayersMax", ProductInformationEntry::MaxLivePlayers},
+        {"publisherStringId", ProductInformationEntry::PublisherString},
+        {"developerStringId", ProductInformationEntry::DeveloperString},
+        {"sellTextStringId", ProductInformationEntry::MarketingString},
+        {"genreTextStringId", ProductInformationEntry::GenreTypeString},
+};
+
 static const std::map<XLanguage, std::string> language_mapping = {
     {XLanguage::kEnglish, "en-US"},    {XLanguage::kJapanese, "ja-JP"},
     {XLanguage::kGerman, "de-DE"},     {XLanguage::kFrench, "fr-FR"},
@@ -50,17 +71,22 @@ class XLast {
         const uint32_t decompressed_data_size);
   ~XLast();
 
-  std::u16string GetTitleName();
-  std::u16string GetLocalizedString(uint32_t string_id, XLanguage language);
-  XLastMatchmakingQuery* GetMatchmakingQuery(uint32_t query_id);
+  std::u16string GetTitleName() const;
+  std::map<ProductInformationEntry, uint32_t> GetProductInformationAttributes()
+      const;
+
+  std::vector<XLanguage> GetSupportedLanguages() const;
+  std::u16string GetLocalizedString(uint32_t string_id,
+                                    XLanguage language) const;
+  XLastMatchmakingQuery* GetMatchmakingQuery(uint32_t query_id) const;
   static std::vector<uint32_t> GetAllValuesFromNode(
       const pugi::xpath_node node, const std::string child_name,
       const std::string attirbute_name);
 
-  void Dump(std::string file_name);
+  void Dump(std::string file_name) const;
 
  private:
-  std::string GetLocaleStringFromLanguage(XLanguage language);
+  std::string GetLocaleStringFromLanguage(XLanguage language) const;
 
   std::vector<uint8_t> xlast_decompressed_xml_;
   std::unique_ptr<pugi::xml_document> parsed_xlast_ = nullptr;
