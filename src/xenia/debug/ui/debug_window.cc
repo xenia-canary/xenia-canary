@@ -301,7 +301,8 @@ void DebugWindow::DrawToolbar() {
       current_thread_index = i;
     }
 
-    // threads can be briefly invalid once destroyed and before a cache update. This ensures we are accessing threads that are still valid
+    // Threads can be briefly invalid once destroyed and before a cache update.
+    // This ensures we are accessing threads that are still valid.
     switch (thread_info->state) {
       case cpu::ThreadDebugInfo::State::kAlive:
       case cpu::ThreadDebugInfo::State::kExited:
