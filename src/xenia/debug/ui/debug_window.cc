@@ -301,11 +301,12 @@ void DebugWindow::DrawToolbar() {
       current_thread_index = i;
     }
 
+    // threads can be briefly invalid once destroyed and before a cache update. This ensures we are accessing threads that are still valid
     switch (thread_info->state) {
       case cpu::ThreadDebugInfo::State::kAlive:
       case cpu::ThreadDebugInfo::State::kExited:
       case cpu::ThreadDebugInfo::State::kWaiting:
-        if (thread_info->thread_handle == 0) {
+        if (thread_info->thread_handle == NULL) {
           thread_combo.Append("(invalid)");
         } else {
           thread_combo.Append(thread_info->thread->thread_name());
