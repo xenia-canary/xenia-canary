@@ -902,8 +902,8 @@ void Processor::Continue() {
     assert_always("cancel stepping not done yet");
   }
   execution_state_ = ExecutionState::kRunning;
-  ResumeAllBreakpoints();
   ResumeAllThreads();
+  ResumeAllBreakpoints();
   if (debug_listener_) {
     debug_listener_->OnExecutionContinued();
   }
