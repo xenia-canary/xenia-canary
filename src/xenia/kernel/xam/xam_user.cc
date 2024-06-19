@@ -607,10 +607,10 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     for (const util::XdbfAchievementTableEntry& entry : achievement_list) {
       auto is_unlocked =
           kernel_state()->achievement_manager()->IsAchievementUnlocked(
-              entry.id);
+              user_index, entry.id);
       auto unlock_time =
           kernel_state()->achievement_manager()->GetAchievementUnlockTime(
-              entry.id);
+              user_index, entry.id);
 
       auto item = XAchievementEnumerator::AchievementDetails{
           entry.id,

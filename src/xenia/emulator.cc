@@ -1323,6 +1323,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   main_thread_ = main_thread;
   on_launch(title_id_.value(), title_name_);
 
+  kernel_state_->achievement_manager()->Load(0);
+
   // Plugins must be loaded after calling LaunchModule() and
   // FinishLoadingUserModule() which will apply TUs and patching to the main
   // xex.

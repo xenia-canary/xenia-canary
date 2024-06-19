@@ -1121,6 +1121,7 @@ void KernelState::UpdateUsedUserProfiles() {
 
     if (!IsUserSignedIn(i) && is_used) {
       user_profiles_.emplace(i, std::make_unique<xam::UserProfile>(i));
+      achievement_manager()->Load(i);
       BroadcastNotification(0x12, 0);
     }
   }

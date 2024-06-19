@@ -43,16 +43,16 @@ class AchievementManager {
  public:
   AchievementManager();
 
-  void EarnAchievement(uint64_t xuid, uint32_t title_id,
-                       uint32_t achievement_id);
+  void EarnAchievement(uint32_t user_index, uint32_t achievement_id);
 
-  bool IsAchievementUnlocked(uint32_t achievement_id);
-  uint64_t GetAchievementUnlockTime(uint32_t achievement_id);
+  bool IsAchievementUnlocked(uint32_t user_index, uint32_t achievement_id);
+  uint64_t GetAchievementUnlockTime(uint32_t user_index,
+                                    uint32_t achievement_id);
+  void Save(uint32_t user_index);
+  void Load(uint32_t user_index);
 
  private:
-  std::map<uint32_t, uint64_t> unlocked_achievements;
-  // void Load();
-  // void Save();
+  std::map<uint32_t, uint64_t> unlocked_achievements[4];
 };
 
 }  // namespace kernel

@@ -22,11 +22,19 @@ DECLARE_int32(user_language);
 namespace xe {
 namespace kernel {
 
-AchievementManager::AchievementManager() { unlocked_achievements.clear(); };
+AchievementManager::AchievementManager() {
+  for (auto& achievements : unlocked_achievements) {
+    achievements.clear();
+  }
+}
 
-void AchievementManager::EarnAchievement(uint64_t xuid, uint32_t title_id,
+void AchievementManager::EarnAchievement(uint32_t user_index,
                                          uint32_t achievement_id) {
-  if (IsAchievementUnlocked(achievement_id)) {
+  if (user_index >= 4) {
+    return;
+  }
+
+  if (IsAchievementUnlocked(user_index, achievement_id)) {
     return;
   }
 
@@ -53,7 +61,9 @@ void AchievementManager::EarnAchievement(uint64_t xuid, uint32_t title_id,
 
   XELOGI("Achievement unlocked: {}", label);
 
-  unlocked_achievements[achievement_id] = Clock::QueryHostSystemTime();
+  unlocked_achievements[user_index][achievement_id] =
+      Clock::QueryHostSystemTime();
+  Save(user_index);
   // Even if we disable popup we still should store info that this
   // achievement was earned.
   if (!cvars::show_achievement_notification) {
@@ -70,19 +80,105 @@ void AchievementManager::EarnAchievement(uint64_t xuid, uint32_t title_id,
   });
 }
 
-bool AchievementManager::IsAchievementUnlocked(uint32_t achievement_id) {
-  auto itr = unlocked_achievements.find(achievement_id);
+bool AchievementManager::IsAchievementUnlocked(uint32_t user_index,
+                                               uint32_t achievement_id) {
+  if (user_index >= 4) {
+    return false;
+  }
+  auto itr = unlocked_achievements[user_index].find(achievement_id);
 
-  return itr != unlocked_achievements.cend();
+  return itr != unlocked_achievements[user_index].cend();
 }
 
-uint64_t AchievementManager::GetAchievementUnlockTime(uint32_t achievement_id) {
-  auto itr = unlocked_achievements.find(achievement_id);
-  if (itr == unlocked_achievements.cend()) {
+uint64_t AchievementManager::GetAchievementUnlockTime(uint32_t user_index,
+                                                      uint32_t achievement_id) {
+  if (user_index >= 4) {
+    return 0;
+  }
+  auto itr = unlocked_achievements[user_index].find(achievement_id);
+  if (itr == unlocked_achievements[user_index].cend()) {
     return 0;
   }
 
   return itr->second;
+}
+
+void AchievementManager::Save(uint32_t user_index) {
+  if (user_index >= 4) {
+    return;
+  }
+
+  if (!kernel_state()->title_id()) {
+    return;
+  }
+
+  const std::filesystem::path content_dir =
+      kernel_state()->content_manager()->ResolveGameUserContentPath();
+
+  std::filesystem::create_directories(content_dir);
+  std::filesystem::path file_path =
+      content_dir / xe::to_path("achievements.bin");
+  FILE* file = xe::filesystem::OpenFile(file_path, "wb");
+  if (!file) {
+    return;
+  }
+
+  auto& ach_map = unlocked_achievements[user_index];
+
+  uint32_t num_unlocks = static_cast<uint32_t>(ach_map.size());
+  fwrite(&num_unlocks, sizeof(uint32_t), 1, file);
+
+  for (auto& elem : ach_map) {
+    uint32_t ach_id = elem.first;
+    uint64_t ach_time = elem.second;
+    fwrite(&ach_id, sizeof(uint32_t), 1, file);
+    fwrite(&ach_time, sizeof(uint64_t), 1, file);
+  }
+
+  fclose(file);
+}
+
+void AchievementManager::Load(uint32_t user_index) {
+  if (user_index >= 4) {
+    return;
+  }
+
+  auto& ach_map = unlocked_achievements[user_index];
+  ach_map.clear();
+
+  if (!kernel_state()->title_id()) {
+    return;
+  }
+
+  const std::filesystem::path content_dir =
+      kernel_state()->content_manager()->ResolveGameUserContentPath();
+  std::filesystem::path file_path =
+      content_dir / xe::to_path("achievements.bin");
+  FILE* file = xe::filesystem::OpenFile(file_path, "rb");
+  if (!file) {
+    return;
+  }
+
+  uint32_t num_unlocks;
+  if (fread(&num_unlocks, sizeof(uint32_t), 1, file) != 1) {
+    fclose(file);
+    return;
+  }
+
+  for (uint32_t i = 0; i < num_unlocks; i++) {
+    uint32_t ach_id;
+    uint64_t ach_time;
+    if (fread(&ach_id, sizeof(uint32_t), 1, file) != 1 ||
+        fread(&ach_time, sizeof(uint64_t), 1, file) != 1) {
+      ach_map.clear();
+      fclose(file);
+      return;
+    }
+
+    ach_map[ach_id] = ach_time;
+  }
+
+  fclose(file);
 }
 
 }  // namespace kernel
