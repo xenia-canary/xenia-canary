@@ -669,6 +669,15 @@ bool EmulatorWindow::Initialize() {
   }
   main_menu->AddChild(std::move(hid_menu));
 
+  // Game menu.
+  auto game_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Game");
+  {
+    game_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "&Show achievements", "",
+                         std::bind(&EmulatorWindow::ShowAchievements, this)));
+  }
+  main_menu->AddChild(std::move(game_menu));
+
   // Help menu.
   auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Help");
   {
@@ -1753,6 +1762,12 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   imgui_drawer_.get()->ClearDialogs();
   xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Controller Hotkeys",
                                       msg);
+}
+
+void EmulatorWindow::ShowAchievements() {
+  if (!emulator_->is_title_open()) return;
+
+  emulator_->kernel_state()->achievement_manager()->ShowAchievementsUI(0);
 }
 
 std::string EmulatorWindow::CanonicalizeFileExtension(

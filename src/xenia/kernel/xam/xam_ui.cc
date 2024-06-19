@@ -208,6 +208,49 @@ X_RESULT xeXamDispatchHeadlessEx(
   }
 }
 
+template <typename T>
+X_RESULT xeXamDispatchDialogAsync(T* dialog,
+                                  std::function<void(T*)> close_callback) {
+  // Broadcast XN_SYS_UI = true
+  kernel_state()->BroadcastNotification(0x9, true);
+  ++xam_dialogs_shown_;
+
+  // Important to pass captured vars by value here since we return from this
+  // without waiting for the dialog to close so the original local vars will be
+  // destroyed.
+  // FIXME: Probably not the best idea to call Sleep in UI thread.
+  dialog->set_close_callback([dialog, close_callback]() {
+    close_callback(dialog);
+
+    --xam_dialogs_shown_;
+
+    xe::threading::Sleep(std::chrono::milliseconds(100));
+    // Broadcast XN_SYS_UI = false
+    kernel_state()->BroadcastNotification(0x9, false);
+  });
+
+  return X_ERROR_SUCCESS;
+}
+
+X_RESULT xeXamDispatchHeadlessAsync(std::function<void()> run_callback) {
+  // Broadcast XN_SYS_UI = true
+  kernel_state()->BroadcastNotification(0x9, true);
+  ++xam_dialogs_shown_;
+
+  auto display_window = kernel_state()->emulator()->display_window();
+  display_window->app_context().CallInUIThread([run_callback]() {
+    run_callback();
+
+    --xam_dialogs_shown_;
+
+    xe::threading::Sleep(std::chrono::milliseconds(100));
+    // Broadcast XN_SYS_UI = false
+    kernel_state()->BroadcastNotification(0x9, false);
+  });
+
+  return X_ERROR_SUCCESS;
+}
+
 dword_result_t XamIsUIActive_entry() { return xeXamIsUIActive(); }
 DECLARE_XAM_EXPORT2(XamIsUIActive, kUI, kImplemented, kHighFrequency);
 
@@ -619,6 +662,31 @@ dword_result_t XamGetDashContext_entry(const ppc_context_t& ctx) {
 }
 
 DECLARE_XAM_EXPORT1(XamGetDashContext, kNone, kImplemented);
+
+dword_result_t XamShowAchievementsUI_entry(dword_t user_index) {
+  if (user_index >= 4) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!kernel_state()->IsUserSignedIn(user_index)) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  if (cvars::headless) {
+    return xeXamDispatchHeadlessAsync([]() {});
+  }
+
+  std::string ui_desc =
+      kernel_state()->achievement_manager()->GetAchievementsUIText(user_index);
+
+  const Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  return xeXamDispatchDialogAsync<ui::AchievementsDialog>(
+      new ui::AchievementsDialog(imgui_drawer, ui_desc),
+      [](ui::AchievementsDialog*) {});
+}
+
+DECLARE_XAM_EXPORT1(XamShowAchievementsUI, kUI, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

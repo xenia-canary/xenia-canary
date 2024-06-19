@@ -12,6 +12,7 @@
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_notification.h"
 
 DEFINE_bool(show_achievement_notification, false,
@@ -179,6 +180,54 @@ void AchievementManager::Load(uint32_t user_index) {
   }
 
   fclose(file);
+}
+
+std::string AchievementManager::GetAchievementsUIText(uint32_t user_index) {
+  if (user_index >= 4) {
+    return "";
+  }
+
+  std::string ui_desc = "";
+
+  const util::XdbfGameData db = kernel_state()->title_xdbf();
+
+  if (db.is_valid()) {
+    const XLanguage language =
+        db.GetExistingLanguage(static_cast<XLanguage>(cvars::user_language));
+    const std::vector<util::XdbfAchievementTableEntry> achievement_list =
+        db.GetAchievements();
+
+    for (const util::XdbfAchievementTableEntry& entry : achievement_list) {
+      bool is_unlocked = IsAchievementUnlocked(user_index, entry.id);
+
+      std::string mark = is_unlocked ? "[X]" : "[ ]";
+      std::string label = db.GetStringTableEntry(language, entry.label_id);
+      uint16_t score = entry.gamerscore;
+      std::string description;
+      if (is_unlocked) {
+        description = db.GetStringTableEntry(language, entry.description_id);
+      } else {
+        description = db.GetStringTableEntry(language, entry.unachieved_id);
+      }
+
+      ui_desc += fmt::format("{} {}\n    {}\n    {}G\n\n", mark, label,
+                             description, score);
+    }
+  }
+
+  return ui_desc;
+}
+
+void AchievementManager::ShowAchievementsUI(uint32_t user_index) {
+  if (user_index >= 4) {
+    return;
+  }
+
+  std::string ui_desc = GetAchievementsUIText(user_index);
+
+  const Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  new ui::AchievementsDialog(imgui_drawer, ui_desc);
 }
 
 }  // namespace kernel

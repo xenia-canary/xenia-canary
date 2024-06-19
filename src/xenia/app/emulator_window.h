@@ -235,6 +235,8 @@ class EmulatorWindow {
   bool IsUseNexusForGameBarEnabled();
   void DisplayHotKeysConfig();
 
+  void ShowAchievements();
+
   static std::string CanonicalizeFileExtension(
       const std::filesystem::path& path);
 

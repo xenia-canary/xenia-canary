@@ -87,5 +87,32 @@ ImGuiDialog* ImGuiDialog::ShowMessageBox(ImGuiDrawer* imgui_drawer,
   return new MessageBoxDialog(imgui_drawer, std::move(title), std::move(body));
 }
 
+void AchievementsDialog::OnDraw(ImGuiIO& io) {
+  if (!has_opened_) {
+    ImGui::OpenPopup("Achievements");
+    has_opened_ = true;
+  }
+  if (ImGui::BeginPopupModal("Achievements", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    char* text = const_cast<char*>(body_.c_str());
+    ImGui::InputTextMultiline(
+        "##body", text, body_.size(), ImVec2(600, 600),
+        ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_ReadOnly);
+    if (ImGui::Button("OK")) {
+      ImGui::CloseCurrentPopup();
+      Close();
+    }
+    ImGui::EndPopup();
+  } else {
+    Close();
+  }
+}
+
+void AchievementsDialog::OnClose() {
+  if (close_callback_) {
+    close_callback_();
+  }
+}
+
 }  // namespace ui
 }  // namespace xe

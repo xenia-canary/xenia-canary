@@ -53,6 +53,25 @@ class ImGuiDialog {
   std::vector<xe::threading::Fence*> waiting_fences_;
 };
 
+class AchievementsDialog : public xe::ui::ImGuiDialog {
+ public:
+  AchievementsDialog(xe::ui::ImGuiDrawer* imgui_drawer, std::string& body)
+      : xe::ui::ImGuiDialog(imgui_drawer), body_(body) {}
+  virtual ~AchievementsDialog() {}
+
+  void set_close_callback(std::function<void()> close_callback) {
+    close_callback_ = close_callback;
+  }
+
+ private:
+  void OnDraw(ImGuiIO& io) override;
+  void OnClose() override;
+
+  bool has_opened_ = false;
+  std::string body_;
+  std::function<void()> close_callback_ = nullptr;
+};
+
 }  // namespace ui
 }  // namespace xe
 

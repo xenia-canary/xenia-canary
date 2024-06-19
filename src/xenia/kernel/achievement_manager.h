@@ -50,6 +50,8 @@ class AchievementManager {
                                     uint32_t achievement_id);
   void Save(uint32_t user_index);
   void Load(uint32_t user_index);
+  std::string GetAchievementsUIText(uint32_t user_index);
+  void ShowAchievementsUI(uint32_t user_index);
 
  private:
   std::map<uint32_t, uint64_t> unlocked_achievements[4];
