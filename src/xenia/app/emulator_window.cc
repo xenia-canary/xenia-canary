@@ -654,7 +654,7 @@ bool EmulatorWindow::Initialize() {
         MenuItem::Create(MenuItem::Type::kString, "&Fullscreen", "F11",
                          std::bind(&EmulatorWindow::ToggleFullscreen, this)));
     display_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Take Screenshot", "F10",
+        MenuItem::Create(MenuItem::Type::kString, "&Take Screenshot", "F12",
                          std::bind(&EmulatorWindow::TakeScreenshot, this)));
   }
   main_menu->AddChild(std::move(display_menu));
@@ -840,7 +840,7 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
     case ui::VirtualKey::kF11: {
       ToggleFullscreen();
     } break;
-    case ui::VirtualKey::kF10: {
+    case ui::VirtualKey::kF12: {
       TakeScreenshot();
     } break;
 
@@ -938,10 +938,6 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
 
   std::string filename = fmt::format("{} - {}.png", title_id, datetime);
   SaveImage(screenshot_path / filename, image);
-
-  xe::ui::ImGuiDialog::ShowMessageBox(
-      imgui_drawer_.get(), "Screenshot saved",
-      fmt::format("Screenshot saved to {}", xe::path_to_utf8(screenshot_path)));
 }
 
 // Converts a RawImage into a PNG file
