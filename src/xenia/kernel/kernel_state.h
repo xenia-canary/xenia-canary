@@ -18,12 +18,12 @@
 #include <memory>
 #include <vector>
 
-#include "achievement_manager.h"
 #include "xenia/base/bit_map.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/mutex.h"
 #include "xenia/cpu/backend/backend.h"
 #include "xenia/cpu/export_resolver.h"
+#include "xenia/kernel/achievement_manager.h"
 #include "xenia/kernel/util/kernel_fwd.h"
 #include "xenia/kernel/util/native_list.h"
 #include "xenia/kernel/util/object_table.h"

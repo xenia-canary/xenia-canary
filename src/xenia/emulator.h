@@ -53,6 +53,8 @@ class Window;
 
 namespace xe {
 
+#define MAX_USERS 4
+
 constexpr fourcc_t kEmulatorSaveSignature = make_fourcc("XSAV");
 static const std::string kDefaultGameSymbolicLink = "GAME:";
 static const std::string kDefaultPartitionSymbolicLink = "D:";

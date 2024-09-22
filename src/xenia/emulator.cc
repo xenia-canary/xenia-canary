@@ -39,6 +39,7 @@
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_driver.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/kernel/achievement_manager.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/gameinfo_utils.h"
@@ -1338,6 +1339,16 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   }
   main_thread_ = main_thread;
   on_launch(title_id_.value(), title_name_);
+
+  for (uint32_t i = 0; i < MAX_USERS; i++) {
+    const kernel::xam::UserProfile* user = kernel_state_->user_profile(i);
+    if (!user) {
+      continue;
+    }
+
+    kernel_state_->achievement_manager()->LoadTitleAchievements(
+        user->xuid(), module->title_id());
+  }
 
   // Plugins must be loaded after calling LaunchModule() and
   // FinishLoadingUserModule() which will apply TUs and patching to the main
