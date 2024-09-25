@@ -200,9 +200,9 @@ class VulkanProvider : public GraphicsProvider {
 
     bool shaderDemoteToHelperInvocation;
 
-    // VK_KHR_maintenance4 (#414, Vulkan 1.3).
+    // VK_KHR_maintenance7 (#414, Vulkan 1.3).
 
-    bool ext_1_3_VK_KHR_maintenance4;
+    bool ext_1_3_VK_KHR_maintenance7;
 
     // VK_EXT_non_seamless_cube_map (#423).
 
@@ -329,7 +329,7 @@ class VulkanProvider : public GraphicsProvider {
 #include "xenia/ui/vulkan/functions/device_1_0.inc"
 #include "xenia/ui/vulkan/functions/device_khr_bind_memory2.inc"
 #include "xenia/ui/vulkan/functions/device_khr_get_memory_requirements2.inc"
-#include "xenia/ui/vulkan/functions/device_khr_maintenance4.inc"
+#include "xenia/ui/vulkan/functions/device_khr_maintenance7.inc"
 #include "xenia/ui/vulkan/functions/device_khr_swapchain.inc"
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 #undef XE_UI_VULKAN_FUNCTION

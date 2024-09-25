@@ -79,7 +79,7 @@ VmaAllocator CreateVmaAllocator(const VulkanProvider& provider,
       allocator_create_info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
     }
   }
-  if (device_info.ext_1_3_VK_KHR_maintenance4) {
+  if (device_info.ext_1_3_VK_KHR_maintenance7) {
     vma_vulkan_functions.vkGetDeviceBufferMemoryRequirements =
         dfn.vkGetDeviceBufferMemoryRequirements;
     vma_vulkan_functions.vkGetDeviceImageMemoryRequirements =

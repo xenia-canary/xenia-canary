@@ -795,7 +795,7 @@ void VulkanProvider::TryCreateDevice() {
   }
   if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 3, 0)) {
     device_info_.ext_1_3_VK_EXT_shader_demote_to_helper_invocation = true;
-    device_info_.ext_1_3_VK_KHR_maintenance4 = true;
+    device_info_.ext_1_3_VK_KHR_maintenance7 = true;
   }
 
   for (const VkExtensionProperties& extension : extension_properties) {
@@ -855,7 +855,7 @@ void VulkanProvider::TryCreateDevice() {
         EXTENSION_PROMOTED(VK_EXT_shader_demote_to_helper_invocation, 3)
       }
       if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 1, 0)) {
-        EXTENSION_PROMOTED(VK_KHR_maintenance4, 3)
+        EXTENSION_PROMOTED(VK_KHR_maintenance7, 3)
       }
     }
 #undef EXTENSION_PROMOTED
@@ -1339,7 +1339,7 @@ void VulkanProvider::TryCreateDevice() {
 #include "xenia/ui/vulkan/functions/device_khr_get_memory_requirements2.inc"
   }
   if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 3, 0)) {
-#include "xenia/ui/vulkan/functions/device_khr_maintenance4.inc"
+#include "xenia/ui/vulkan/functions/device_khr_maintenance7.inc"
   }
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 
@@ -1361,8 +1361,8 @@ void VulkanProvider::TryCreateDevice() {
     }
   }
   if (properties.apiVersion < VK_MAKE_API_VERSION(0, 1, 3, 0)) {
-    if (device_info_.ext_1_3_VK_KHR_maintenance4) {
-#include "xenia/ui/vulkan/functions/device_khr_maintenance4.inc"
+    if (device_info_.ext_1_3_VK_KHR_maintenance7) {
+#include "xenia/ui/vulkan/functions/device_khr_maintenance7.inc"
     }
   }
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
