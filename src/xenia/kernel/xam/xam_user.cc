@@ -604,7 +604,18 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     return result;
   }
 
+  const auto user = kernel_state()->user_profile(user_index);
+  if (!user) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  uint64_t requester_xuid = user->xuid();
+  if (xuid) {
+    requester_xuid = xuid;
+  }
+
   const util::XdbfGameData db = kernel_state()->title_xdbf();
+  uint32_t title_id_ = title_id ? title_id : kernel_state()->title_id();
 
   if (db.is_valid()) {
     const XLanguage language =
@@ -612,13 +623,11 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     const std::vector<util::XdbfAchievementTableEntry> achievement_list =
         db.GetAchievements();
 
+
     for (const util::XdbfAchievementTableEntry& entry : achievement_list) {
-      auto is_unlocked =
-          kernel_state()->achievement_manager()->IsAchievementUnlocked(
-              entry.id);
-      auto unlock_time =
-          kernel_state()->achievement_manager()->GetAchievementUnlockTime(
-              entry.id);
+      auto achievement_details =
+          kernel_state()->achievement_manager()->GetAchievementInfo(
+              requester_xuid, title_id_, entry.id);
 
       auto item = XAchievementEnumerator::AchievementDetails{
           entry.id,
@@ -627,9 +636,10 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
           xe::to_utf16(db.GetStringTableEntry(language, entry.unachieved_id)),
           entry.image_id,
           entry.gamerscore,
-          (uint32_t)(unlock_time << 31),
-          (uint32_t)unlock_time,
-          is_unlocked ? entry.flags | 0x20000 : entry.flags};
+          achievement_details->unlock_time.high_part,
+          achievement_details->unlock_time.low_part,
+          achievement_details->flags,
+      };
 
       e->AppendItem(item);
     }

@@ -70,7 +70,6 @@ KernelState::KernelState(Emulator* emulator)
   file_system_ = emulator->file_system();
 
   app_manager_ = std::make_unique<xam::AppManager>();
-  achievement_manager_ = std::make_unique<AchievementManager>();
   user_profiles_.emplace(0, std::make_unique<xam::UserProfile>(0));
 
   InitializeKernelGuestGlobals();
@@ -81,6 +80,8 @@ KernelState::KernelState(Emulator* emulator)
     content_root = std::filesystem::absolute(content_root);
   }
   content_manager_ = std::make_unique<xam::ContentManager>(this, content_root);
+
+  achievement_manager_ = std::make_unique<AchievementManager>();
 
   // Hardcoded maximum of 2048 TLS slots.
   tls_bitmap_.Resize(2048);

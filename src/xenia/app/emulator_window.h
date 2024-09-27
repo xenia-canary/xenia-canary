@@ -25,8 +25,6 @@
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
-#define MAX_USERS 4
-
 namespace xe {
 namespace app {
 
