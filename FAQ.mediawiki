@@ -83,7 +83,7 @@ Xenia only supports XInput controllers by default, which includes but is not lim
 
 For non-XInput controllers, [https://github.com/xenia-canary/xenia-canary/wiki/Options#HID_Input SDL] must be used.
 
-[https://cdn.discordapp.com/attachments/308207592482668545/437198231613734912/xenia_keyboard-layout.png Default keyboard layout (click to preview)]
+[https://raw.githubusercontent.com/xenia-canary/xenia-canary/refs/heads/wiki/.github/images/xenia_keyboard.png Default keyboard layout (click to preview)]
 
 Xenia does not support mice, accessories like the Kinect, uDraw GameTablet, or microphones.
 
