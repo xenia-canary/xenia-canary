@@ -193,24 +193,6 @@ uint8_t from_hexchar(char c) {
   return 0;
 }
 
-std::string GDBStub::DebuggerDetached() {
-  // Delete all breakpoints
-  auto& state = cache_.breakpoints;
-
-  for (auto& breakpoint : state.all_breakpoints) {
-    processor_->RemoveBreakpoint(breakpoint.get());
-  }
-
-  state.code_breakpoints_by_guest_address.clear();
-  state.all_breakpoints.clear();
-
-  if (processor_->execution_state() == cpu::ExecutionState::kPaused) {
-    ExecutionContinue();
-  }
-
-  return kGdbReplyOK;
-}
-
 std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
                                   uint32_t rid) {
   // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
@@ -546,12 +528,18 @@ void GDBStub::UpdateCache() {
       object_table->GetObjectsByType<XModule>(XObject::Type::Module);
 
   cache_.thread_debug_infos = processor_->QueryThreadDebugInfos();
-  cache_.cur_thread_id = cache_.thread_debug_infos[0]->thread_id;
+  if (cache_.cur_thread_id == -1) {
+    cache_.cur_thread_id = emulator_->main_thread_id();
+  }
 }
 
 std::string GDBStub::ReadRegister(const std::string& data) {
+  auto* thread = cache_.cur_thread_info();
+  if (!thread) {
+    return kGdbReplyError;
+  }
   uint32_t rid = hex_to_u32(data);
-  std::string result = ReadRegister(cache_.cur_thread_info(), rid);
+  std::string result = ReadRegister(thread, rid);
   if (result.empty()) {
     return kGdbReplyError;  // TODO: is this error correct?
   }
@@ -559,10 +547,14 @@ std::string GDBStub::ReadRegister(const std::string& data) {
 }
 
 std::string GDBStub::ReadRegisters() {
+  auto* thread = cache_.cur_thread_info();
+  if (!thread) {
+    return kGdbReplyError;
+  }
   std::string result;
   result.reserve(68 * 16 + 3 * 8);
   for (int i = 0; i < 71; ++i) {
-    result += ReadRegister(cache_.cur_thread_info(), i);
+    result += ReadRegister(thread, i);
   }
   return result;
 }
@@ -758,9 +750,18 @@ void GDBStub::OnFocus() {}
 void GDBStub::OnDetached() {
   UpdateCache();
 
-  // Remove all breakpoints.
-  while (!cache_.breakpoints.all_breakpoints.empty()) {
-    DeleteCodeBreakpoint(cache_.breakpoints.all_breakpoints.front().get());
+  // Delete all breakpoints
+  auto& state = cache_.breakpoints;
+
+  for (auto& breakpoint : state.all_breakpoints) {
+    processor_->RemoveBreakpoint(breakpoint.get());
+  }
+
+  state.code_breakpoints_by_guest_address.clear();
+  state.all_breakpoints.clear();
+
+  if (processor_->execution_state() == cpu::ExecutionState::kPaused) {
+    ExecutionContinue();
   }
 }
 
@@ -821,10 +822,18 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
            }},
 
           // Detach
-          {"D", [&](const GDBCommand& cmd) { return DebuggerDetached(); }},
+          {"D",
+           [&](const GDBCommand& cmd) {
+             OnDetached();
+             return kGdbReplyOK;
+           }},
 
           // Kill request (just treat as detach for now)
-          {"k", [&](const GDBCommand& cmd) { return DebuggerDetached(); }},
+          {"k",
+           [&](const GDBCommand& cmd) {
+             OnDetached();
+             return kGdbReplyOK;
+           }},
 
           // Enable extended mode
           {"!", [&](const GDBCommand& cmd) { return kGdbReplyOK; }},
@@ -857,24 +866,32 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           // Get current debugger thread ID
           {"qC",
            [&](const GDBCommand& cmd) {
-             return "QC" + std::to_string(cache_.cur_thread_info()->thread_id);
+             auto* thread = cache_.cur_thread_info();
+             if (!thread) {
+               return std::string(kGdbReplyError);
+             }
+             return "QC" + std::to_string(thread->thread_id);
            }},
           // Set current debugger thread ID
           {"H",
            [&](const GDBCommand& cmd) {
-             // Reset to known good ID
-             cache_.cur_thread_id =
-                 cache_.thread_debug_infos.size()
-                     ? cache_.thread_debug_infos[0]->thread_id
-                     : -1;
-
-             // Check if the desired thread ID exists
              int threadId = std::stol(cmd.data.substr(1), 0, 16);
-             for (auto& thread : cache_.thread_debug_infos) {
-               if (thread->thread_id == threadId) {
-                 cache_.cur_thread_id = threadId;
-                 break;
+
+             if (!threadId) {
+               // Treat Thread 0 as main thread, seems to work for IDA
+               cache_.cur_thread_id = emulator_->main_thread_id();
+             } else {
+               uint32_t thread_id = -1;
+
+               // Check if the desired thread ID exists
+               for (auto& thread : cache_.thread_debug_infos) {
+                 if (thread->thread_id == threadId) {
+                   thread_id = threadId;
+                   break;
+                 }
                }
+
+               cache_.cur_thread_id = thread_id;
              }
 
              return kGdbReplyOK;
