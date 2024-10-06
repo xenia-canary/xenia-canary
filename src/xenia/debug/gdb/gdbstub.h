@@ -69,6 +69,7 @@ class GDBStub : public cpu::DebugListener {
   std::string ExecutionContinue();
   std::string ExecutionStep();
   std::string ReadMemory(const std::string& data);
+  std::string BuildMemoryMap();
   std::string BuildTargetXml();
   std::string BuildThreadList();
 

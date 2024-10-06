@@ -52,6 +52,20 @@ constexpr const char* kGdbReplyError = "E01";
 
 constexpr int kSignalSigtrap = 5;
 
+constexpr char memory_map[] =
+    R"(l<?xml version="1.0"?>
+<memory-map>
+  <!-- Based on memory.cc Initialize() -->
+  <memory type="ram" start="0x10000" length="0x3FFF0000"/>
+  <memory type="ram" start="0x40000000" length="0x3F000000"/>
+  <memory type="ram" start="0x80000000" length="0x10000000"/>
+  <memory type="ram" start="0x90000000" length="0x10000000"/>
+  <memory type="ram" start="0xA0000000" length="0x20000000"/>
+  <memory type="ram" start="0xC0000000" length="0x20000000"/>
+  <memory type="ram" start="0xE0000000" length="0x1FD00000"/>
+</memory-map>
+)";
+
 // must start with l for debugger to accept it
 // TODO: add power-altivec.xml (and update ReadRegister to support it)
 constexpr char target_xml[] =
@@ -228,9 +242,8 @@ std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
       }
       return u32_to_padded_hex(0);
     }
-    // msr?
     case 65:
-      return std::string(8, 'x');
+      return u32_to_padded_hex((uint32_t)thread->guest_context.msr);
     case 66:
       return u32_to_padded_hex((uint32_t)thread->guest_context.cr());
     case 67:
@@ -242,7 +255,7 @@ std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
       return std::string(8, 'x');
     // fpscr
     case 70:
-      return std::string(8, 'x');
+      return u32_to_padded_hex(thread->guest_context.fpscr.value);
     default:
       if (rid > 70) return "";
       return (rid > 31) ? u64_to_padded_hex(*(uint64_t*)&(
@@ -298,7 +311,7 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Check if we need to notify client about anything...
+    // Check if we need to notify client about anything
     {
       std::unique_lock<std::mutex> lock(mtx_);
       if (cache_.notify_stopped) {
@@ -349,6 +362,7 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
       {"qfThreadInfo", "qfThreadInfo"},
       {"qC", "GetThreadId"},
       {"D", "Detach"},
+      {"k", "KillRequest"},
       {"\03", "Break"},
   };
 
@@ -557,6 +571,9 @@ std::string GDBStub::ExecutionPause() {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: ExecutionPause\n");
 #endif
+  if (processor_->execution_state() != cpu::ExecutionState::kRunning) {
+    return kGdbReplyError;
+  }
   processor_->Pause();
   return kGdbReplyOK;
 }
@@ -611,6 +628,8 @@ std::string GDBStub::ReadMemory(const std::string& data) {
 
   return result;
 }
+
+std::string GDBStub::BuildMemoryMap() { return memory_map; }
 
 std::string GDBStub::BuildTargetXml() { return target_xml; }
 
@@ -804,6 +823,9 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           // Detach
           {"D", [&](const GDBCommand& cmd) { return DebuggerDetached(); }},
 
+          // Kill request (just treat as detach for now)
+          {"k", [&](const GDBCommand& cmd) { return DebuggerDetached(); }},
+
           // Enable extended mode
           {"!", [&](const GDBCommand& cmd) { return kGdbReplyOK; }},
 
@@ -887,6 +909,8 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              auto sub_cmd = param.substr(0, param.find(':'));
              if (sub_cmd == "features") {
                return BuildTargetXml();
+             } else if (sub_cmd == "memory-map") {
+               return BuildMemoryMap();
              } else if (sub_cmd == "threads") {
                return BuildThreadList();
              }
@@ -895,7 +919,8 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           // Supported features (TODO: memory map)
           {"qSupported",
            [&](const GDBCommand& cmd) {
-             return "PacketSize=1024;qXfer:features:read+;qXfer:threads:read+";
+             return "PacketSize=1024;qXfer:features:read+;qXfer:threads:read+;"
+                    "qXfer:memory-map:read+";
            }},
           // Thread list (IDA requests this but ignores in favor of qXfer?)
           {"qfThreadInfo",
