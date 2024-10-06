@@ -61,6 +61,7 @@ class GDBStub : public cpu::DebugListener {
 
   void UpdateCache();
 
+  std::string ReadRegister(xe::cpu::ThreadDebugInfo* thread, uint32_t rid);
   std::string ReadRegister(const std::string& data);
   std::string ReadRegisters();
   std::string ExecutionPause();
@@ -93,6 +94,7 @@ class GDBStub : public cpu::DebugListener {
     uint32_t cur_thread_id = -1;
     uint32_t last_bp_thread_id = -1;
 
+    uint64_t notify_bp_guest_address = -1;
     uint32_t notify_bp_thread_id = -1;
     bool notify_stopped = false;
 

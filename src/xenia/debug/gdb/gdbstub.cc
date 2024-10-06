@@ -184,7 +184,8 @@ uint8_t from_hexchar(char c) {
   return 0;
 }
 
-std::string get_reg(xe::cpu::ThreadDebugInfo* thread, uint32_t rid) {
+std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
+                                  uint32_t rid) {
   // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
   // mode (eg. IDA will switch to 64-bit and refuse to allow decompiler to work
   // with it)
@@ -195,6 +196,16 @@ std::string get_reg(xe::cpu::ThreadDebugInfo* thread, uint32_t rid) {
   switch (rid) {
     // pc
     case 64: {
+      // If we recently hit a BP then debugger is likely asking for registers
+      // for it
+      //
+      // Lie about the PC and say it's the BP address, since PC might not always
+      // match
+      if (cache_.notify_bp_guest_address != -1) {
+        auto ret = u32_to_padded_hex((uint32_t)cache_.notify_bp_guest_address);
+        cache_.notify_bp_guest_address = -1;
+        return ret;
+      }
       // Search for first frame that has guest_pc attached, GDB doesn't care
       // about host
       for (auto& frame : thread->frames) {
@@ -560,7 +571,7 @@ void GDBStub::UpdateCache() {
 
 std::string GDBStub::ReadRegister(const std::string& data) {
   uint32_t rid = hex_to_u32(data);
-  std::string result = get_reg(cache_.cur_thread_info(), rid);
+  std::string result = ReadRegister(cache_.cur_thread_info(), rid);
   if (result.empty()) {
     return kGdbReplyError;  // TODO: is this error correct?
   }
@@ -571,7 +582,7 @@ std::string GDBStub::ReadRegisters() {
   std::string result;
   result.reserve(68 * 16 + 3 * 8);
   for (int i = 0; i < 71; ++i) {
-    result += get_reg(cache_.cur_thread_info(), i);
+    result += ReadRegister(cache_.cur_thread_info(), i);
   }
   return result;
 }
@@ -594,7 +605,8 @@ std::string GDBStub::ExecutionContinue() {
 
 std::string GDBStub::ExecutionStep() {
 #ifdef DEBUG
-  debugging::DebugPrint("GDBStub: ExecutionStep (thread {})\n", cache_.last_bp_thread_id);
+  debugging::DebugPrint("GDBStub: ExecutionStep (thread {})\n",
+                        cache_.last_bp_thread_id);
 #endif
 
   if (cache_.last_bp_thread_id != -1)
@@ -664,6 +676,12 @@ std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
         pc_value = frame.guest_pc;
         break;
       }
+    }
+
+    // If BP was hit use the address of it, so debugger can match it up to its
+    // BP list
+    if (cache_.notify_bp_guest_address != -1) {
+      pc_value = cache_.notify_bp_guest_address;
     }
 
     return fmt::format(
@@ -786,6 +804,7 @@ void GDBStub::OnBreakpointHit(Breakpoint* breakpoint,
                         breakpoint->address(), thread_info->thread_id);
 #endif
 
+  cache_.notify_bp_guest_address = breakpoint->address();
   cache_.notify_bp_thread_id = thread_info->thread_id;
   cache_.last_bp_thread_id = thread_info->thread_id;
   UpdateCache();
