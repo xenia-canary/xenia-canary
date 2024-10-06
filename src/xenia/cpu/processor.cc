@@ -644,7 +644,8 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
       if ((scan_breakpoint->address_type() == Breakpoint::AddressType::kGuest &&
            scan_breakpoint->guest_address() == frame.guest_pc) ||
           (scan_breakpoint->address_type() == Breakpoint::AddressType::kHost &&
-           scan_breakpoint->host_address() == frame.host_pc)) {
+           scan_breakpoint->host_address() == frame.host_pc) ||
+          scan_breakpoint->ContainsHostAddress(frame.host_pc)) {
         breakpoint = scan_breakpoint;
         break;
       }
@@ -937,7 +938,10 @@ void Processor::StepHostInstruction(uint32_t thread_id) {
                        thread_info->step_breakpoint.reset();
                        OnStepCompleted(thread_info);
                      }));
-  AddBreakpoint(thread_info->step_breakpoint.get());
+
+  // Add to front of breakpoints map, so this should get evaluated first
+  breakpoints_.insert(breakpoints_.begin(), thread_info->step_breakpoint.get());
+
   thread_info->step_breakpoint->Resume();
 
   // ResumeAllBreakpoints();
@@ -970,7 +974,10 @@ void Processor::StepGuestInstruction(uint32_t thread_id) {
                        thread_info->step_breakpoint.reset();
                        OnStepCompleted(thread_info);
                      }));
-  AddBreakpoint(thread_info->step_breakpoint.get());
+
+  // Add to front of breakpoints map, so this should get evaluated first
+  breakpoints_.insert(breakpoints_.begin(), thread_info->step_breakpoint.get());
+
   thread_info->step_breakpoint->Resume();
 
   // ResumeAllBreakpoints();
