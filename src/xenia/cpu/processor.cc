@@ -670,17 +670,18 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
   }
 
   ResumeAllThreads();
-  thread_info->thread->thread()->Suspend();
 
   // Apply thread context changes.
   // TODO(benvanik): apply to all threads?
 #if XE_ARCH_AMD64
-  ex->set_resume_pc(thread_info->host_context.rip + 2);
+  ex->set_resume_pc(thread_info->host_context.rip);
 #elif XE_ARCH_ARM64
-  ex->set_resume_pc(thread_info->host_context.pc + 2);
+  ex->set_resume_pc(thread_info->host_context.pc);
 #else
 #error Instruction pointer not specified for the target CPU architecture.
 #endif  // XE_ARCH
+
+  thread_info->thread->thread()->Suspend();
 
   // Resume execution.
   return true;

@@ -92,6 +92,7 @@ project("xenia-app")
       "xenia-app-discord",
       "xenia-apu-sdl",
       -- TODO(Triang3l): CPU debugger on Android.
+      "xenia-debug-gdb",
       "xenia-debug-ui",
       "xenia-helper-sdl",
       "xenia-hid-sdl",
