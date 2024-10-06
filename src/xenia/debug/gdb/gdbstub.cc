@@ -22,6 +22,7 @@
 #pragma comment(lib, "ws2_32.lib")
 
 #include "xenia/base/clock.h"
+#include "xenia/base/debugging.h"
 #include "xenia/base/fuzzy.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -356,12 +357,13 @@ void GDBStub::SendPacket(const std::string& data) {
   send(client_socket_, packet.c_str(), int(packet.size()), 0);
 }
 
+#ifdef DEBUG
 std::string GetPacketFriendlyName(const std::string& packetCommand) {
   static const std::unordered_map<std::string, std::string> command_names = {
-      {"?", ""},
-      {"!", ""},
-      {"p", ""},
-      {"P", ""},
+      {"?", "StartupQuery"},
+      {"!", "EnableExtendedMode"},
+      {"p", "ReadRegister"},
+      {"P", "WriteRegister"},
       {"g", "ReadAllRegisters"},
       {"C", "Continue"},
       {"c", "continue"},
@@ -386,6 +388,7 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
 
   return packet_name;
 }
+#endif
 
 bool GDBStub::ProcessIncomingData() {
   char buffer[1024];
@@ -416,16 +419,10 @@ bool GDBStub::ProcessIncomingData() {
         if (ParsePacket(command)) {
 #ifdef DEBUG
           auto packet_name = GetPacketFriendlyName(command.cmd);
-          OutputDebugStringA("GDBStub: Packet ");
-          if (packet_name.empty())
-            OutputDebugStringA(command.cmd.c_str());
-          else
-            OutputDebugStringA(packet_name.c_str());
 
-          OutputDebugStringA("(");
-          OutputDebugStringA(command.data.c_str());
-          OutputDebugStringA(")");
-          OutputDebugStringA("\n");
+          debugging::DebugPrint("GDBStub: Packet {}({})\n",
+                                packet_name.empty() ? command.cmd : packet_name,
+                                command.data);
 #endif
 
           GdbStubControl result = GdbStubControl::Ack;
@@ -581,7 +578,7 @@ std::string GDBStub::ReadRegisters() {
 
 std::string GDBStub::ExecutionPause() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: ExecutionPause\n");
+  debugging::DebugPrint("GDBStub: ExecutionPause\n");
 #endif
   processor_->Pause();
   return kGdbReplyOK;
@@ -589,7 +586,7 @@ std::string GDBStub::ExecutionPause() {
 
 std::string GDBStub::ExecutionContinue() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: ExecutionContinue\n");
+  debugging::DebugPrint("GDBStub: ExecutionContinue\n");
 #endif
   processor_->Continue();
   return kGdbReplyOK;
@@ -597,9 +594,7 @@ std::string GDBStub::ExecutionContinue() {
 
 std::string GDBStub::ExecutionStep() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: ExecutionStep ");
-  OutputDebugStringA(std::to_string(cache_.last_bp_thread_id).c_str());
-  OutputDebugStringA("\n");
+  debugging::DebugPrint("GDBStub: ExecutionStep (thread {})\n", cache_.last_bp_thread_id);
 #endif
 
   if (cache_.last_bp_thread_id != -1)
@@ -681,10 +676,9 @@ std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
 
 void GDBStub::CreateCodeBreakpoint(uint64_t address) {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: Adding breakpoint: ");
-  OutputDebugStringA(u64_to_padded_hex(address).c_str());
-  OutputDebugStringA("\n");
+  debugging::DebugPrint("GDBStub: Adding breakpoint: {:X}\n", address);
 #endif
+
   auto& state = cache_.breakpoints;
   auto breakpoint = std::make_unique<Breakpoint>(
       processor_, Breakpoint::AddressType::kGuest, address,
@@ -707,9 +701,7 @@ void GDBStub::CreateCodeBreakpoint(uint64_t address) {
 
 void GDBStub::DeleteCodeBreakpoint(uint64_t address) {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: Deleting breakpoint: ");
-  OutputDebugStringA(u64_to_padded_hex(address).c_str());
-  OutputDebugStringA("\n");
+  debugging::DebugPrint("GDBStub: Deleting breakpoint: {:X}\n", address);
 #endif
   auto* breakpoint = LookupBreakpointAtAddress(address);
   if (!breakpoint) {
@@ -757,28 +749,28 @@ void GDBStub::OnDetached() {
 
 void GDBStub::OnExecutionPaused() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: OnExecutionPaused\n");
+  debugging::DebugPrint("GDBStub: OnExecutionPaused\n");
 #endif
   UpdateCache();
 }
 
 void GDBStub::OnExecutionContinued() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: OnExecutionContinued\n");
+  debugging::DebugPrint("GDBStub: OnExecutionContinued\n");
 #endif
   UpdateCache();
 }
 
 void GDBStub::OnExecutionEnded() {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: OnExecutionEnded\n");
+  debugging::DebugPrint("GDBStub: OnExecutionEnded\n");
 #endif
   UpdateCache();
 }
 
 void GDBStub::OnStepCompleted(cpu::ThreadDebugInfo* thread_info) {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: OnStepCompleted\n");
+  debugging::DebugPrint("GDBStub: OnStepCompleted\n");
 #endif
   // Some debuggers like IDA will remove the current breakpoint & step into next
   // instruction, only re-adding BP after it's told about the step
@@ -790,11 +782,8 @@ void GDBStub::OnStepCompleted(cpu::ThreadDebugInfo* thread_info) {
 void GDBStub::OnBreakpointHit(Breakpoint* breakpoint,
                               cpu::ThreadDebugInfo* thread_info) {
 #ifdef DEBUG
-  OutputDebugStringA("GDBStub: Breakpoint: ");
-  OutputDebugStringA(u64_to_padded_hex(breakpoint->address()).c_str());
-  OutputDebugStringA(" thread ");
-  OutputDebugStringA(std::to_string(thread_info->thread_id).c_str());
-  OutputDebugStringA("\n");
+  debugging::DebugPrint("GDBStub: Breakpoint hit at {:X} (thread {})\n",
+                        breakpoint->address(), thread_info->thread_id);
 #endif
 
   cache_.notify_bp_thread_id = thread_info->thread_id;
@@ -806,36 +795,68 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
   static const std::unordered_map<std::string,
                                   std::function<std::string(const GDBCommand&)>>
       command_map = {
+          // "sent when connection is first established to query the reason the
+          // target halted"
           {"?",
            [&](const GDBCommand& cmd) {
-             return "S05";  // tell debugger we're currently stopped
+             return "S05";  // tell debugger we're currently paused
            }},
+
+          // Enable extended mode
           {"!", [&](const GDBCommand& cmd) { return kGdbReplyOK; }},
-          {"p", [&](const GDBCommand& cmd) { return ReadRegister(cmd.data); }},
-          {"P", [&](const GDBCommand& cmd) { return kGdbReplyOK; }},
-          {"g", [&](const GDBCommand& cmd) { return ReadRegisters(); }},
+
+          // Execution continue
           {"C", [&](const GDBCommand& cmd) { return ExecutionContinue(); }},
+          // Execution continue
           {"c", [&](const GDBCommand& cmd) { return ExecutionContinue(); }},
+          // Execution step
           {"s", [&](const GDBCommand& cmd) { return ExecutionStep(); }},
-          {"vAttach",
-           [&](const GDBCommand& cmd) {
-             ExecutionPause();
-             return "S05";
-           }},
+          // Execution interrupt
+          {"\03", [&](const GDBCommand& cmd) { return ExecutionPause(); }},
+
+          // Read memory
           {"m", [&](const GDBCommand& cmd) { return ReadMemory(cmd.data); }},
+          // Read register
+          {"p", [&](const GDBCommand& cmd) { return ReadRegister(cmd.data); }},
+          // Write register
+          {"P",
+           [&](const GDBCommand& cmd) {
+             return kGdbReplyOK;  // TODO: we'll just tell it write was fine
+           }},
+          // Read all registers
+          {"g", [&](const GDBCommand& cmd) { return ReadRegisters(); }},
+
+          // Attach to specific process ID - IDA used to send this, but doesn't
+          // after some changes?
+          {"vAttach", [&](const GDBCommand& cmd) { return "S05"; }},
+
+          // Get current debugger thread ID
+          {"qC",
+           [&](const GDBCommand& cmd) {
+             return "QC" + std::to_string(cache_.cur_thread_info()->thread_id);
+           }},
+          // Set current debugger thread ID
           {"H",
            [&](const GDBCommand& cmd) {
-             // Set current debugger thread ID
+             // Reset to known good ID
+             cache_.cur_thread_id =
+                 cache_.thread_debug_infos.size()
+                     ? cache_.thread_debug_infos[0]->thread_id
+                     : -1;
+
+             // Check if the desired thread ID exists
              int threadId = std::stol(cmd.data.substr(1), 0, 16);
-             cache_.cur_thread_id = cache_.thread_debug_infos[0]->thread_id;
              for (auto& thread : cache_.thread_debug_infos) {
                if (thread->thread_id == threadId) {
                  cache_.cur_thread_id = threadId;
                  break;
                }
              }
+
              return kGdbReplyOK;
            }},
+
+          // Create breakpoint
           {"Z",
            [&](const GDBCommand& cmd) {
              auto& hex_addr = cmd.data.substr(2);
@@ -844,6 +865,7 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              CreateCodeBreakpoint(addr);
              return kGdbReplyOK;
            }},
+          // Delete breakpoint
           {"z",
            [&](const GDBCommand& cmd) {
              auto& hex_addr = cmd.data.substr(2);
@@ -852,6 +874,8 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              DeleteCodeBreakpoint(addr);
              return kGdbReplyOK;
            }},
+
+          // Data transfer
           {"qXfer",
            [&](const GDBCommand& cmd) {
              auto param = cmd.data;
@@ -866,10 +890,12 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              }
              return std::string(kGdbReplyError);
            }},
+          // Supported features (TODO: memory map)
           {"qSupported",
            [&](const GDBCommand& cmd) {
              return "PacketSize=1024;qXfer:features:read+;qXfer:threads:read+";
            }},
+          // Thread list (IDA requests this but ignores in favor of qXfer?)
           {"qfThreadInfo",
            [&](const GDBCommand& cmd) {
              std::string result;
@@ -879,11 +905,6 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              }
              return "m" + result;
            }},
-          {"qC",
-           [&](const GDBCommand& cmd) {
-             return "QC" + std::to_string(cache_.cur_thread_info()->thread_id);
-           }},
-          {"\03", [&](const GDBCommand& cmd) { return ExecutionPause(); }},
       };
 
   auto it = command_map.find(command.cmd);
