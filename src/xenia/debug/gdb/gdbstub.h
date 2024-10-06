@@ -73,7 +73,7 @@ class GDBStub : public cpu::DebugListener {
 
   std::string GetThreadStateReply(uint32_t thread_id, uint8_t signal);
 
-  void CreateCodeBreakpoint(uint64_t address);
+  bool CreateCodeBreakpoint(uint64_t address);
   void DeleteCodeBreakpoint(uint64_t address);
   void DeleteCodeBreakpoint(cpu::Breakpoint* breakpoint);
   cpu::Breakpoint* LookupBreakpointAtAddress(uint64_t address);

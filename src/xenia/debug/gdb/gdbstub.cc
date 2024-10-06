@@ -692,7 +692,7 @@ std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
   return "S05";
 }
 
-void GDBStub::CreateCodeBreakpoint(uint64_t address) {
+bool GDBStub::CreateCodeBreakpoint(uint64_t address) {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: Adding breakpoint: {:X}\n", address);
 #endif
@@ -705,16 +705,30 @@ void GDBStub::CreateCodeBreakpoint(uint64_t address) {
         OnBreakpointHit(breakpoint, thread_info);
       });
 
+  // Fetch list of host addrs used by the new BP
+  std::vector<uintptr_t> host_addresses;
+  breakpoint->ForEachHostAddress([&host_addresses](uintptr_t host_address) {
+    host_addresses.push_back(host_address);
+  });
+
   auto& map = state.code_breakpoints_by_guest_address;
-  auto it = map.find(breakpoint->guest_address());
-  if (it != map.end()) {
-    // Already exists!
-    return;
+  for (auto& kvp : map) {
+    if (kvp.first == breakpoint->guest_address()) {
+      return false;  // Already exists!
+    }
+    for (auto& host_address : host_addresses) {
+      if (kvp.second->ContainsHostAddress(host_address)) {
+        return false;  // Host addr is in use by another BP already
+      }
+    }
   }
+
   map.emplace(breakpoint->guest_address(), breakpoint.get());
 
   processor_->AddBreakpoint(breakpoint.get());
   state.all_breakpoints.emplace_back(std::move(breakpoint));
+
+  return true;
 }
 
 void GDBStub::DeleteCodeBreakpoint(uint64_t address) {
@@ -881,8 +895,8 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              auto& hex_addr = cmd.data.substr(2);
              uint64_t addr = std::stoull(hex_addr.substr(0, hex_addr.find(',')),
                                          nullptr, 16);
-             CreateCodeBreakpoint(addr);
-             return kGdbReplyOK;
+
+             return CreateCodeBreakpoint(addr) ? kGdbReplyOK : kGdbReplyError;
            }},
           // Delete breakpoint
           {"z",
