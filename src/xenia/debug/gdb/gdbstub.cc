@@ -9,17 +9,12 @@
 
 #include "xenia/debug/gdb/gdbstub.h"
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
-
-// Link with ws2_32.lib
-#pragma comment(lib, "ws2_32.lib")
 
 #include "xenia/base/clock.h"
 #include "xenia/base/debugging.h"
@@ -58,7 +53,7 @@ constexpr const char* kGdbReplyError = "E01";
 constexpr int kSignalSigtrap = 5;
 
 // must start with l for debugger to accept it
-// TODO: add power-altivec.xml (and update get_reg to support it)
+// TODO: add power-altivec.xml (and update ReadRegister to support it)
 constexpr char target_xml[] =
     R"(l<?xml version="1.0"?>
 <!DOCTYPE target SYSTEM "gdb-target.dtd">
@@ -184,6 +179,24 @@ uint8_t from_hexchar(char c) {
   return 0;
 }
 
+std::string GDBStub::DebuggerDetached() {
+  // Delete all breakpoints
+  auto& state = cache_.breakpoints;
+
+  for (auto& breakpoint : state.all_breakpoints) {
+    processor_->RemoveBreakpoint(breakpoint.get());
+  }
+
+  state.code_breakpoints_by_guest_address.clear();
+  state.all_breakpoints.clear();
+
+  if (processor_->execution_state() == cpu::ExecutionState::kPaused) {
+    ExecutionContinue();
+  }
+
+  return kGdbReplyOK;
+}
+
 std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
                                   uint32_t rid) {
   // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
@@ -242,23 +255,9 @@ std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
 GDBStub::GDBStub(Emulator* emulator, int listen_port)
     : emulator_(emulator),
       processor_(emulator->processor()),
-      listen_port_(listen_port),
-      client_socket_(0),
-      server_socket_(0) {}
+      listen_port_(listen_port) {}
 
-GDBStub::~GDBStub() {
-  stop_thread_ = true;
-  if (listener_thread_.joinable()) {
-    listener_thread_.join();
-  }
-  if (server_socket_ != INVALID_SOCKET) {
-    closesocket(server_socket_);
-  }
-  if (client_socket_ != INVALID_SOCKET) {
-    closesocket(client_socket_);
-  }
-  WSACleanup();
-}
+GDBStub::~GDBStub() { stop_thread_ = true; }
 
 std::unique_ptr<GDBStub> GDBStub::Create(Emulator* emulator, int listen_port) {
   std::unique_ptr<GDBStub> debugger(new GDBStub(emulator, listen_port));
@@ -270,71 +269,31 @@ std::unique_ptr<GDBStub> GDBStub::Create(Emulator* emulator, int listen_port) {
 }
 
 bool GDBStub::Initialize() {
-  WSADATA wsaData;
-  int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-  if (result != 0) {
-    XELOGE("GDBStub::Initialize: WSAStartup failed with error %d", result);
-    return false;
-  }
-
-  listener_thread_ = std::thread(&GDBStub::Listen, this);
+  socket_ = xe::SocketServer::Create(
+      listen_port_, [this](std::unique_ptr<Socket> client) { Listen(client); });
 
   UpdateCache();
   return true;
 }
 
-bool GDBStub::CreateSocket(int port) {
-  server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_socket_ == INVALID_SOCKET) {
-    XELOGE("GDBStub::CreateSocket: Socket creation failed");
-    return false;
-  }
-
-  sockaddr_in server_addr{};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-
-  if (bind(server_socket_, (struct sockaddr*)&server_addr,
-           sizeof(server_addr)) == SOCKET_ERROR) {
-    XELOGE("GDBStub::CreateSocket: Socket bind failed");
-    return false;
-  }
-
-  if (listen(server_socket_, 1) == SOCKET_ERROR) {
-    XELOGE("GDBStub::CreateSocket: Socket listen failed");
-    return false;
-  }
-
-  return true;
-}
-
-bool GDBStub::Accept() {
-  client_socket_ = accept(server_socket_, nullptr, nullptr);
-  if (client_socket_ == INVALID_SOCKET) {
-    XELOGE("GDBStub::Accept: Socket accept failed");
-    return false;
-  }
-  return true;
-}
-
-void GDBStub::Listen() {
-  if (!CreateSocket(listen_port_)) {
-    return;
-  }
-  if (!Accept()) {
-    return;
-  }
-
+void GDBStub::Listen(std::unique_ptr<Socket>& client) {
   // Client is connected - pause execution
   ExecutionPause();
   UpdateCache();
 
-  u_long mode = 1;  // 1 to enable non-blocking mode
-  ioctlsocket(client_socket_, FIONBIO, &mode);
+  client->set_nonblocking(true);
+
+  std::string receive_buffer;
 
   while (!stop_thread_) {
-    if (!ProcessIncomingData()) {
+    if (!client->is_connected()) {
+      break;
+    }
+
+    if (!ProcessIncomingData(client, receive_buffer)) {
+      if (!client->is_connected()) {
+        break;
+      }
       // No data available, can do other work or sleep
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -345,8 +304,8 @@ void GDBStub::Listen() {
       if (cache_.notify_stopped) {
         if (cache_.notify_bp_thread_id != -1)
           cache_.cur_thread_id = cache_.notify_bp_thread_id;
-        SendPacket(
-            GetThreadStateReply(cache_.notify_bp_thread_id, kSignalSigtrap));
+        SendPacket(client, GetThreadStateReply(cache_.notify_bp_thread_id,
+                                               kSignalSigtrap));
         cache_.notify_bp_thread_id = -1;
         cache_.notify_stopped = false;
       }
@@ -354,7 +313,8 @@ void GDBStub::Listen() {
   }
 }
 
-void GDBStub::SendPacket(const std::string& data) {
+void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
+                         const std::string& data) {
   std::stringstream ss;
   ss << char(GdbStubControl::PacketStart) << data
      << char(GdbStubControl::PacketEnd);
@@ -365,7 +325,7 @@ void GDBStub::SendPacket(const std::string& data) {
   ss << std::hex << std::setw(2) << std::setfill('0') << (checksum & 0xff);
   std::string packet = ss.str();
 
-  send(client_socket_, packet.c_str(), int(packet.size()), 0);
+  client->Send(packet.c_str(), packet.size());
 }
 
 #ifdef DEBUG
@@ -388,6 +348,7 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
       {"qSupported", "Supported"},
       {"qfThreadInfo", "qfThreadInfo"},
       {"qC", "GetThreadId"},
+      {"D", "Detach"},
       {"\03", "Break"},
   };
 
@@ -401,77 +362,82 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
 }
 #endif
 
-bool GDBStub::ProcessIncomingData() {
+bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
+                                  std::string& receive_buffer) {
   char buffer[1024];
-  int received = recv(client_socket_, buffer, sizeof(buffer), 0);
+  size_t received = client->Receive(buffer, sizeof(buffer));
+  if (received == -1 || received == 0) {
+    return false;
+  }
 
-  if (received > 0) {
-    receive_buffer_.append(buffer, received);
+  receive_buffer.append(buffer, received);
 
-    // Hacky interrupt '\03' packet handling, some reason checksum isn't
-    // attached to this?
-    bool isInterrupt =
-        buffer[0] == char(GdbStubControl::Interrupt) && received == 1;
+  // Hacky interrupt '\03' packet handling, some reason checksum isn't
+  // attached to this?
+  bool isInterrupt =
+      buffer[0] == char(GdbStubControl::Interrupt) && received == 1;
 
-    size_t packet_end;
-    while (isInterrupt ||
-           (packet_end = receive_buffer_.find('#')) != std::string::npos) {
-      if (isInterrupt || packet_end + 2 < receive_buffer_.length()) {
-        if (isInterrupt) {
-          current_packet_ = char(GdbStubControl::Interrupt);
-          receive_buffer_ = "";
-          isInterrupt = false;
-        } else {
-          current_packet_ = receive_buffer_.substr(0, packet_end + 3);
-          receive_buffer_ = receive_buffer_.substr(packet_end + 3);
-        }
+  // Check if we've received a full packet yet, if not exit and allow caller
+  // to try again
+  size_t packet_end;
+  while (isInterrupt ||
+         (packet_end = receive_buffer.find('#')) != std::string::npos) {
+    if (isInterrupt || packet_end + 2 < receive_buffer.length()) {
+      std::string current_packet;
+      if (isInterrupt) {
+        current_packet = char(GdbStubControl::Interrupt);
+        receive_buffer = "";
+        isInterrupt = false;
+      } else {
+        current_packet = receive_buffer.substr(0, packet_end + 3);
+        receive_buffer = receive_buffer.substr(packet_end + 3);
+      }
 
-        GDBCommand command;
-        if (ParsePacket(command)) {
+      GDBCommand command;
+      if (ParsePacket(current_packet, command)) {
 #ifdef DEBUG
-          auto packet_name = GetPacketFriendlyName(command.cmd);
+        auto packet_name = GetPacketFriendlyName(command.cmd);
 
-          debugging::DebugPrint("GDBStub: Packet {}({})\n",
-                                packet_name.empty() ? command.cmd : packet_name,
-                                command.data);
+        debugging::DebugPrint("GDBStub: Packet {}({})\n",
+                              packet_name.empty() ? command.cmd : packet_name,
+                              command.data);
 #endif
 
-          GdbStubControl result = GdbStubControl::Ack;
-          send(client_socket_, (const char*)&result, 1, 0);
-          std::string response = HandleGDBCommand(command);
-          SendPacket(response);
-        } else {
-          GdbStubControl result = GdbStubControl::Nack;
-          send(client_socket_, (const char*)&result, 1, 0);
-        }
+        GdbStubControl result = GdbStubControl::Ack;
+        client->Send(&result, 1);
+        std::string response = HandleGDBCommand(command);
+        SendPacket(client, response);
       } else {
-        break;
+        GdbStubControl result = GdbStubControl::Nack;
+        client->Send(&result, 1);
       }
+    } else {
+      break;
     }
   }
 
-  return received > 0;
+  return true;
 }
 
-bool GDBStub::ParsePacket(GDBCommand& out_cmd) {
-  // Index to track position in current_packet_
+bool GDBStub::ParsePacket(const std::string& packet, GDBCommand& out_cmd) {
+  // Index to track position in packet
   size_t buffer_index = 0;
 
   // Read a character from the buffer and increment index
   auto ReadCharFromBuffer = [&]() -> char {
-    if (buffer_index >= current_packet_.size()) {
+    if (buffer_index >= packet.size()) {
       return '\0';
     }
-    return current_packet_[buffer_index++];
+    return packet[buffer_index++];
   };
 
   // Parse two hex digits from buffer
   auto ReadHexByteFromBuffer = [&]() -> char {
-    if (buffer_index + 2 > current_packet_.size()) {
+    if (buffer_index + 2 > packet.size()) {
       return 0;
     }
-    char high = current_packet_[buffer_index++];
-    char low = current_packet_[buffer_index++];
+    char high = packet[buffer_index++];
+    char low = packet[buffer_index++];
     return (from_hexchar(high) << 4) | from_hexchar(low);
   };
 
@@ -834,6 +800,9 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
            [&](const GDBCommand& cmd) {
              return "S05";  // tell debugger we're currently paused
            }},
+
+          // Detach
+          {"D", [&](const GDBCommand& cmd) { return DebuggerDetached(); }},
 
           // Enable extended mode
           {"!", [&](const GDBCommand& cmd) { return kGdbReplyOK; }},

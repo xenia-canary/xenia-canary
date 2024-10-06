@@ -113,6 +113,15 @@ class Win32Socket : public Socket {
     return socket_ != INVALID_SOCKET;
   }
 
+  void set_nonblocking(bool nonblocking) override {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (socket_ == INVALID_SOCKET) {
+      return;
+    }
+    u_long val = nonblocking ? 1 : 0;
+    ioctlsocket(socket_, FIONBIO, &val);
+  }
+
   void Close() override {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
