@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "xenia/base/host_thread_context.h"
+#include "xenia/base/socket.h"
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/debug_listener.h"
 #include "xenia/cpu/processor.h"
@@ -51,16 +52,16 @@ class GDBStub : public cpu::DebugListener {
   explicit GDBStub(Emulator* emulator, int listen_port);
   bool Initialize();
 
-  bool CreateSocket(int port);
-  bool Accept();
-  void Listen();
-  void SendPacket(const std::string& data);
-  bool ProcessIncomingData();
-  bool ParsePacket(GDBCommand& out_cmd);
+  void Listen(std::unique_ptr<Socket>& client);
+  void SendPacket(std::unique_ptr<Socket>& client, const std::string& data);
+  bool ProcessIncomingData(std::unique_ptr<Socket>& client,
+                           std::string& receive_buffer);
+  bool ParsePacket(const std::string& packet, GDBCommand& out_cmd);
   std::string HandleGDBCommand(const GDBCommand& command);
 
   void UpdateCache();
 
+  std::string DebuggerDetached();
   std::string ReadRegister(xe::cpu::ThreadDebugInfo* thread, uint32_t rid);
   std::string ReadRegister(const std::string& data);
   std::string ReadRegisters();
@@ -82,13 +83,11 @@ class GDBStub : public cpu::DebugListener {
   cpu::Processor* processor_ = nullptr;
 
   int listen_port_;
-  std::thread listener_thread_;
-  uint64_t server_socket_, client_socket_;
+  std::unique_ptr<xe::SocketServer> socket_;
+
   std::mutex mtx_;
   std::condition_variable cv_;
   bool stop_thread_ = false;
-  std::string receive_buffer_;
-  std::string current_packet_;
 
   struct EmulatorStateCache {
     uint32_t cur_thread_id = -1;
