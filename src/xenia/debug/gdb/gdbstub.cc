@@ -523,6 +523,54 @@ std::string GDBStub::RegisterRead(xe::cpu::ThreadDebugInfo* thread,
   // gpr
   return string_util::to_hex_string((uint32_t)thread->guest_context.r[rid]);
 }
+std::string GDBStub::RegisterWrite(xe::cpu::ThreadDebugInfo* thread,
+                                   uint32_t rid, const std::string_view value) {
+  auto* guest_context = thread->thread->thread_state()->context();
+  switch (rid) {
+    // pc
+    case 64:
+      return kGdbReplyOK;  // TODO: figure a way to change this
+    case 65:
+      guest_context->msr = string_util::from_string<uint32_t>(value, true);
+      thread->guest_context.msr = guest_context->msr;
+      return kGdbReplyOK;
+    case 66:
+      // CR
+      return kGdbReplyOK;  // TODO: figure a way to change this
+    case 67:
+      guest_context->lr = string_util::from_string<uint32_t>(value, true);
+      thread->guest_context.lr = guest_context->lr;
+      return kGdbReplyOK;
+    case 68:
+      guest_context->ctr = string_util::from_string<uint32_t>(value, true);
+      thread->guest_context.ctr = guest_context->ctr;
+      return kGdbReplyOK;
+    // xer
+    case 69:
+      return kGdbReplyOK;
+    case 70:
+      guest_context->fpscr.value =
+          string_util::from_string<uint32_t>(value, true);
+      thread->guest_context.fpscr.value = guest_context->fpscr.value;
+      return kGdbReplyOK;
+  }
+
+  if (rid > 70) {
+    return kGdbReplyError;
+  }
+
+  // fpr
+  if (rid > 31) {
+    guest_context->f[rid - 32] = string_util::from_string<double>(value, true);
+    thread->guest_context.f[rid - 32] = guest_context->f[rid - 32];
+    return kGdbReplyOK;
+  }
+
+  // gpr
+  guest_context->r[rid] = string_util::from_string<uint32_t>(value, true);
+  thread->guest_context.r[rid] = guest_context->r[rid];
+  return kGdbReplyOK;
+}
 
 std::string GDBStub::RegisterRead(const std::string& data) {
   auto* thread = cache_.cur_thread_info();
@@ -535,6 +583,22 @@ std::string GDBStub::RegisterRead(const std::string& data) {
     return kGdbReplyError;
   }
   return result;
+}
+
+std::string GDBStub::RegisterWrite(const std::string& data) {
+  auto* thread = cache_.cur_thread_info();
+  if (!thread) {
+    return kGdbReplyError;
+  }
+
+  auto value_sep = data.find('=');
+  if (value_sep == std::string::npos) {
+    return kGdbReplyError;
+  }
+
+  uint32_t rid =
+      string_util::from_string<uint32_t>(data.substr(0, value_sep), true);
+  return RegisterWrite(thread, rid, data.data() + value_sep + 1);
 }
 
 std::string GDBStub::RegisterReadAll() {
@@ -901,10 +965,7 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           // Read register
           {"p", [&](const GDBCommand& cmd) { return RegisterRead(cmd.data); }},
           // Write register
-          {"P",
-           [&](const GDBCommand& cmd) {
-             return kGdbReplyOK;  // TODO: we'll just tell it write was fine
-           }},
+          {"P", [&](const GDBCommand& cmd) { return RegisterWrite(cmd.data); }},
           // Read all registers
           {"g", [&](const GDBCommand& cmd) { return RegisterReadAll(); }},
 

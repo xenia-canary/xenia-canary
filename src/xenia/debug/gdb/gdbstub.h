@@ -63,7 +63,10 @@ class GDBStub : public cpu::DebugListener {
 
   std::string DebuggerDetached();
   std::string RegisterRead(xe::cpu::ThreadDebugInfo* thread, uint32_t rid);
+  std::string RegisterWrite(xe::cpu::ThreadDebugInfo* thread, uint32_t rid,
+                            const std::string_view value);
   std::string RegisterRead(const std::string& data);
+  std::string RegisterWrite(const std::string& data);
   std::string RegisterReadAll();
   std::string ExecutionPause();
   std::string ExecutionContinue();
