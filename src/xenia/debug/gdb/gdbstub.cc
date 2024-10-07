@@ -260,6 +260,7 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
       {"p", "RegRead"},
       {"P", "RegWrite"},
       {"g", "RegReadAll"},
+      {"G", "RegWriteAll"},
       {"C", "Continue"},
       {"c", "continue"},
       {"s", "step"},
@@ -612,6 +613,28 @@ std::string GDBStub::RegisterReadAll() {
     result += RegisterRead(thread, i);
   }
   return result;
+}
+
+std::string GDBStub::RegisterWriteAll(const std::string& data) {
+  auto* thread = cache_.cur_thread_info();
+  if (!thread) {
+    return kGdbReplyError;
+  }
+
+  int string_offset = 0;
+  for (int i = 0; i < 71; ++i) {
+    int reg_size = 8;  // 8 hex-nibbles per 32-bit register
+    if (i > 31 && i < 64) {
+      reg_size = 16;  // 16 hex-nibbles for 64-bit FPR registers
+    }
+
+    std::string_view reg_data(data.data() + string_offset, reg_size);
+    RegisterWrite(thread, i, reg_data);  // TODO: check return value
+
+    string_offset += reg_size;
+  }
+
+  return kGdbReplyOK;
 }
 
 std::string GDBStub::ExecutionPause() {
@@ -968,6 +991,9 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           {"P", [&](const GDBCommand& cmd) { return RegisterWrite(cmd.data); }},
           // Read all registers
           {"g", [&](const GDBCommand& cmd) { return RegisterReadAll(); }},
+          // Write all registers
+          {"G",
+           [&](const GDBCommand& cmd) { return RegisterWriteAll(cmd.data); }},
 
           // Attach to specific process ID - IDA used to send this, but doesn't
           // after some changes?
