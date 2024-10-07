@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2022 Ben Vanik. All rights reserved.                             *
+ * Copyright 2024 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -69,8 +69,6 @@ class GDBStub : public cpu::DebugListener {
   std::string ExecutionContinue();
   std::string ExecutionStep();
   std::string ReadMemory(const std::string& data);
-  std::string BuildMemoryMap();
-  std::string BuildTargetXml();
   std::string BuildThreadList();
 
   std::string GetThreadStateReply(uint32_t thread_id, uint8_t signal);
