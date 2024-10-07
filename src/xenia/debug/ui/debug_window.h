@@ -44,6 +44,7 @@ class DebugWindow : public cpu::DebugListener {
 
   void OnFocus() override;
   void OnDetached() override;
+  void OnUnhandledException(Exception* ex) override;
   void OnExecutionPaused() override;
   void OnExecutionContinued() override;
   void OnExecutionEnded() override;

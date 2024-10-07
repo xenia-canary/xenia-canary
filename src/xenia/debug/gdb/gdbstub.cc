@@ -27,6 +27,7 @@
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/stack_walker.h"
+#include "xenia/cpu/thread.h"
 #include "xenia/kernel/xmodule.h"
 #include "xenia/kernel/xthread.h"
 
@@ -50,7 +51,9 @@ enum class GdbStubControl : char {
 constexpr const char* kGdbReplyOK = "OK";
 constexpr const char* kGdbReplyError = "E01";
 
-constexpr int kSignalSigtrap = 5;
+constexpr int kSignalSigill = 4;    // Illegal instruction
+constexpr int kSignalSigtrap = 5;   // Trace trap
+constexpr int kSignalSigsegv = 11;  // Segmentation fault
 
 // must start with l for debugger to accept it
 constexpr char kMemoryMapXml[] =
@@ -222,12 +225,26 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
       {
         std::unique_lock<std::mutex> lock(mtx_);
         if (cache_.notify_stopped) {
-          if (cache_.notify_bp_thread_id != -1) {
-            cache_.cur_thread_id = cache_.notify_bp_thread_id;
+          if (cache_.notify_thread_id != -1) {
+            cache_.cur_thread_id = cache_.notify_thread_id;
           }
-          SendPacket(client, GetThreadStateReply(cache_.notify_bp_thread_id,
-                                                 kSignalSigtrap));
-          cache_.notify_bp_thread_id = -1;
+
+          int sig_num = kSignalSigtrap;
+          if (cache_.notify_exception_code.has_value()) {
+            if (cache_.notify_exception_code ==
+                xe::Exception::Code::kIllegalInstruction) {
+              sig_num = kSignalSigill;
+            } else {
+              sig_num = kSignalSigsegv;
+            }
+
+            cache_.notify_exception_code.reset();
+            cache_.notify_exception_access_violation.reset();
+          }
+
+          SendPacket(client,
+                     GetThreadStateReply(cache_.notify_thread_id, sig_num));
+          cache_.notify_thread_id = -1;
           cache_.notify_stopped = false;
         }
       }
@@ -898,6 +915,17 @@ void GDBStub::OnDetached() {
   }
 }
 
+void GDBStub::OnUnhandledException(Exception* ex) {
+#ifdef DEBUG
+  debugging::DebugPrint("GDBStub: OnUnhandledException {} {}\n",
+                        int(ex->code()), int(ex->access_violation_operation()));
+#endif
+  std::unique_lock<std::mutex> lock(mtx_);
+  cache_.notify_exception_code = ex->code();
+  cache_.notify_exception_access_violation = ex->access_violation_operation();
+  cache_.notify_thread_id = cpu::Thread::GetCurrentThreadId();
+}
+
 void GDBStub::OnExecutionPaused() {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: OnExecutionPaused\n");
@@ -925,7 +953,7 @@ void GDBStub::OnStepCompleted(cpu::ThreadDebugInfo* thread_info) {
 #endif
   // Some debuggers like IDA will remove the current breakpoint & step into next
   // instruction, only re-adding BP after it's told about the step
-  cache_.notify_bp_thread_id = thread_info->thread_id;
+  cache_.notify_thread_id = thread_info->thread_id;
   cache_.last_bp_thread_id = thread_info->thread_id;
   UpdateCache();
 }
@@ -938,7 +966,7 @@ void GDBStub::OnBreakpointHit(Breakpoint* breakpoint,
 #endif
 
   cache_.notify_bp_guest_address = breakpoint->address();
-  cache_.notify_bp_thread_id = thread_info->thread_id;
+  cache_.notify_thread_id = thread_info->thread_id;
   cache_.last_bp_thread_id = thread_info->thread_id;
   UpdateCache();
 }

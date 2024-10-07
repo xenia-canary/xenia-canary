@@ -35,6 +35,7 @@ class GDBStub : public cpu::DebugListener {
 
   void OnFocus() override;
   void OnDetached() override;
+  void OnUnhandledException(Exception* ex) override;
   void OnExecutionPaused() override;
   void OnExecutionContinued() override;
   void OnExecutionEnded() override;
@@ -100,9 +101,11 @@ class GDBStub : public cpu::DebugListener {
     uint32_t last_bp_thread_id = -1;
 
     uint64_t notify_bp_guest_address = -1;
-    uint32_t notify_bp_thread_id = -1;
-    std::vector<std::string> notify_debug_messages;
+    uint32_t notify_thread_id = -1;
     bool notify_stopped = false;
+    std::optional<Exception::AccessViolationOperation>
+        notify_exception_access_violation;
+    std::optional<Exception::Code> notify_exception_code;
 
     bool is_stopped = false;
     std::vector<kernel::object_ref<kernel::XModule>> modules;

@@ -724,7 +724,7 @@ bool Processor::OnUnhandledException(Exception* ex) {
   execution_state_ = ExecutionState::kPaused;
 
   // Notify debugger that exceution stopped.
-  // debug_listener_->OnException(info);
+  debug_listener_->OnUnhandledException(ex);
   debug_listener_->OnExecutionPaused();
 
   // Suspend self.
