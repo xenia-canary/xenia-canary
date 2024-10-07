@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2022 Ben Vanik. All rights reserved.                             *
+ * Copyright 2024 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -52,7 +52,8 @@ constexpr const char* kGdbReplyError = "E01";
 
 constexpr int kSignalSigtrap = 5;
 
-constexpr char memory_map[] =
+// must start with l for debugger to accept it
+constexpr char kMemoryMapXml[] =
     R"(l<?xml version="1.0"?>
 <memory-map>
   <!-- Based on memory.cc Initialize() -->
@@ -66,9 +67,8 @@ constexpr char memory_map[] =
 </memory-map>
 )";
 
-// must start with l for debugger to accept it
 // TODO: add power-altivec.xml (and update ReadRegister to support it)
-constexpr char target_xml[] =
+constexpr char kTargetXml[] =
     R"(l<?xml version="1.0"?>
 <!DOCTYPE target SYSTEM "gdb-target.dtd">
 <target version="1.0">
@@ -152,26 +152,6 @@ constexpr char target_xml[] =
 </target>
 )";
 
-std::string u64_to_padded_hex(uint64_t value) {
-  return fmt::format("{:016x}", value);
-}
-
-std::string u32_to_padded_hex(uint32_t value) {
-  return fmt::format("{:08x}", value);
-}
-
-template <typename T>
-T hex_to(std::string_view val) {
-  T result;
-  std::from_chars(val.data(), val.data() + val.size(), result, 16);
-
-  return result;
-}
-
-constexpr auto& hex_to_u8 = hex_to<uint8_t>;
-constexpr auto& hex_to_u32 = hex_to<uint32_t>;
-constexpr auto& hex_to_u64 = hex_to<uint64_t>;
-
 std::string to_hexbyte(uint8_t i) {
   std::string result = "00";
   uint8_t i1 = i & 0xF;
@@ -191,60 +171,6 @@ uint8_t from_hexchar(char c) {
     return c - 'A' + 10;
   }
   return 0;
-}
-
-std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
-                                  uint32_t rid) {
-  // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
-  // mode (eg. IDA will switch to 64-bit and refuse to allow decompiler to work
-  // with it)
-  //
-  // TODO: add altivec/VMX registers here...
-  //
-  // ids from gdb/features/rs6000/powerpc-64.c
-  switch (rid) {
-    // pc
-    case 64: {
-      // If we recently hit a BP then debugger is likely asking for registers
-      // for it
-      //
-      // Lie about the PC and say it's the BP address, since PC might not always
-      // match
-      if (cache_.notify_bp_guest_address != -1) {
-        auto ret = u32_to_padded_hex((uint32_t)cache_.notify_bp_guest_address);
-        cache_.notify_bp_guest_address = -1;
-        return ret;
-      }
-      // Search for first frame that has guest_pc attached, GDB doesn't care
-      // about host
-      for (auto& frame : thread->frames) {
-        if (frame.guest_pc != 0) {
-          return u32_to_padded_hex((uint32_t)frame.guest_pc);
-        }
-      }
-      return u32_to_padded_hex(0);
-    }
-    case 65:
-      return u32_to_padded_hex((uint32_t)thread->guest_context.msr);
-    case 66:
-      return u32_to_padded_hex((uint32_t)thread->guest_context.cr());
-    case 67:
-      return u32_to_padded_hex((uint32_t)thread->guest_context.lr);
-    case 68:
-      return u32_to_padded_hex((uint32_t)thread->guest_context.ctr);
-    // xer
-    case 69:
-      return std::string(8, 'x');
-    // fpscr
-    case 70:
-      return u32_to_padded_hex(thread->guest_context.fpscr.value);
-    default:
-      if (rid > 70) return "";
-      return (rid > 31) ? u64_to_padded_hex(*(uint64_t*)&(
-                              thread->guest_context.f[rid - 32]))  // fpr
-                        : u32_to_padded_hex(
-                              (uint32_t)thread->guest_context.r[rid]);  // gpr
-  }
 }
 
 GDBStub::GDBStub(Emulator* emulator, int listen_port)
@@ -362,7 +288,8 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
                                   std::string& receive_buffer) {
   char buffer[1024];
   size_t received = client->Receive(buffer, sizeof(buffer));
-  if (received == -1 || received == 0) {
+  if (received == uint64_t(-1) ||  // disconnected
+      received == 0) {
     return false;
   }
 
@@ -533,15 +460,75 @@ void GDBStub::UpdateCache() {
   }
 }
 
+std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
+                                  uint32_t rid) {
+  // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
+  // mode (eg. IDA will switch to 64-bit and refuse to allow decompiler to work
+  // with it)
+  //
+  // TODO: add altivec/VMX registers here...
+  //
+  // ids from gdb/features/rs6000/powerpc-64.c
+  switch (rid) {
+    // pc
+    case 64: {
+      // If we recently hit a BP then debugger is likely asking for registers
+      // for it
+      //
+      // Lie about the PC and say it's the BP addr, since the PC (derived from
+      // X64 host addr) might not match expected BP addr
+      if (cache_.notify_bp_guest_address != -1) {
+        auto ret = string_util::to_hex_string(
+            (uint32_t)cache_.notify_bp_guest_address);
+        cache_.notify_bp_guest_address = -1;
+        return ret;
+      }
+      // Search for first frame that has guest_pc attached, GDB doesn't care
+      // about host
+      for (auto& frame : thread->frames) {
+        if (frame.guest_pc != 0) {
+          return string_util::to_hex_string((uint32_t)frame.guest_pc);
+        }
+      }
+      return string_util::to_hex_string((uint32_t)0);
+    }
+    case 65:
+      return string_util::to_hex_string((uint32_t)thread->guest_context.msr);
+    case 66:
+      return string_util::to_hex_string((uint32_t)thread->guest_context.cr());
+    case 67:
+      return string_util::to_hex_string((uint32_t)thread->guest_context.lr);
+    case 68:
+      return string_util::to_hex_string((uint32_t)thread->guest_context.ctr);
+    // xer
+    case 69:
+      return std::string(8, 'x');
+    case 70:
+      return string_util::to_hex_string(thread->guest_context.fpscr.value);
+  }
+
+  if (rid > 70) {
+    return "";
+  }
+
+  // fpr
+  if (rid > 31) {
+    return string_util::to_hex_string(thread->guest_context.f[rid - 32]);
+  }
+
+  // gpr
+  return string_util::to_hex_string((uint32_t)thread->guest_context.r[rid]);
+}
+
 std::string GDBStub::ReadRegister(const std::string& data) {
   auto* thread = cache_.cur_thread_info();
   if (!thread) {
     return kGdbReplyError;
   }
-  uint32_t rid = hex_to_u32(data);
+  uint32_t rid = string_util::from_string<uint32_t>(data, true);
   std::string result = ReadRegister(thread, rid);
   if (result.empty()) {
-    return kGdbReplyError;  // TODO: is this error correct?
+    return kGdbReplyError;
   }
   return result;
 }
@@ -592,8 +579,8 @@ std::string GDBStub::ExecutionStep() {
 
 std::string GDBStub::ReadMemory(const std::string& data) {
   auto s = data.find(',');
-  uint32_t addr = hex_to_u32(data.substr(0, s));
-  uint32_t len = hex_to_u32(data.substr(s + 1));
+  uint32_t addr = string_util::from_string<uint32_t>(data.substr(0, s), true);
+  uint32_t len = string_util::from_string<uint32_t>(data.substr(s + 1), true);
   std::string result;
   result.reserve(len * 2);
 
@@ -620,10 +607,6 @@ std::string GDBStub::ReadMemory(const std::string& data) {
 
   return result;
 }
-
-std::string GDBStub::BuildMemoryMap() { return memory_map; }
-
-std::string GDBStub::BuildTargetXml() { return target_xml; }
 
 std::string GDBStub::BuildThreadList() {
   std::string buffer;
@@ -661,10 +644,9 @@ std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
       pc_value = cache_.notify_bp_guest_address;
     }
 
-    return fmt::format(
-        "T{:02x}{:02x}:{};{:02x}:{};thread:{:x};", signal, PC_REGISTER,
-        u32_to_padded_hex((uint32_t)pc_value), LR_REGISTER,
-        u32_to_padded_hex((uint32_t)thread->guest_context.lr), thread_id);
+    return fmt::format("T{:02x}{:02x}:{:08x};{:02x}:{:08x};thread:{:x};",
+                       signal, PC_REGISTER, uint32_t(pc_value), LR_REGISTER,
+                       uint32_t(thread->guest_context.lr), thread_id);
   }
   return "S05";
 }
@@ -925,15 +907,15 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
              }
              auto sub_cmd = param.substr(0, param.find(':'));
              if (sub_cmd == "features") {
-               return BuildTargetXml();
+               return std::string(kTargetXml);
              } else if (sub_cmd == "memory-map") {
-               return BuildMemoryMap();
+               return std::string(kMemoryMapXml);
              } else if (sub_cmd == "threads") {
                return BuildThreadList();
              }
              return std::string(kGdbReplyError);
            }},
-          // Supported features (TODO: memory map)
+          // Supported features
           {"qSupported",
            [&](const GDBCommand& cmd) {
              return "PacketSize=1024;qXfer:features:read+;qXfer:threads:read+;"
