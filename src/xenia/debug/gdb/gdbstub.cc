@@ -217,18 +217,19 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
       }
       // No data available, can do other work or sleep
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
 
-    // Check if we need to notify client about anything
-    {
-      std::unique_lock<std::mutex> lock(mtx_);
-      if (cache_.notify_stopped) {
-        if (cache_.notify_bp_thread_id != -1)
-          cache_.cur_thread_id = cache_.notify_bp_thread_id;
-        SendPacket(client, GetThreadStateReply(cache_.notify_bp_thread_id,
-                                               kSignalSigtrap));
-        cache_.notify_bp_thread_id = -1;
-        cache_.notify_stopped = false;
+      // Check if we need to notify client about anything
+      {
+        std::unique_lock<std::mutex> lock(mtx_);
+        if (cache_.notify_stopped) {
+          if (cache_.notify_bp_thread_id != -1) {
+            cache_.cur_thread_id = cache_.notify_bp_thread_id;
+          }
+          SendPacket(client, GetThreadStateReply(cache_.notify_bp_thread_id,
+                                                 kSignalSigtrap));
+          cache_.notify_bp_thread_id = -1;
+          cache_.notify_stopped = false;
+        }
       }
     }
   }
@@ -241,7 +242,9 @@ void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
      << char(GdbStubControl::PacketEnd);
 
   uint8_t checksum = 0;
-  for (char c : data) checksum += c;
+  for (char c : data) {
+    checksum += c;
+  }
 
   ss << std::hex << std::setw(2) << std::setfill('0') << (checksum & 0xff);
   std::string packet = ss.str();
@@ -254,17 +257,18 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
   static const std::unordered_map<std::string, std::string> command_names = {
       {"?", "StartupQuery"},
       {"!", "EnableExtendedMode"},
-      {"p", "ReadRegister"},
-      {"P", "WriteRegister"},
-      {"g", "ReadAllRegisters"},
+      {"p", "RegRead"},
+      {"P", "RegWrite"},
+      {"g", "RegReadAll"},
       {"C", "Continue"},
       {"c", "continue"},
       {"s", "step"},
       {"vAttach", "vAttach"},
       {"m", "MemRead"},
+      {"M", "MemWrite"},
       {"H", "SetThreadId"},
-      {"Z", "CreateCodeBreakpoint"},
-      {"z", "DeleteCodeBreakpoint"},
+      {"Z", "BreakpointCreate"},
+      {"z", "BreakpointDelete"},
       {"qXfer", "Xfer"},
       {"qSupported", "Supported"},
       {"qfThreadInfo", "qfThreadInfo"},
@@ -460,7 +464,7 @@ void GDBStub::UpdateCache() {
   }
 }
 
-std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
+std::string GDBStub::RegisterRead(xe::cpu::ThreadDebugInfo* thread,
                                   uint32_t rid) {
   // Send registers as 32-bit, otherwise some debuggers will switch to 64-bit
   // mode (eg. IDA will switch to 64-bit and refuse to allow decompiler to work
@@ -520,20 +524,20 @@ std::string GDBStub::ReadRegister(xe::cpu::ThreadDebugInfo* thread,
   return string_util::to_hex_string((uint32_t)thread->guest_context.r[rid]);
 }
 
-std::string GDBStub::ReadRegister(const std::string& data) {
+std::string GDBStub::RegisterRead(const std::string& data) {
   auto* thread = cache_.cur_thread_info();
   if (!thread) {
     return kGdbReplyError;
   }
   uint32_t rid = string_util::from_string<uint32_t>(data, true);
-  std::string result = ReadRegister(thread, rid);
+  std::string result = RegisterRead(thread, rid);
   if (result.empty()) {
     return kGdbReplyError;
   }
   return result;
 }
 
-std::string GDBStub::ReadRegisters() {
+std::string GDBStub::RegisterReadAll() {
   auto* thread = cache_.cur_thread_info();
   if (!thread) {
     return kGdbReplyError;
@@ -541,7 +545,7 @@ std::string GDBStub::ReadRegisters() {
   std::string result;
   result.reserve(68 * 16 + 3 * 8);
   for (int i = 0; i < 71; ++i) {
-    result += ReadRegister(thread, i);
+    result += RegisterRead(thread, i);
   }
   return result;
 }
@@ -571,18 +575,29 @@ std::string GDBStub::ExecutionStep() {
                         cache_.last_bp_thread_id);
 #endif
 
-  if (cache_.last_bp_thread_id != -1)
+  if (cache_.last_bp_thread_id != -1) {
     processor_->StepGuestInstruction(cache_.last_bp_thread_id);
+  }
 
   return kGdbReplyOK;
 }
 
-std::string GDBStub::ReadMemory(const std::string& data) {
-  auto s = data.find(',');
-  uint32_t addr = string_util::from_string<uint32_t>(data.substr(0, s), true);
-  uint32_t len = string_util::from_string<uint32_t>(data.substr(s + 1), true);
+std::string GDBStub::MemoryRead(const std::string& data) {
+  auto len_sep = data.find(',');
+
+  if (len_sep == std::string::npos) {
+    return kGdbReplyError;
+  }
+
+  uint32_t addr =
+      string_util::from_string<uint32_t>(data.substr(0, len_sep), true);
+  uint32_t len =
+      string_util::from_string<uint32_t>(data.substr(len_sep + 1), true);
+
   std::string result;
   result.reserve(len * 2);
+
+  auto global_lock = global_critical_region_.Acquire();
 
   // TODO: is there a better way to check if addr is valid?
   auto* heap = processor_->memory()->LookupHeap(addr);
@@ -606,6 +621,55 @@ std::string GDBStub::ReadMemory(const std::string& data) {
   }
 
   return result;
+}
+
+std::string GDBStub::MemoryWrite(const std::string& data) {
+  auto len_sep = data.find(',');
+  auto mem_sep = data.find(':');
+
+  if (len_sep == std::string::npos || mem_sep == std::string::npos) {
+    return kGdbReplyError;
+  }
+
+  uint32_t addr =
+      string_util::from_string<uint32_t>(data.substr(0, len_sep), true);
+  uint32_t len = string_util::from_string<uint32_t>(
+      data.substr(len_sep + 1, mem_sep - (len_sep + 1)), true);
+
+  auto global_lock = global_critical_region_.Acquire();
+
+  auto* heap = processor_->memory()->LookupHeap(addr);
+  if (!heap) {
+    return kGdbReplyError;
+  }
+  uint32_t protect = 0;
+  if (!heap->QueryProtect(addr, &protect) ||
+      (protect & kMemoryProtectRead) != kMemoryProtectRead) {
+    return kGdbReplyError;
+  }
+
+  if (len == 0) {
+    return kGdbReplyOK;
+  }
+
+  uint32_t old_protect = 0;
+  bool mem_unprotected =
+      heap->Protect(addr, len, protect | kMemoryProtectWrite, &old_protect);
+  if (!mem_unprotected) {
+    return kGdbReplyError;
+  }
+
+  std::vector<uint8_t> mem_data;
+  string_util::hex_string_to_array(mem_data,
+                                   std::string_view(data.data() + mem_sep + 1));
+  auto* mem = processor_->memory()->TranslateVirtual(addr);
+  for (uint32_t i = 0; i < len; ++i) {
+    mem[i] = mem_data[i];
+  }
+
+  heap->Protect(addr, len, old_protect);
+
+  return kGdbReplyOK;
 }
 
 std::string GDBStub::BuildThreadList() {
@@ -830,16 +894,19 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           {"\03", [&](const GDBCommand& cmd) { return ExecutionPause(); }},
 
           // Read memory
-          {"m", [&](const GDBCommand& cmd) { return ReadMemory(cmd.data); }},
+          {"m", [&](const GDBCommand& cmd) { return MemoryRead(cmd.data); }},
+          // Write memory
+          {"M", [&](const GDBCommand& cmd) { return MemoryWrite(cmd.data); }},
+
           // Read register
-          {"p", [&](const GDBCommand& cmd) { return ReadRegister(cmd.data); }},
+          {"p", [&](const GDBCommand& cmd) { return RegisterRead(cmd.data); }},
           // Write register
           {"P",
            [&](const GDBCommand& cmd) {
              return kGdbReplyOK;  // TODO: we'll just tell it write was fine
            }},
           // Read all registers
-          {"g", [&](const GDBCommand& cmd) { return ReadRegisters(); }},
+          {"g", [&](const GDBCommand& cmd) { return RegisterReadAll(); }},
 
           // Attach to specific process ID - IDA used to send this, but doesn't
           // after some changes?
