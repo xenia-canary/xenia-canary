@@ -62,13 +62,14 @@ class GDBStub : public cpu::DebugListener {
   void UpdateCache();
 
   std::string DebuggerDetached();
-  std::string ReadRegister(xe::cpu::ThreadDebugInfo* thread, uint32_t rid);
-  std::string ReadRegister(const std::string& data);
-  std::string ReadRegisters();
+  std::string RegisterRead(xe::cpu::ThreadDebugInfo* thread, uint32_t rid);
+  std::string RegisterRead(const std::string& data);
+  std::string RegisterReadAll();
   std::string ExecutionPause();
   std::string ExecutionContinue();
   std::string ExecutionStep();
-  std::string ReadMemory(const std::string& data);
+  std::string MemoryRead(const std::string& data);
+  std::string MemoryWrite(const std::string& data);
   std::string BuildThreadList();
 
   std::string GetThreadStateReply(uint32_t thread_id, uint8_t signal);
@@ -88,12 +89,15 @@ class GDBStub : public cpu::DebugListener {
   std::condition_variable cv_;
   bool stop_thread_ = false;
 
+  xe::global_critical_region global_critical_region_;
+
   struct EmulatorStateCache {
     uint32_t cur_thread_id = -1;
     uint32_t last_bp_thread_id = -1;
 
     uint64_t notify_bp_guest_address = -1;
     uint32_t notify_bp_thread_id = -1;
+    std::vector<std::string> notify_debug_messages;
     bool notify_stopped = false;
 
     bool is_stopped = false;
