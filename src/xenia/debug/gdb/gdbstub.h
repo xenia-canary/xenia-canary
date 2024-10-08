@@ -26,6 +26,28 @@ namespace debug {
 namespace gdb {
 
 class GDBStub : public cpu::DebugListener {
+  enum class ControlCode : char {
+    Ack = '+',
+    Nack = '-',
+    PacketStart = '$',
+    PacketEnd = '#',
+    Interrupt = '\03',
+  };
+
+  enum class SignalCode : uint8_t { SIGILL = 4, SIGTRAP = 5, SIGSEGV = 11 };
+
+  enum class RegisterIndex : int {
+    GPR0 = 0,
+    FPR0 = 32,
+    PC = 64,
+    MSR = 65,
+    CR = 66,
+    LR = 67,
+    CTR = 68,
+    XER = 69,
+    FPSCR = 70
+  };
+
  public:
   virtual ~GDBStub();
 
@@ -77,7 +99,7 @@ class GDBStub : public cpu::DebugListener {
   std::string MemoryWrite(const std::string& data);
   std::string BuildThreadList();
 
-  std::string GetThreadStateReply(uint32_t thread_id, uint8_t signal);
+  std::string GetThreadStateReply(uint32_t thread_id, SignalCode signal);
 
   bool CreateCodeBreakpoint(uint64_t address);
   void DeleteCodeBreakpoint(uint64_t address);
@@ -112,7 +134,6 @@ class GDBStub : public cpu::DebugListener {
     std::vector<cpu::ThreadDebugInfo*> thread_debug_infos;
 
     struct {
-      char kernel_call_filter[64] = {0};
       std::vector<std::unique_ptr<cpu::Breakpoint>> all_breakpoints;
       std::unordered_map<uint32_t, cpu::Breakpoint*>
           code_breakpoints_by_guest_address;

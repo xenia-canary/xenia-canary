@@ -40,20 +40,8 @@ using xe::kernel::XModule;
 using xe::kernel::XObject;
 using xe::kernel::XThread;
 
-enum class GdbStubControl : char {
-  Ack = '+',
-  Nack = '-',
-  PacketStart = '$',
-  PacketEnd = '#',
-  Interrupt = '\03',
-};
-
 constexpr const char* kGdbReplyOK = "OK";
 constexpr const char* kGdbReplyError = "E01";
-
-constexpr int kSignalSigill = 4;    // Illegal instruction
-constexpr int kSignalSigtrap = 5;   // Trace trap
-constexpr int kSignalSigsegv = 11;  // Segmentation fault
 
 // must start with l for debugger to accept it
 constexpr char kMemoryMapXml[] =
@@ -70,7 +58,7 @@ constexpr char kMemoryMapXml[] =
 </memory-map>
 )";
 
-// TODO: add power-altivec.xml (and update ReadRegister to support it)
+// TODO: add power-altivec.xml (and update RegisterRead to support it)
 constexpr char kTargetXml[] =
     R"(l<?xml version="1.0"?>
 <!DOCTYPE target SYSTEM "gdb-target.dtd">
@@ -229,13 +217,13 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
             cache_.cur_thread_id = cache_.notify_thread_id;
           }
 
-          int sig_num = kSignalSigtrap;
+          SignalCode signal = SignalCode::SIGTRAP;
           if (cache_.notify_exception_code.has_value()) {
             if (cache_.notify_exception_code ==
                 xe::Exception::Code::kIllegalInstruction) {
-              sig_num = kSignalSigill;
+              signal = SignalCode::SIGILL;
             } else {
-              sig_num = kSignalSigsegv;
+              signal = SignalCode::SIGSEGV;
             }
 
             cache_.notify_exception_code.reset();
@@ -243,7 +231,7 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
           }
 
           SendPacket(client,
-                     GetThreadStateReply(cache_.notify_thread_id, sig_num));
+                     GetThreadStateReply(cache_.notify_thread_id, signal));
           cache_.notify_thread_id = -1;
           cache_.notify_stopped = false;
         }
@@ -255,8 +243,7 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
 void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
                          const std::string& data) {
   std::stringstream ss;
-  ss << char(GdbStubControl::PacketStart) << data
-     << char(GdbStubControl::PacketEnd);
+  ss << char(ControlCode::PacketStart) << data << char(ControlCode::PacketEnd);
 
   uint8_t checksum = 0;
   for (char c : data) {
@@ -271,7 +258,7 @@ void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
 
 #ifdef DEBUG
 std::string GetPacketFriendlyName(const std::string& packetCommand) {
-  static const std::unordered_map<std::string, std::string> command_names = {
+  static const std::unordered_map<std::string, std::string> kGdbCommandNames = {
       {"?", "StartupQuery"},
       {"!", "EnableExtendedMode"},
       {"p", "RegRead"},
@@ -297,8 +284,8 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
   };
 
   std::string packet_name = "";
-  auto it = command_names.find(packetCommand);
-  if (it != command_names.end()) {
+  auto it = kGdbCommandNames.find(packetCommand);
+  if (it != kGdbCommandNames.end()) {
     packet_name = it->second;
   }
 
@@ -319,8 +306,7 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
 
   // Hacky interrupt '\03' packet handling, some reason checksum isn't
   // attached to this?
-  bool isInterrupt =
-      buffer[0] == char(GdbStubControl::Interrupt) && received == 1;
+  bool isInterrupt = buffer[0] == char(ControlCode::Interrupt) && received == 1;
 
   // Check if we've received a full packet yet, if not exit and allow caller
   // to try again
@@ -330,7 +316,7 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
     if (isInterrupt || packet_end + 2 < receive_buffer.length()) {
       std::string current_packet;
       if (isInterrupt) {
-        current_packet = char(GdbStubControl::Interrupt);
+        current_packet = char(ControlCode::Interrupt);
         receive_buffer = "";
         isInterrupt = false;
       } else {
@@ -348,12 +334,12 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
                               command.data);
 #endif
 
-        GdbStubControl result = GdbStubControl::Ack;
+        ControlCode result = ControlCode::Ack;
         client->Send(&result, 1);
         std::string response = HandleGDBCommand(command);
         SendPacket(client, response);
       } else {
-        GdbStubControl result = GdbStubControl::Nack;
+        ControlCode result = ControlCode::Nack;
         client->Send(&result, 1);
       }
     } else {
@@ -390,23 +376,23 @@ bool GDBStub::ParsePacket(const std::string& packet, GDBCommand& out_cmd) {
   char c = ReadCharFromBuffer();
 
   // Expecting start of packet '$'
-  if (c != char(GdbStubControl::PacketStart)) {
+  if (c != char(ControlCode::PacketStart)) {
     // gdb starts conversation with + for some reason
-    if (c == char(GdbStubControl::Ack)) {
+    if (c == char(ControlCode::Ack)) {
       c = ReadCharFromBuffer();
     }
     // and IDA sometimes has double +, grr
-    if (c == char(GdbStubControl::Ack)) {
+    if (c == char(ControlCode::Ack)) {
       c = ReadCharFromBuffer();
     }
     // Interrupt is special, handle it without checking checksum
-    if (c == char(GdbStubControl::Interrupt)) {
-      out_cmd.cmd = char(GdbStubControl::Interrupt);
+    if (c == char(ControlCode::Interrupt)) {
+      out_cmd.cmd = char(ControlCode::Interrupt);
       out_cmd.data = "";
       out_cmd.checksum = 0;
       return true;
     }
-    if (c != char(GdbStubControl::PacketStart)) {
+    if (c != char(ControlCode::PacketStart)) {
       return false;
     }
   }
@@ -423,7 +409,7 @@ bool GDBStub::ParsePacket(const std::string& packet, GDBCommand& out_cmd) {
     c = ReadCharFromBuffer();
 
     // If we reach the end of the buffer or hit '#', stop
-    if (c == '\0' || c == char(GdbStubControl::PacketEnd)) {
+    if (c == '\0' || c == char(ControlCode::PacketEnd)) {
       break;
     }
 
@@ -488,12 +474,14 @@ std::string GDBStub::RegisterRead(xe::cpu::ThreadDebugInfo* thread,
   // mode (eg. IDA will switch to 64-bit and refuse to allow decompiler to work
   // with it)
   //
-  // TODO: add altivec/VMX registers here...
+  // TODO: add altivec/VMX registers here
+  // TODO: add cvar to allow switch to 64-bit mode? (unsure if any x360 opcodes
+  // use the upper 32-bits?)
   //
   // ids from gdb/features/rs6000/powerpc-64.c
-  switch (rid) {
-    // pc
-    case 64: {
+  switch (RegisterIndex(rid)) {
+    case RegisterIndex::PC: {
+      //
       // If we recently hit a BP then debugger is likely asking for registers
       // for it
       //
@@ -514,71 +502,69 @@ std::string GDBStub::RegisterRead(xe::cpu::ThreadDebugInfo* thread,
       }
       return string_util::to_hex_string((uint32_t)0);
     }
-    case 65:
+    case RegisterIndex::MSR:
       return string_util::to_hex_string((uint32_t)thread->guest_context.msr);
-    case 66:
+    case RegisterIndex::CR:
       return string_util::to_hex_string((uint32_t)thread->guest_context.cr());
-    case 67:
+    case RegisterIndex::LR:
       return string_util::to_hex_string((uint32_t)thread->guest_context.lr);
-    case 68:
+    case RegisterIndex::CTR:
       return string_util::to_hex_string((uint32_t)thread->guest_context.ctr);
-    // xer
-    case 69:
+    case RegisterIndex::XER:
       return std::string(8, 'x');
-    case 70:
+    case RegisterIndex::FPSCR:
       return string_util::to_hex_string(thread->guest_context.fpscr.value);
   }
 
-  if (rid > 70) {
+  if (rid >= int(RegisterIndex::PC)) {
     return "";
   }
 
   // fpr
-  if (rid > 31) {
+  if (rid >= int(RegisterIndex::FPR0)) {
     return string_util::to_hex_string(thread->guest_context.f[rid - 32]);
   }
 
   // gpr
   return string_util::to_hex_string((uint32_t)thread->guest_context.r[rid]);
 }
+
 std::string GDBStub::RegisterWrite(xe::cpu::ThreadDebugInfo* thread,
                                    uint32_t rid, const std::string_view value) {
+  // Have to update the main thread context, and the ThreadDebugInfo context
   auto* guest_context = thread->thread->thread_state()->context();
-  switch (rid) {
-    // pc
-    case 64:
-      return kGdbReplyOK;  // TODO: figure a way to change this
-    case 65:
+  switch (RegisterIndex(rid)) {
+    case RegisterIndex::PC:
+      return kGdbReplyError;  // TODO: figure a way to change this
+    case RegisterIndex::MSR:
       guest_context->msr = string_util::from_string<uint32_t>(value, true);
       thread->guest_context.msr = guest_context->msr;
       return kGdbReplyOK;
-    case 66:
-      // CR
-      return kGdbReplyOK;  // TODO: figure a way to change this
-    case 67:
+    case RegisterIndex::CR:
+      return kGdbReplyError;  // TODO: figure a way to change this
+    case RegisterIndex::LR:
       guest_context->lr = string_util::from_string<uint32_t>(value, true);
       thread->guest_context.lr = guest_context->lr;
       return kGdbReplyOK;
-    case 68:
+    case RegisterIndex::CTR:
       guest_context->ctr = string_util::from_string<uint32_t>(value, true);
       thread->guest_context.ctr = guest_context->ctr;
       return kGdbReplyOK;
-    // xer
-    case 69:
-      return kGdbReplyOK;
-    case 70:
+    case RegisterIndex::XER:
+      return kGdbReplyError;
+    case RegisterIndex::FPSCR:
       guest_context->fpscr.value =
           string_util::from_string<uint32_t>(value, true);
       thread->guest_context.fpscr.value = guest_context->fpscr.value;
       return kGdbReplyOK;
   }
 
-  if (rid > 70) {
+  if (rid >= int(RegisterIndex::PC)) {
     return kGdbReplyError;
   }
 
   // fpr
-  if (rid > 31) {
+  if (rid >= int(RegisterIndex::FPR0)) {
     guest_context->f[rid - 32] = string_util::from_string<double>(value, true);
     thread->guest_context.f[rid - 32] = guest_context->f[rid - 32];
     return kGdbReplyOK;
@@ -625,7 +611,7 @@ std::string GDBStub::RegisterReadAll() {
     return kGdbReplyError;
   }
   std::string result;
-  result.reserve(68 * 16 + 3 * 8);
+  result.reserve((39 * 8) + (32 * 16));
   for (int i = 0; i < 71; ++i) {
     result += RegisterRead(thread, i);
   }
@@ -635,6 +621,11 @@ std::string GDBStub::RegisterReadAll() {
 std::string GDBStub::RegisterWriteAll(const std::string& data) {
   auto* thread = cache_.cur_thread_info();
   if (!thread) {
+    return kGdbReplyError;
+  }
+
+  int expected_size = (39 * 8) + (32 * 16);
+  if (data.length() != expected_size) {
     return kGdbReplyError;
   }
 
@@ -746,6 +737,14 @@ std::string GDBStub::MemoryWrite(const std::string& data) {
   if (!heap) {
     return kGdbReplyError;
   }
+
+  // Check if they're trying to write to an executable function
+  if (auto* exe_addr = processor_->LookupFunction(addr)) {
+    // TODO: allow the write and ask processor to recompile if no breakpoints
+    // are set there?
+    return kGdbReplyError;  // error for now as writes here won't have an effect
+  }
+
   uint32_t protect = 0;
   if (!heap->QueryProtect(addr, &protect) ||
       (protect & kMemoryProtectRead) != kMemoryProtectRead) {
@@ -791,10 +790,8 @@ std::string GDBStub::BuildThreadList() {
   return buffer;
 }
 
-std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
-  constexpr int PC_REGISTER = 64;
-  constexpr int LR_REGISTER = 67;
-
+std::string GDBStub::GetThreadStateReply(uint32_t thread_id,
+                                         SignalCode signal) {
   auto* thread = cache_.thread_info(thread_id);
 
   if (thread_id != -1 && thread) {
@@ -813,7 +810,8 @@ std::string GDBStub::GetThreadStateReply(uint32_t thread_id, uint8_t signal) {
     }
 
     return fmt::format("T{:02x}{:02x}:{:08x};{:02x}:{:08x};thread:{:x};",
-                       signal, PC_REGISTER, uint32_t(pc_value), LR_REGISTER,
+                       uint8_t(signal), int(RegisterIndex::PC),
+                       uint32_t(pc_value), int(RegisterIndex::LR),
                        uint32_t(thread->guest_context.lr), thread_id);
   }
   return "S05";
