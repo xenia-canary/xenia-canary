@@ -181,29 +181,33 @@ std::unique_ptr<GDBStub> GDBStub::Create(Emulator* emulator, int listen_port) {
 }
 
 bool GDBStub::Initialize() {
-  socket_ = xe::SocketServer::Create(
-      listen_port_, [this](std::unique_ptr<Socket> client) { Listen(client); });
+  socket_ = xe::SocketServer::Create(listen_port_,
+                                     [this](std::unique_ptr<Socket> socket) {
+                                       GDBClient client;
+                                       client.socket = std::move(socket);
+                                       Listen(client);
+                                     });
 
   UpdateCache();
   return true;
 }
 
-void GDBStub::Listen(std::unique_ptr<Socket>& client) {
+void GDBStub::Listen(GDBClient& client) {
   // Client is connected - pause execution
   ExecutionPause();
   UpdateCache();
 
-  client->set_nonblocking(true);
+  client.socket->set_nonblocking(true);
 
   std::string receive_buffer;
 
   while (!stop_thread_) {
-    if (!client->is_connected()) {
+    if (!client.socket->is_connected()) {
       break;
     }
 
-    if (!ProcessIncomingData(client, receive_buffer)) {
-      if (!client->is_connected()) {
+    if (!ProcessIncomingData(client)) {
+      if (!client.socket->is_connected()) {
         break;
       }
       // No data available, can do other work or sleep
@@ -240,8 +244,7 @@ void GDBStub::Listen(std::unique_ptr<Socket>& client) {
   }
 }
 
-void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
-                         const std::string& data) {
+void GDBStub::SendPacket(GDBClient& client, const std::string& data) {
   std::stringstream ss;
   ss << char(ControlCode::PacketStart) << data << char(ControlCode::PacketEnd);
 
@@ -253,7 +256,7 @@ void GDBStub::SendPacket(std::unique_ptr<Socket>& client,
   ss << std::hex << std::setw(2) << std::setfill('0') << (checksum & 0xff);
   std::string packet = ss.str();
 
-  client->Send(packet.c_str(), packet.size());
+  client.socket->Send(packet.c_str(), packet.size());
 }
 
 #ifdef DEBUG
@@ -293,16 +296,15 @@ std::string GetPacketFriendlyName(const std::string& packetCommand) {
 }
 #endif
 
-bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
-                                  std::string& receive_buffer) {
+bool GDBStub::ProcessIncomingData(GDBClient& client) {
   char buffer[1024];
-  size_t received = client->Receive(buffer, sizeof(buffer));
+  size_t received = client.socket->Receive(buffer, sizeof(buffer));
   if (received == uint64_t(-1) ||  // disconnected
       received == 0) {
     return false;
   }
 
-  receive_buffer.append(buffer, received);
+  client.receive_buffer.append(buffer, received);
 
   // Hacky interrupt '\03' packet handling, some reason checksum isn't
   // attached to this?
@@ -312,16 +314,16 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
   // to try again
   size_t packet_end;
   while (isInterrupt ||
-         (packet_end = receive_buffer.find('#')) != std::string::npos) {
-    if (isInterrupt || packet_end + 2 < receive_buffer.length()) {
+         (packet_end = client.receive_buffer.find('#')) != std::string::npos) {
+    if (isInterrupt || packet_end + 2 < client.receive_buffer.length()) {
       std::string current_packet;
       if (isInterrupt) {
         current_packet = char(ControlCode::Interrupt);
-        receive_buffer = "";
+        client.receive_buffer = "";
         isInterrupt = false;
       } else {
-        current_packet = receive_buffer.substr(0, packet_end + 3);
-        receive_buffer = receive_buffer.substr(packet_end + 3);
+        current_packet = client.receive_buffer.substr(0, packet_end + 3);
+        client.receive_buffer = client.receive_buffer.substr(packet_end + 3);
       }
 
       GDBCommand command;
@@ -334,13 +336,18 @@ bool GDBStub::ProcessIncomingData(std::unique_ptr<Socket>& client,
                               command.data);
 #endif
 
-        ControlCode result = ControlCode::Ack;
-        client->Send(&result, 1);
-        std::string response = HandleGDBCommand(command);
+        if (!client.no_ack_mode) {
+          ControlCode result = ControlCode::Ack;
+          client.socket->Send(&result, 1);
+        }
+
+        std::string response = HandleGDBCommand(client, command);
         SendPacket(client, response);
       } else {
-        ControlCode result = ControlCode::Nack;
-        client->Send(&result, 1);
+        if (!client.no_ack_mode) {
+          ControlCode result = ControlCode::Nack;
+          client.socket->Send(&result, 1);
+        }
       }
     } else {
       break;
@@ -653,7 +660,7 @@ std::string GDBStub::ExecutionPause() {
     return kGdbReplyError;
   }
   processor_->Pause();
-  return kGdbReplyOK;
+  return "";
 }
 
 std::string GDBStub::ExecutionContinue() {
@@ -661,7 +668,7 @@ std::string GDBStub::ExecutionContinue() {
   debugging::DebugPrint("GDBStub: ExecutionContinue\n");
 #endif
   processor_->Continue();
-  return kGdbReplyOK;
+  return "";
 }
 
 std::string GDBStub::ExecutionStep() {
@@ -674,7 +681,7 @@ std::string GDBStub::ExecutionStep() {
     processor_->StepGuestInstruction(cache_.last_bp_thread_id);
   }
 
-  return kGdbReplyOK;
+  return "";
 }
 
 std::string GDBStub::MemoryRead(const std::string& data) {
@@ -739,7 +746,7 @@ std::string GDBStub::MemoryWrite(const std::string& data) {
   }
 
   // Check if they're trying to write to an executable function
-  if (auto* exe_addr = processor_->LookupFunction(addr)) {
+  if (processor_->LookupFunction(addr) != nullptr) {
     // TODO: allow the write and ask processor to recompile if no breakpoints
     // are set there?
     return kGdbReplyError;  // error for now as writes here won't have an effect
@@ -790,6 +797,14 @@ std::string GDBStub::BuildThreadList() {
   return buffer;
 }
 
+std::string GDBStub::QueryPacket(GDBClient& client, const std::string& data) {
+  if (data == "StartNoAckMode") {
+    client.no_ack_mode = true;
+    return kGdbReplyOK;
+  }
+  return kGdbReplyError;
+}
+
 std::string GDBStub::GetThreadStateReply(uint32_t thread_id,
                                          SignalCode signal) {
   auto* thread = cache_.thread_info(thread_id);
@@ -821,6 +836,11 @@ bool GDBStub::CreateCodeBreakpoint(uint64_t address) {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: Adding breakpoint: {:X}\n", address);
 #endif
+
+  auto* exe_addr = processor_->LookupFunction((uint32_t)address);
+  if (!exe_addr) {
+    return false;  // TODO: move this check to Breakpoint?
+  }
 
   auto& state = cache_.breakpoints;
   auto breakpoint = std::make_unique<Breakpoint>(
@@ -969,7 +989,8 @@ void GDBStub::OnBreakpointHit(Breakpoint* breakpoint,
   UpdateCache();
 }
 
-std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
+std::string GDBStub::HandleGDBCommand(GDBClient& client,
+                                      const GDBCommand& command) {
   static const std::unordered_map<std::string,
                                   std::function<std::string(const GDBCommand&)>>
       command_map = {
@@ -1020,6 +1041,12 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           // Write all registers
           {"G",
            [&](const GDBCommand& cmd) { return RegisterWriteAll(cmd.data); }},
+
+          // Query / setting change
+          {"Q",
+           [&](const GDBCommand& cmd) {
+             return QueryPacket(client, cmd.data);
+           }},
 
           // Attach to specific process ID - IDA used to send this, but doesn't
           // after some changes?
@@ -1099,7 +1126,7 @@ std::string GDBStub::HandleGDBCommand(const GDBCommand& command) {
           {"qSupported",
            [&](const GDBCommand& cmd) {
              return "PacketSize=1024;qXfer:features:read+;qXfer:threads:read+;"
-                    "qXfer:memory-map:read+";
+                    "qXfer:memory-map:read+;QStartNoAckMode+";
            }},
           // Thread list (IDA requests this but ignores in favor of qXfer?)
           {"qfThreadInfo",

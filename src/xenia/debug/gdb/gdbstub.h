@@ -72,15 +72,20 @@ class GDBStub : public cpu::DebugListener {
     uint8_t checksum{};
   };
 
+  struct GDBClient {
+    std::unique_ptr<Socket> socket;
+    bool no_ack_mode = false;
+    std::string receive_buffer;
+  };
+
   explicit GDBStub(Emulator* emulator, int listen_port);
   bool Initialize();
 
-  void Listen(std::unique_ptr<Socket>& client);
-  void SendPacket(std::unique_ptr<Socket>& client, const std::string& data);
-  bool ProcessIncomingData(std::unique_ptr<Socket>& client,
-                           std::string& receive_buffer);
+  void Listen(GDBClient& client);
+  void SendPacket(GDBClient& client, const std::string& data);
+  bool ProcessIncomingData(GDBClient& client);
   bool ParsePacket(const std::string& packet, GDBCommand& out_cmd);
-  std::string HandleGDBCommand(const GDBCommand& command);
+  std::string HandleGDBCommand(GDBClient& client, const GDBCommand& command);
 
   void UpdateCache();
 
@@ -98,6 +103,7 @@ class GDBStub : public cpu::DebugListener {
   std::string MemoryRead(const std::string& data);
   std::string MemoryWrite(const std::string& data);
   std::string BuildThreadList();
+  std::string QueryPacket(GDBClient& client, const std::string& data);
 
   std::string GetThreadStateReply(uint32_t thread_id, SignalCode signal);
 
