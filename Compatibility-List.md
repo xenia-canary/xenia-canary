@@ -1,1 +1,1 @@
-### https://github.com/xenia-project/game-compatibility
+### https://github.com/xenia-canary/game-compatibility

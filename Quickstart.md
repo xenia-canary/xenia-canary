@@ -126,7 +126,7 @@ Xbox Dashboard:
 3. Once the game shows up press X (Game Details) with the game selected.
 4. Press the *Install* button.
     * If you see *Delete* instead, skip to Section 2.
-      * Note: Games with the [no-disc-install label](https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Ano-disc-install) can't be installed this way, and require a modded console or using the Redump method.
+      * Note: Games with the [no-disc-install label](https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Ano-disc-install) can't be installed this way, and require a modded console or using the Redump method.
 5. Select the storage device you want to install the game on.
 6. Once it's 100% Completed press A to continue, and press B to go back to home.
 

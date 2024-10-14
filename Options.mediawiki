@@ -78,7 +78,7 @@ __TOC__
 |}
 
 == Cache ==
-* Games that require this have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_mount_cache requires_mount_cache] label.
+* Games that require this have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_mount_cache requires_mount_cache] label.
 
 {|
 ! <code>mount_cache</code> =
@@ -87,7 +87,7 @@ __TOC__
 | Off (''default'')
 | <code>false</code>
 |-
-| On ([https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_mount_cache fixes some games])
+| On ([https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_mount_cache fixes some games])
 | <code>true</code>
 |}
 
@@ -178,7 +178,7 @@ This is a hack, and as such, '''bugs should be expected when changed from the de
 |}
 
 ==== CPU readback after render target resolving ====
-* Games that require this have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Agpu-readback gpu-readback] label.
+* Games that require this have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Agpu-readback gpu-readback] label.
 
 {|
 ! <code>d3d12_readback_resolve</code> =
@@ -264,7 +264,7 @@ Sorted by priority. (i.e. if the first doesn't work then the next is tried, and 
 ==== Allow invalid fetch constants ====
 Allow texture and vertex fetch constants with invalid type - generally unsafe because the constant may contain completely invalid values, but may be used to bypass fetch constant type errors in certain games until the real reason why they're invalid is found.
 
-Games that require this have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Agpu-invalid-fetch-constants gpu-invalid-fetch-constants] label.
+Games that require this have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Agpu-invalid-fetch-constants gpu-invalid-fetch-constants] label.
 
 {|
 ! <code>gpu_allow_invalid_fetch_constants</code> =
@@ -282,7 +282,7 @@ Games that require this have the [https://github.com/xenia-project/game-compatib
 ** ''[https://github.com/xenia-canary/xenia-canary/wiki/Options#screen-tearing Screen tearing]'' for D3D12
 ** ''[https://github.com/xenia-canary/xenia-canary/wiki/Options#user-content-Present_mode Present mode]'' for Vulkan
 * ''Disabling this won’t improve the framerate if your PC can’t handle running the game at it’s native FPS.''
-* Games that speed up with this disabled have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Avsync-off-speedup vsync-off-speedup] label.
+* Games that speed up with this disabled have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Avsync-off-speedup vsync-off-speedup] label.
 
 {|
 ! <code>vsync</code> =
@@ -347,7 +347,7 @@ Games that require this have the [https://github.com/xenia-project/game-compatib
 
 == Hacks ==
 === Protect zero ===
-* Games that require this to be false have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires-protect-zero-false requires-protect-zero-false] label.
+* Games that require this to be false have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires-protect-zero-false requires-protect-zero-false] label.
 
 {|
 ! <code>protect_zero</code> =
@@ -361,7 +361,7 @@ Games that require this have the [https://github.com/xenia-project/game-compatib
 |}
 
 === Break on unimplemented instruction ===
-* Games that require this to be false have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Acpu-unimplemented-instruction cpu-unimplemented-instruction] label.
+* Games that require this to be false have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Acpu-unimplemented-instruction cpu-unimplemented-instruction] label.
 
 {|
 ! <code>break_on_unimplemented_instruction</code> =
@@ -505,7 +505,7 @@ Allows changing max buffered audio frames to reduce audio delay.
 |}
 
 === Clear GPU cache ===
-* Games that require this to be true have the [https://github.com/xenia-project/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_clear_memory_page_state_true requires_clear_memory_page_state_true] label.
+* Games that require this to be true have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires_clear_memory_page_state_true requires_clear_memory_page_state_true] label.
 
 {|
 ! <code>clear_memory_page_state</code> =
