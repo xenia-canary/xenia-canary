@@ -30,18 +30,21 @@ X_HRESULT XLiveBaseApp::DispatchMessageSync(uint32_t message,
   switch (message) {
     case 0x0005008C: {
       // Called on startup of blades dashboard v1888 to v2858
-      XELOGD("XLiveBaseUnk5008C, unimplemented");
+      XELOGD("XLiveBaseUnk5008C({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x00050094: {
       // Called on startup of blades dashboard v4532 to v4552
-      XELOGD("XLiveBaseUnk50094, unimplemented");
+      XELOGD("XLiveBaseUnk50094({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x00058003: {
       // Called on startup of dashboard (netplay build)
-      XELOGD("XLiveBaseLogonGetHR, unimplemented");
-      return X_E_SUCCESS;
+      // Always receives a buffer ptr and buffer length of zero
+      XELOGD("XLiveBaseLogonGetHR, implemented by netplay build");
+      return 0x00151000L;  // X_ONLINE_E_LOGON_NO_NETWORK_CONNECTION
     }
     case 0x00058004: {
       // Called on startup, seems to just return a bool in the buffer.
@@ -88,7 +91,7 @@ X_HRESULT XLiveBaseApp::DispatchMessageSync(uint32_t message,
       // Required to be successful for 4D530910 to detect signed-in profile
       // Doesn't seem to set anything in the given buffer, probably only takes
       // input
-      XELOGD("XLiveBaseUnk58046({:08X}, {:08X}) unimplemented", buffer_ptr,
+      XELOGD("XPresenceInitialize({:08X}, {:08X}) unimplemented", buffer_ptr,
              buffer_length);
       return X_E_SUCCESS;
     }

@@ -22,6 +22,13 @@ struct X_XUSER_ACHIEVEMENT {
   xe::be<uint32_t> achievement_id;
 };
 
+struct XUSER_ANID {
+  xe::be<uint32_t> user_index;
+  xe::be<uint32_t> cchAnIdBuffer;
+  xe::be<uint32_t> pszAnIdBuffer;
+  xe::be<uint32_t> value_const;  // 1
+};
+
 XgiApp::XgiApp(KernelState* kernel_state) : App(kernel_state, 0xFB) {}
 
 // http://mb.mirage.org/bugzilla/xliveless/main.c
@@ -149,12 +156,14 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     case 0x000B0014: {
       // Gets 584107FB in game.
       // get high score table?
-      XELOGD("XGI_unknown");
+      XELOGD("XSessionStart({:08X}, {:08X}), implemented in netplay",
+             buffer_ptr, buffer_length);
       return X_STATUS_SUCCESS;
     }
     case 0x000B0015: {
       // send high scores?
-      XELOGD("XGI_unknown");
+      XELOGD("XSessionEnd({:08X}, {:08X}), implemented in netplay", buffer_ptr,
+             buffer_length);
       return X_STATUS_SUCCESS;
     }
     case 0x000B0021: {
@@ -176,13 +185,15 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // Called after opening xbox live arcade and clicking on xbox live v5759
       // to 5787 and called after clicking xbox live in the game library from
       // v6683 to v6717
-      XELOGD("XGIUnkB0036, unimplemented");
+      XELOGD("XGIUnkB0036({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x000B003D: {
-      // Games used in:
-      // - 5451082a (netplay build).
-      XELOGD("XGIUnkB003D, unimplemented");
+      // Used in 5451082A, 5553081E
+      // XUserGetCachedANID
+      XELOGI("XUserGetANID({:08X}, {:08X}), implemented in netplay", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x000B0041: {
@@ -211,7 +222,8 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       return X_E_FAIL;
     }
     case 0x000B0071: {
-      XELOGD("XGI 0x000B0071, unimplemented");
+      XELOGD("XGIUnkB0071({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_SUCCESS;
     }
   }
