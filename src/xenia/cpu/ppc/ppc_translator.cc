@@ -28,6 +28,8 @@
 DEFINE_bool(dump_translated_hir_functions, false, "dumps translated hir",
             "CPU");
 
+DECLARE_bool(debug);
+
 namespace xe {
 namespace cpu {
 namespace ppc {
@@ -55,7 +57,13 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
   // Passes are executed in the order they are added. Multiple of the same
   // pass type may be used.
   if (validate) compiler_->AddPass(std::make_unique<passes::ValidationPass>());
-  compiler_->AddPass(std::make_unique<passes::ContextPromotionPass>());
+
+  // Don't enable context promotion when debugging, else register changes won't
+  // update correctly
+  if (!cvars::debug) {
+    compiler_->AddPass(std::make_unique<passes::ContextPromotionPass>());
+  }
+
   if (validate) compiler_->AddPass(std::make_unique<passes::ValidationPass>());
 
   // Grouped simplification + constant propagation.

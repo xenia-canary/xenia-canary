@@ -30,6 +30,9 @@ class DebugListener {
   // end.
   virtual void OnDetached() = 0;
 
+  // Handles exception info (will be followed by OnExecutionPaused)
+  virtual void OnUnhandledException(Exception* ex) = 0;
+
   // Handles execution being interrupted and transitioning to
   // ExceutionState::kPaused.
   virtual void OnExecutionPaused() = 0;
