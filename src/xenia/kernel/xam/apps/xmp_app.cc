@@ -479,7 +479,11 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     case 0x0007002B: {
       // Called on the NXE and Kinect dashboard after clicking on the picture,
       // video, and music library
-      XELOGD("XMPUnk7002B, unimplemented");
+      // XMsgStartIORequest(0xfa,0x7002b,0,&local_30,0x14) at Function_90109D98
+      // in minimediaplayer.xex 1888 or Function_9210F138 in dash.xex 1888
+      assert_true(!buffer_length || buffer_length == 20);
+      XELOGD("XMPUnk7002B({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x0007002E: {
@@ -502,7 +506,11 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     }
     case 0x0007002F: {
       // Called on the start up of all dashboard versions before kinect
-      XELOGD("XMPUnk7002F, unimplemented");
+      // XMsgStartIORequest(0xfa,0x7002f,0,&stack0x00000050,0x18) at
+      // address 9210e3ac 1888 dash.xex
+      assert_true(!buffer_length || buffer_length == 24);
+      XELOGD("XMPUnk7002F({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x0007003D: {
@@ -514,14 +522,18 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     case 0x00070044: {
       // Called on the start up of all dashboard versions before kinect
       // When it returns X_E_FAIL you can access the music player up to version
-      // 5787
-      XELOGD("XMPUnk70044, unimplemented");
+      // 5787. XMsgStartIORequest(0xfa,0x70044,0,&local_20,0x10) at (Both 1888)
+      // Function_90109848 in minimediaplayer.xex or Function_9210E538 in dash
+      assert_true(!buffer_length || buffer_length == 16);
+      XELOGD("XMPUnk70044({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
     case 0x00070053: {
       // Called on the blades dashboard after clicking on the picture,
       // video, and music library
-      XELOGD("XMPUnk70053, unimplemented");
+      XELOGD("XMPUnk70053({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_FAIL;
     }
   }

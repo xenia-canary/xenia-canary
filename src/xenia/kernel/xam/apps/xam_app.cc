@@ -14,6 +14,10 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xenumerator.h"
 
+// Notes:
+//  - Messages ids that start with 0x00021xxx are UI calls
+//  - Messages ids that start with 0x00023xxx are used for the user profile
+
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -26,6 +30,21 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
   // NOTE: buffer_length may be zero or valid.
   auto buffer = memory_->TranslateVirtual(buffer_ptr);
   switch (message) {
+    case 0x00020005: {
+      // called by XamContentCreateEnumeratorInternal first.
+      XELOGD("XamAppEnumerateContentInternal({:08X}, {:08X}), unimplemented",
+             buffer_ptr, buffer_length);
+      return X_E_SUCCESS;
+    }
+    case 0x00020006: {
+      // Called by XamContentCreateEnumeratorInternal if 20005 returns
+      // X_E_SUCCESS.
+      XELOGD(
+          "XamAppContentCreateEnumeratorInternal({:08X}, {:08X}), "
+          "unimplemented",
+          buffer_ptr, buffer_length);
+      return X_E_SUCCESS;
+    }
     case 0x0002000E: {
       struct message_data {
         xe::be<uint32_t> user_index;
@@ -84,10 +103,6 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
              (uint32_t)data->unk_48);
       return X_E_SUCCESS;
     }
-    case 0x00021012: {
-      XELOGD("XamApp(0x00021012)");
-      return X_E_SUCCESS;
-    }
     case 0x00022005: {
       struct message_data {
         xe::be<uint32_t> deployment_type_ptr;
@@ -99,6 +114,13 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       *deployment_type = static_cast<uint32_t>(kernel_state_->deployment_type_);
       XELOGD("XTitleGetDeploymentType({:08X}, {:08X}",
              data->deployment_type_ptr, data->overlapped_ptr);
+      return X_E_SUCCESS;
+    }
+    case 0x0002B003: {
+      // Games used in:
+      // 4D5309C9
+      XELOGD("XamUnk2B003({:08X}, {:08X}), unimplemented", buffer_ptr,
+             buffer_length);
       return X_E_SUCCESS;
     }
   }
