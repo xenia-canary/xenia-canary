@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2020 Ben Vanik. All rights reserved.                             *
+ * Copyright 2024 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -12,8 +12,8 @@
 #include <vector>
 
 #include "xenia/base/byte_stream.h"
+#include "xenia/base/hash.h"
 #include "xenia/base/logging.h"
-#include "xenia/base/xxhash.h"
 #include "xenia/cpu/elf_module.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/xex_module.h"

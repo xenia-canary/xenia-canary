@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2020 Ben Vanik. All rights reserved.                             *
+ * Copyright 2024 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -12,7 +12,9 @@
 
 #include <cstddef>
 
-#include "xenia/base/xxhash.h"
+#define XXH_INLINE_ALL
+
+#include "third_party/xxhash/xxhash.h"
 
 namespace xe {
 namespace hash {
