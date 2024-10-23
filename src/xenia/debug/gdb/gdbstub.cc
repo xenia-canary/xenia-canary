@@ -143,6 +143,7 @@ constexpr char kTargetXml[] =
 </target>
 )";
 
+// TODO: move these to string_util.h?
 std::string to_hexbyte(uint8_t i) {
   std::string result = "00";
   uint8_t i1 = i & 0xF;
@@ -162,6 +163,23 @@ uint8_t from_hexchar(char c) {
     return c - 'A' + 10;
   }
   return 0;
+}
+
+template <typename T>
+inline std::string to_hex_string(const T* data, size_t count) {
+  // Ensure that T is trivially copyable
+  static_assert(std::is_trivially_copyable<T>::value,
+                "T must be a trivially copyable type");
+
+  static const char hex_chars[] = "0123456789ABCDEF";
+  std::string result;
+  result.reserve(sizeof(T) * count * 2);
+  const auto* bytes = reinterpret_cast<const std::uint8_t*>(data);
+  for (size_t i = 0; i < sizeof(T) * count; ++i) {
+    result += hex_chars[bytes[i] >> 4];
+    result += hex_chars[bytes[i] & 0x0F];
+  }
+  return result;
 }
 
 GDBStub::GDBStub(Emulator* emulator, int listen_port)
@@ -211,7 +229,7 @@ void GDBStub::Listen(GDBClient& client) {
         break;
       }
       // No data available, can do other work or sleep
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
       // Check if we need to notify client about anything
       {
@@ -238,6 +256,13 @@ void GDBStub::Listen(GDBClient& client) {
                      GetThreadStateReply(cache_.notify_thread_id, signal));
           cache_.notify_thread_id = -1;
           cache_.notify_stopped = false;
+        } else if (cache_.notify_debug_prints.size()) {
+          // Send the oldest message in our queue, only send 1 per loop to
+          // reduce spamming the client & process any incoming packets
+          std::string& message = cache_.notify_debug_prints.front();
+          SendPacket(client,
+                     "O" + to_hex_string(message.c_str(), message.length()));
+          cache_.notify_debug_prints.pop();
         }
       }
     }
@@ -676,6 +701,7 @@ std::string GDBStub::ExecutionStep() {
   debugging::DebugPrint("GDBStub: ExecutionStep (thread {})\n",
                         cache_.last_bp_thread_id);
 #endif
+  std::unique_lock<std::mutex> lock(mtx_);
 
   if (cache_.last_bp_thread_id != -1) {
     processor_->StepGuestInstruction(cache_.last_bp_thread_id);
@@ -783,6 +809,8 @@ std::string GDBStub::MemoryWrite(const std::string& data) {
 }
 
 std::string GDBStub::BuildThreadList() {
+  std::unique_lock<std::mutex> lock(mtx_);
+
   std::string buffer;
   buffer += "l<?xml version=\"1.0\"?>";
   buffer += "<threads>";
@@ -836,6 +864,7 @@ bool GDBStub::CreateCodeBreakpoint(uint64_t address) {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: Adding breakpoint: {:X}\n", address);
 #endif
+  std::unique_lock<std::mutex> lock(mtx_);
 
   auto* exe_addr = processor_->LookupFunction((uint32_t)address);
   if (!exe_addr) {
@@ -888,6 +917,7 @@ void GDBStub::DeleteCodeBreakpoint(uint64_t address) {
 }
 
 void GDBStub::DeleteCodeBreakpoint(Breakpoint* breakpoint) {
+  std::unique_lock<std::mutex> lock(mtx_);
   auto& state = cache_.breakpoints;
   for (size_t i = 0; i < state.all_breakpoints.size(); ++i) {
     if (state.all_breakpoints[i].get() != breakpoint) {
@@ -918,6 +948,7 @@ void GDBStub::OnFocus() {}
 void GDBStub::OnDetached() {
   UpdateCache();
 
+  std::unique_lock<std::mutex> lock(mtx_);
   // Delete all breakpoints
   auto& state = cache_.breakpoints;
 
@@ -969,10 +1000,13 @@ void GDBStub::OnStepCompleted(cpu::ThreadDebugInfo* thread_info) {
 #ifdef DEBUG
   debugging::DebugPrint("GDBStub: OnStepCompleted\n");
 #endif
+  std::unique_lock<std::mutex> lock(mtx_);
+
   // Some debuggers like IDA will remove the current breakpoint & step into next
   // instruction, only re-adding BP after it's told about the step
   cache_.notify_thread_id = thread_info->thread_id;
   cache_.last_bp_thread_id = thread_info->thread_id;
+
   UpdateCache();
 }
 
@@ -983,10 +1017,18 @@ void GDBStub::OnBreakpointHit(Breakpoint* breakpoint,
                         breakpoint->address(), thread_info->thread_id);
 #endif
 
+  std::unique_lock<std::mutex> lock(mtx_);
+
   cache_.notify_bp_guest_address = breakpoint->address();
   cache_.notify_thread_id = thread_info->thread_id;
   cache_.last_bp_thread_id = thread_info->thread_id;
+
   UpdateCache();
+}
+
+void GDBStub::OnDebugPrint(const std::string_view message) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  cache_.notify_debug_prints.push(std::string(message));
 }
 
 std::string GDBStub::HandleGDBCommand(GDBClient& client,
@@ -1055,6 +1097,7 @@ std::string GDBStub::HandleGDBCommand(GDBClient& client,
           // Get current debugger thread ID
           {"qC",
            [&](const GDBCommand& cmd) {
+             std::unique_lock<std::mutex> lock(mtx_);
              auto* thread = cache_.cur_thread_info();
              if (!thread) {
                return std::string(kGdbReplyError);
@@ -1064,6 +1107,7 @@ std::string GDBStub::HandleGDBCommand(GDBClient& client,
           // Set current debugger thread ID
           {"H",
            [&](const GDBCommand& cmd) {
+             std::unique_lock<std::mutex> lock(mtx_);
              int threadId = std::stol(cmd.data.substr(1), 0, 16);
 
              if (!threadId) {
@@ -1131,6 +1175,7 @@ std::string GDBStub::HandleGDBCommand(GDBClient& client,
           // Thread list (IDA requests this but ignores in favor of qXfer?)
           {"qfThreadInfo",
            [&](const GDBCommand& cmd) {
+             std::unique_lock<std::mutex> lock(mtx_);
              std::string result;
              for (auto& thread : cache_.thread_debug_infos) {
                if (!result.empty()) result += ",";

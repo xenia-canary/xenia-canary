@@ -52,6 +52,9 @@ class DebugListener {
   // Breakpoints may be hit during stepping.
   virtual void OnBreakpointHit(Breakpoint* breakpoint,
                                ThreadDebugInfo* thread_info) = 0;
+
+  // Handles any debug messages from the guest
+  virtual void OnDebugPrint(const std::string_view message) = 0;
 };
 
 }  // namespace cpu

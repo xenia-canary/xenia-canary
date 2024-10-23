@@ -11,6 +11,7 @@
 #define XENIA_DEBUG_GDB_GDBSTUB_H_
 
 #include <memory>
+#include <queue>
 #include <vector>
 
 #include "xenia/base/host_thread_context.h"
@@ -64,6 +65,7 @@ class GDBStub : public cpu::DebugListener {
   void OnStepCompleted(cpu::ThreadDebugInfo* thread_info) override;
   void OnBreakpointHit(cpu::Breakpoint* breakpoint,
                        cpu::ThreadDebugInfo* thread_info) override;
+  void OnDebugPrint(const std::string_view message) override;
 
  private:
   struct GDBCommand {
@@ -119,7 +121,6 @@ class GDBStub : public cpu::DebugListener {
   std::unique_ptr<xe::SocketServer> socket_;
 
   std::mutex mtx_;
-  std::condition_variable cv_;
   bool stop_thread_ = false;
 
   xe::global_critical_region global_critical_region_;
@@ -134,6 +135,8 @@ class GDBStub : public cpu::DebugListener {
     std::optional<Exception::AccessViolationOperation>
         notify_exception_access_violation;
     std::optional<Exception::Code> notify_exception_code;
+
+    std::queue<std::string> notify_debug_prints;
 
     bool is_stopped = false;
     std::vector<kernel::object_ref<kernel::XModule>> modules;

@@ -51,6 +51,7 @@ class DebugWindow : public cpu::DebugListener {
   void OnStepCompleted(cpu::ThreadDebugInfo* thread_info) override;
   void OnBreakpointHit(cpu::Breakpoint* breakpoint,
                        cpu::ThreadDebugInfo* thread_info) override;
+  void OnDebugPrint(const std::string_view message) override;
 
  private:
   class DebugDialog final : public xe::ui::ImGuiDialog {

@@ -8,6 +8,7 @@
  */
 
 #include "xenia/base/logging.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xbdm/xbdm_private.h"
@@ -69,7 +70,14 @@ DECLARE_XBDM_EXPORT1(DmGetXboxName, kDebug, kImplemented)
 dword_result_t DmIsDebuggerPresent_entry() { return 0; }
 DECLARE_XBDM_EXPORT1(DmIsDebuggerPresent, kDebug, kStub);
 
-void DmSendNotificationString_entry(lpdword_t unk0_ptr) {}
+void DmSendNotificationString_entry(lpstring_t message) {
+  XELOGI("(DmSendNotificationString) {}", message.value());
+
+  if (cpu::DebugListener* listener =
+          kernel_state()->processor()->debug_listener()) {
+    listener->OnDebugPrint(message.value());
+  }
+}
 DECLARE_XBDM_EXPORT1(DmSendNotificationString, kDebug, kStub);
 
 dword_result_t DmRegisterCommandProcessor_entry(lpdword_t name_ptr,
