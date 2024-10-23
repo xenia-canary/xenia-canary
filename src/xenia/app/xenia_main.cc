@@ -103,8 +103,10 @@ DEFINE_transient_bool(portable, true,
                       "General");
 
 DECLARE_bool(debug);
-DEFINE_int32(gdbport, 0, "Port for GDBStub debugger to listen on, 0 = disable",
-             "General");
+DEFINE_int32(
+    gdbport, 0,
+    "Port for GDBStub debugger to listen on, requires --debug (0 = disable)",
+    "General");
 
 DEFINE_bool(discord, true, "Enable Discord rich presence", "General");
 
