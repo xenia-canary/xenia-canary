@@ -1576,6 +1576,8 @@ void DebugWindow::OnDetached() {
   }
 }
 
+void DebugWindow::OnUnhandledException(Exception* ex) {}
+
 void DebugWindow::OnExecutionPaused() {
   UpdateCache();
   Focus();
@@ -1603,6 +1605,8 @@ void DebugWindow::OnBreakpointHit(Breakpoint* breakpoint,
   SelectThreadStackFrame(thread_info, 0, true);
   Focus();
 }
+
+void DebugWindow::OnDebugPrint(const std::string_view message) {}
 
 void DebugWindow::Focus() const {
   app_context_.CallInUIThread([this]() { window_->Focus(); });
