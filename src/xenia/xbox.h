@@ -540,6 +540,17 @@ const static std::map<XContentType, std::string> XContentTypeMap = {
     {XContentType::kCommunityGame, "Community Game"},
 };
 
+enum X_MARKETPLACE_ENTRYPOINT : uint32_t {
+  ContentList = 0,
+  ContentItem = 1,
+  MembershipList = 2,
+  MembershipItem = 3,
+  ContentList_Background = 4,
+  ContentItem_Background = 5,
+  NameChange = 6,
+  ActiveDownloads = 12
+};
+
 enum class XDeploymentType : uint32_t {
   kOpticalDisc = 0,
   kHardDrive = 1,  // Like extracted?
