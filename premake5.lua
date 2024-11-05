@@ -87,7 +87,7 @@ filter("configurations:Release")
     "NDEBUG",
     "_NO_DEBUG_HEAP=1",
   })
-  optimize("Speed")
+  optimize("Full")
   inlining("Auto")
   flags({
     "LinkTimeOptimization",
