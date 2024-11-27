@@ -1058,6 +1058,95 @@ dword_result_t XamUserGetUserTenure_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserTenure, kUserProfiles, kImplemented);
 
+// https://github.com/TeaModz/XeLiveStealth-Full-Source/blob/d4a7439ac6241c4a13e883a6f156623d1c08f6eb/XeLive/Utils.cpp#L416
+dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  const auto host_xuids_ptr =
+      kernel_memory()->TranslateVirtual<xe::be<uint64_t>*>(xuids_ptr);
+
+  const auto xuids = std::vector<xe::be<uint64_t>>(
+      host_xuids_ptr, host_xuids_ptr + XUserMaxUserCount);
+
+  if (!xuids_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [xuids, flags](uint32_t& extended_error,
+                            uint32_t& length) -> X_RESULT {
+    auto const profile_manager = kernel_state()->xam_state()->profile_manager();
+
+    X_STATUS result = X_ERROR_SUCCESS;
+
+    if (flags & static_cast<uint32_t>(UserLogonFlags::AddUser)) {
+      for (auto& xuid : xuids) {
+        if (xuid) {
+          profile_manager->Login(xuid, XUserIndexAny, true);
+        }
+      }
+    }
+
+    if (flags & static_cast<uint32_t>(UserLogonFlags::RemoveUser)) {
+      for (auto& xuid : xuids) {
+        const uint8_t assigned_index =
+            profile_manager->GetUserIndexAssignedToProfile(xuid);
+
+        if (xuid) {
+          if (kernel_state()->xam_state()->IsUserSignedIn(xuid)) {
+            profile_manager->Logout(assigned_index, true);
+          }
+        }
+      }
+    }
+
+    // Log everyone out
+    if (flags & static_cast<uint32_t>(UserLogonFlags::ForceLiveLogOff)) {
+      for (uint32_t user_index = 0; user_index < XUserMaxUserCount;
+           user_index++) {
+        if (kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+          profile_manager->Logout(user_index, true);
+        }
+      }
+    }
+
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = 0;
+
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length = 0;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+}
+DECLARE_XAM_EXPORT1(XamUserLogon, kUserProfiles, kImplemented);
+
+dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profile_ptr,
+                                    dword_t flags,
+                                    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto run = [profile_ptr, flags](uint32_t& extended_error,
+                                  uint32_t& length) -> X_RESULT {
+    X_STATUS result = X_ERROR_SUCCESS;
+
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = 0;
+
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length = 0;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+}
+DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

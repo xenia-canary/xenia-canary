@@ -102,6 +102,13 @@ void XNotifyPositionUI_entry(dword_t position) {
 }
 DECLARE_XAM_EXPORT1(XNotifyPositionUI, kNone, kStub);
 
+dword_result_t XNotifyBroadcast_entry(dword_t notification, dword_t data) {
+  kernel_state()->BroadcastNotification(notification, data);
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XNotifyBroadcast, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
