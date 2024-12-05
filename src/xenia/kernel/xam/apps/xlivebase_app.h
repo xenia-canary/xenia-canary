@@ -24,6 +24,25 @@ class XLiveBaseApp : public App {
 
   X_HRESULT DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                 uint32_t buffer_length) override;
+
+ private:
+  X_HRESULT XPresenceInitialize(uint32_t buffer_length);
+  X_HRESULT XPresenceSubscribe(uint32_t buffer_length);
+  X_HRESULT XPresenceUnsubscribe(uint32_t buffer_length);
+  X_HRESULT XPresenceCreateEnumerator(uint32_t buffer_length);
+  X_HRESULT GetServiceInfo(uint32_t service_id, uint32_t service_info);
+
+  X_HRESULT CreateFriendsEnumerator(uint32_t buffer_args);
+  void UpdateFriendPresence(const uint32_t user_index);
+  void UpdatePresenceXUIDs(const std::vector<uint64_t>& xuids,
+                           const uint32_t user_index);
+  X_HRESULT XStringVerify(uint32_t buffer_ptr, uint32_t buffer_length);
+  X_HRESULT XStorageDownloadToMemory(uint32_t buffer_ptr);
+  X_HRESULT XStorageUploadFromMemory(uint32_t buffer_ptr);
+  X_HRESULT XStorageBuildServerPath(uint32_t buffer_ptr);
+
+  X_HRESULT Unk58024(uint32_t buffer_length);
+  X_HRESULT Unk5801C(uint32_t buffer_length);
 };
 
 }  // namespace apps
