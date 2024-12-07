@@ -1,0 +1,1 @@
+This is a modified version of [**DirectXShaderCompiler**](https://github.com/microsoft/DirectXShaderCompiler) for use by Xenia.
