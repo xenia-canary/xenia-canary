@@ -12,12 +12,14 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/kernel/util/property.h"
+#include "xenia/kernel/util/xdbf_utils.h"
 #include "xenia/kernel/util/xuserdata.h"
 #include "xenia/xbox.h"
 
@@ -165,11 +167,29 @@ class UserProfile {
     return account_info_.GetSubscriptionTier();
   }
 
+  const std::unordered_map<uint32_t, const util::XdbfGameData>& GetUserGpds()
+      const {
+    return user_gpds_;
+  }
+
+  std::optional<const util::XdbfGameData> GetTitleGpd(uint32_t title_id) const {
+    if (!user_gpds_.count(title_id)) {
+      return std::nullopt;
+    }
+
+    return user_gpds_.at(title_id);
+  }
+
   void AddSetting(std::unique_ptr<UserSetting> setting);
   UserSetting* GetSetting(uint32_t setting_id);
 
   bool AddProperty(const Property* property);
   Property* GetProperty(const AttributeKey id);
+
+  void AddTitleData(const uint32_t title_id,
+                    const util::XdbfGameData* title_data) {
+    user_gpds_.insert({title_id, *title_data});
+  }
 
   std::map<uint32_t, uint32_t> contexts_;
 
@@ -181,6 +201,8 @@ class UserProfile {
   std::unordered_map<uint32_t, UserSetting*> settings_;
 
   std::vector<Property> properties_;
+
+  std::unordered_map<uint32_t, const util::XdbfGameData> user_gpds_;
 
   void LoadSetting(UserSetting*);
   void SaveSetting(UserSetting*);
