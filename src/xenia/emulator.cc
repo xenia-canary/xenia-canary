@@ -1463,6 +1463,15 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
           static_cast<XLanguage>(cvars::user_language));
       XELOGI("Title name: {}", title_name_);
 
+      for (uint8_t i = 0; i < XUserMaxUserCount; i++) {
+        auto profile =
+            kernel_state()->xam_state()->profile_manager()->GetProfile(i);
+
+        if (profile) {
+          profile->AddTitleData(module->title_id(), &db);
+        }
+      }
+
       // Show achievments data
       tabulate::Table table;
       table.format().multi_byte_characters(true);
