@@ -13,6 +13,7 @@
 #include "xenia/kernel/xam/apps/messenger_app.h"
 #include "xenia/kernel/xam/apps/xam_app.h"
 #include "xenia/kernel/xam/apps/xgi_app.h"
+#include "xenia/kernel/xam/apps/xime_app.h"
 #include "xenia/kernel/xam/apps/xlivebase_app.h"
 #include "xenia/kernel/xam/apps/xmp_app.h"
 
@@ -26,6 +27,7 @@ App::App(KernelState* kernel_state, uint32_t app_id)
       app_id_(app_id) {}
 
 void AppManager::RegisterApps(KernelState* kernel_state, AppManager* manager) {
+  manager->RegisterApp(std::make_unique<apps::XimeApp>(kernel_state));
   manager->RegisterApp(std::make_unique<apps::MessengerApp>(kernel_state));
   manager->RegisterApp(std::make_unique<apps::XmpApp>(kernel_state));
   manager->RegisterApp(std::make_unique<apps::XgiApp>(kernel_state));
