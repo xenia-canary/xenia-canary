@@ -34,6 +34,8 @@ class ImGuiDialog;
 class ImGuiNotification;
 class Window;
 
+using IconsData = std::map<uint32_t, std::pair<const uint8_t*, uint32_t>>;
+
 class ImGuiDrawer : public WindowInputListener, public UIDrawer {
  public:
   ImGuiDrawer(Window* window, size_t z_order);
@@ -60,11 +62,21 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   void ClearDialogs();
 
+  std::map<uint32_t, std::unique_ptr<ImmediateTexture>> LoadIcons(
+      IconsData data);
+
   ImmediateTexture* GetNotificationIcon(uint8_t user_index) {
     if (user_index >= notification_icon_textures_.size()) {
       user_index = 0;
     }
     return notification_icon_textures_.at(user_index).get();
+  }
+
+  ImFont* GetTitleFont() {
+    if (!GetIO().Fonts->Fonts[1]->IsLoaded()) {
+      return GetIO().Fonts->Fonts[0];
+    }
+    return GetIO().Fonts->Fonts[1];
   }
 
  protected:
@@ -80,7 +92,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
  private:
   void Initialize();
-  void InitializeFonts();
+  void InitializeFonts(const float font_size);
   bool LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config, float font_size);
   bool LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config, float font_size);
   bool LoadJapaneseFont(ImGuiIO& io, float font_size);
