@@ -861,6 +861,79 @@ dword_result_t XamProfileFindAccount_entry(
 }
 DECLARE_XAM_EXPORT1(XamProfileFindAccount, kUserProfiles, kImplemented);
 
+// https://github.com/TeaModz/XeLiveStealth-Full-Source/blob/d4a7439ac6241c4a13e883a6f156623d1c08f6eb/XeLive/Utils.cpp#L416
+dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  assert_true(flags == X_USER_LOGON_SIGNIN || flags == X_USER_LOGON_SIGNIN_2 ||
+              flags == X_USER_LOGON_SIGNOUT ||
+              flags == X_USER_LOGON_SIGNOUT_2 ||
+              flags == X_USER_LOGON_SIGNOUT_3);
+
+  if (!xuids_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [xuids_ptr, flags](uint32_t& extended_error,
+                                uint32_t& length) -> X_RESULT {
+    auto const profile_manager = kernel_state()->xam_state()->profile_manager();
+
+    X_STATUS result = X_ERROR_FUNCTION_FAILED;
+
+    for (uint32_t user_index = 0; user_index < XUserMaxUserCount;
+         user_index++) {
+      const uint64_t xuid = xuids_ptr[user_index];
+
+      const bool xuid_entry = xuid;
+
+      if ((flags & X_USER_LOGON_SIGNIN) == X_USER_LOGON_SIGNIN ||
+          (flags & X_USER_LOGON_SIGNIN_2) == X_USER_LOGON_SIGNIN_2) {
+        // XUID available
+        if (xuid_entry) {
+          if (!kernel_state()->xam_state()->IsUserSignedIn(xuid)) {
+            profile_manager->Login(xuid, XUserIndexAny, true);
+          }
+        }
+
+        result = X_ERROR_SUCCESS;
+      } else if ((flags & X_USER_LOGON_SIGNOUT) == X_USER_LOGON_SIGNOUT) {
+        // XUID not available
+        if (!xuid_entry) {
+          if (kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+            profile_manager->Logout(user_index, true);
+          }
+        }
+
+        result = X_ERROR_SUCCESS;
+      } else if ((flags & X_USER_LOGON_SIGNOUT_2) == X_USER_LOGON_SIGNOUT_2 ||
+                 (flags & X_USER_LOGON_SIGNOUT_3) == X_USER_LOGON_SIGNOUT_3) {
+        // XUID available
+        if (kernel_state()->xam_state()->IsUserSignedIn(xuid)) {
+          const uint8_t assigned_index =
+              profile_manager->GetUserIndexAssignedToProfile(xuid);
+
+          profile_manager->Logout(assigned_index, true);
+        }
+
+        result = X_ERROR_SUCCESS;
+      }
+    }
+
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = 0;
+
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length = 0;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+}
+DECLARE_XAM_EXPORT1(XamUserLogon, kUserProfiles, kImplemented);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
