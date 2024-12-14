@@ -80,6 +80,9 @@ filter({"configurations:Debug", "platforms:Linux"})
     "_GLIBCXX_DEBUG",   -- make dbg symbols work on some distros
   })
 
+filter("configurations:Release", "platforms:not Windows")
+  inlining("Auto")
+
 filter("configurations:Release")
   runtime("Release")
   defines({
@@ -87,7 +90,6 @@ filter("configurations:Release")
     "_NO_DEBUG_HEAP=1",
   })
   optimize("Speed")
-  inlining("Auto")
   flags({
     "LinkTimeOptimization",
     "NoBufferSecurityCheck",
