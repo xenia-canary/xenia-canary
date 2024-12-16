@@ -21,9 +21,6 @@ namespace vulkan {
 
 class VulkanGraphicsSystem : public GraphicsSystem {
  public:
-  VulkanGraphicsSystem();
-  ~VulkanGraphicsSystem() override;
-
   static bool IsAvailable() { return true; }
 
   std::string name() const override;
