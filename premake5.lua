@@ -66,6 +66,7 @@ filter({"configurations:Release", "platforms:Windows"})
   buildoptions({
     "/Gw",
     "/Ob3",
+    "/Qpar",
   })
 
 filter("configurations:Debug")
