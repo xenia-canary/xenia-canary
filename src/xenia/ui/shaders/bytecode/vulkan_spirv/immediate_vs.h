@@ -2,7 +2,7 @@
 #if 0
 ; SPIR-V
 ; Version: 1.0
-; Generator: Khronos Glslang Reference Front End; 10
+; Generator: Khronos Glslang Reference Front End; 11
 ; Bound: 24627
 ; Schema: 0
                OpCapability Shader
@@ -13,14 +13,14 @@
                OpDecorate %4693 Location 1
                OpDecorate %3080 Location 1
                OpDecorate %5914 Location 2
+               OpDecorate %_struct_419 Block
                OpMemberDecorate %_struct_419 0 BuiltIn Position
                OpMemberDecorate %_struct_419 1 BuiltIn PointSize
                OpMemberDecorate %_struct_419 2 BuiltIn ClipDistance
                OpMemberDecorate %_struct_419 3 BuiltIn CullDistance
-               OpDecorate %_struct_419 Block
                OpDecorate %5474 Location 0
-               OpMemberDecorate %_struct_997 0 Offset 0
                OpDecorate %_struct_997 Block
+               OpMemberDecorate %_struct_997 0 Offset 0
        %void = OpTypeVoid
        %1282 = OpTypeFunction %void
       %float = OpTypeFloat 32
@@ -74,19 +74,19 @@
 #endif
 
 const uint32_t immediate_vs[] = {
-    0x07230203, 0x00010000, 0x0008000A, 0x00006033, 0x00000000, 0x00020011,
+    0x07230203, 0x00010000, 0x0008000B, 0x00006033, 0x00000000, 0x00020011,
     0x00000001, 0x0006000B, 0x00000001, 0x4C534C47, 0x6474732E, 0x3035342E,
     0x00000000, 0x0003000E, 0x00000000, 0x00000001, 0x000B000F, 0x00000000,
     0x0000161F, 0x6E69616D, 0x00000000, 0x0000103F, 0x00001255, 0x00000C08,
     0x0000171A, 0x00001342, 0x00001562, 0x00040047, 0x0000103F, 0x0000001E,
     0x00000000, 0x00040047, 0x00001255, 0x0000001E, 0x00000001, 0x00040047,
     0x00000C08, 0x0000001E, 0x00000001, 0x00040047, 0x0000171A, 0x0000001E,
-    0x00000002, 0x00050048, 0x000001A3, 0x00000000, 0x0000000B, 0x00000000,
-    0x00050048, 0x000001A3, 0x00000001, 0x0000000B, 0x00000001, 0x00050048,
-    0x000001A3, 0x00000002, 0x0000000B, 0x00000003, 0x00050048, 0x000001A3,
-    0x00000003, 0x0000000B, 0x00000004, 0x00030047, 0x000001A3, 0x00000002,
-    0x00040047, 0x00001562, 0x0000001E, 0x00000000, 0x00050048, 0x000003E5,
-    0x00000000, 0x00000023, 0x00000000, 0x00030047, 0x000003E5, 0x00000002,
+    0x00000002, 0x00030047, 0x000001A3, 0x00000002, 0x00050048, 0x000001A3,
+    0x00000000, 0x0000000B, 0x00000000, 0x00050048, 0x000001A3, 0x00000001,
+    0x0000000B, 0x00000001, 0x00050048, 0x000001A3, 0x00000002, 0x0000000B,
+    0x00000003, 0x00050048, 0x000001A3, 0x00000003, 0x0000000B, 0x00000004,
+    0x00040047, 0x00001562, 0x0000001E, 0x00000000, 0x00030047, 0x000003E5,
+    0x00000002, 0x00050048, 0x000003E5, 0x00000000, 0x00000023, 0x00000000,
     0x00020013, 0x00000008, 0x00030021, 0x00000502, 0x00000008, 0x00030016,
     0x0000000D, 0x00000020, 0x00040017, 0x00000013, 0x0000000D, 0x00000002,
     0x00040020, 0x00000290, 0x00000003, 0x00000013, 0x0004003B, 0x00000290,
