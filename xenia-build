@@ -964,6 +964,7 @@ class BuildShadersCommand(Command):
                     if subprocess.call([
                            fxc,
                            '/D', 'XESL_LANGUAGE_HLSL=1',
+                           '/O3',
                            '/Fh', dxbc_file_path_base + '.h',
                            '/T', dxbc_stage + '_5_1',
                            '/Vn', dxbc_identifier,
