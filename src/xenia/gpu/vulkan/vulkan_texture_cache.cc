@@ -104,13 +104,11 @@ const VulkanTextureCache::HostFormatPair
          xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR,
          true},
         // k_1_5_5_5
-        // Red and blue swapped in the load shader for simplicity.
-        {{kLoadShaderIndexR5G5B5A1ToB5G5R5A1, VK_FORMAT_A1R5G5B5_UNORM_PACK16},
+        {{kLoadShaderIndex16bpb, VK_FORMAT_R5G5B5A1_UNORM_PACK16},
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA},
         // k_5_6_5
-        // Red and blue swapped in the load shader for simplicity.
-        {{kLoadShaderIndexR5G6B5ToB5G6R5, VK_FORMAT_R5G6B5_UNORM_PACK16},
+        {{kLoadShaderIndex16bpb, VK_FORMAT_R5G6B5_UNORM_PACK16},
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBB},
         // k_6_5_5

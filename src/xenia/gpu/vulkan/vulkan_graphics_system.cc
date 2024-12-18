@@ -17,17 +17,13 @@ namespace xe {
 namespace gpu {
 namespace vulkan {
 
-VulkanGraphicsSystem::VulkanGraphicsSystem() {}
-
-VulkanGraphicsSystem::~VulkanGraphicsSystem() {}
-
 std::string VulkanGraphicsSystem::name() const {
   auto vulkan_command_processor =
       static_cast<VulkanCommandProcessor*>(command_processor());
   if (vulkan_command_processor != nullptr) {
     return vulkan_command_processor->GetWindowTitleText();
   }
-  return "Vulkan - HEAVILY INCOMPLETE, early development";
+  return "Vulkan - EXPERIMENTAL, may cause instabilities";
 }
 
 X_STATUS VulkanGraphicsSystem::Setup(cpu::Processor* processor,

@@ -130,7 +130,7 @@ std::string VulkanCommandProcessor::GetWindowTitleText() const {
       title << ' ' << draw_resolution_scale_x << 'x' << draw_resolution_scale_y;
     }
   }
-  title << " - HEAVILY INCOMPLETE, early development";
+  title << " - EXPERIMENTAL, may cause instabilities";
   return title.str();
 }
 
