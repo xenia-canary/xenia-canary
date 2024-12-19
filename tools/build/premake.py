@@ -13,10 +13,12 @@ import os
 from shutil import rmtree
 import subprocess
 import sys
+import pathlib
+from helpers import is_executable, get_bin, has_bin
 
 
 self_path = os.path.dirname(os.path.abspath(__file__))
-root_path = os.path.join(self_path, "..", "..")
+root_path = pathlib.Path(self_path).parent.parent.absolute()
 premake_submodule_path = os.path.join(root_path, "third_party", "premake-core")
 premake_path = premake_submodule_path
 
@@ -41,8 +43,8 @@ def setup_premake_path_override():
             if popen.communicate()[0] == "Android\n":
                 xb_file = os.path.join(root_path, "xenia-build.py")
                 if (os.path.isfile(xb_file) and not os.access(xb_file, os.X_OK) and
-                    "HOME" in os.environ):
-                  premake_path = os.path.join(os.environ["HOME"], ".xenia-build", "premake-core")
+                      "HOME" in os.environ):
+                    premake_path = os.path.join(os.environ["HOME"], ".xenia-build", "premake-core")
         except Exception:
             pass
 
@@ -50,29 +52,33 @@ setup_premake_path_override()
 
 
 def main():
-    # First try the freshly-built premake.
-    premake5_bin = os.path.join(premake_path, "bin", "release", "premake5")
-    if not has_bin(premake5_bin):
-        # No fresh build, so fallback to checked in copy (which we may not have).
-        premake5_bin = os.path.join(self_path, "bin", "premake5")
-    if not has_bin(premake5_bin):
-        # Still no valid binary, so build it.
+    premake_bin_name = "premake5.exe" if sys.platform is "win32" else "premake 5"
+    premake_build_bin = os.path.join(premake_path, "bin", "release", premake_bin_name)
+    premake_local_bin = os.path.join(self_path, "bin", premake_bin_name)
+    premake5_bin = None
+    # First check if premake is available at the system level
+    if has_bin('premake5'):
+        premake5_bin = get_bin("premake5")
+        print("using the installed version of premake")
+    # Next try the freshly-built premake.
+    elif is_executable(premake_build_bin):
+        premake5_bin = premake_build_bin
+        print("using local build of premake")
+    # No fresh build, so fallback to checked in copy (which we may not have).
+    elif is_executable(premake_local_bin):
+        premake5_bin = premake_local_bin
+        print("using the local prebuilt premake")
+    # Still no valid binary, so build it.
+    else:
         print("premake5 executable not found, attempting build...")
         build_premake()
-        premake5_bin = os.path.join(premake_path, "bin", "release", "premake5")
-    if not has_bin(premake5_bin):
-        # Nope, boned.
-        print("ERROR: cannot build premake5 executable.")
-        sys.exit(1)
-
-    # Ensure the submodule has been checked out.
-    if not os.path.exists(os.path.join(premake_path, "scripts", "package.lua")):
-        print("third_party/premake-core was not present; run xb setup...")
-        sys.exit(1)
-
-    if sys.platform == "win32":
-        # Append the executable extension on windows.
-        premake5_bin += ".exe"
+        if is_executable(premake_build_bin):
+            premake5_bin = premake_build_bin
+            print("using local build of premake")
+        else:
+            # Nope, boned.
+            print("ERROR: cannot build premake5 executable.")
+            sys.exit(1)
 
     return_code = shell_call([
         premake5_bin,
@@ -86,6 +92,12 @@ def main():
 def build_premake():
     """Builds premake from source.
     """
+    # Ensure the submodule has been checked out.
+    if not os.path.exists(os.path.join(premake_path, "scripts", "package.lua")):
+      print("third_party/premake-core was not present; run xb setup...")
+      sys.exit(1)
+      return
+  
     # Ensure that on Android, premake-core is in the internal storage.
     clone_premake_to_internal_storage()
     cwd = os.getcwd()
@@ -146,22 +158,6 @@ def clone_premake_to_internal_storage():
       premake_submodule_path,
       premake_path,
       ])
-
-
-def has_bin(bin):
-    """Checks whether the given binary is present.
-    """
-    for path in os.environ["PATH"].split(os.pathsep):
-        if sys.platform == "win32":
-            exe_file = os.path.join(path, f"{bin}.exe")
-            if os.path.isfile(exe_file) and os.access(exe_file, os.X_OK):
-                return True
-        else:
-            path = path.strip("\"")
-            exe_file = os.path.join(path, bin)
-            if os.path.isfile(exe_file) and os.access(exe_file, os.X_OK):
-                return True
-    return None
 
 
 def shell_call(command, throw_on_error=True, stdout_path=None, stderr_path=None, shell=False):
