@@ -25,6 +25,7 @@
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/config.h"
+#include "xenia/debug/gdb/gdbstub.h"
 #include "xenia/debug/ui/debug_window.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/xam/xam_module.h"
@@ -100,6 +101,10 @@ DEFINE_transient_bool(portable, true,
                       "General");
 
 DECLARE_bool(debug);
+DEFINE_int32(
+    gdbport, 0,
+    "Port for GDBStub debugger to listen on, requires --debug (0 = disable)",
+    "General");
 
 DEFINE_bool(discord, true, "Enable Discord rich presence", "General");
 
@@ -228,6 +233,7 @@ class EmulatorApp final : public xe::ui::WindowedApp {
 
   // Created on demand, used by the emulator.
   std::unique_ptr<xe::debug::ui::DebugWindow> debug_window_;
+  std::unique_ptr<xe::debug::gdb::GDBStub> debug_gdbstub_;
 
   // Refreshing the emulator - placed after its dependencies.
   std::atomic<bool> emulator_thread_quit_requested_;
@@ -566,20 +572,33 @@ void EmulatorApp::EmulatorThread() {
   // Set a debug handler.
   // This will respond to debugging requests so we can open the debug UI.
   if (cvars::debug) {
-    emulator_->processor()->set_debug_listener_request_handler(
-        [this](xe::cpu::Processor* processor) {
-          if (debug_window_) {
-            return debug_window_.get();
-          }
-          app_context().CallInUIThreadSynchronous([this]() {
-            debug_window_ = xe::debug::ui::DebugWindow::Create(emulator_.get(),
-                                                               app_context());
-            debug_window_->window()->AddListener(
-                &debug_window_closed_listener_);
+    if (cvars::gdbport > 0) {
+      emulator_->processor()->set_debug_listener_request_handler(
+          [this](xe::cpu::Processor* processor) {
+            if (debug_gdbstub_) {
+              return debug_gdbstub_.get();
+            }
+            debug_gdbstub_ = xe::debug::gdb::GDBStub::Create(emulator_.get(),
+                                                             cvars::gdbport);
+            return debug_gdbstub_.get();
           });
-          // If failed to enqueue the UI thread call, this will just be null.
-          return debug_window_.get();
-        });
+      emulator_->processor()->ShowDebugger();
+    } else {
+      emulator_->processor()->set_debug_listener_request_handler(
+          [this](xe::cpu::Processor* processor) {
+            if (debug_window_) {
+              return debug_window_.get();
+            }
+            app_context().CallInUIThreadSynchronous([this]() {
+              debug_window_ = xe::debug::ui::DebugWindow::Create(
+                  emulator_.get(), app_context());
+              debug_window_->window()->AddListener(
+                  &debug_window_closed_listener_);
+            });
+            // If failed to enqueue the UI thread call, this will just be null.
+            return debug_window_.get();
+          });
+    }
   }
 
   emulator_->on_launch.AddListener([&](auto title_id, const auto& game_title) {

@@ -125,6 +125,8 @@ class Emulator {
   // Are we currently running a title?
   bool is_title_open() const { return title_id_.has_value(); }
 
+  uint32_t main_thread_id();
+
   // Window used for displaying graphical output. Can be null.
   ui::Window* display_window() const { return display_window_; }
 

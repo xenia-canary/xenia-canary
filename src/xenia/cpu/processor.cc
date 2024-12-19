@@ -644,7 +644,8 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
       if ((scan_breakpoint->address_type() == Breakpoint::AddressType::kGuest &&
            scan_breakpoint->guest_address() == frame.guest_pc) ||
           (scan_breakpoint->address_type() == Breakpoint::AddressType::kHost &&
-           scan_breakpoint->host_address() == frame.host_pc)) {
+           scan_breakpoint->host_address() == frame.host_pc) ||
+          scan_breakpoint->ContainsHostAddress(frame.host_pc)) {
         breakpoint = scan_breakpoint;
         break;
       }
@@ -670,17 +671,18 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
   }
 
   ResumeAllThreads();
-  thread_info->thread->thread()->Suspend();
 
   // Apply thread context changes.
   // TODO(benvanik): apply to all threads?
 #if XE_ARCH_AMD64
-  ex->set_resume_pc(thread_info->host_context.rip + 2);
+  ex->set_resume_pc(thread_info->host_context.rip);
 #elif XE_ARCH_ARM64
-  ex->set_resume_pc(thread_info->host_context.pc + 2);
+  ex->set_resume_pc(thread_info->host_context.pc);
 #else
 #error Instruction pointer not specified for the target CPU architecture.
 #endif  // XE_ARCH
+
+  thread_info->thread->thread()->Suspend();
 
   // Resume execution.
   return true;
@@ -722,7 +724,7 @@ bool Processor::OnUnhandledException(Exception* ex) {
   execution_state_ = ExecutionState::kPaused;
 
   // Notify debugger that exceution stopped.
-  // debug_listener_->OnException(info);
+  debug_listener_->OnUnhandledException(ex);
   debug_listener_->OnExecutionPaused();
 
   // Suspend self.
@@ -936,7 +938,10 @@ void Processor::StepHostInstruction(uint32_t thread_id) {
                        thread_info->step_breakpoint.reset();
                        OnStepCompleted(thread_info);
                      }));
-  AddBreakpoint(thread_info->step_breakpoint.get());
+
+  // Add to front of breakpoints map, so this should get evaluated first
+  breakpoints_.insert(breakpoints_.begin(), thread_info->step_breakpoint.get());
+
   thread_info->step_breakpoint->Resume();
 
   // ResumeAllBreakpoints();
@@ -969,7 +974,10 @@ void Processor::StepGuestInstruction(uint32_t thread_id) {
                        thread_info->step_breakpoint.reset();
                        OnStepCompleted(thread_info);
                      }));
-  AddBreakpoint(thread_info->step_breakpoint.get());
+
+  // Add to front of breakpoints map, so this should get evaluated first
+  breakpoints_.insert(breakpoints_.begin(), thread_info->step_breakpoint.get());
+
   thread_info->step_breakpoint->Resume();
 
   // ResumeAllBreakpoints();

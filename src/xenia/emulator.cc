@@ -189,6 +189,10 @@ Emulator::~Emulator() {
   ExceptionHandler::Uninstall(Emulator::ExceptionCallbackThunk, this);
 }
 
+uint32_t Emulator::main_thread_id() {
+  return main_thread_ ? main_thread_->thread_id() : 0;
+}
+
 X_STATUS Emulator::Setup(
     ui::Window* display_window, ui::ImGuiDrawer* imgui_drawer,
     bool require_cpu_backend,
