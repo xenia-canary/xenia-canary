@@ -94,12 +94,9 @@ X_STATUS XObject::Delete() {
   if (kernel_state_ == nullptr) {
     // Fake return value for api-scanner
     return X_STATUS_SUCCESS;
-  } else {
-    if (!name_.empty()) {
-      kernel_state_->object_table()->RemoveNameMapping(name_);
-    }
-    return kernel_state_->object_table()->RemoveHandle(handles_[0]);
   }
+
+  return kernel_state_->object_table()->RemoveHandle(handles_[0]);
 }
 
 bool XObject::SaveObject(ByteStream* stream) {

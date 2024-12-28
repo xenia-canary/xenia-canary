@@ -199,9 +199,6 @@ class XObject {
   static object_ref<XObject> Restore(KernelState* kernel_state, Type type,
                                      ByteStream* stream);
 
-  static constexpr bool is_handle_host_object(X_HANDLE handle) {
-    return handle > XObject::kHandleHostBase && handle < XObject::kHandleBase;
-  };
   // Reference()
   // Dereference()
 

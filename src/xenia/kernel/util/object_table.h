@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "xenia/base/mutex.h"
+#include "xenia/base/spinlock.h"
 #include "xenia/base/string_key.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/xbox.h"
@@ -38,7 +39,6 @@ class ObjectTable {
   X_STATUS DuplicateHandle(X_HANDLE orig, X_HANDLE* out_handle);
   X_STATUS RetainHandle(X_HANDLE handle);
   X_STATUS ReleaseHandle(X_HANDLE handle);
-  X_STATUS ReleaseHandleInLock(X_HANDLE handle);
   X_STATUS RemoveHandle(X_HANDLE handle);
 
   bool Save(ByteStream* stream);
@@ -59,6 +59,7 @@ class ObjectTable {
 
   X_STATUS AddNameMapping(const std::string_view name, X_HANDLE handle);
   void RemoveNameMapping(const std::string_view name);
+
   X_STATUS GetObjectByName(const std::string_view name, X_HANDLE* out_handle);
   template <typename T>
   std::vector<object_ref<T>> GetObjectsByType(XObject::Type type) {
@@ -85,28 +86,77 @@ class ObjectTable {
     int handle_ref_count = 0;
     XObject* object = nullptr;
   };
-  ObjectTableEntry* LookupTableInLock(X_HANDLE handle);
+
+  struct ObjectTableInfo {
+    uint32_t table_base_handle_offset_ = 0;
+    uint32_t previous_free_slot_ = 0;
+    std::unordered_map<uint32_t, ObjectTableEntry> table_ = {};
+    std::vector<uint32_t> freed_table_slots_ = {};
+
+    // Ctor for host objects
+    ObjectTableInfo() {
+      previous_free_slot_ = 1;
+
+      freed_table_slots_.reserve(255);
+      table_.reserve(4095);
+    };
+
+    // Ctor for guest objects
+    ObjectTableInfo(uint32_t base_handle_offset) {
+      table_base_handle_offset_ = base_handle_offset;
+
+      freed_table_slots_.reserve(255);
+      table_.reserve(4095);
+    };
+
+    X_HANDLE GetSlotHandle(uint32_t slot) {
+      return (slot << 2) + table_base_handle_offset_;
+    }
+
+    uint32_t GetHandleSlot(X_HANDLE handle) {
+      return (handle - table_base_handle_offset_) >> 2;
+    }
+
+    void Reset() {
+      for (auto& [_, entry] : table_) {
+        if (entry.object) {
+          entry.object->Release();
+        }
+      }
+
+      previous_free_slot_ = 1;
+    }
+  };
+
   ObjectTableEntry* LookupTable(X_HANDLE handle);
   XObject* LookupObject(X_HANDLE handle, bool already_locked);
   void GetObjectsByType(XObject::Type type,
                         std::vector<object_ref<XObject>>* results);
 
-  X_HANDLE TranslateHandle(X_HANDLE handle);
-  static constexpr uint32_t GetHandleSlot(X_HANDLE handle, bool host) {
-    handle &= host ? ~XObject::kHandleHostBase : ~XObject::kHandleBase;
-    return handle >> 2;
-  }
-  X_STATUS FindFreeSlot(uint32_t* out_slot, bool host);
-  bool Resize(uint32_t new_capacity, bool host);
+  X_HANDLE TranslateHandle(X_HANDLE handle) const;
 
-  xe::global_critical_region global_critical_region_;
-  uint32_t table_capacity_ = 0;
-  uint32_t host_table_capacity_ = 0;
-  ObjectTableEntry* table_ = nullptr;
-  ObjectTableEntry* host_table_ = nullptr;
-  uint32_t last_free_entry_ = 0;
-  uint32_t last_free_host_entry_ = 0;
-  std::unordered_map<string_key_case, X_HANDLE> name_table_;
+  X_STATUS FindFreeSlot(const XObject* const object, uint32_t* out_slot);
+
+  ObjectTableInfo* const GetTableForObject(const XObject* const obj);
+  ObjectTableInfo* const GetTableForObject(const X_HANDLE handle);
+  uint32_t GetFirstFreeSlot(ObjectTableInfo* const table);
+
+  xe::spinlock spinlock_;
+
+  ObjectTableInfo host_object_table_;
+
+  static constexpr uint32_t kGuestHandleBase = 0x00100000;
+  static constexpr uint32_t kGuestHandleTitleThreadBase = 0xF8000000;
+  static constexpr uint32_t kGuestHandleSystemThreadBase = 0xFB000000;
+
+  std::map<const uint32_t, ObjectTableInfo> guest_object_table_ = {
+      {kGuestHandleBase, ObjectTableInfo(kGuestHandleBase)},
+      {kGuestHandleTitleThreadBase,
+       ObjectTableInfo(kGuestHandleTitleThreadBase)},
+      {kGuestHandleSystemThreadBase,
+       ObjectTableInfo(kGuestHandleSystemThreadBase)}};
+
+  std::unordered_map<string_key_case, X_HANDLE> guest_name_table_;
 };
 
 // Generic lookup
