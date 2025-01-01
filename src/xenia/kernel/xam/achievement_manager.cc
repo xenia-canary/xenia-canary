@@ -32,7 +32,6 @@ namespace xam {
 
 AchievementManager::AchievementManager() {
   default_achievements_backend_ = std::make_unique<GpdAchievementBackend>();
-
   // Add any optional backend here.
 };
 void AchievementManager::EarnAchievement(const uint32_t user_index,
