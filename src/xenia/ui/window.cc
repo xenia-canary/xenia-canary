@@ -317,7 +317,8 @@ void Window::SetMainMenuEnabled(bool enabled) {
   // pressing) that may execute callbacks potentially destroying the Window via
   // the outer architecture.
   WindowDestructionReceiver destruction_receiver(this);
-  main_menu_->SetEnabled(enabled);
+  main_menu_->SetEnabledCascade(enabled);
+  main_menu_enabled_ = enabled;
   if (destruction_receiver.IsWindowDestroyed()) {
     return;
   }

@@ -27,10 +27,11 @@ class MenuItem {
   typedef std::unique_ptr<MenuItem, void (*)(MenuItem*)> MenuItemPtr;
 
   enum class Type {
-    kPopup,  // Popup menu (submenu)
-    kSeparator,
-    kNormal,  // Root menu
-    kString,  // Menu is just a string
+    kPopup,      // Popup menu (submenu)
+    kSeparator,  // Seperator between elements
+    kNormal,     // Root menu
+    kString,     // Menu is just a string
+    kChecked     // Menu is child of submenu with checkmarks
   };
 
   static std::unique_ptr<MenuItem> Create(Type type);
@@ -43,8 +44,11 @@ class MenuItem {
 
   virtual ~MenuItem();
 
-  MenuItem* parent_item() const { return parent_item_; }
-  Type type() { return type_; }
+  MenuItem* GetParentItem() const { return parent_item_; }
+  MenuItem* GetPreviousItem() const { return previous_item_; }
+  MenuItem* GetNextItem() const { return next_item_; }
+
+  Type type() const { return type_; }
   const std::string& text() { return text_; }
   const std::string& hotkey() { return hotkey_; }
 
@@ -57,9 +61,17 @@ class MenuItem {
   void AddChild(std::unique_ptr<MenuItem> child_item);
   void AddChild(MenuItemPtr child_item);
   void RemoveChild(MenuItem* child_item);
-  MenuItem* child(size_t index);
+  void SetPreviousItem(MenuItem* previous_item);
+  void SetNextItem(MenuItem* next_item);
+  MenuItem* GetItem(uint32_t index);
 
+  virtual void SetEnabledCascade(bool enabled) {}
   virtual void SetEnabled(bool enabled) {}
+  virtual void SetEnabled(uint32_t position, bool enabled) {}
+  virtual void SetChecked(bool checked) {}
+  virtual void SetChecked(uint32_t identifier, bool checked) {}
+  virtual void ResetChecked() {};
+  virtual void ModifyString(std::string modify_str) {}
 
  protected:
   MenuItem(Type type, const std::string& text, const std::string& hotkey,
@@ -74,6 +86,8 @@ class MenuItem {
 
   Type type_;
   MenuItem* parent_item_;
+  MenuItem* previous_item_;
+  MenuItem* next_item_;
   std::vector<MenuItemPtr> children_;
   std::string text_;
   std::string hotkey_;

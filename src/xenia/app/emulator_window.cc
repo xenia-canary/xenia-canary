@@ -61,6 +61,8 @@ DECLARE_bool(readback_resolve);
 
 DECLARE_bool(readback_memexport);
 
+DECLARE_int32(keyboard_mode);
+
 DEFINE_bool(fullscreen, false, "Whether to launch the emulator in fullscreen.",
             "Display");
 
@@ -577,6 +579,7 @@ bool EmulatorWindow::Initialize() {
   // FIXME: This code is really messy.
   auto main_menu = MenuItem::Create(MenuItem::Type::kNormal);
   auto file_menu = MenuItem::Create(MenuItem::Type::kPopup, "&File");
+  auto testing_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Testing");
   auto recent_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Open Recent");
   auto zar_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Zar Package");
   FillRecentlyLaunchedTitlesMenu(recent_menu.get());
@@ -612,6 +615,17 @@ bool EmulatorWindow::Initialize() {
                          [this]() { window_->RequestClose(); }));
   }
   main_menu->AddChild(std::move(file_menu));
+
+  testing_menu->AddChild(
+      std::move(MenuItem::Create(MenuItem::Type::kChecked, "&SubMenu 1")));
+  testing_menu->AddChild(
+      std::move(MenuItem::Create(MenuItem::Type::kChecked, "&SubMenu 2")));
+  testing_menu->AddChild(
+      std::move(MenuItem::Create(MenuItem::Type::kChecked, "&SubMenu 3")));
+  testing_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+  testing_menu->AddChild(
+      std::move(MenuItem::Create(MenuItem::Type::kChecked, "&SubMenu 4")));
+  main_menu->AddChild(std::move(testing_menu));
 
   // Profile Menu
   auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Profile");
@@ -728,6 +742,14 @@ bool EmulatorWindow::Initialize() {
   }
   main_menu->AddChild(std::move(help_menu));
 
+  // if (cvars::keyboard_mode == 2) {
+  auto toggle_menu =
+      MenuItem::Create(MenuItem::Type::kString, "&Disable Toolbar",
+                       std::bind(&EmulatorWindow::ToggleToolBar, this));
+
+  main_menu->AddChild(std::move(toggle_menu));
+  //}
+
   window_->SetMainMenu(std::move(main_menu));
 
   window_->SetMainMenuEnabled(false);
@@ -831,8 +853,27 @@ void EmulatorWindow::ApplyDisplayConfigForCvars() {
   }
 }
 
+void EmulatorWindow::ToggleToolBar() {
+  const uint32_t toolbar_pos = 8;
+
+  auto toolbar_item = window_->GetMainMenu()->GetItem(toolbar_pos);
+
+  window_->SetMainMenuEnabled(!window_->GetMainMenuEnabled());
+  toolbar_item->SetEnabled(true);
+
+  if (window_->GetMainMenuEnabled()) {
+    toolbar_item->ModifyString("Disable Toolbar");
+  } else {
+    toolbar_item->ModifyString("Enable Toolbar");
+  }
+}
+
 void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
   if (!emulator_initialized_) {
+    return;
+  }
+
+  if (!window_->GetMainMenuEnabled()) {
     return;
   }
 

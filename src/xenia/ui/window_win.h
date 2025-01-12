@@ -159,8 +159,30 @@ class Win32MenuItem : public MenuItem {
   ~Win32MenuItem() override;
 
   HMENU handle() const { return handle_; }
+  uint32_t identifier() const { return identifier_; }
+  uint32_t position() const { return position_; }
+  uint32_t next_identifier() const {
+    if (children_.size() > 1) {
+      auto item = static_cast<Win32MenuItem*>(
+          children_.back().get()->GetPreviousItem());
 
+      while (item != nullptr && item->identifier() == -1) {
+        item = static_cast<Win32MenuItem*>(item->GetPreviousItem());
+      }
+
+      return item == nullptr ? 0 : item->identifier() + 1;
+    } else {
+      return 0;
+    }
+  }
+
+  void SetEnabledCascade(bool enabled) override;
   void SetEnabled(bool enabled) override;
+  void SetEnabled(uint32_t position, bool enabled) override;
+  void SetChecked(bool checked) override;
+  void SetChecked(uint32_t identifier, bool checked) override;
+  void ResetChecked() override;
+  void ModifyString(std::string modify_str) override;
 
   using MenuItem::OnSelected;
 
@@ -170,6 +192,8 @@ class Win32MenuItem : public MenuItem {
 
  private:
   HMENU handle_ = nullptr;
+  uint32_t identifier_ = 0;
+  uint32_t position_ = 0;
 };
 
 }  // namespace ui

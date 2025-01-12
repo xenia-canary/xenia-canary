@@ -202,6 +202,8 @@ class EmulatorWindow {
   GetGuestOutputPaintConfigForCvars();
   void ApplyDisplayConfigForCvars();
 
+  void ToggleToolBar();
+
   void OnKeyDown(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
   void ToggleFullscreenOnDoubleClick();

@@ -349,6 +349,10 @@ class Window {
     }
   }
 
+  MenuItem* GetMainMenu() const { return main_menu_.get(); }
+
+  bool GetMainMenuEnabled() const { return main_menu_enabled_; }
+
  protected:
   // The receiver, which must never be instantiated in the Window object itself
   // (rather, usually it should be created as a local variable, because only
@@ -509,7 +513,6 @@ class Window {
   // default one. Returns whether the icon has been updated successfully.
   virtual void LoadAndApplyIcon(const void* buffer, size_t size,
                                 bool can_apply_state_in_current_phase) {}
-  MenuItem* GetMainMenu() const { return main_menu_.get(); }
   // May be called to add, replace or remove the main menu.
   virtual void ApplyNewMainMenu(MenuItem* old_main_menu) {}
   // If there's main menu, and state can be applied, will be called to make the
@@ -710,6 +713,8 @@ class Window {
   CursorVisibility cursor_visibility_ = CursorVisibility::kVisible;
 
   bool has_focus_ = false;
+
+  bool main_menu_enabled_ = false;
 
   Presenter* presenter_ = nullptr;
   std::unique_ptr<Surface> presenter_surface_;

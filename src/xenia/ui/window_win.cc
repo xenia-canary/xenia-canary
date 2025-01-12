@@ -128,13 +128,14 @@ bool Win32Window::OpenImpl() {
   // Create the window. Though WM_NCCREATE will assign to `hwnd_` too, still do
   // the assignment here to handle the case of a failure after WM_NCCREATE, for
   // instance.
-  hwnd_ = CreateWindowExW(
-      window_ex_style, L"XeniaWindowClass",
-      reinterpret_cast<LPCWSTR>(xe::to_utf16(GetTitle()).c_str()), window_style,
-      CW_USEDEFAULT, CW_USEDEFAULT,
-      window_size_rect.right - window_size_rect.left,
-      window_size_rect.bottom - window_size_rect.top, nullptr, nullptr,
-      hinstance, this);
+  const auto window_title = xe::to_utf16(GetTitle());
+
+  hwnd_ = CreateWindowExW(window_ex_style, L"XeniaWindowClass",
+                          reinterpret_cast<LPCWSTR>(window_title.c_str()),
+                          window_style, CW_USEDEFAULT, CW_USEDEFAULT,
+                          window_size_rect.right - window_size_rect.left,
+                          window_size_rect.bottom - window_size_rect.top,
+                          nullptr, nullptr, hinstance, this);
   if (!hwnd_) {
     XELOGE("CreateWindowExW failed");
     return false;
@@ -1202,16 +1203,16 @@ LRESULT Win32Window::WndProc(HWND hWnd, UINT message, WPARAM wParam,
           TABLET_ENABLE_MULTITOUCHDATA;
 
     case WM_MENUCOMMAND: {
-      MENUINFO menu_info = {0};
+      MENUINFO menu_info = {};
       menu_info.cbSize = sizeof(menu_info);
       menu_info.fMask = MIM_MENUDATA;
       GetMenuInfo(HMENU(lParam), &menu_info);
       auto parent_item = reinterpret_cast<Win32MenuItem*>(menu_info.dwMenuData);
-      auto child_item =
-          reinterpret_cast<Win32MenuItem*>(parent_item->child(wParam));
-      assert_not_null(child_item);
+      auto next_item = reinterpret_cast<Win32MenuItem*>(
+          parent_item->GetItem(static_cast<uint32_t>(wParam)));
+      assert_not_null(next_item);
       WindowDestructionReceiver destruction_receiver(this);
-      child_item->OnSelected();
+      next_item->OnSelected();
       if (destruction_receiver.IsWindowDestroyed()) {
         break;
       }
@@ -1286,19 +1287,25 @@ Win32MenuItem::Win32MenuItem(Type type, const std::string& text,
   switch (type) {
     case MenuItem::Type::kNormal:
       handle_ = CreateMenu();
+      identifier_ = -1;
       break;
     case MenuItem::Type::kPopup:
       handle_ = CreatePopupMenu();
+      identifier_ = -1;
+      break;
+    case MenuItem::Type::kSeparator:
+      identifier_ = -1;
       break;
     default:
       // May just be a placeholder.
       break;
   }
+
   if (handle_) {
-    MENUINFO menu_info = {0};
+    MENUINFO menu_info = {};
     menu_info.cbSize = sizeof(menu_info);
     menu_info.fMask = MIM_MENUDATA | MIM_STYLE;
-    menu_info.dwMenuData = ULONG_PTR(this);
+    menu_info.dwMenuData = reinterpret_cast<ULONG_PTR>(this);
     menu_info.dwStyle = MNS_NOTIFYBYPOS;
     SetMenuInfo(handle_, &menu_info);
   }
@@ -1310,16 +1317,87 @@ Win32MenuItem::~Win32MenuItem() {
   }
 }
 
+void Win32MenuItem::SetEnabledCascade(bool enabled) {
+  for (const auto& item : children_) {
+    item->SetEnabled(enabled);
+  }
+}
+
 void Win32MenuItem::SetEnabled(bool enabled) {
+  SetEnabled(position(), enabled);
+}
+
+void Win32MenuItem::SetEnabled(uint32_t position, bool enabled) {
   UINT enable_flags = MF_BYPOSITION | (enabled ? MF_ENABLED : MF_GRAYED);
-  UINT i = 0;
-  for (auto iter = children_.begin(); iter != children_.end(); ++iter, ++i) {
-    EnableMenuItem(handle_, i, enable_flags);
+
+  const auto parent_item = static_cast<Win32MenuItem*>(GetParentItem());
+
+  if (parent_item) {
+    EnableMenuItem(parent_item->handle(), position, enable_flags);
+  } else if (handle_) {
+    EnableMenuItem(handle_, position, enable_flags);
+  }
+}
+
+void Win32MenuItem::SetChecked(bool checked) {
+  SetChecked(identifier(), checked);
+}
+
+void Win32MenuItem::SetChecked(uint32_t identifier, bool checked) {
+  MENUITEMINFOW MII = {};
+  MII.cbSize = sizeof(MENUITEMINFO);
+  MII.fMask = MIIM_STATE;
+  MII.fState = checked ? MFS_CHECKED : MFS_UNCHECKED;
+
+  // assert_true(handle_ != 0);
+
+  if (type() == Type::kChecked) {
+    const auto parent_item = static_cast<Win32MenuItem*>(GetParentItem());
+
+    if (parent_item) {
+      SetMenuItemInfoW(parent_item->handle(), identifier, false, &MII);
+    }
+  }
+}
+
+void Win32MenuItem::ResetChecked() {
+  if (type() == Type::kChecked) {
+    const auto parent = static_cast<Win32MenuItem*>(GetParentItem());
+
+    if (parent) {
+      for (const auto& item : parent->children_) {
+        item->SetChecked(false);
+      }
+    }
+  }
+}
+
+void Win32MenuItem::ModifyString(std::string modify_str) {
+  MENUITEMINFOW MII = {};
+  MII.cbSize = sizeof(MENUITEMINFO);
+  MII.fMask = MIIM_STRING;
+
+  const auto updated_string = xe::to_utf16(modify_str);
+  const auto updated_text = reinterpret_cast<LPCWSTR>(updated_string.c_str());
+  MII.dwTypeData = const_cast<LPWSTR>(updated_text);
+
+  // assert_true(handle_ != 0);
+
+  if (type() == Type::kString) {
+    const auto parent_item = static_cast<Win32MenuItem*>(GetParentItem());
+
+    if (parent_item) {
+      SetMenuItemInfoW(parent_item->handle(), position(), true, &MII);
+    }
   }
 }
 
 void Win32MenuItem::OnChildAdded(MenuItem* generic_child_item) {
   auto child_item = static_cast<Win32MenuItem*>(generic_child_item);
+  auto parent_item = static_cast<Win32MenuItem*>(child_item->GetParentItem());
+
+  child_item->position_ =
+      static_cast<uint32_t>(parent_item->children_.size()) - 1;
 
   switch (child_item->type()) {
     case MenuItem::Type::kNormal:
@@ -1331,20 +1409,55 @@ void Win32MenuItem::OnChildAdded(MenuItem* generic_child_item) {
           reinterpret_cast<LPCWSTR>(xe::to_utf16(child_item->text()).c_str()));
       break;
     case MenuItem::Type::kSeparator:
-      AppendMenuW(handle_, MF_SEPARATOR, UINT_PTR(child_item->handle_), 0);
+      AppendMenuW(handle_, MF_SEPARATOR, 0, nullptr);
       break;
+    case MenuItem::Type::kChecked:
     case MenuItem::Type::kString:
-      auto full_name = child_item->text();
+      child_item->identifier_ = parent_item->next_identifier();
+
+      std::string full_name = child_item->text();
+
       if (!child_item->hotkey().empty()) {
-        full_name += "\t" + child_item->hotkey();
+        full_name = fmt::format("{}\t{}", full_name, child_item->hotkey());
       }
-      AppendMenuW(handle_, MF_STRING, UINT_PTR(child_item->handle_),
+
+      AppendMenuW(handle_, MF_STRING, child_item->identifier(),
                   reinterpret_cast<LPCWSTR>(xe::to_utf16(full_name).c_str()));
       break;
   }
 }
 
-void Win32MenuItem::OnChildRemoved(MenuItem* generic_child_item) {}
+void Win32MenuItem::OnChildRemoved(MenuItem* generic_child_item) {
+  auto child_item = static_cast<Win32MenuItem*>(generic_child_item);
+  auto previous_item =
+      static_cast<Win32MenuItem*>(child_item->GetPreviousItem());
+  auto next_item = static_cast<Win32MenuItem*>(child_item->GetNextItem());
+  auto parent_item = static_cast<Win32MenuItem*>(child_item->GetParentItem());
+
+  UINT flags = MF_BYPOSITION;
+  const uint32_t position = child_item->position();
+
+  bool deleted_item = false;
+
+  if (parent_item) {
+    deleted_item = DeleteMenu(parent_item->handle(), position, flags);
+  } else if (handle_) {
+    deleted_item = DeleteMenu(handle_, position, flags);
+  }
+
+  // TODO: Reindex linked list positions
+
+  // Update Linked List
+  if (deleted_item) {
+    if (previous_item) {
+      previous_item->SetNextItem(child_item->GetNextItem());
+    }
+
+    if (next_item) {
+      next_item->SetPreviousItem(child_item->GetPreviousItem());
+    }
+  }
+}
 
 }  // namespace ui
 }  // namespace xe

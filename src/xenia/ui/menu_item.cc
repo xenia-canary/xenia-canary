@@ -29,6 +29,8 @@ MenuItem::MenuItem(Type type, const std::string& text,
                    const std::string& hotkey, std::function<void()> callback)
     : type_(type),
       parent_item_(nullptr),
+      previous_item_(nullptr),
+      next_item_(nullptr),
       text_(text),
       hotkey_(hotkey),
       callback_(std::move(callback)) {}
@@ -46,6 +48,14 @@ void MenuItem::AddChild(std::unique_ptr<MenuItem> child_item) {
 
 void MenuItem::AddChild(MenuItemPtr child_item) {
   auto child_item_ptr = child_item.get();
+  child_item_ptr->parent_item_ = this;
+
+  // Doubly Linked List
+  if (children_.size()) {
+    child_item_ptr->previous_item_ = children_.back().get();
+    child_item_ptr->previous_item_->next_item_ = child_item_ptr;
+  }
+
   children_.emplace_back(std::move(child_item));
   OnChildAdded(child_item_ptr);
 }
@@ -60,9 +70,20 @@ void MenuItem::RemoveChild(MenuItem* child_item) {
   }
 }
 
-MenuItem* MenuItem::child(size_t index) { return children_[index].get(); }
+MenuItem* MenuItem::GetItem(uint32_t index) { return children_[index].get(); }
+
+void MenuItem::SetPreviousItem(MenuItem* previous_item) {
+  previous_item_ = previous_item;
+}
+
+void MenuItem::SetNextItem(MenuItem* next_item) { next_item_ = next_item; }
 
 void MenuItem::OnSelected() {
+  if (type() == Type::kChecked) {
+    ResetChecked();
+    SetChecked(true);
+  }
+
   if (callback_) {
     callback_();
     // Note that this MenuItem might have been destroyed by the callback.
