@@ -31,7 +31,10 @@
 #include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
+//TODO(RodoMa92): Move this to platform specific code
+#ifdef XE_PLATFORM_WINDOWS
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
+#endif
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/xam/profile_manager.h"
@@ -1689,6 +1692,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::ReadbackResolve:
+#ifdef XE_PLATFORM_WINDOWS
       ToggleGPUSetting(gpu_cvar::ReadbackResolve);
 
       notificationTitle = "Toggle Readback Resolve";
@@ -1696,6 +1700,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
 
       // Extra Sleep
       xe::threading::Sleep(delay);
+#endif
       break;
     case ButtonFunctions::CpuTimeScalarSetHalf:
       CpuTimeScalarSetHalf();
@@ -1869,8 +1874,10 @@ void EmulatorWindow::ToggleGPUSetting(gpu_cvar value) {
                            !cvars::clear_memory_page_state);
       break;
     case gpu_cvar::ReadbackResolve:
+#ifdef XE_PLATFORM_WINDOWS
       D3D12SaveGPUSetting(D3D12GPUSetting::ReadbackResolve,
                           !cvars::d3d12_readback_resolve);
+#endif
       break;
   }
 }
@@ -1887,7 +1894,11 @@ void EmulatorWindow::DisplayHotKeysConfig() {
     if (!guide_enabled) {
       pretty_text = std::regex_replace(
           pretty_text,
+#ifdef XE_PLATFORM_WINDOWS
           std::regex("Guide", std::regex_constants::syntax_option_type::icase),
+#else
+          std::regex("Guide", std::regex_constants::syntax_option_type::_S_icase),
+#endif
           "Back");
     }
 
@@ -1913,10 +1924,12 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   msg_passthru += "\n";
   msg.insert(0, msg_passthru);
   msg += "\n";
-
+//TODO(RodoMa92): This needs to be put in *_win.cc specific files
+#ifdef XE_PLATFORM_WINDOWS
   msg += "Readback Resolve: " +
          xe::string_util::BoolToString(cvars::d3d12_readback_resolve);
   msg += "\n";
+#endif
 
   msg += "Clear Memory Page State: " +
          xe::string_util::BoolToString(cvars::clear_memory_page_state);
