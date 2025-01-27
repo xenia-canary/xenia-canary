@@ -345,6 +345,31 @@ Games that require this have the [https://github.com/xenia-canary/game-compatibi
 | <code>"winkey"</code>
 |}
 
+=== Keyboard Mode ===
+{|
+! <code>keyboard_mode</code> =
+! <code>#</code>
+|-
+| Disabled
+| <code>0</code>
+|-
+| Enabled (Keyboard as gamepad mode)
+| <code>1</code>
+|-
+| Passthrough (Keyboard is used directly for input)
+| <code>2</code>
+|}
+
+=== Assigned Keyboard Slot ===
+* Used only if keyboard_mode is set to 1 (Enabled). It allows to specify for which user slot keyboard must be assigned.
+{|
+! <code>keyboard_user_index</code> =
+! <code>#</code>
+|-
+| Possible values
+| <code>0, 1, 2, 3</code>
+|}
+
 == Hacks ==
 === Protect zero ===
 * Games that require this to be false have the [https://github.com/xenia-canary/game-compatibility/issues?q=is%3Aopen+is%3Aissue+label%3Arequires-protect-zero-false requires-protect-zero-false] label.
