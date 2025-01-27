@@ -194,7 +194,23 @@ While you can use a modded console to dump games, it is unnecessary in 99% of ca
 
 -->
 
-# How to install DLCs
+# How to install DLCs (Canary)
+1. Identify what the Game Title ID is.
+This can be identified by running the game in Xenia.
+
+<details><summary>Image (click to expand)</summary>
+
+![](https://i.imgur.com/fc0rmSc.png)</details>
+
+2. Locate your DLC Content folder from your removable storage.
+
+<details><summary>Image (click to expand)</summary>
+
+![](https://i.imgur.com/t8IMZiG.png)</details>
+
+3. Open Xenia and select "Install Content" option, then select package with DLC from your device. License for DLC is applied automatically.
+
+# How to install DLCs (Master)
 
 1. Identify what the Game Title ID is.
 This can be identified by running the game in Xenia.
