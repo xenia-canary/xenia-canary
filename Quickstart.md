@@ -36,11 +36,13 @@ Windows Update tends to lag behind, so download GPU drivers from your manufactur
 
 ## Where do I download Xenia?
 
-  * **[Xenia Canary](https://github.com/xenia-canary/xenia-canary/releases/download/experimental/xenia_canary.zip)**
+  * **Xenia Canary:**
+    * **[Windows](https://github.com/xenia-canary/xenia-canary-releases/releases/download/canary_experimental/xenia_canary_windows.zip)**
+    * [Linux](https://github.com/xenia-canary/xenia-canary-releases/releases/download/canary_experimental/xenia_canary_linux.tar.gz)
 * <details><summary>Xenia Master (click to expand)</summary>
   Xenia Master is infrequently updated, but if you're experiencing problems with Canary you can try it:
 
-  *[Xenia Master](https://github.com/xenia-project/release-builds-windows/releases/latest/download/xenia_master.zip)*
+  *[Windows](https://github.com/xenia-project/release-builds-windows/releases/latest/download/xenia_master.zip)*
 </details>
 
 Xenia is sometimes detected as a virus. If it was downloaded from an official source it is a false positive and can be ignored.
