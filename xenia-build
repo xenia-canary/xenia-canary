@@ -872,10 +872,12 @@ class BaseBuildCommand(Command):
             if result != 0:
                 print('ERROR: cmake failed with one or more errors.')
                 return result
+            targets = ['--target', 'all'] if not len(args['target']) else [item for sublist in [['--target', target] for target in args['target']] for item in sublist]
             result = subprocess.call([
-                    'ninja',
-                    '-C./build/build_%s' % (args['config']),
-                    '-j' if threads == 0 else '-j%d' % threads,
+                    'cmake',
+                    '--build', 'build/build_%s' % (args['config']),
+                    '--parallel', '1' if threads <= 1 else '%d' % threads,
+                    *targets
                 ] + pass_args, shell=False, env=dict(os.environ))
             if result != 0:
                 print('ERROR: ninja failed with one or more errors.')
