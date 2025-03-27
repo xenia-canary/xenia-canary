@@ -420,7 +420,6 @@ bool PacketDisassembler::DisasmPacketType3(const uint8_t* base_ptr,
         out_actions.emplace_back(PacketAction::RegisterWrite(index, data));
       }
       return true;
-      break;
     }
     case PM4_LOAD_ALU_CONSTANT: {
       // load constants from memory
