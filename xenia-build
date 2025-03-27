@@ -880,7 +880,7 @@ class BaseBuildCommand(Command):
                     *targets
                 ] + pass_args, shell=False, env=dict(os.environ))
             if result != 0:
-                print('ERROR: ninja failed with one or more errors.')
+                print('ERROR: ninja (via "cmake --build") failed with one or more errors.')
                 return result
         return 0
 
