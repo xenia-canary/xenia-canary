@@ -173,17 +173,13 @@ const VulkanTextureCache::HostFormatPair
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA},
         // k_10_11_11
-        // TODO(Triang3l): 16_UNORM/SNORM are optional, convert to float16
-        // instead.
-        {{kLoadShaderIndexR11G11B10ToRGBA16, VK_FORMAT_R16G16B16A16_UNORM},
-         {kLoadShaderIndexR11G11B10ToRGBA16SNorm, VK_FORMAT_R16G16B16A16_SNORM},
-         xenos::XE_GPU_TEXTURE_SWIZZLE_RGBB},
+        {{kLoadShaderIndex32bpb, VK_FORMAT_B10G11R11_UFLOAT_PACK32},
+         {kLoadShaderIndexUnknown},
+         xenos::XE_GPU_TEXTURE_SWIZZLE_BGRR},
         // k_11_11_10
-        // TODO(Triang3l): 16_UNORM/SNORM are optional, convert to float16
-        // instead.
-        {{kLoadShaderIndexR10G11B11ToRGBA16, VK_FORMAT_R16G16B16A16_UNORM},
-         {kLoadShaderIndexR10G11B11ToRGBA16SNorm, VK_FORMAT_R16G16B16A16_SNORM},
-         xenos::XE_GPU_TEXTURE_SWIZZLE_RGBB},
+        {{kLoadShaderIndex32bpb, VK_FORMAT_B10G11R11_UFLOAT_PACK32},
+         {kLoadShaderIndexUnknown},
+         xenos::XE_GPU_TEXTURE_SWIZZLE_BGRR},
         // k_DXT1
         // VK_FORMAT_BC1_RGBA_UNORM_BLOCK is optional.
         {{kLoadShaderIndex64bpb, VK_FORMAT_BC1_RGBA_UNORM_BLOCK, true},
@@ -205,7 +201,7 @@ const VulkanTextureCache::HostFormatPair
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA},
         // k_24_8
-        {{kLoadShaderIndexDepthUnorm, VK_FORMAT_R32_SFLOAT},
+        {{kLoadShaderIndexDepthUnorm, VK_FORMAT_D24_UNORM_S8_UINT},
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR},
         // k_24_8_FLOAT
@@ -262,16 +258,16 @@ const VulkanTextureCache::HostFormatPair
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA,
          true},
         // k_32
-        {{kLoadShaderIndexUnknown},
-         {kLoadShaderIndexUnknown},
+        {{kLoadShaderIndex32bpb, VK_FORMAT_R32_UINT},
+         {kLoadShaderIndex32bpb, VK_FORMAT_R32_SINT},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR},
         // k_32_32
-        {{kLoadShaderIndexUnknown},
-         {kLoadShaderIndexUnknown},
+        {{kLoadShaderIndex64bpb, VK_FORMAT_R32G32_UINT},
+         {kLoadShaderIndex64bpb, VK_FORMAT_R32G32_SINT},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGGG},
         // k_32_32_32_32
-        {{kLoadShaderIndexUnknown},
-         {kLoadShaderIndexUnknown},
+        {{kLoadShaderIndex128bpb, VK_FORMAT_R32G32B32A32_UINT},
+         {kLoadShaderIndex128bpb, VK_FORMAT_R32G32B32A32_SINT},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA},
         // k_32_FLOAT
         {{kLoadShaderIndex32bpb, VK_FORMAT_R32_SFLOAT},
