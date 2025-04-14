@@ -427,17 +427,18 @@ void X64Emitter::EmitGetCurrentThreadId() {
 void X64Emitter::EmitTraceUserCallReturn() {}
 
 void X64Emitter::DebugBreak() {
-  #ifdef _WIN32
-    if (::IsDebuggerPresent()) {
-      db(0xCC);  // AlexFreeman -> native debug break
-    } else {
-      XELOGW("X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
-    }
-  #else
-    // AlexFreeman -> On non-Windows platforms, always fallback
-    XELOGW("X64Emitter::DebugBreak() fallback for non-Windows platforms");
-  #endif
+#ifdef _WIN32
+  if (::IsDebuggerPresent()) {
+    db(0xCC);  // AlexFreeman -> native debug break
+  } else {
+    XELOGW(
+        "X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
   }
+#else
+  // AlexFreeman -> On non-Windows platforms, always fallback
+  XELOGW("X64Emitter::DebugBreak() fallback for non-Windows platforms");
+#endif
+}
 
 uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
   auto thread_state =
@@ -489,17 +490,19 @@ void X64Emitter::Trap(uint16_t trap_type) {
 }
 
 void X64Emitter::UnimplementedInstr(const hir::Instr* i) {
-  #ifdef _WIN32
-    if (::IsDebuggerPresent()) {
-      db(0xCC);  // INT 3: stop for debugging
-    } else {
-      XELOGE("Unimplemented HIR instruction encountered");  // AlexFreeman ->
-    }
-  #else
-    XELOGE("Unimplemented HIR instruction encountered (no debugger check)");  // AlexFreeman ->
-  #endif
-    assert_always();
+#ifdef _WIN32
+  if (::IsDebuggerPresent()) {
+    db(0xCC);  // INT 3: stop for debugging
+  } else {
+    XELOGE("Unimplemented HIR instruction encountered");  // AlexFreeman ->
   }
+#else
+  XELOGE(
+      "Unimplemented HIR instruction encountered (no debugger check)");  // AlexFreeman
+                                                                         // ->
+#endif
+  assert_always();
+}
 
 // This is used by the X64ThunkEmitter's ResolveFunctionThunk.
 uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
