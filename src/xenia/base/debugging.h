@@ -26,7 +26,8 @@ namespace debugging {
 
 bool IsDebuggerAttached();
 
-// AlexFreeman -> Safe version of Break() that only triggers if debugger is attached.
+// AlexFreeman -> Safe version of Break() that only triggers if debugger is
+// attached.
 void SafeBreakIntoDebugger();
 
 // Breaks into the debugger if it is attached.
