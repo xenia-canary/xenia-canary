@@ -54,6 +54,7 @@ class ShaderTranslator {
   bool is_vertex_shader() const {
     return current_shader().type() == xenos::ShaderType::kVertex;
   }
+  
   // True if the current shader is a pixel shader.
   bool is_pixel_shader() const {
     return current_shader().type() == xenos::ShaderType::kPixel;
@@ -77,6 +78,7 @@ class ShaderTranslator {
 
   // Handles post-translation tasks when the shader has been fully translated.
   virtual void PostTranslation() {}
+
   // Sets the host disassembly on a shader.
   void set_host_disassembly(Shader::Translation& translation,
                             std::string value) {
@@ -94,41 +96,48 @@ class ShaderTranslator {
 
   // Handles translation for control flow nop instructions.
   virtual void ProcessControlFlowNopInstruction(uint32_t cf_index) {}
+
   // Handles the start of a control flow instruction at the given address.
   virtual void ProcessControlFlowInstructionBegin(uint32_t cf_index) {}
+
   // Handles the end of a control flow instruction that began at the given
   // address.
   virtual void ProcessControlFlowInstructionEnd(uint32_t cf_index) {}
+
   // Handles translation for control flow exec instructions prior to their
   // contained ALU/fetch instructions.
   virtual void ProcessExecInstructionBegin(const ParsedExecInstruction& instr) {
   }
+
   // Handles translation for control flow exec instructions after their
   // contained ALU/fetch instructions.
   virtual void ProcessExecInstructionEnd(const ParsedExecInstruction& instr) {}
+
   // Handles translation for loop start instructions.
-  virtual void ProcessLoopStartInstruction(
-      const ParsedLoopStartInstruction& instr) {}
+  virtual void ProcessLoopStartInstruction(const ParsedLoopStartInstruction& instr) {}
+
   // Handles translation for loop end instructions.
-  virtual void ProcessLoopEndInstruction(
-      const ParsedLoopEndInstruction& instr) {}
+  virtual void ProcessLoopEndInstruction(const ParsedLoopEndInstruction& instr) {}
+
   // Handles translation for function call instructions.
   virtual void ProcessCallInstruction(const ParsedCallInstruction& instr) {}
+
   // Handles translation for function return instructions.
   virtual void ProcessReturnInstruction(const ParsedReturnInstruction& instr) {}
+
   // Handles translation for jump instructions.
   virtual void ProcessJumpInstruction(const ParsedJumpInstruction& instr) {}
+
   // Handles translation for alloc instructions. Memory exports for eM#
   // indicated by export_eM must be performed, regardless of the alloc type.
-  virtual void ProcessAllocInstruction(const ParsedAllocInstruction& instr,
-                                       uint8_t export_eM) {}
+  virtual void ProcessAllocInstruction(const ParsedAllocInstruction& instr, uint8_t export_eM) {}
 
   // Handles translation for vertex fetch instructions.
-  virtual void ProcessVertexFetchInstruction(
-      const ParsedVertexFetchInstruction& instr) {}
+  virtual void ProcessVertexFetchInstruction(const ParsedVertexFetchInstruction& instr) {}
+
   // Handles translation for texture fetch instructions.
-  virtual void ProcessTextureFetchInstruction(
-      const ParsedTextureFetchInstruction& instr) {}
+  virtual void ProcessTextureFetchInstruction(const ParsedTextureFetchInstruction& instr) {}
+
   // Handles translation for ALU instructions.
   // memexport_eM_potentially_written_before needs to be handled by `kill`
   // instruction to make sure memory exports for the eM# writes earlier in

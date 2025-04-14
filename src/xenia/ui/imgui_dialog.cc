@@ -62,9 +62,13 @@ class MessageBoxDialog final : public ImGuiDialog {
     }
     if (ImGui::BeginPopupModal(title_.c_str(), nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
-      char* text = const_cast<char*>(body_.c_str());
+      // AlexFreeman -> Fix ImGui assert: ensure null-terminated buffer with +1
+      // size
+      std::vector<char> text_buf(body_.begin(), body_.end());
+      text_buf.push_back('\0');
+
       ImGui::InputTextMultiline(
-          "##body", text, body_.size(), ImVec2(600, 0),
+          "##body", text_buf.data(), text_buf.size(), ImVec2(600, 0),
           ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_ReadOnly);
       if (ImGui::Button("OK")) {
         ImGui::CloseCurrentPopup();

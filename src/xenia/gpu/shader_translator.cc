@@ -418,7 +418,12 @@ void Shader::GatherVertexFetchInformation(
     }
   }
   if (!attrib) {
-    assert_not_zero(fetch_instr.attributes.stride);
+    // AlexFreeman -> Protect against zero stride crash in shader translation
+    if (fetch_instr.attributes.stride == 0) {
+      XELOGE("ShaderTranslator: fetch_instr with stride == 0 at fetch_constant={}, offset={}",
+             op.fetch_constant_index(), fetch_instr.attributes.offset);
+      return;  // Skip faulty instruction instead of crashing
+    }
     VertexBinding vertex_binding;
     vertex_binding.binding_index = int(vertex_bindings_.size());
     vertex_binding.fetch_constant = op.fetch_constant_index();
