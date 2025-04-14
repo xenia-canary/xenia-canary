@@ -39,6 +39,10 @@
 #include "xenia/cpu/symbol.h"
 #include "xenia/cpu/thread_state.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 DEFINE_bool(debugprint_trap_log, false,
             "Log debugprint traps to the active debugger", "CPU");
 DEFINE_bool(ignore_undefined_externs, true,
@@ -423,13 +427,17 @@ void X64Emitter::EmitGetCurrentThreadId() {
 void X64Emitter::EmitTraceUserCallReturn() {}
 
 void X64Emitter::DebugBreak() {
-  if (::IsDebuggerPresent()) {
-    db(0xCC);  // AlexFreeman -> native debug break
-  } else {
-    XELOGW(
-        "X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
+  #ifdef _WIN32
+    if (::IsDebuggerPresent()) {
+      db(0xCC);  // AlexFreeman -> native debug break
+    } else {
+      XELOGW("X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
+    }
+  #else
+    // AlexFreeman -> On non-Windows platforms, always fallback
+    XELOGW("X64Emitter::DebugBreak() fallback for non-Windows platforms");
+  #endif
   }
-}
 
 uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
   auto thread_state =
@@ -481,15 +489,17 @@ void X64Emitter::Trap(uint16_t trap_type) {
 }
 
 void X64Emitter::UnimplementedInstr(const hir::Instr* i) {
-  // AlexFreeman -> Handle unimplemented instruction safely
-  if (::IsDebuggerPresent()) {
-    db(0xCC);  // INT 3: stop for debugging
-  } else {
-    XELOGE(
-        "Unimplemented HIR instruction encountered");  // Optional, but useful
+  #ifdef _WIN32
+    if (::IsDebuggerPresent()) {
+      db(0xCC);  // INT 3: stop for debugging
+    } else {
+      XELOGE("Unimplemented HIR instruction encountered");  // AlexFreeman ->
+    }
+  #else
+    XELOGE("Unimplemented HIR instruction encountered (no debugger check)");  // AlexFreeman ->
+  #endif
+    assert_always();
   }
-  assert_always();
-}
 
 // This is used by the X64ThunkEmitter's ResolveFunctionThunk.
 uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
