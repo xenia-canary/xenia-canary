@@ -426,7 +426,8 @@ void X64Emitter::DebugBreak() {
   if (::IsDebuggerPresent()) {
     db(0xCC);  // AlexFreeman -> native debug break
   } else {
-    XELOGW("X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
+    XELOGW(
+        "X64Emitter::DebugBreak() called without debugger");  // AlexFreeman ->
   }
 }
 
@@ -484,7 +485,8 @@ void X64Emitter::UnimplementedInstr(const hir::Instr* i) {
   if (::IsDebuggerPresent()) {
     db(0xCC);  // INT 3: stop for debugging
   } else {
-    XELOGE("Unimplemented HIR instruction encountered");  // Optional, but useful
+    XELOGE(
+        "Unimplemented HIR instruction encountered");  // Optional, but useful
   }
   assert_always();
 }
