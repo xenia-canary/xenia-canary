@@ -85,6 +85,7 @@ filter({"configurations:Debug", "platforms:Linux"})
   })
 
   filter("configurations:Release")
+  filter("configurations:Release")
   runtime("Release")
   defines({
     "NDEBUG",
