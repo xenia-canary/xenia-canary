@@ -58,8 +58,6 @@ namespace xam {
 
 extern std::atomic<int> xam_dialogs_shown_;
 
-constexpr ImVec2 default_image_icon_size = ImVec2(75.f, 75.f);
-
 class XamDialog : public xe::ui::ImGuiDialog {
  public:
   void set_close_callback(std::function<void()> close_callback) {
@@ -509,7 +507,8 @@ class GameAchievementsDialog final : public XamDialog {
       : XamDialog(imgui_drawer),
         drawing_position_(drawing_position),
         title_info_(*title_info),
-        profile_(profile) {
+        profile_(profile),
+        window_id_(GetWindowId()) {
     LoadAchievementsData();
   }
 
@@ -616,9 +615,9 @@ class GameAchievementsDialog final : public XamDialog {
     const auto icon = GetIcon(achievement_entry);
     if (icon) {
       ImGui::Image(reinterpret_cast<ImTextureID>(GetIcon(achievement_entry)),
-                   default_image_icon_size);
+                   ui::default_image_icon_size);
     } else {
-      ImGui::Dummy(default_image_icon_size);
+      ImGui::Dummy(ui::default_image_icon_size);
     }
     ImGui::TableNextColumn();
 
@@ -632,7 +631,7 @@ class GameAchievementsDialog final : public XamDialog {
                        GetAchievementDescription(achievement_entry).c_str());
     ImGui::PopTextWrapPos();
 
-    ImGui::SetCursorPosY(start_drawing_pos.y + default_image_icon_size.x -
+    ImGui::SetCursorPosY(start_drawing_pos.y + ui::default_image_icon_size.x -
                          ImGui::GetTextLineHeight());
 
     if (achievement_entry.IsUnlocked()) {
@@ -644,7 +643,8 @@ class GameAchievementsDialog final : public XamDialog {
     // TODO(Gliniak): There is no easy way to align text to middle, so I have to
     // do it manually.
     const float achievement_row_middle_alignment =
-        ((default_image_icon_size.x / 2.f) - ImGui::GetTextLineHeight() / 2.f) *
+        ((ui::default_image_icon_size.x / 2.f) -
+         ImGui::GetTextLineHeight() / 2.f) *
         0.85f;
 
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
@@ -667,10 +667,13 @@ class GameAchievementsDialog final : public XamDialog {
 
     bool dialog_open = true;
 
-    if (!ImGui::Begin(fmt::format("{} Achievements List",
-                                  xe::to_utf8(title_info_.title_name))
-                          .c_str(),
-                      &dialog_open,
+    std::string title_name = xe::to_utf8(title_info_.title_name);
+    title_name.erase(std::remove(title_name.begin(), title_name.end(), '\0'),
+                     title_name.end());
+
+    const std::string window_name =
+        fmt::format("{} Achievements###{}", title_name, window_id_);
+    if (!ImGui::Begin(window_name.c_str(), &dialog_open,
                       ImGuiWindowFlags_NoCollapse |
                           ImGuiWindowFlags_AlwaysAutoResize |
                           ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -688,7 +691,7 @@ class GameAchievementsDialog final : public XamDialog {
       if (ImGui::BeginTable("", 3,
                             ImGuiTableFlags_::ImGuiTableFlags_BordersInnerH)) {
         for (const auto& entry : achievements_info_) {
-          ImGui::TableNextRow(0, default_image_icon_size.y);
+          ImGui::TableNextRow(0, ui::default_image_icon_size.y);
           DrawTitleAchievementInfo(io, entry);
         }
 
@@ -707,6 +710,7 @@ class GameAchievementsDialog final : public XamDialog {
 
   bool show_locked_info_ = false;
 
+  uint64_t window_id_;
   const ImVec2 drawing_position_ = {};
 
   const TitleInfo title_info_;
@@ -724,7 +728,8 @@ class GamesInfoDialog final : public XamDialog {
         drawing_position_(drawing_position),
         profile_(profile),
         profile_manager_(kernel_state()->xam_state()->profile_manager()),
-        dialog_name_(fmt::format("{}'s Games List", profile->name())) {
+        dialog_name_(fmt::format("{}'s Games List###{}", profile->name(),
+                                 GetWindowId())) {
     LoadProfileGameInfo(imgui_drawer, profile);
   }
 
@@ -762,9 +767,9 @@ class GamesInfoDialog final : public XamDialog {
 
     if (title_icon.count(entry.id)) {
       ImGui::Image(reinterpret_cast<ImTextureID>(title_icon.at(entry.id).get()),
-                   default_image_icon_size);
+                   ui::default_image_icon_size);
     } else {
-      ImGui::Dummy(default_image_icon_size);
+      ImGui::Dummy(ui::default_image_icon_size);
     }
 
     // Second Column
@@ -779,7 +784,7 @@ class GamesInfoDialog final : public XamDialog {
                     entry.title_earned_gamerscore)
             .c_str());
 
-    ImGui::SetCursorPosY(start_position.y + default_image_icon_size.y -
+    ImGui::SetCursorPosY(start_position.y + ui::default_image_icon_size.y -
                          ImGui::GetTextLineHeight());
 
     if (entry.WasTitlePlayed()) {
@@ -881,7 +886,7 @@ class GamesInfoDialog final : public XamDialog {
 
       if (ImGui::BeginTable("", 2,
                             ImGuiTableFlags_::ImGuiTableFlags_BordersInnerH)) {
-        ImGui::TableNextRow(0, default_image_icon_size.y);
+        ImGui::TableNextRow(0, ui::default_image_icon_size.y);
         for (auto& entry : info_) {
           std::string filter(title_name_filter_);
           if (!filter.empty()) {
@@ -1564,9 +1569,10 @@ bool xeDrawProfileContent(ui::ImGuiDrawer* imgui_drawer, const uint64_t xuid,
   // In the future it can be replaced with profile icon.
   const auto icon = imgui_drawer->GetNotificationIcon(user_index);
   if (icon && user_index < XUserMaxUserCount) {
-    ImGui::Image(reinterpret_cast<ImTextureID>(icon), default_image_icon_size);
+    ImGui::Image(reinterpret_cast<ImTextureID>(icon),
+                 ui::default_image_icon_size);
   } else {
-    ImGui::Dummy(default_image_icon_size);
+    ImGui::Dummy(ui::default_image_icon_size);
   }
 
   ImGui::SameLine();
@@ -1935,6 +1941,75 @@ class SigninDialog : public XamDialog {
   char gamertag_[16] = "";
 };
 
+class CreateProfileDialog final : public XamDialog {
+ public:
+  CreateProfileDialog(ui::ImGuiDrawer* imgui_drawer, Emulator* emulator)
+      : XamDialog(imgui_drawer), emulator_(emulator) {
+    memset(gamertag_, 0, sizeof(gamertag_));
+  }
+
+ protected:
+  void OnDraw(ImGuiIO& io) override;
+
+  bool has_opened_ = false;
+  char gamertag_[16] = "";
+  Emulator* emulator_;
+};
+
+void CreateProfileDialog::OnDraw(ImGuiIO& io) {
+  if (!has_opened_) {
+    ImGui::OpenPopup("Create Profile");
+    has_opened_ = true;
+  }
+
+  auto profile_manager =
+      emulator_->kernel_state()->xam_state()->profile_manager();
+
+  bool dialog_open = true;
+  if (!ImGui::BeginPopupModal("Create Profile", &dialog_open,
+                              ImGuiWindowFlags_NoCollapse |
+                                  ImGuiWindowFlags_AlwaysAutoResize |
+                                  ImGuiWindowFlags_HorizontalScrollbar)) {
+    Close();
+    return;
+  }
+
+  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+      !ImGui::IsAnyItemActive() && !ImGui::IsMouseClicked(0)) {
+    ImGui::SetKeyboardFocusHere(0);
+  }
+
+  ImGui::TextUnformatted("Gamertag:");
+  ImGui::InputText("##Gamertag", gamertag_, sizeof(gamertag_));
+
+  const std::string gamertag_string = std::string(gamertag_);
+  bool valid = profile_manager->IsGamertagValid(gamertag_string);
+
+  ImGui::BeginDisabled(!valid);
+  if (ImGui::Button("Create")) {
+    if (!profile_manager->CreateProfile(gamertag_string, false)) {
+      XELOGE("Failed to create profile: {}", gamertag_string);
+    }
+    std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+    dialog_open = false;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+
+  if (ImGui::Button("Cancel")) {
+    std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+    dialog_open = false;
+  }
+
+  if (!dialog_open) {
+    ImGui::CloseCurrentPopup();
+    Close();
+    ImGui::EndPopup();
+    return;
+  }
+  ImGui::EndPopup();
+}
+
 X_RESULT xeXamShowSigninUI(uint32_t user_index, uint32_t users_needed,
                            uint32_t flags) {
   // Mask values vary. Probably matching user types? Local/remote?
@@ -1967,6 +2042,21 @@ X_RESULT xeXamShowSigninUI(uint32_t user_index, uint32_t users_needed,
       new SigninDialog(imgui_drawer, users_needed), close);
 }
 
+X_RESULT xeXamShowCreateProfileUIEx(uint32_t user_index, dword_t unkn,
+                                    char* unkn2_ptr) {
+  Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+
+  if (cvars::headless) {
+    return X_ERROR_SUCCESS;
+  }
+
+  auto close = [](CreateProfileDialog* dialog) -> void {};
+
+  return xeXamDispatchDialogAsync<CreateProfileDialog>(
+      new CreateProfileDialog(imgui_drawer, emulator), close);
+}
+
 dword_result_t XamShowSigninUI_entry(dword_t users_needed, dword_t flags) {
   return xeXamShowSigninUI(XUserIndexAny, users_needed, flags);
 }
@@ -1977,6 +2067,17 @@ dword_result_t XamShowSigninUIp_entry(dword_t user_index, dword_t users_needed,
   return xeXamShowSigninUI(user_index, users_needed, flags);
 }
 DECLARE_XAM_EXPORT1(XamShowSigninUIp, kUserProfiles, kImplemented);
+
+dword_result_t XamShowCreateProfileUIEx_entry(dword_t user_index, dword_t unkn,
+                                              lpstring_t unkn2_ptr) {
+  return xeXamShowCreateProfileUIEx(user_index, unkn, unkn2_ptr);
+}
+DECLARE_XAM_EXPORT1(XamShowCreateProfileUIEx, kUserProfiles, kImplemented);
+
+dword_result_t XamShowCreateProfileUI_entry(dword_t user_index, dword_t unkn) {
+  return xeXamShowCreateProfileUIEx(user_index, unkn, 0);
+}
+DECLARE_XAM_EXPORT1(XamShowCreateProfileUI, kUserProfiles, kImplemented);
 
 dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
                                            dword_t unk_mask) {

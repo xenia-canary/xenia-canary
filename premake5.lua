@@ -7,6 +7,11 @@ location(build_root)
 targetdir(build_bin)
 objdir(build_obj)
 
+-- Define variables for enabling specific submodules
+-- Todo: Add changing from xb command
+enableTests = false
+enableMiscSubprojects = false
+
 -- Define an ARCH variable
 -- Only use this to enable architecture-specific functionality.
 if os.istarget("linux") then
@@ -278,6 +283,10 @@ workspace("xenia")
   include("third_party/zlib.lua")
   include("third_party/pugixml.lua")
 
+  if os.istarget("windows") then
+    include("third_party/libusb.lua")
+  end
+
   if not os.istarget("android") then
     -- SDL2 requires sdl2-config, and as of November 2020 isn't high-quality on
     -- Android yet, most importantly in game controllers - the keycode and axis
@@ -312,6 +321,7 @@ workspace("xenia")
   include("src/xenia/gpu/vulkan")
   include("src/xenia/hid")
   include("src/xenia/hid/nop")
+  include("src/xenia/hid/skylander")
   include("src/xenia/kernel")
   include("src/xenia/patcher")
   include("src/xenia/ui")
