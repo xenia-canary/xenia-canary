@@ -84,11 +84,16 @@ filter({"configurations:Debug", "platforms:Linux"})
     "_GLIBCXX_DEBUG",   -- make dbg symbols work on some distros
   })
 
-filter("configurations:Release")
+  filter("configurations:Release")
   runtime("Release")
   defines({
     "NDEBUG",
     "_NO_DEBUG_HEAP=1",
+    -- AlexFreeman -> отключаем всё лишнее в Release-сборке
+    "XENIA_DISABLE_LOGGING",
+    "XENIA_ENABLE_TRACING=0",
+    "XENIA_ENABLE_ASSERTIONS=0",
+    "XE_OPTION_ENABLE_LOGGING=0"
   })
   optimize("Speed")
   inlining("Auto")

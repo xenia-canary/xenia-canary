@@ -2072,7 +2072,7 @@ void EmulatorWindow::LoadRecentlyLaunchedTitles() {
   toml::parse_result parsed_file;
   try {
     parsed_file = toml::parse(file);
-  } catch (toml::parse_error& exception) {
+  } catch (toml::parse_error& exception [[maybe_unused]]) {
     XELOGE("Cannot parse file: recent.toml. Error: {}", exception.what());
     return;
   }

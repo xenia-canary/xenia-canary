@@ -19,9 +19,9 @@
 #include "xenia/base/string.h"
 
 namespace xe {
-
+#ifndef XE_OPTION_ENABLE_LOGGING
 #define XE_OPTION_ENABLE_LOGGING 1
-
+#endif
 // Log level is a general indication of the importance of a given log line.
 //
 // While log levels are named, they are a rough correlation of what the log line
@@ -235,6 +235,15 @@ void XELOGFS(std::string_view format, const Args&... args) {
 #define XELOGKERNEL(...) __XELOGDUMMY
 #define XELOGFS(...) __XELOGDUMMY
 
-#endif  // ENABLE_LOGGING
+// AlexFreeman -> stub for external version of AppendLogLine
+inline void AppendLogLine(xe::LogLevel, const char, const std::string_view,
+                          uint32_t = xe::LogSrc::Uncategorized) {}
+
+/// AlexFreeman -> stub for FatalError fallback
+[[noreturn]] inline void FatalError(const std::string_view) {
+  std::exit(1);
+}
+
+#endif  // XE_OPTION_ENABLE_LOGGING
 
 #endif  // XENIA_BASE_LOGGING_H_
