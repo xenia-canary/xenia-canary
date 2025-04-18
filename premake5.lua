@@ -89,7 +89,7 @@ filter({"configurations:Debug", "platforms:Linux"})
   defines({
     "NDEBUG",
     "_NO_DEBUG_HEAP=1",
-    -- AlexFreeman -> отключаем всё лишнее в Release-сборке
+    -- AlexFreeman -> disable all non-essential components only for Release builds
     "XENIA_DISABLE_LOGGING",
     "XENIA_ENABLE_TRACING=0",
     "XENIA_ENABLE_ASSERTIONS=0",
