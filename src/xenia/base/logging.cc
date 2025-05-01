@@ -429,7 +429,7 @@ class Logger {
     claim_strategy_.publish(range);
   }
 };
-
+#if XE_OPTION_ENABLE_LOGGING
 void InitializeLogging(const std::string_view app_name) {
   auto mem = memory::AlignedAlloc<Logger>(0x10);
   logger_ = new (mem) Logger(app_name);
@@ -462,7 +462,11 @@ void InitializeLogging(const std::string_view app_name) {
   }
 #endif  // XE_PLATFORM_ANDROID
 }
+#else
+void InitializeLogging(const std::string_view app_name) {}
+#endif
 
+#if XE_OPTION_ENABLE_LOGGING
 void ShutdownLogging() {
   Logger* logger = logger_;
   logger_ = nullptr;
@@ -470,24 +474,42 @@ void ShutdownLogging() {
   logger->~Logger();
   memory::AlignedFree(logger);
 }
+#else
+void ShutdownLogging() {}
+#endif
 
 static int g_saved_loglevel = static_cast<int>(LogLevel::Disabled);
+
+#if XE_OPTION_ENABLE_LOGGING
 void logging::internal::ToggleLogLevel() {
   auto swap = g_saved_loglevel;
 
   g_saved_loglevel = cvars::log_level;
   cvars::log_level = swap;
 }
+#else
+void logging::internal::ToggleLogLevel() {}
+#endif
+
+#if XE_OPTION_ENABLE_LOGGING
 bool logging::internal::ShouldLog(LogLevel log_level, uint32_t log_mask) {
   return static_cast<int32_t>(log_level) <= cvars::log_level &&
          (log_mask & cvars::log_mask) == 0;
 }
-uint32_t logging::internal::GetLogLevel() { return cvars::log_level; }
+#else
+bool logging::internal::ShouldLog(LogLevel log_level, uint32_t log_mask) {
+  return false;
+}
+#endif
 
+uint32_t logging::internal::GetLogLevel() { return cvars::log_level; }
 std::pair<char*, size_t> logging::internal::GetThreadBuffer() {
   return {thread_log_buffer_, sizeof(thread_log_buffer_)};
 }
+
 XE_NOALIAS
+
+#if XE_OPTION_ENABLE_LOGGING
 void logging::internal::AppendLogLine(LogLevel log_level,
                                       const char prefix_char, size_t written) {
   if (!logger_ || !ShouldLog(log_level) || !written) {
@@ -496,7 +518,12 @@ void logging::internal::AppendLogLine(LogLevel log_level,
   logger_->AppendLine(xe::threading::current_thread_id(), prefix_char,
                       thread_log_buffer_, written);
 }
+#else
+void logging::internal::AppendLogLine(LogLevel log_level,
+                                      const char prefix_char, size_t written) {}
+#endif
 
+#if XE_OPTION_ENABLE_LOGGING
 void logging::AppendLogLine(LogLevel log_level, const char prefix_char,
                             const std::string_view str, uint32_t log_mask) {
   if (!internal::ShouldLog(log_level, log_mask) || !str.size()) {
@@ -505,7 +532,10 @@ void logging::AppendLogLine(LogLevel log_level, const char prefix_char,
   logger_->AppendLine(xe::threading::current_thread_id(), prefix_char,
                       str.data(), str.size());
 }
-
+#else
+void logging::AppendLogLine(LogLevel log_level, const char prefix_char,
+                            const std::string_view str, uint32_t log_mask) {}
+#endif
 void FatalError(const std::string_view str) {
   logging::AppendLogLine(LogLevel::Error, 'x', str);
 
