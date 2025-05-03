@@ -77,6 +77,11 @@ filter("configurations:Debug")
   defines({
     "DEBUG",
     "_NO_DEBUG_HEAP=1",
+    -- Disable all non-essential components only for Release builds
+    "XENIA_DISABLE_LOGGING",
+    "XENIA_ENABLE_TRACING=0",
+    "XENIA_ENABLE_ASSERTIONS=0",
+    "XE_OPTION_ENABLE_LOGGING=0"
   })
 
 filter({"configurations:Debug", "platforms:Linux"})

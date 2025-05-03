@@ -595,6 +595,32 @@ X_STATUS Emulator::LaunchDiscImage(const std::filesystem::path& path) {
   return result;
 }
 
+// Multi-disc support methods
+X_STATUS Emulator::LaunchMultiDisc(
+    const std::vector<std::filesystem::path>& paths) {
+  if (paths.empty()) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  disc_paths_ = paths;
+  current_disc_index_ = 0;
+  // Mount in reverse so disc_paths_[0] is top-of-stack initially:
+  for (auto it = disc_paths_.rbegin(); it != disc_paths_.rend(); ++it) {
+    MountPath(*it, "\\Device\\Cdrom0");
+  }
+  return LaunchDiscImage(disc_paths_[0]);
+}
+
+void Emulator::CycleDisc() {
+  if (disc_paths_.size() < 2) return;
+  current_disc_index_ = (current_disc_index_ + 1) % disc_paths_.size();
+  const auto& next = disc_paths_[current_disc_index_];
+  // Re-mount this ISO to push it to the top of the VFS stack
+  file_system_->UnregisterDevice("\\Device\\Cdrom0");
+  MountPath(next, "\\Device\\Cdrom0");
+  XELOGI("Cycled to disc %s (index %u)", next.string().c_str(),
+         current_disc_index_);
+}
+
 X_STATUS Emulator::LaunchDiscArchive(const std::filesystem::path& path) {
   std::string module_path = FindLaunchModule();
   X_STATUS result = CompleteLaunch(path, module_path);
@@ -1194,6 +1220,11 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
 
 const std::filesystem::path Emulator::GetNewDiscPath(
     std::string window_message) {
+  // If multi-disc was launched, auto-swap and return the next ISO:
+  if (disc_paths_.size() > 1) {
+    CycleDisc();
+    return disc_paths_[current_disc_index_];
+  }
   std::filesystem::path path = "";
 
   auto file_picker = xe::ui::FilePicker::Create();

@@ -298,6 +298,10 @@ class Emulator {
   // The game can request another title to be loaded.
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
+  // Multi-disc support: launch multiple discs and cycle between them
+  X_STATUS LaunchMultiDisc(const std::vector<std::filesystem::path>& paths);
+  void CycleDisc();
+
   void WaitUntilExit();
 
  public:
@@ -308,7 +312,12 @@ class Emulator {
   xe::Delegate<> on_exit;
 
  private:
+  // Multi-disc state
+  // All disc ISO paths passed at launch
+  std::vector<std::filesystem::path> disc_paths_;
+  // Index of the currently highest-priority disc
   enum : uint64_t { EmulatorFlagDisclaimerAcknowledged = 1ULL << 0 };
+  size_t current_disc_index_ = 0;
   static uint64_t GetPersistentEmulatorFlags();
   static void SetPersistentEmulatorFlags(uint64_t new_flags);
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
