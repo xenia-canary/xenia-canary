@@ -257,6 +257,13 @@ bool D3D12Provider::Initialize() {
   while (dxgi_factory->EnumAdapters1(adapter_index, &adapter) == S_OK) {
     DXGI_ADAPTER_DESC1 adapter_desc;
     if (SUCCEEDED(adapter->GetDesc1(&adapter_desc))) {
+      // Steam Deck AMD-only override (vendor 0x1002)
+      if (adapter_desc.VendorId != 0x1002) {
+        adapter->Release();
+        adapter = nullptr;
+        ++adapter_index;
+        continue;
+      }
       if (SUCCEEDED(pfn_d3d12_create_device_(adapter, D3D_FEATURE_LEVEL_11_0,
                                              _uuidof(ID3D12Device), nullptr))) {
         if (cvars::d3d12_adapter >= 0) {

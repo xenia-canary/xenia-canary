@@ -842,6 +842,22 @@ bool D3D12CommandProcessor::SetupContext() {
   command_allocator_writable_first_->last_usage_submission = 0;
   command_allocator_writable_first_->next = nullptr;
   command_allocator_writable_last_ = command_allocator_writable_first_;
+  // Preallocate additional command allocators to avoid stalls during fast
+  // camera moves
+  CommandAllocator* last_alloc = command_allocator_writable_first_;
+  for (uint32_t i = 1; i < kQueueFrames; ++i) {
+    ID3D12CommandAllocator* alloc = nullptr;
+    if (SUCCEEDED(device->CreateCommandAllocator(
+             D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc)))) {
+      auto* cmd_alloc = new CommandAllocator;
+      cmd_alloc->command_allocator = alloc;
+      cmd_alloc->last_usage_submission = 0;
+      cmd_alloc->next = nullptr;
+      last_alloc->next = cmd_alloc;
+      last_alloc = cmd_alloc;
+    }
+  }
+  command_allocator_writable_last_ = last_alloc;
   if (FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                        command_allocator, nullptr,
                                        IID_PPV_ARGS(&command_list_)))) {

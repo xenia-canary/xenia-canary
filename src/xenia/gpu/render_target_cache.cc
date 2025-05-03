@@ -577,7 +577,6 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
                                const Shader& vertex_shader) {
   const RegisterFile& regs = register_file();
   bool interlock_barrier_only = GetPath() == Path::kPixelShaderInterlock;
-
   auto rb_surface_info = regs.Get<reg::RB_SURFACE_INFO>();
   xenos::MsaaSamples msaa_samples = rb_surface_info.msaa_samples;
   assert_true(msaa_samples <= xenos::MsaaSamples::k4X);
