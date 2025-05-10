@@ -10,9 +10,7 @@
 #include "xenia/kernel/xam/profile_manager.h"
 
 #include <filesystem>
-#include <vector>
 
-#include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
 #include "xenia/hid/input_system.h"
@@ -281,7 +279,7 @@ bool ProfileManager::DismountProfile(const uint64_t xuid) {
 
 void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
                            bool notify) {
-  if (logged_profiles_.size() >= 4 && user_index >= XUserMaxUserCount) {
+  if (logged_profiles_.size() >= XUserMaxUserCount) {
     XELOGE(
         "Cannot login account with XUID: {:016X} due to lack of free slots "
         "(Max 4 accounts at once)",

@@ -75,6 +75,9 @@ static const std::map<XTileType, std::string> kTileFileNames = {
     {XTileType::kAvatarGamerTileSmall, "avtr_32.png"},
 };
 
+static constexpr std::pair<uint16_t, uint16_t> kProfileIconSize = {64, 64};
+static constexpr std::pair<uint16_t, uint16_t> kProfileIconSizeSmall = {32, 32};
+
 class UserProfile {
  public:
   UserProfile(uint64_t xuid, X_XAMACCOUNTINFO* account_info);
@@ -132,6 +135,8 @@ class UserProfile {
 
   void LoadProfileGpds();
   void LoadProfileIcon(XTileType tile_type);
+  void WriteProfileIcon(XTileType tile_type,
+                        std::span<const uint8_t> icon_data);
   std::vector<uint8_t> LoadGpd(const uint32_t title_id);
   bool WriteGpd(const uint32_t title_id);
 };

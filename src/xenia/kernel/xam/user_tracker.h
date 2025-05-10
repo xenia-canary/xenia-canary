@@ -92,6 +92,8 @@ class UserTracker {
                                               uint32_t achievement_id) const;
 
   // Images
+  bool UpdateUserIcon(uint64_t xuid, std::span<const uint8_t> icon_data);
+
   std::span<const uint8_t> GetIcon(uint64_t xuid, uint32_t title_id,
                                    XTileType tile_type, uint64_t tile_id) const;
 
