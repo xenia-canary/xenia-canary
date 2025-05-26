@@ -13,6 +13,9 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
+#if XE_PLATFORM_WIN32
+#include "xenia/base/platform_win.h"
+#endif
 
 DEFINE_int32(user_language, 1,
              "User language ID.\n"
@@ -52,6 +55,9 @@ DEFINE_uint32(
     " while digital stereo only requires an analog flag. Bonus flags are\n"
     " optional. Ex) 0x00010001\n",
     "XConfig");
+
+DEFINE_bool(twenty_four_hour_clock, false,
+            "Have the clock set to 24 hour format or 12\n", "XConfig");
 
 DECLARE_bool(widescreen);
 DECLARE_bool(use_50Hz_mode);
@@ -103,17 +109,89 @@ X_STATUS xeExGetXConfigSetting(X_CONFIG_CATEGORY category, uint16_t setting,
       break;
     case XCONFIG_USER_CATEGORY:
       switch (setting) {
-        case XCONFIG_USER_TIME_ZONE_BIAS:
-        case XCONFIG_USER_TIME_ZONE_STD_NAME:
-        case XCONFIG_USER_TIME_ZONE_DLT_NAME:
-        case XCONFIG_USER_TIME_ZONE_STD_DATE:
-        case XCONFIG_USER_TIME_ZONE_DLT_DATE:
-        case XCONFIG_USER_TIME_ZONE_STD_BIAS:
-        case XCONFIG_USER_TIME_ZONE_DLT_BIAS:
+#ifdef XE_PLATFORM_WIN32
+        case XCONFIG_USER_TIME_ZONE_BIAS: {
           setting_size = 4;
-          // TODO(benvanik): get this value.
+          _TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          xe::store_and_swap<uint32_t>(
+              value, id != TIME_ZONE_ID_INVALID ? tzi.Bias : 0);
+          break;
+        }
+        case XCONFIG_USER_TIME_ZONE_STD_NAME:
+          setting_size = 4;
+          xe::store_and_swap<std::string>(value, "BST");
+          break;
+        case XCONFIG_USER_TIME_ZONE_DLT_NAME:
+          setting_size = 4;
+          xe::store_and_swap<std::string>(value, "BDT");
+          break;
+        case XCONFIG_USER_TIME_ZONE_STD_DATE: {
+          setting_size = 4;
+          TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          value[0] = static_cast<uint8_t>(tzi.StandardDate.wMonth);
+          value[1] = static_cast<uint8_t>(tzi.StandardDate.wDay);
+          value[2] = static_cast<uint8_t>(tzi.StandardDate.wDayOfWeek);
+          value[3] = static_cast<uint8_t>(tzi.StandardDate.wHour);
+          break;
+        }
+        case XCONFIG_USER_TIME_ZONE_DLT_DATE: {
+          setting_size = 4;
+          TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          value[0] = static_cast<uint8_t>(tzi.DaylightDate.wMonth);
+          value[1] = static_cast<uint8_t>(tzi.DaylightDate.wDay);
+          value[2] = static_cast<uint8_t>(tzi.DaylightDate.wDayOfWeek);
+          value[3] = static_cast<uint8_t>(tzi.DaylightDate.wHour);
+          break;
+        }
+        case XCONFIG_USER_TIME_ZONE_STD_BIAS: {
+          TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(
+              value, id != TIME_ZONE_ID_INVALID ? tzi.StandardBias : 0);
+          break;
+        }
+        case XCONFIG_USER_TIME_ZONE_DLT_BIAS: {  // XCONFIG_USER_TIME_ZONE_DLT_BIAS
+          TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(
+              value, id != TIME_ZONE_ID_INVALID ? tzi.DaylightBias : 0);
+          break;
+        }
+#else
+        case XCONFIG_USER_TIME_ZONE_BIAS:
+          setting_size = 4;
           xe::store_and_swap<uint32_t>(value, 0);
           break;
+        case XCONFIG_USER_TIME_ZONE_STD_NAME:
+          setting_size = 4;
+          xe::store_and_swap<std::string>(value, "GMT");
+          break;
+        case XCONFIG_USER_TIME_ZONE_DLT_NAME:
+          setting_size = 4;
+          xe::store_and_swap<std::string>(value, "\0\0\0\0");
+          break;
+        case XCONFIG_USER_TIME_ZONE_STD_DATE:
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(value, 0x00000000);
+          break;
+        case XCONFIG_USER_TIME_ZONE_DLT_DATE:
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(value, 0x00000000);
+          break;
+        case XCONFIG_USER_TIME_ZONE_STD_BIAS:
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(value, 0x00000000);
+          break;
+        case XCONFIG_USER_TIME_ZONE_DLT_BIAS:
+          setting_size = 4;
+          xe::store_and_swap<uint32_t>(value, 0x00000000);
+          break;
+#endif
         case XCONFIG_USER_LANGUAGE:
           setting_size = 4;
           xe::store_and_swap<uint32_t>(value, cvars::user_language);
@@ -128,11 +206,24 @@ X_STATUS xeExGetXConfigSetting(X_CONFIG_CATEGORY category, uint16_t setting,
           setting_size = 4;
           xe::store_and_swap<uint32_t>(value, cvars::audio_flag);
           break;
-        case XCONFIG_USER_RETAIL_FLAGS:
+        case XCONFIG_USER_RETAIL_FLAGS: {
           setting_size = 4;
-          // TODO(benvanik): get this value.
-          xe::store_and_swap<uint32_t>(value, 0x40);
+          uint32_t retail_flags = 0;
+          retail_flags |= X_RETAIL_FLAGS::DashboardInitialized;
+          retail_flags |= cvars::twenty_four_hour_clock
+                              ? X_RETAIL_FLAGS::TwentyFourHourClock
+                              : 0;
+#ifdef XE_PLATFORM_WIN32
+          TIME_ZONE_INFORMATION tzi;
+          auto id = GetTimeZoneInformation(&tzi);
+          retail_flags |=
+              id != TIME_ZONE_ID_INVALID ? 0 : X_RETAIL_FLAGS::DSTOff;
+#else
+          retail_flags |= X_RETAIL_FLAGS::DSTOff;
+#endif
+          xe::store_and_swap<uint32_t>(value, retail_flags);
           break;
+        }
         case XCONFIG_USER_COUNTRY:
           setting_size = 1;
           value[0] = static_cast<uint8_t>(cvars::user_country);
@@ -325,7 +416,7 @@ dword_result_t ExSetXConfigSetting_entry(word_t category, word_t setting,
       Handles settings the only have a single flag/value like
      XCONFIG_USER_VIDEO_FLAGS to swap
   */
-  XELOGI("ExSetXConfigSetting: category: 0X{:04x}, setting: 0X{:04x}",
+  XELOGI("ExSetXConfigSetting: category: 0x{:04x}, setting: 0x{:04x}",
          static_cast<uint16_t>(category), static_cast<uint16_t>(setting));
   return X_STATUS_SUCCESS;
 }
@@ -341,7 +432,7 @@ dword_result_t ExReadModifyWriteXConfigSettingUlong_entry(word_t category,
   */
   XELOGI(
       "ExReadModifyWriteXConfigSettingUlong: category: 0x{:04x}, setting: "
-      "{:04x}, changed bits: 0X{:08x}, setting flag 0X{:08x}",
+      "{:04x}, changed bits: 0x{:08x}, setting flag 0x{:08x}",
       static_cast<uint16_t>(category), static_cast<uint16_t>(setting),
       static_cast<uint32_t>(bit_affected), static_cast<uint32_t>(flag));
   return X_STATUS_SUCCESS;
