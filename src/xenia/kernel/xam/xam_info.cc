@@ -765,6 +765,16 @@ DECLARE_XAM_EXPORT1(XamDoesOmniNeedConfiguration, kNone, kStub);
 dword_result_t XamFirstRunExperienceShouldRun_entry() { return 0; }
 DECLARE_XAM_EXPORT1(XamFirstRunExperienceShouldRun, kNone, kStub);
 
+dword_result_t XamUpdateGetBaseSystemVersion_entry() { 
+    return kBaseKernelBuildVersion;
+}
+DECLARE_XAM_EXPORT1(XamUpdateGetBaseSystemVersion, kNone, kStub);
+
+dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
+  return kBaseKernelBuildVersion;
+}
+DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
