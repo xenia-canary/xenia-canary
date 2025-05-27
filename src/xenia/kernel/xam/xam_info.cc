@@ -1025,6 +1025,16 @@ dword_result_t XamLogLocalizationEtx_entry(dword_t error_code, dword_t unk) {
 }
 DECLARE_XAM_EXPORT1(XamLogLocalizationEtx, kNone, kStub);
 
+dword_result_t XamUpdateGetBaseSystemVersion_entry() {
+  return kBaseKernelBuildVersion;
+}
+DECLARE_XAM_EXPORT1(XamUpdateGetBaseSystemVersion, kNone, kStub);
+
+dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
+  return kBaseKernelBuildVersion;
+}
+DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
