@@ -123,7 +123,50 @@ std::string PPCContext::GetStringFromValue(PPCRegister reg) const {
 }
 
 void PPCContext::SetValueFromString(PPCRegister reg, std::string value) {
-  // TODO(benvanik): set value from string to replace SetRegFromString?
+  // Treat it as a hex value
+  if (value.substr(0, 2) == "0x" && value.size() < (2 + 16)) {
+    for (size_t i = 0; i < value.size(); i++) {
+      if (!isalnum(value[i])) {
+        printf("Invalid hex string: %s\n", value);
+        break;
+      }
+    }
+
+    uint64_t reg_value = std::stoull(value, nullptr, 16);
+
+    switch (reg) {
+      case PPCRegister::kLR:
+        lr = reg_value;
+        return;
+      case PPCRegister::kCTR:
+        ctr = reg_value;
+        return;
+      case PPCRegister::kCR:
+        set_cr(reg_value);
+        return;
+      default:
+        if (static_cast<int>(reg) >= static_cast<int>(PPCRegister::kR0) &&
+            static_cast<int>(reg) <= static_cast<int>(PPCRegister::kR31)) {
+          r[static_cast<int>(reg) - static_cast<int>(PPCRegister::kR0)] =
+              reg_value;
+          return;
+        } else if (static_cast<int>(reg) >=
+                       static_cast<int>(PPCRegister::kFR0) &&
+                   static_cast<int>(reg) <=
+                       static_cast<int>(PPCRegister::kFR31)) {
+          f[static_cast<int>(reg) - static_cast<int>(PPCRegister::kFR0)] =
+              *reinterpret_cast<double*>(&reg_value);
+          return;
+        } else if (static_cast<int>(reg) >=
+                       static_cast<int>(PPCRegister::kVR0) &&
+                   static_cast<int>(reg) <=
+                       static_cast<int>(PPCRegister::kVR128)) {
+          // TODO(Higor-Dinis): Implement to vector registers
+          assert_always(false);
+        }
+    }
+  }
+
   assert_always(false);
 }
 
