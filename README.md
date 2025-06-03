@@ -1,3 +1,23 @@
+---
+
+## ⚠️  AVX Check Deleted
+
+This is a fork of Xenia Canary that completely removes AVX instruction checks 
+to enable compatibility with Apple Silicon Macs running through Crossover/Wine and D3DMetal.
+
+(<u>Tip:</u> You must set the environment variable `ROSETTA_ADVERTISE_AVX=1` in your Crossover bottle to run this fork.)
+
+### Important Warnings:
+- AVX instruction support is **still required** for any functionality!
+- Without support for any AVX instructions, the emulator ***WILL* crash**
+- Do **NOT** report any issues to the Xenia Canary team, this is an unofficial fork w/ no support provided!
+- Use at your own risk - crashes and/or instability are generally expected on non-x86 CPUs
+
+To download, grab the latest build from [Releases](https://github.com/Mahir007/xenia-canary-delavxcheck/releases/latest).
+<br>I aim to keep the fork updated at least once a month with all commits from upstream :)
+
+---
+
 <p align="center">
     <a href="https://github.com/xenia-canary/xenia-canary/tree/canary_experimental/assets/icon">
         <img height="256px" src="https://raw.githubusercontent.com/xenia-canary/xenia/master/assets/icon/256.png" />

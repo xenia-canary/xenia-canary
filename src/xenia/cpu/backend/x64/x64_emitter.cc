@@ -92,13 +92,6 @@ X64Emitter::X64Emitter(X64Backend* backend, XbyakAllocator* allocator)
       backend_(backend),
       code_cache_(backend->code_cache()),
       allocator_(allocator) {
-  if (!cpu_.has(Xbyak::util::Cpu::tAVX)) {
-    xe::FatalError(
-        "Your CPU does not support AVX, which is required by Xenia. See the "
-        "FAQ for system requirements at https://xenia.jp");
-    return;
-  }
-
   feature_flags_ = amd64::GetFeatureFlags();
 
   may_use_membase32_as_zero_reg_ =
