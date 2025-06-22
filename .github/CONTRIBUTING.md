@@ -20,6 +20,8 @@ they want any information derived from them. The challenge of the project is
 what makes it fun! Poisoning the codebase with code obtained by shady means
 could result in the project being terminated, so just don't do it.
 
+Please see the [documentation](./DOCUMENTATION.md) to learn about the architecture of this project
+
 **Posting any information directly from an XDK will result in a project ban.**
 
 # Contributing Code
