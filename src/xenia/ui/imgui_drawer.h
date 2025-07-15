@@ -23,6 +23,8 @@
 #include "xenia/ui/window.h"
 #include "xenia/ui/window_listener.h"
 
+#include "xenia/hid/input_system.h"
+
 struct ImDrawData;
 struct ImGuiContext;
 struct ImGuiIO;
@@ -89,6 +91,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
     return GetIO().Fonts->Fonts[1];
   }
 
+  void LoadInputSystem(hid::InputSystem* input_system);
+
  protected:
   void OnKeyDown(KeyEvent& e) override;
   void OnKeyUp(KeyEvent& e) override;
@@ -114,6 +118,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   void ClearInput();
   void OnKey(KeyEvent& e, bool is_down);
+  void UpdateGamepads();
   void UpdateMousePosition(float x, float y);
   void SwitchToPhysicalMouseAndUpdateMousePosition(const MouseEvent& e);
 
@@ -148,6 +153,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   std::unique_ptr<ImmediateTexture> locked_achievement_icon_;
 
   std::vector<std::unique_ptr<ImmediateTexture>> notification_icon_textures_;
+
+  hid::InputSystem* input_system_ = nullptr;
 
   // If there's an active pointer, the ImGui mouse is controlled by this touch.
   // If it's TouchEvent::kPointerIDNone, the ImGui mouse is controlled by the

@@ -291,6 +291,9 @@ X_STATUS Emulator::Setup(
     return result;
   }
 
+  // Add inputSystem to UI
+  imgui_drawer_->LoadInputSystem(input_system_.get());
+
   XELOGI("{}: Initializing VFS...", __func__);
   // Bring up the virtual filesystem used by the kernel.
   file_system_ = std::make_unique<xe::vfs::VirtualFileSystem>();

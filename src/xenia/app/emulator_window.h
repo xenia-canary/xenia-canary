@@ -93,46 +93,6 @@ class EmulatorWindow {
                  const xe::ui::RawImage& image);
 
   void ToggleProfilesConfigDialog();
-  void SetHotkeysState(bool enabled) { disable_hotkeys_ = !enabled; }
-
-  // Types of button functions for hotkeys.
-  enum class ButtonFunctions {
-    ToggleFullscreen,
-    RunTitle,
-    CpuTimeScalarSetHalf,
-    CpuTimeScalarSetDouble,
-    CpuTimeScalarReset,
-    ClearGPUCache,
-    ToggleControllerVibration,
-    ClearMemoryPageState,
-    ReadbackResolve,
-    ToggleLogging,
-    IncTitleSelect,
-    DecTitleSelect,
-    Unknown
-  };
-
-  class ControllerHotKey {
-   public:
-    // If true the hotkey can be activated while a title is running, otherwise
-    // false.
-    bool title_passthru;
-
-    // If true vibrate the controller after activating the hotkey, otherwise
-    // false.
-    bool rumble;
-    std::string pretty;
-    ButtonFunctions function;
-
-    ControllerHotKey(ButtonFunctions fn = ButtonFunctions::Unknown,
-                     std::string pretty = "", bool rumble = false,
-                     bool active = true) {
-      function = fn;
-      this->pretty = pretty;
-      title_passthru = active;
-      this->rumble = rumble;
-    }
-  };
 
  private:
   class EmulatorWindowListener final : public ui::WindowListener,
@@ -254,12 +214,9 @@ class EmulatorWindow {
   void ShowFAQ();
   void ShowBuildCommit();
 
-  EmulatorWindow::ControllerHotKey ProcessControllerHotkey(int buttons);
   void VibrateController(xe::hid::InputSystem* input_sys, uint32_t user_index,
                          bool vibrate = true);
-  void GamepadHotKeys();
   void ToggleGPUSetting(gpu::GPUSetting setting);
-  void DisplayHotKeysConfig();
 
   static std::string CanonicalizeFileExtension(
       const std::filesystem::path& path);

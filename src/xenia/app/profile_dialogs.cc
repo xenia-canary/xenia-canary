@@ -80,7 +80,6 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
 
   ImGui::SameLine();
   if (ImGui::Button("Close") || !dialog_open) {
-    emulator_window_->SetHotkeysState(true);
     ImGui::End();
     delete this;
     return;
@@ -166,6 +165,10 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
                         ImGuiWindowFlags_HorizontalScrollbar)) {
     ImGui::End();
     return;
+  }
+
+  if (ImGui::IsWindowAppearing()) {
+    ImGui::SetKeyboardFocusHere();
   }
 
   if (profiles->empty()) {

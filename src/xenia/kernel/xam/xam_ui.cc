@@ -890,7 +890,8 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
 
     ImGui::SetCursorPos(start_position);
     if (ImGui::Selectable("##Selectable", *selected_xuid == xuid,
-                          ImGuiSelectableFlags_SpanAllColumns,
+                          ImGuiSelectableFlags_SpanAllColumns |
+                              ImGuiSelectableFlags_AllowDoubleClick,
                           end_draw_position)) {
       *selected_xuid = xuid;
     }
