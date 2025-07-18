@@ -44,16 +44,23 @@ dword_result_t XamProfileFindAccount_entry(
 }
 DECLARE_XAM_EXPORT1(XamProfileFindAccount, kUserProfiles, kImplemented);
 
-dword_result_t XamProfileOpen_entry(qword_t xuid, lpstring_t mount_path,
-                                    dword_t flags, lpvoid_t content_data) {
+dword_result_t XamProfileOpen_entry(
+    qword_t xuid, lpstring_t mount_path, dword_t flags,
+    pointer_t<XCONTENT_AGGREGATE_DATA> content_data_ptr) {
   /* Notes:
       - If xuid is not local then returns X_ERROR_INVALID_PARAMETER
   */
-  const bool result =
-      kernel_state()->xam_state()->profile_manager()->MountProfile(
-          xuid, mount_path.value());
-
-  return result ? X_ERROR_SUCCESS : X_ERROR_INVALID_PARAMETER;
+  if (!kernel_state()->xam_state()->profile_manager()->MountProfile(
+          xuid, mount_path.value())) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (content_data_ptr) {
+    content_data_ptr->content_type = XContentType::kProfile;
+    content_data_ptr->device_id = 1;
+    content_data_ptr->set_file_name(xe::string_util::to_hex_string(xuid));
+    content_data_ptr->title_id = kDashboardID;
+  }
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamProfileOpen, kNone, kImplemented);
 

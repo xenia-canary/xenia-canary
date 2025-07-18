@@ -74,17 +74,15 @@ dword_result_t XamContentGetLicenseMask_entry(lpdword_t mask_ptr,
 }
 DECLARE_XAM_EXPORT2(XamContentGetLicenseMask, kContent, kStub, kHighFrequency);
 
-dword_result_t XamContentResolve_entry(dword_t user_index,
-                                       lpvoid_t content_data_ptr,
-                                       lpvoid_t buffer_ptr, dword_t buffer_size,
-                                       dword_t unk1, lpdword_t root_name_ptr,
-                                       lpvoid_t overlapped_ptr) {
-  auto content_data = content_data_ptr.as<XCONTENT_DATA*>();
+dword_result_t XamContentResolve_entry(
+    dword_t user_index, pointer_t<XCONTENT_DATA> content_data_ptr,
+    lpvoid_t buffer_ptr, dword_t buffer_size, dword_t create_directory,
+    lpdword_t root_name_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   uint64_t xuid = 0;
   const auto profile =
       kernel_state()->xam_state()->profile_manager()->GetProfile(
           static_cast<uint8_t>(user_index));
-  if (profile && content_data->content_type == XContentType::kSavedGame) {
+  if (profile && content_data_ptr->content_type == XContentType::kSavedGame) {
     xuid = profile->xuid();
   }
 
@@ -96,9 +94,10 @@ dword_result_t XamContentResolve_entry(dword_t user_index,
     // Unsupported for now.
     return X_ERROR_INVALID_PARAMETER;
   } else {
-    if (content_data->device_id == static_cast<uint32_t>(DummyDeviceId::HDD)) {
+    if (content_data_ptr->device_id ==
+        static_cast<uint32_t>(DummyDeviceId::HDD)) {
       root_device_path = "\\Device\\Harddisk0\\Partition1\\Content\\";
-    } else if (content_data->device_id ==
+    } else if (content_data_ptr->device_id ==
                static_cast<uint32_t>(DummyDeviceId::ODD)) {
       // Or GAME, but D: usually means DVD drive meanwhile GAME always pinpoints
       // to game, even if it is running from HDD
@@ -110,8 +109,8 @@ dword_result_t XamContentResolve_entry(dword_t user_index,
 
   const std::string relative_path = fmt::format(
       "{:016X}\\{:08X}\\{:08X}\\{}", xuid, kernel_state()->title_id(),
-      static_cast<uint32_t>(content_data->content_type.get()),
-      content_data->file_name());
+      static_cast<uint32_t>(content_data_ptr->content_type.get()),
+      content_data_ptr->file_name());
 
   char* buffer =
       kernel_memory()->TranslateVirtual<char*>(buffer_ptr.guest_address());
@@ -229,7 +228,7 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
                                   lpdword_t disposition_ptr,
                                   lpdword_t license_mask_ptr,
                                   dword_t cache_size, qword_t content_size,
-                                  lpvoid_t overlapped_ptr) {
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   uint64_t xuid = 0;
   if (user_index != XUserIndexNone) {
     const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
@@ -239,6 +238,10 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
     }
 
     xuid = user->xuid();
+  }
+
+  if (!root_name || *root_name == '\0') {
+    return X_ERROR_INVALID_NAME;
   }
 
   XCONTENT_AGGREGATE_DATA content_data;
@@ -352,7 +355,12 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
 dword_result_t XamContentCreateEx_entry(
     dword_t user_index, lpstring_t root_name, lpvoid_t content_data_ptr,
     dword_t flags, lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
-    dword_t cache_size, qword_t content_size, lpvoid_t overlapped_ptr) {
+    dword_t cache_size, qword_t content_size,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  if (content_data.file_name_raw[0] == '\0') {
+    return X_ERROR_INVALID_NAME;
+  }
   return xeXamContentCreate(user_index, root_name, content_data_ptr,
                             sizeof(XCONTENT_DATA), flags, disposition_ptr,
                             license_mask_ptr, cache_size, content_size,
@@ -360,21 +368,24 @@ dword_result_t XamContentCreateEx_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentCreateEx, kContent, kImplemented);
 
-dword_result_t XamContentCreate_entry(dword_t user_index, lpstring_t root_name,
-                                      lpvoid_t content_data_ptr, dword_t flags,
-                                      lpdword_t disposition_ptr,
-                                      lpdword_t license_mask_ptr,
-                                      lpvoid_t overlapped_ptr) {
-  return xeXamContentCreate(user_index, root_name, content_data_ptr,
-                            sizeof(XCONTENT_DATA), flags, disposition_ptr,
-                            license_mask_ptr, 0, 0, overlapped_ptr);
+dword_result_t XamContentCreate_entry(
+    dword_t user_index, lpstring_t root_name, lpvoid_t content_data_ptr,
+    dword_t flags, lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return XamContentCreateEx_entry(user_index, root_name, content_data_ptr,
+                                  flags, disposition_ptr, license_mask_ptr, 0,
+                                  0, overlapped_ptr);
 }
 DECLARE_XAM_EXPORT1(XamContentCreate, kContent, kImplemented);
 
 dword_result_t XamContentCreateInternal_entry(
     lpstring_t root_name, lpvoid_t content_data_ptr, dword_t flags,
     lpdword_t disposition_ptr, lpdword_t license_mask_ptr, dword_t cache_size,
-    qword_t content_size, lpvoid_t overlapped_ptr) {
+    qword_t content_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto content_data_internal = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+  if (content_data_internal.file_name_raw[0] == '\0') {
+    return X_ERROR_INVALID_NAME;
+  }
   return xeXamContentCreate(XUserIndexNone, root_name, content_data_ptr,
                             sizeof(XCONTENT_AGGREGATE_DATA), flags,
                             disposition_ptr, license_mask_ptr, cache_size,
@@ -382,19 +393,17 @@ dword_result_t XamContentCreateInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentCreateInternal, kContent, kImplemented);
 
-dword_result_t XamContentOpenFile_entry(dword_t user_index,
-                                        lpstring_t root_name, lpstring_t path,
-                                        dword_t flags,
-                                        lpdword_t disposition_ptr,
-                                        lpdword_t license_mask_ptr,
-                                        lpvoid_t overlapped_ptr) {
+dword_result_t XamContentOpenFile_entry(
+    dword_t user_index, lpstring_t root_name, lpstring_t path, dword_t flags,
+    lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   // TODO(gibbed): arguments assumed based on XamContentCreate.
   return X_ERROR_FILE_NOT_FOUND;
 }
 DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kStub);
 
 dword_result_t XamContentFlush_entry(lpstring_t root_name,
-                                     lpvoid_t overlapped_ptr) {
+                                     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   X_RESULT result = X_ERROR_SUCCESS;
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
@@ -406,7 +415,7 @@ dword_result_t XamContentFlush_entry(lpstring_t root_name,
 DECLARE_XAM_EXPORT1(XamContentFlush, kContent, kStub);
 
 dword_result_t XamContentClose_entry(lpstring_t root_name,
-                                     lpvoid_t overlapped_ptr) {
+                                     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   // Closes a previously opened root from XamContentCreate*.
   auto result =
       kernel_state()->content_manager()->CloseContent(root_name.value());
@@ -420,11 +429,9 @@ dword_result_t XamContentClose_entry(lpstring_t root_name,
 }
 DECLARE_XAM_EXPORT1(XamContentClose, kContent, kImplemented);
 
-dword_result_t XamContentGetCreator_entry(dword_t user_index,
-                                          lpvoid_t content_data_ptr,
-                                          lpdword_t is_creator_ptr,
-                                          lpqword_t creator_xuid_ptr,
-                                          lpvoid_t overlapped_ptr) {
+dword_result_t XamContentGetCreator_entry(
+    dword_t user_index, lpvoid_t content_data_ptr, lpdword_t is_creator_ptr,
+    lpqword_t creator_xuid_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   if (!is_creator_ptr) {
     return X_ERROR_INVALID_PARAMETER;
   }
@@ -488,11 +495,9 @@ dword_result_t XamContentGetCreator_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamContentGetCreator, kContent, kImplemented);
 
-dword_result_t XamContentGetThumbnail_entry(dword_t user_index,
-                                            lpvoid_t content_data_ptr,
-                                            lpvoid_t buffer_ptr,
-                                            lpdword_t buffer_size_ptr,
-                                            lpvoid_t overlapped_ptr) {
+dword_result_t XamContentGetThumbnail_entry(
+    dword_t user_index, lpvoid_t content_data_ptr, lpvoid_t buffer_ptr,
+    lpdword_t buffer_size_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
 
   if (!user) {
@@ -533,11 +538,9 @@ dword_result_t XamContentGetThumbnail_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamContentGetThumbnail, kContent, kImplemented);
 
-dword_result_t XamContentSetThumbnail_entry(dword_t user_index,
-                                            lpvoid_t content_data_ptr,
-                                            lpvoid_t buffer_ptr,
-                                            dword_t buffer_size,
-                                            lpvoid_t overlapped_ptr) {
+dword_result_t XamContentSetThumbnail_entry(
+    dword_t user_index, lpvoid_t content_data_ptr, lpvoid_t buffer_ptr,
+    dword_t buffer_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
 
   if (!user) {
@@ -563,7 +566,7 @@ DECLARE_XAM_EXPORT1(XamContentSetThumbnail, kContent, kImplemented);
 
 dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
                                   dword_t content_data_size,
-                                  lpvoid_t overlapped_ptr) {
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   uint64_t xuid = 0;
   XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
   if (content_data_size == sizeof(XCONTENT_AGGREGATE_DATA)) {
@@ -591,16 +594,16 @@ dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
   }
 }
 
-dword_result_t XamContentDelete_entry(dword_t user_index,
-                                      lpvoid_t content_data_ptr,
-                                      lpvoid_t overlapped_ptr) {
+dword_result_t XamContentDelete_entry(
+    dword_t user_index, lpvoid_t content_data_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   return xeXamContentDelete(user_index, content_data_ptr, sizeof(XCONTENT_DATA),
                             overlapped_ptr);
 }
 DECLARE_XAM_EXPORT1(XamContentDelete, kContent, kImplemented);
 
-dword_result_t XamContentDeleteInternal_entry(lpvoid_t content_data_ptr,
-                                              lpvoid_t overlapped_ptr) {
+dword_result_t XamContentDeleteInternal_entry(
+    lpvoid_t content_data_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   // INFO: Analysis of xam.xex shows that "internal" functions are wrappers with
   // 0xFE as user_index.
   // In XAM content size is set to 0x200.
@@ -790,6 +793,24 @@ dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
 }
 
 DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kStub);
+
+dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
+                                                   lpvoid_t path_ptr,
+                                                   dword_t path_size,
+                                                   dword_t append_backslash) {
+  std::string volume_path = "hdd0\\";
+  if (device_id != static_cast<uint32_t>(DummyDeviceId::HDD)) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  char* path =
+      kernel_memory()->TranslateVirtual<char*>(path_ptr.guest_address());
+
+  string_util::copy_truncating(path, volume_path, path_size);
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

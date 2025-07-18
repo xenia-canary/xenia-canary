@@ -68,6 +68,8 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       uint8_t* content_data_ptr =
           memory_->TranslateVirtual<uint8_t*>(data_ptr->buffer_ptr);
 
+      assert_true(data_ptr->buffer_size == sizeof(XCONTENT_AGGREGATE_DATA));
+
       std::memset(content_data_ptr, 0, data_ptr->buffer_size);
 
       uint32_t item_count = 0;

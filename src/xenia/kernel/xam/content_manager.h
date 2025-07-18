@@ -39,22 +39,22 @@ namespace xam {
 constexpr uint32_t kCurrentlyRunningTitleId = 0xFFFFFFFF;
 
 struct XCONTENT_DATA {
-  be<uint32_t> device_id;
-  be<XContentType> content_type;
+  be<uint32_t> device_id;         // 0x0 sz:0x4
+  be<XContentType> content_type;  // 0x4 sz:0x4
   union {
     // this should be be<uint16_t>, but that stops copy constructor being
     // generated...
     uint16_t uint[128];
     char16_t chars[128];
-  } display_name_raw;
+  } display_name_raw;  // 0x8 sz:0x100
 
-  char file_name_raw[42];
+  char file_name_raw[42];  // 0x108 sz:0x2A
 
   // Some games use this padding field as a null-terminator, as eg.
   // DLC packages usually fill the entire file_name_raw array
   // Not every game sets it to 0 though, so make sure any file_name_raw reads
   // only go up to 42 chars!
-  uint8_t padding[2];
+  uint8_t padding[2];  // 0x132 sz: 0x2
 
   bool operator==(const XCONTENT_DATA& other) const {
     // Package is located via device_id/content_type/file_name, so only need to
@@ -118,6 +118,65 @@ struct XCONTENT_AGGREGATE_DATA : XCONTENT_DATA {
   }
 };
 static_assert_size(XCONTENT_AGGREGATE_DATA, 0x148);
+
+struct XCONTENT_DATA_MEDIA {
+  be<uint8_t> series_id[0x10];  // 0x0 sz:0x10
+  be<uint8_t> seasonid[0x10];   // 0x10 sz:0x10
+  be<uint16_t> season_number;   // 0x20 sz:0x2
+  be<uint16_t> episode_number;  // 0x22 sz:0x2
+};
+static_assert_size(XCONTENT_DATA_MEDIA, 0x24);
+
+struct XCONTENT_DATA_AVATAR_ASSET {
+  be<uint32_t> subcategory;           // 0x0 sz:0x4
+  be<int32_t> colorizable;            // 0x4 sz:0x4
+  be<uint8_t> asset_id[0x10];         // 0x8 sz:0x10
+  be<uint8_t> skeleton_version_mask;  // 0x18 sz:0x1
+};
+static_assert_size(XCONTENT_DATA_AVATAR_ASSET, 0x1C);
+
+struct XCONTENT_DATA_INTERNAL : XCONTENT_DATA {  // 0x0 sz:0x134
+  be<uint32_t> category;                         // 0x134 sz:0x4
+  be<uint64_t> xuid;                             // 0x138 sz:0x8
+  be<uint32_t> title_id;                         // 0x140 sz:0x4
+  be<uint32_t> license_mask;                     // 0x144 sz:0x4
+
+  // added in V4532 0x148
+  be<uint64_t> content_size;  // 0x148 sz:0x8
+
+  // added in NXE
+  be<uint64_t> creation_time;  // 0x150 sz:0x8 FILETIME
+  char16_t title_name[0x40];   // 0x158 sz:0x80
+
+  // compiler does not like
+  // union {
+  // XCONTENT_DATA_AVATAR_ASSET avatar_content_data;  // 0x1D8 sz:0x1C
+  // XCONTENT_DATA_MEDIA media_content_data;          // 0x1D8 sz:0x24
+  //};
+  be<uint8_t> padding[0x24];  // 0x1D8 sz:0x1C
+  be<uint8_t> content_flag;   // 0x1FC sz:0x01
+  be<uint8_t> reserved[3];    // 0x1FD sz:0x3
+
+  XCONTENT_DATA_INTERNAL() = default;
+  XCONTENT_DATA_INTERNAL(const XCONTENT_DATA& other) {
+    device_id = other.device_id;
+    content_type = other.content_type;
+    set_display_name(other.display_name());
+    set_file_name(other.file_name());
+    padding[0] = padding[1] = 0;
+    xuid = 0;
+    title_id = kCurrentlyRunningTitleId;
+  }
+
+  bool operator==(const XCONTENT_DATA_INTERNAL& other) const {
+    // Package is located via device_id/title_id/content_type/file_name, so only
+    // need to compare those
+    return device_id == other.device_id && title_id == other.title_id &&
+           content_type == other.content_type &&
+           file_name() == other.file_name();
+  }
+};
+static_assert_size(XCONTENT_DATA_INTERNAL, 0x200);
 
 class ContentPackage {
  public:
