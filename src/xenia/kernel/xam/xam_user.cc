@@ -782,6 +782,16 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
         string_util::from_string<uint32_t>(small_tile_id, true);
   }
 
+  bool is_from_dash = false;
+  bool is_avatar = false;
+  bool is_custom = false;
+
+  if (title_id_ptr) {
+    is_from_dash = IsGamerPictureFromDash(*title_id_ptr);
+    is_avatar = IsGamerPictureAvatar(*title_id_ptr);
+    is_custom = IsGamerPictureCustom(*title_id_ptr);
+  }
+
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamParseGamerTileKey, kUserProfiles, kImplemented);

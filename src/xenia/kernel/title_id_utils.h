@@ -105,6 +105,37 @@ inline constexpr bool IsOriginalXboxTitle(const uint32_t title_id) {
 static_assert(IsOriginalXboxTitle(0x41430006));   // OG-Xbox Game
 static_assert(!IsOriginalXboxTitle(0x4D5308BC));  // 360 Game
 
+inline constexpr bool IsGamerPictureAvatar(const uint32_t title_id) {
+  if (title_id == 0xFFFE0854 || (title_id & 0xFFFF0000) == 0x20000 ||
+      (title_id & 0xFFFF0000) == 0x10000) {
+    return true;
+  }
+
+  return false;
+}
+
+inline constexpr bool IsGamerPictureCustom(const uint32_t title_id) {
+  if (title_id == 0xFFFE0700 || (title_id & 0xFFFF0000) == 0) {
+    return true;
+  }
+
+  return false;
+}
+
+inline constexpr bool IsGamerPictureFromDash(const uint32_t title_id) {
+  return title_id == 0xFFFE07D1;
+}
+
+inline constexpr bool IsGamerPictureKeySet(const uint32_t title_id) {
+  return title_id != 0;
+}
+
+static_assert(IsGamerPictureAvatar(0xFFFE0854));  // Avatar Gamer Picture
+static_assert(IsGamerPictureCustom(0xFFFE0700));  // Custom Gamer Picture
+static_assert(
+    IsGamerPictureFromDash(0xFFFE07D1));  // Default or OS Gamer Picture?
+static_assert(!IsGamerPictureKeySet(0));  // No Gamer Picture Key
+
 }  // namespace kernel
 }  // namespace xe
 
