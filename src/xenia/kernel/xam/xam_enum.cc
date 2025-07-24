@@ -124,7 +124,8 @@ dword_result_t XamProfileCreateEnumerator_entry(dword_t device_id,
 
   auto e = new XStaticEnumerator<X_PROFILEENUMRESULT>(kernel_state(), 1);
 
-  auto result = e->Initialize(XUserIndexAny, 0xFE, 0x23001, 0x23003, 0);
+  auto result =
+      e->Initialize(XUserIndexAny, 0xFE, 0x23001, 0x23003, 0, 0x28, nullptr);
 
   if (XFAILED(result)) {
     return result;

@@ -94,6 +94,8 @@ enum X_SMC_CMD : uint8_t {
   QUERY_RTC = 0x4,
   QUERY_TEMP_SENSOR = 0x7,
   QUERY_TRAY = 0xA,
+  QUERY_UNK_0xB =
+      0xB,  // called on start up after VdQueryVideoMode on dash v13599
   QUERY_AV_PACK = 0xF,
   I2C_READ_WRITE = 0x11,
   QUERY_SMC_VERSION = 0x12,

@@ -23,6 +23,7 @@ enum class DeviceType : uint32_t {
   HDD = 1,
   MU = 2,  // support removed in 9199
   ODD = 4,
+  TransferCable = 8,
   USBMASS = 16,  // Added in 8955
 };
 

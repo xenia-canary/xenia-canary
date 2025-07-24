@@ -177,6 +177,12 @@ static constexpr const char* CameraLocationOptions[] = {"Behind", "In Front",
 static constexpr const char* BrakeControlOptions[] = {"Trigger", "Button"};
 static constexpr const char* AcceleratorControlOptions[] = {"Trigger",
                                                             "Button"};
+static constexpr const char* GamerTypeOptions[] = {"None",
+                                                   nullptr,
+                                                   nullptr,
+                                                   "Xbox 360 Launch Team",
+                                                   "NXE Launch Team",
+                                                   "360 + NXE Launch Team"};
 
 constexpr std::array<UserSettingId, 19> UserSettingsToLoad = {
     UserSettingId::XPROFILE_GAMER_TYPE,
@@ -528,6 +534,10 @@ void GamercardUI::DrawGpdSettings(ImGuiIO& io) {
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_RACE_ACCELERATOR_CONTROL,
                       "Accelerator Control", AcceleratorControlOptions,
                       static_cast<int>(std::size(AcceleratorControlOptions)),
+                      rightSideTextObjectAlignment);
+  DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_TYPE, "Gamer Type",
+                      GamerTypeOptions,
+                      static_cast<int>(std::size(GamerTypeOptions)),
                       rightSideTextObjectAlignment);
 }
 

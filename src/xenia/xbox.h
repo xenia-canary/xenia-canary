@@ -414,17 +414,18 @@ enum class XOnlineCountry : uint32_t {
 };
 
 enum class XContentType : uint32_t {
+  kFolder = 0xffffffff,
   kInvalid = 0x00000000,
   kSavedGame = 0x00000001,
   kMarketplaceContent = 0x00000002,
   kPublisher = 0x00000003,
-  kXbox360Title = 0x00001000,
+  kIptvDvr = 0x00001000,
   kIptvPauseBuffer = 0x00002000,
   kXNACommunity = 0x00003000,
   kInstalledGame = 0x00004000,
   kXboxTitle = 0x00005000,
   kSocialTitle = 0x00006000,
-  kGamesOnDemand = 0x00007000,
+  kXbox360Title = 0x00007000,
   kSUStoragePack = 0x00008000,
   kAvatarItem = 0x00009000,
   kProfile = 0x00010000,
@@ -452,16 +453,18 @@ enum class XContentType : uint32_t {
 };
 
 inline const std::map<XContentType, std::string> XContentTypeMap = {
+    {XContentType::kFolder, "Folder"},
     {XContentType::kSavedGame, "Saved Game"},
     {XContentType::kMarketplaceContent, "Marketplace Content"},
     {XContentType::kPublisher, "Publisher"},
     {XContentType::kXbox360Title, "Xbox 360 Title"},
+    {XContentType::kIptvDvr, "IPTV DVR"},
     {XContentType::kIptvPauseBuffer, "IPTV Pause Buffer"},
     {XContentType::kXNACommunity, "XNA Community"},
     {XContentType::kInstalledGame, "Installed Game"},
     {XContentType::kXboxTitle, "Xbox Title"},
     {XContentType::kSocialTitle, "Social Title"},
-    {XContentType::kGamesOnDemand, "Game on Demand"},
+    {XContentType::kXbox360Title, "Xbox 360 Title"},
     {XContentType::kSUStoragePack, "SU Storage Pack"},
     {XContentType::kAvatarItem, "Avatar Item"},
     {XContentType::kProfile, "Profile"},
