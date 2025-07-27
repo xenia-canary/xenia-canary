@@ -199,6 +199,11 @@ struct X_DASH_APP_INFO {
 };
 static_assert_size(X_DASH_APP_INFO, 0xC);
 
+struct X_DASH_BACKSTACK_DATA {
+  uint8_t unk1[0x314];
+};
+static_assert_size(X_DASH_BACKSTACK_DATA, 0x314);
+
 struct X_GUID {
   xe::be<uint32_t> Data1;
   xe::be<uint16_t> Data2;

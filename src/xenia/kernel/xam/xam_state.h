@@ -58,6 +58,8 @@ class XamState {
   void LoadSpaInfo(const SpaInfo* info);
 
   X_DASH_APP_INFO dash_app_info_ = {};
+  uint32_t dash_backstack_nodes_count_ = 0;
+  X_DASH_BACKSTACK_DATA dash_backstack_data_[2] = {};
 
   std::atomic<int32_t> xam_dialogs_shown_ = {0};
   std::atomic<int32_t> xam_nui_dialogs_shown_ = {0};

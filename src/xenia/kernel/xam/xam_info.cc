@@ -788,6 +788,22 @@ void XamGetActiveDashAppInfo_entry(pointer_t<X_DASH_APP_INFO> dash_app) {
 }
 DECLARE_XAM_EXPORT1(XamGetActiveDashAppInfo, kNone, kImplemented);
 
+dword_result_t XamGetDashBackstackData_entry(
+    pointer_t<X_DASH_BACKSTACK_DATA> backstack_data, lpdword_t count) {
+  auto xam_state_ = kernel_state()->xam_state();
+  uint32_t total = xam_state_->dash_backstack_nodes_count_;
+  if (total) {
+    if (*count <= total) {
+      total = *count;
+    }
+    std::memcpy(backstack_data, &xam_state_->dash_backstack_data_,
+                sizeof(X_DASH_BACKSTACK_DATA) * total);
+    xam_state_->dash_backstack_nodes_count_ = 0;
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetDashBackstackData, kNone, kImplemented);
+
 void XampWebInstrumentationSetProfileCounts_entry(dword_t live_profiles,
                                                   dword_t local_profiles,
                                                   dword_t adult_profiles,
