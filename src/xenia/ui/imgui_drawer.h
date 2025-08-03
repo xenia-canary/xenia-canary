@@ -92,6 +92,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   }
 
   void LoadInputSystem(hid::InputSystem* input_system);
+  void SetGuideButtonAction(std::function<void(uint8_t)> func);
 
  protected:
   void OnKeyDown(KeyEvent& e) override;
@@ -132,6 +133,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   ImGuiContext* internal_state_ = nullptr;
 
+  std::function<void(uint8_t)> onGuidePressFunction_;
   // All currently-attached dialogs that get drawn.
   std::vector<ImGuiDialog*> dialogs_;
 

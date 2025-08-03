@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 
+#include "xenia/app/main_menu_dialog.h"
 #include "xenia/app/profile_dialogs.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
@@ -56,8 +57,6 @@ class EmulatorWindow {
       Emulator* emulator, ui::WindowedAppContext& app_context, uint32_t width,
       uint32_t height);
 
-  std::unique_ptr<xe::threading::Thread> Gamepad_HotKeys_Listener;
-
   int32_t selected_title_index = -1;
 
   static constexpr int64_t diff_in_ms(
@@ -80,6 +79,10 @@ class EmulatorWindow {
   void ShutdownGraphicsSystemPresenterPainting();
 
   void OnEmulatorInitialized();
+
+  std::vector<RecentTitleEntry>* GetRecentlyPlayedTitles() {
+    return &recently_launched_titles_;
+  }
 
   xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
   void UpdateTitle();
@@ -214,8 +217,6 @@ class EmulatorWindow {
   void ShowFAQ();
   void ShowBuildCommit();
 
-  void VibrateController(xe::hid::InputSystem* input_sys, uint32_t user_index,
-                         bool vibrate = true);
   void ToggleGPUSetting(gpu::GPUSetting setting);
 
   static std::string CanonicalizeFileExtension(
@@ -250,6 +251,8 @@ class EmulatorWindow {
   // Storing pointers and toggling dialog state is useful for broadcasting
   // messages back to guest.
   std::unique_ptr<ProfileConfigDialog> profile_config_dialog_;
+
+  std::unique_ptr<MainMenuWindow> main_menu_window_;
 
   std::vector<RecentTitleEntry> recently_launched_titles_;
 };

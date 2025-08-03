@@ -260,6 +260,9 @@ void EmulatorWindow::OnEmulatorInitialized() {
     disable_hotkeys_ = true;
   }
 
+  main_menu_window_ =
+      std::make_unique<MainMenuWindow>(imgui_drawer_.get(), this);
+
   emulator_initialized_ = true;
   window_->SetMainMenuEnabled(true);
   // When the user can see that the emulator isn't initializing anymore (the
@@ -1565,28 +1568,6 @@ void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
   }
   initializing_shader_storage_ = initializing;
   UpdateTitle();
-}
-
-void EmulatorWindow::VibrateController(xe::hid::InputSystem* input_sys,
-                                       uint32_t user_index,
-                                       bool toggle_rumble) {
-  constexpr std::chrono::milliseconds rumble_duration(100);
-
-  // Hold lock while sleeping this thread for the duration of the rumble,
-  // otherwise the rumble may fail.
-  auto input_lock = input_sys->lock();
-
-  X_INPUT_VIBRATION vibration = {};
-
-  vibration.left_motor_speed = toggle_rumble ? UINT16_MAX : 0;
-  vibration.right_motor_speed = toggle_rumble ? UINT16_MAX : 0;
-
-  input_sys->SetState(user_index, &vibration);
-
-  // Vibration duration
-  if (toggle_rumble) {
-    xe::threading::Sleep(rumble_duration);
-  }
 }
 
 void EmulatorWindow::ToggleGPUSetting(gpu::GPUSetting setting) {

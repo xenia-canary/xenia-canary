@@ -22,6 +22,7 @@
 #include "xenia/ui/resources.h"
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/window.h"
+#include "xenia/xbox.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "third_party/stb/stb_image.h"
@@ -216,6 +217,10 @@ void ImGuiDrawer::LoadInputSystem(hid::InputSystem* input_system) {
   }
 
   input_system_ = input_system;
+}
+
+void ImGuiDrawer::SetGuideButtonAction(std::function<void(uint8_t)> func) {
+  onGuidePressFunction_ = func;
 }
 
 std::optional<ImGuiKey> ImGuiDrawer::VirtualKeyToImGuiKey(VirtualKey vkey) {
@@ -583,8 +588,16 @@ void ImGuiDrawer::UpdateGamepads() {
   }
 
   hid::X_INPUT_CAPABILITIES caps = {};
-  bool is_gamepad_connected =
-      input_system_->GetCapabilities(0, 1, &caps) == ERROR_SUCCESS;
+
+  bool is_gamepad_connected = false;
+  uint8_t controller_to_poke = -1;
+
+  for (uint8_t i = 0; i < 4; i++) {
+    if (input_system_->GetCapabilities(i, 1, &caps) == ERROR_SUCCESS) {
+      is_gamepad_connected = true;
+      break;
+    }
+  }
 
   auto& io = GetIO();
   io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
@@ -594,12 +607,30 @@ void ImGuiDrawer::UpdateGamepads() {
   }
 
   hid::X_INPUT_STATE gamepad_state;
-  if (input_system_->GetState(0, 1, &gamepad_state) != ERROR_SUCCESS) {
+  // input_system_->GetConnectedSlots()
+  for (uint8_t i = 0; i < 4; i++) {
+    if (input_system_->GetState(i, 1, &gamepad_state) == ERROR_SUCCESS) {
+      if (gamepad_state.gamepad.buttons != 0) {
+        controller_to_poke = i;
+        break;
+      }
+    }
+  }
+  if (controller_to_poke == -1) {
     return;
   }
-  io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
 
+  io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
   hid::X_INPUT_GAMEPAD& gamepad = gamepad_state.gamepad;
+
+  // GUIDE BUTTON
+  if (gamepad_state.gamepad.buttons == 0x400) {
+    if (onGuidePressFunction_) {
+      onGuidePressFunction_(controller_to_poke);
+    }
+    XELOGE("GUIDE PRESSED!");
+  }
+
 #define IM_SATURATE(V) (V < 0.0f ? 0.0f : V > 1.0f ? 1.0f : V)
 #define MAP_BUTTON(KEY_NO, BUTTON_ENUM)                           \
   {                                                               \
