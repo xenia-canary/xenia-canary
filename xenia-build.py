@@ -49,28 +49,41 @@ def import_subprocess_environment(args):
     popen = subprocess.Popen(
         args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     variables, _ = popen.communicate()
-    envvars_to_save = (
-        "devenvdir",
-        "include",
-        "lib",
-        "libpath",
-        "path",
-        "pathext",
-        "systemroot",
-        "temp",
-        "tmp",
-        "vcinstalldir",
-        "windowssdkdir",
-        )
-    for line in variables.splitlines():
-        for envvar in envvars_to_save:
-            if f"{envvar}=" in line.lower():
-                var, setting = line.split("=", 1)
-                if envvar == "path":
-                    setting = f"{os.path.dirname(sys.executable)}{os.pathsep}{setting}"
-                os.environ[var.upper()] = setting
-                break
 
+    envvars_to_save = (
+        "DEVENVDIR",
+        "INCLUDE",
+        "LIB",
+        "LIBPATH",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "VCINSTALLDIR",
+        "WindowsSdkDir",
+        "PROGRAMFILES",
+        "ProgramFiles(x86)",
+        "VULKAN_SDK"
+        "CC",
+        "CXX",
+        )
+
+    # Extract and parse environment variables from stdout
+    for line in variables.splitlines():
+        if line.find("=") != -1:
+            for envvar in envvars_to_save:
+                var, setting = line.split("=", 1)
+
+                var = var.upper()
+                envvar = envvar.upper()
+
+                if envvar == var:
+                    if envvar == "PATH":
+                        setting = f"{os.path.dirname(sys.executable)}{os.pathsep}{setting}"
+
+                    os.environ[var] = setting
+                    break
 
 VSVERSION_MINIMUM = 2022
 def import_vs_environment():
@@ -461,7 +474,7 @@ def get_clang_format_binary():
             if int(clang_format_out.split("version ")[1].split(".")[0]) == int(clang_format_version_req):
                 print(clang_format_out)
                 return binary
-    print(f"ERROR: clang-format {clang_format_version_req} is not on PATH")
+    print(f"{bcolors.FAIL}ERROR: clang-format {clang_format_version_req} is not on PATH{bcolors.ENDC}")
     sys.exit(1)
 
 
