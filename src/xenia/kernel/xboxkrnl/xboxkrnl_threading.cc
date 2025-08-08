@@ -1802,6 +1802,27 @@ dword_result_t KeSetPriorityThread_entry(pointer_t<X_KTHREAD> thread_ptr,
 }
 DECLARE_XBOXKRNL_EXPORT1(KeSetPriorityThread, kThreading, kImplemented);
 
+void xeKeInitializeTimerEx(X_KTIMER* timer, uint32_t type, uint32_t proctype,
+                           PPCContext* context) {
+  xenia_assert(proctype < 3);
+  xenia_assert(type == 0 || type == 1);
+  // other fields are unmodified, they must carry through multiple calls of
+  // initialize
+  timer->header.process_type = proctype;
+  timer->header.inserted = 0;
+  timer->header.type = type + 8;
+  timer->header.signal_state = 0;
+  util::XeInitializeListHead(&timer->header.wait_list, context);
+  timer->due_time = 0;
+  timer->period = 0;
+}
+
+void KeInitializeTimerEx_entry(pointer_t<X_KTIMER> timer, dword_t type,
+                               dword_t proctype, const ppc_context_t& context) {
+  xeKeInitializeTimerEx(timer, type, proctype & 0xFF, context);
+}
+DECLARE_XBOXKRNL_EXPORT1(KeInitializeTimerEx, kThreading, kImplemented);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

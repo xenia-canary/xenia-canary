@@ -48,6 +48,7 @@ typedef struct {
     union {
       uint8_t size;
       uint8_t hand;
+      uint8_t process_type;
     };
     union {
       uint8_t inserted;
