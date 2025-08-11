@@ -21,9 +21,10 @@ class StartupCpuFeatureCheck {
     const char* error_message = nullptr;
     if (!cpu.has(Xbyak::util::Cpu::tAVX)) {
       error_message =
-          "Your CPU does not support AVX, which is required by Xenia. See "
-          "the "
-          "FAQ for system requirements at https://xenia.jp";
+          "Your CPU does not advertise AVX support, which is required by "
+          "Xenia. "
+          "If running on Apple Silicon Mac on macOS 15 and later, this is "
+          "thanks to Apple that can't implement things right.";
     }
     if (error_message == nullptr) {
       return;
@@ -31,7 +32,7 @@ class StartupCpuFeatureCheck {
       // TODO(gibbed): detect app type and printf instead, if needed?
       MessageBoxA(nullptr, error_message, "Xenia Error",
                   MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-      ExitProcess(static_cast<uint32_t>(-1));
+      // ExitProcess(static_cast<uint32_t>(-1));
     }
   }
 };

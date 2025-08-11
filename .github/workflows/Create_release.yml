@@ -15,9 +15,6 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
-      #- uses: actions/checkout@main
-      #  with:
-      #    repository: ${{ github.repository_owner }}/xenia-canary-releases
       - uses: actions/download-artifact@main
       - name: Release
         env:
@@ -25,22 +22,18 @@ jobs:
           GH_REPO: ${{ github.repository_owner }}/xenia-canary-releases
           notes: ${{ github.event.head_commit.message }}
         run: |
+          rm -rf **/*.pdb
           case ${{ inputs.os }} in
             windows)
-              asset=xenia_canary_${{ inputs.os }}.zip
-              7z a $asset -xr!'*.pdb' -mx9 -bb3
-              ;;
-            linux)
-              asset=xenia_canary_${{ inputs.os }}.tar.xz
+              asset=xenia_canary_windows.zip
+              7z a $asset './xenia_canary_windows/*'
               ;;
           esac
           if [ ! -f $asset ]; then
-            ls -R
             echo "::error::$asset doesn't exist!"
             exit 1
           fi
           if [ $(stat -c%s $asset) -lt 100000 ]; then
-            ls -R
             echo "::error::$asset is too small!"
             exit 1
           fi

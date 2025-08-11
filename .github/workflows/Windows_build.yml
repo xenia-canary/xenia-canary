@@ -55,13 +55,19 @@ jobs:
       POWERSHELL_TELEMETRY_OPTOUT: 1
     steps:
       - uses: actions/checkout@main
+      - name: Check Clang-Format Version
+        run: clang-format --version
       - name: Lint
-        run: python xenia-build.py lint --all
+        run: .\xb lint --all
 
-  build:
-    name: Build
+  build-windows:
+    name: Build (Windows, VS${{ matrix.vsver }}) #  runner.os can't be used here
     needs: lint
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        vsver: [2022]
+    runs-on: windows-${{ matrix.vsver }}
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
     steps:
@@ -69,37 +75,45 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup
-        run: python xenia-build.py setup
+        run: .\xb setup
       - name: Build
-        run: python xenia-build.py build --no_premake --config=Release --target=src\xenia-app
+        run: .\xb build --config=Release --target=src\xenia-app
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          foreach ($file in 'build\bin\Windows\Release\xenia_canary.exe','build\bin\Windows\Release\xenia_canary.pdb') {
-            if ((get-item $file).Length -le 100000) {
-              echo "::error::$file is too small."
-            }
-          }
           robocopy . build\bin\Windows\Release                                                                LICENSE /r:0 /w:0
           robocopy   build\bin\Windows\Release artifacts\xenia_canary   xenia_canary.exe   xenia_canary.pdb   LICENSE /r:0 /w:0
           If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
       - name: Upload xenia canary artifacts
         if: steps.prepare_artifacts.outcome == 'success'
+        id: upload_artifacts
         uses: actions/upload-artifact@main
         with:
-          name: xenia_canary_windows
+          name: xenia_canary_vs${{ matrix.vsver }}
           path: artifacts\xenia_canary
           if-no-files-found: error
-
-  create-release:
-    name: Create release
-    needs: [lint, build]
-    if: |
-      github.repository == 'xenia-canary/xenia-canary' &&
-      github.event.action != 'pull_request' &&
-      github.ref == 'refs/heads/canary_experimental'
-    uses: ./.github/workflows/Create_release.yml
-    with:
-      os: windows
-    secrets:
-      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      - name: Create release
+        if: |
+          github.repository == 'mavethee/xenia-canary-no-avx-check' &&
+          github.event.action != 'pull_request' &&
+          github.ref == 'refs/heads/canary_experimental' &&
+          steps.upload_artifacts.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $asset="xenia_canary.zip"
+          rm -recurse -force artifacts\xenia_canary\*.pdb # Ideally this would use xr, but I can't get it to work
+          7z a $asset .\artifacts\xenia_canary\*
+          If ($(Get-Item $asset).length -le 100000) {
+            Throw "Error: Archive $asset too small!"
+          }
+          $tag=$env:GITHUB_SHA.SubString(0,7)
+          $branch=$($env:GITHUB_REF -replace 'refs/heads/')
+          $title="${tag}_$branch"
+          gh release create $tag $asset --target $env:GITHUB_SHA -t $title
+          # Remove canary_ to prevent conflicts from tag
+          $tag=$($branch -replace 'canary_')
+          gh release delete $tag -y
+          git push --delete origin $tag
+          git tag -d $tag
+          gh release create $tag $asset --target $env:GITHUB_SHA -t $branch
