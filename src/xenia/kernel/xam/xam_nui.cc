@@ -28,10 +28,6 @@ DEFINE_bool(allow_nui_initialization, false,
 namespace xe {
 namespace kernel {
 namespace xam {
-
-extern std::atomic<int> xam_dialogs_shown_;
-extern std::atomic<int> xam_nui_dialogs_shown_;
-
 // https://web.cs.ucdavis.edu/~okreylos/ResDev/Kinect/MainPage.html
 
 struct X_NUI_DEVICE_STATUS {
@@ -185,7 +181,9 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
 }
 DECLARE_XAM_EXPORT1(XamNuiCameraSetFlags, kNone, kStub);
 
-dword_result_t XamIsNuiUIActive_entry() { return xeXamIsNuiUIActive(); }
+dword_result_t XamIsNuiUIActive_entry() {
+  return kernel_state()->xam_state()->xam_nui_dialogs_shown_ > 0;
+}
 DECLARE_XAM_EXPORT1(XamIsNuiUIActive, kNone, kImplemented);
 
 dword_result_t XamNuiIsDeviceReady_entry() {
@@ -367,9 +365,9 @@ dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
               "The game has indicated there is a problem with NUI (Kinect).")
               ->Then(&fence);
         })) {
-      ++xam_dialogs_shown_;
+      kernel_state()->xam_state()->xam_dialogs_shown_++;
       fence.Wait();
-      --xam_dialogs_shown_;
+      kernel_state()->xam_state()->xam_dialogs_shown_--;
     }
   }
 

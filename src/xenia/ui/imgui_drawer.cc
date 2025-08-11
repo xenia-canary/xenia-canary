@@ -143,6 +143,9 @@ void ImGuiDrawer::Initialize() {
   internal_state_ = ImGui::CreateContext();
   ImGui::SetCurrentContext(internal_state_);
 
+  auto& io = ImGui::GetIO();
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+
   const float font_size = std::max((float)cvars::font_size, 8.f);
   const float title_font_size = font_size + 6.f;
 
@@ -209,6 +212,18 @@ void ImGuiDrawer::Initialize() {
 
   touch_pointer_id_ = TouchEvent::kPointerIDNone;
   reset_mouse_position_after_next_frame_ = false;
+}
+
+void ImGuiDrawer::LoadInputSystem(hid::InputSystem* input_system) {
+  if (input_system_) {
+    return;
+  }
+
+  input_system_ = input_system;
+}
+
+void ImGuiDrawer::SetGuideButtonAction(std::function<void(uint8_t)> func) {
+  onGuidePressFunction_ = func;
 }
 
 std::optional<ImGuiKey> ImGuiDrawer::VirtualKeyToImGuiKey(VirtualKey vkey) {
@@ -568,6 +583,10 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   io.DisplaySize.x = window_->GetActualPhysicalWidth() * physical_to_logical;
   io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;
 
+  if (!dialogs_.empty()) {
+    UpdateGamepads();
+  }
+
   ImGui::NewFrame();
 
   assert_true(!IsDrawingDialogs());
@@ -872,6 +891,125 @@ void ImGuiDrawer::DetachIfLastWindowRemoved() {
   // which will be persistent until new events actualize individual input
   // properties.
   ClearInput();
+}
+
+void ImGuiDrawer::UpdateGamepads() {
+  if (!input_system_) {
+    return;
+  }
+
+  hid::X_INPUT_CAPABILITIES caps = {};
+
+  bool is_gamepad_connected = false;
+
+  for (uint8_t i = 0; i < XUserMaxUserCount; i++) {
+    if (input_system_->GetCapabilities(i, 1, &caps) == X_ERROR_SUCCESS) {
+      // Special case to skip keyboard being set in gamepad mode.
+      if (caps.gamepad.buttons == 0xFFFF &&
+          caps.vibration.left_motor_speed == 0 &&
+          caps.vibration.right_motor_speed == 0) {
+        continue;
+      }
+
+      is_gamepad_connected = true;
+      break;
+    }
+  }
+
+  auto& io = GetIO();
+
+  if (!is_gamepad_connected) {
+    io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
+    return;
+  }
+
+  uint8_t controller_to_poke = XUserIndexNone;
+  hid::X_INPUT_STATE gamepad_state;
+  for (uint8_t i = 0; i < XUserMaxUserCount; i++) {
+    if (input_system_->GetState(i, 1, &gamepad_state) == X_ERROR_SUCCESS) {
+      if (gamepad_state.gamepad.buttons != 0) {
+        controller_to_poke = i;
+        break;
+      }
+    }
+  }
+  if (controller_to_poke == XUserIndexNone) {
+    io.ClearInputKeys();
+    return;
+  }
+
+  io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+  hid::X_INPUT_GAMEPAD& gamepad = gamepad_state.gamepad;
+
+  // GUIDE BUTTON - More info needed
+  if (gamepad_state.gamepad.buttons ==
+      hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_GUIDE) {
+    if (onGuidePressFunction_) {
+      onGuidePressFunction_(controller_to_poke);
+    }
+  }
+
+#define IM_SATURATE(V) (V < 0.0f ? 0.0f : V > 1.0f ? 1.0f : V)
+#define MAP_BUTTON(KEY_NO, BUTTON_ENUM)                           \
+  {                                                               \
+    io.AddKeyEvent(KEY_NO, (gamepad.buttons & BUTTON_ENUM) != 0); \
+  }
+#define MAP_ANALOG(KEY_NO, VALUE, V0, V1)                      \
+  {                                                            \
+    float vn = (float)(VALUE - V0) / (float)(V1 - V0);         \
+    io.AddKeyAnalogEvent(KEY_NO, vn > 0.10f, IM_SATURATE(vn)); \
+  }
+
+  MAP_BUTTON(ImGuiKey_GamepadStart,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_START);
+  MAP_BUTTON(ImGuiKey_GamepadBack,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_BACK);
+  MAP_BUTTON(ImGuiKey_GamepadFaceLeft,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_X);
+  MAP_BUTTON(ImGuiKey_GamepadFaceRight,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_B);
+  MAP_BUTTON(ImGuiKey_GamepadFaceUp,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_Y);
+  MAP_BUTTON(ImGuiKey_GamepadFaceDown,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_A);
+  MAP_BUTTON(ImGuiKey_GamepadDpadLeft,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_DPAD_LEFT);
+  MAP_BUTTON(ImGuiKey_GamepadDpadRight,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_DPAD_RIGHT);
+  MAP_BUTTON(ImGuiKey_GamepadDpadUp,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_DPAD_UP);
+  MAP_BUTTON(ImGuiKey_GamepadDpadDown,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_DPAD_DOWN);
+  MAP_BUTTON(ImGuiKey_GamepadL1,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_LEFT_SHOULDER);
+  MAP_BUTTON(ImGuiKey_GamepadR1,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_RIGHT_SHOULDER);
+  MAP_ANALOG(ImGuiKey_GamepadL2, gamepad.left_trigger,
+             hid::X_INPUT_GAMEPAD_TRIGGER_THRESHOLD, 255);
+  MAP_ANALOG(ImGuiKey_GamepadR2, gamepad.right_trigger,
+             hid::X_INPUT_GAMEPAD_TRIGGER_THRESHOLD, 255);
+  MAP_BUTTON(ImGuiKey_GamepadL3,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_LEFT_THUMB);
+  MAP_BUTTON(ImGuiKey_GamepadR3,
+             hid::X_INPUT_GAMEPAD_BUTTON::X_INPUT_GAMEPAD_RIGHT_THUMB);
+  MAP_ANALOG(ImGuiKey_GamepadLStickLeft, gamepad.thumb_lx,
+             -hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768);
+  MAP_ANALOG(ImGuiKey_GamepadLStickRight, gamepad.thumb_lx,
+             +hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, +32767);
+  MAP_ANALOG(ImGuiKey_GamepadLStickUp, gamepad.thumb_ly,
+             +hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, +32767);
+  MAP_ANALOG(ImGuiKey_GamepadLStickDown, gamepad.thumb_ly,
+             -hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768);
+  MAP_ANALOG(ImGuiKey_GamepadRStickLeft, gamepad.thumb_rx,
+             -hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768);
+  MAP_ANALOG(ImGuiKey_GamepadRStickRight, gamepad.thumb_rx,
+             +hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, +32767);
+  MAP_ANALOG(ImGuiKey_GamepadRStickUp, gamepad.thumb_ry,
+             +hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, +32767);
+  MAP_ANALOG(ImGuiKey_GamepadRStickDown, gamepad.thumb_ry,
+             -hid::X_INPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768);
+#undef MAP_BUTTON
+#undef MAP_ANALOG
 }
 
 }  // namespace ui

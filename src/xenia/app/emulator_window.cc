@@ -140,15 +140,6 @@ DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
              "General");
-
-namespace xe {
-namespace kernel {
-namespace xam {
-extern std::atomic<int> xam_dialogs_shown_;
-}
-}  // namespace kernel
-}  // namespace xe
-
 namespace xe {
 namespace app {
 
@@ -275,9 +266,11 @@ void EmulatorWindow::OnEmulatorInitialized() {
   }
 
   // Create a thread to listen for controller hotkeys.
-  Gamepad_HotKeys_Listener =
-      threading::Thread::Create({}, [&] { GamepadHotKeys(); });
-  Gamepad_HotKeys_Listener->set_name("Gamepad HotKeys Listener");
+  if (cvars::controller_hotkeys) {
+    Gamepad_HotKeys_Listener =
+        threading::Thread::Create({}, [&] { GamepadHotKeys(); });
+    Gamepad_HotKeys_Listener->set_name("Gamepad HotKeys Listener");
+  }
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
@@ -1462,12 +1455,12 @@ void EmulatorWindow::ToggleProfilesConfigDialog() {
     emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI, 1);
     profile_config_dialog_ =
         std::make_unique<ProfileConfigDialog>(imgui_drawer_.get(), this);
-    kernel::xam::xam_dialogs_shown_++;
+    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_++;
   } else {
     disable_hotkeys_ = false;
     emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI, 0);
     profile_config_dialog_.reset();
-    kernel::xam::xam_dialogs_shown_--;
+    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_--;
   }
 }
 
@@ -2065,7 +2058,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
   if (profile_config_dialog_) {
     profile_config_dialog_.reset();
-    kernel::xam::xam_dialogs_shown_--;
+    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_--;
   }
 
   if (display_config_dialog_) {
@@ -2210,7 +2203,7 @@ void EmulatorWindow::ClearDialogs() {
   }
 
   imgui_drawer_.get()->ClearDialogs();
-  kernel::xam::xam_dialogs_shown_ = 0;
+  emulator_->kernel_state()->xam_state()->xam_dialogs_shown_ = 0;
 }
 
 }  // namespace app

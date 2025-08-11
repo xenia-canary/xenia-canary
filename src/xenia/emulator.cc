@@ -279,10 +279,7 @@ X_STATUS Emulator::Setup(
   if (input_driver_factory) {
     auto input_drivers = input_driver_factory(display_window_);
     for (size_t i = 0; i < input_drivers.size(); ++i) {
-      auto& input_driver = input_drivers[i];
-      input_driver->set_is_active_callback(
-          []() -> bool { return !xe::kernel::xam::xeXamIsUIActive(); });
-      input_system_->AddDriver(std::move(input_driver));
+      input_system_->AddDriver(std::move(input_drivers[i]));
     }
   }
 
@@ -290,6 +287,9 @@ X_STATUS Emulator::Setup(
   if (result) {
     return result;
   }
+
+  // Add inputSystem to UI
+  imgui_drawer_->LoadInputSystem(input_system_.get());
 
   XELOGI("{}: Initializing VFS...", __func__);
   // Bring up the virtual filesystem used by the kernel.

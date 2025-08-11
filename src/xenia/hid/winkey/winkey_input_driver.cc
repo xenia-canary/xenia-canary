@@ -169,7 +169,7 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
   int16_t thumb_rx = 0;
   int16_t thumb_ry = 0;
 
-  if (window()->HasFocus() && is_active()) {
+  if (window()->HasFocus()) {
     bool capital = IsKeyToggled(VK_CAPITAL) || IsKeyDown(VK_SHIFT);
     for (const KeyBinding& b : key_bindings_) {
       if (((b.lowercase == b.uppercase) || (b.lowercase && !capital) ||
@@ -283,10 +283,6 @@ X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
 
 X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
                                          X_INPUT_KEYSTROKE* out_keystroke) {
-  if (!is_active()) {
-    return X_ERROR_DEVICE_NOT_CONNECTED;
-  }
-
   if (!IsKeyboardForUserEnabled(user_index) && !IsPassthroughEnabled()) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -382,8 +378,8 @@ void WinKeyInputDriver::WinKeyWindowInputListener::OnKeyUp(ui::KeyEvent& e) {
 }
 
 void WinKeyInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
-  if (!is_active() || static_cast<KeyboardMode>(cvars::keyboard_mode) ==
-                          KeyboardMode::Disabled) {
+  if (static_cast<KeyboardMode>(cvars::keyboard_mode) ==
+      KeyboardMode::Disabled) {
     return;
   }
 

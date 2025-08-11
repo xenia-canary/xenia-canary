@@ -59,6 +59,9 @@ class XamState {
 
   X_DASH_APP_INFO dash_app_info_ = {};
 
+  std::atomic<int32_t> xam_dialogs_shown_ = {0};
+  std::atomic<int32_t> xam_nui_dialogs_shown_ = {0};
+
  private:
   KernelState* kernel_state_;
 
