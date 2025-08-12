@@ -62,20 +62,40 @@ dword_result_t XamProfileCreate_entry(
     pointer_t<X_XAMACCOUNTINFO> account,
     pointer_t<X_USER_PAYMENT_INFO> payment_info,
     pointer_t<X_PASSPORT_SESSION_TOKEN> user_token,
-    pointer_t<X_PASSPORT_SESSION_TOKEN> owner_token, lpvoid_t unk1) {
-  if (device_id) {
-    *device_id = 0x1;
+    pointer_t<X_PASSPORT_SESSION_TOKEN> owner_token,
+    pointer_t<X_PROFILE_CREATION_INFO> profile_info_ptr) {
+  if ((flags & 0x80000000) == 0x80000000) {
+    profile_info_ptr->flags = flags & 0x7fffffff;
+    profile_info_ptr->unk2 = 1;
+  } else {
+    profile_info_ptr->flags = flags;
+    profile_info_ptr->unk2 = 0;
   }
 
-  if (xuid != 0) {
-    assert_always();
-    return X_E_INVALIDARG;
+  if (device_id) {
+    *device_id = 0x1;
+    profile_info_ptr->device_id = *device_id;
   }
+
+  profile_info_ptr->offline_xuid = xuid;
+  profile_info_ptr->account_info = *account;
 
   X_XAMACCOUNTINFO account_info_data;
   memcpy(&account_info_data, account, sizeof(X_XAMACCOUNTINFO));
   xe::copy_and_swap<char16_t>(account_info_data.gamertag,
                               account_info_data.gamertag, 16);
+
+  if (payment_info) {
+    profile_info_ptr->user_payment_info = *payment_info;
+  }
+  if (user_token) {
+    profile_info_ptr->user_token = *user_token;
+  }
+  if (owner_token) {
+    profile_info_ptr->owner_token = *owner_token;
+  }
+
+  // calls XamTaskSchedule
 
   bool result = kernel_state()->xam_state()->profile_manager()->CreateProfile(
       &account_info_data, xuid);
@@ -93,11 +113,20 @@ dword_result_t XamProfileClose_entry(lpstring_t mount_name) {
 }
 DECLARE_XAM_EXPORT1(XamProfileClose, kNone, kStub);
 
-dword_result_t XamProfileGetCreationStatus_entry(lpvoid_t unk1,
-                                                 lpqword_t offline_xuid) {
-  return X_ERROR_SUCCESS;
+dword_result_t XamProfileGetCreationStatus_entry(
+    pointer_t<X_PROFILE_CREATION_INFO> profile_info, lpqword_t offline_xuid) {
+  // This is a rough outline of what's meant to happen here.
+  // None of this can be done until XamTaskSchedule is handled in
+  // XamProfileCreate. X_RESULT result =
+  // XamTaskGetStatus(profile_info->task_handle_ptr);
+  // if (result == 0) {
+  // result = XamTaskGetCompletionStatus(profile_info->task_handle_ptr)
+  *offline_xuid = profile_info->offline_xuid;
+  // XamTaskCloseHandle(profile_info->task_handle_ptr);
+  //}
+  return X_ERROR_SUCCESS;  // result
 }
-DECLARE_XAM_EXPORT1(XamProfileGetCreationStatus, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamProfileGetCreationStatus, kNone, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel
