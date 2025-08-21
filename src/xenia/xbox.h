@@ -122,10 +122,12 @@ typedef uint32_t X_HRESULT;
 #define X_E_NOT_IMPLEMENTED                     static_cast<X_HRESULT>(0x80004001L)
 #define X_E_FAIL                                static_cast<X_HRESULT>(0x80004005L)
 #define X_E_NO_MORE_FILES                       X_HRESULT_FROM_WIN32(X_ERROR_NO_MORE_FILES)
+#define X_E_NOT_SUPPORTED                       X_HRESULT_FROM_WIN32(X_ERROR_NOT_SUPPORTED)
 #define X_E_INVALIDARG                          X_HRESULT_FROM_WIN32(X_ERROR_INVALID_PARAMETER)
 #define X_E_DEVICE_NOT_CONNECTED                X_HRESULT_FROM_WIN32(X_ERROR_DEVICE_NOT_CONNECTED)
 #define X_E_NOTFOUND                            X_HRESULT_FROM_WIN32(X_ERROR_NOT_FOUND)
 #define X_E_NO_SUCH_USER                        X_HRESULT_FROM_WIN32(X_ERROR_NO_SUCH_USER)
+#define X_E_FUNCTION_FAILED                     X_HRESULT_FROM_WIN32(X_ERROR_FUNCTION_FAILED)
 
 // Sockets/networking.
 #define X_INVALID_SOCKET (uint32_t)(~0)
@@ -257,6 +259,8 @@ enum : XNotificationID {
   kXNotificationXmpTitlePlayListContentChanged = 0x8A000005,
   kXNotificationXmpLocalMediaContentChanged = 0x8A000006,
   kXNotificationXmpDashNowPlayingQueueModeChanged = 0x8A000007,
+  kXNotificationXmpDashInItChanged = 0x8A000009,
+  kXNotificationXmpPlaybackBehaviorChangedEx = 0x8A00000A,
 
   // XNotification Party
   kXNotificationPartyMembersChanged = 0x0E040002,
