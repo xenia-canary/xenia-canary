@@ -9,8 +9,6 @@
 
 #include "xenia/gpu/texture_cache.h"
 
-#include <algorithm>
-
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
@@ -177,15 +175,10 @@ TextureCache::~TextureCache() {
 
 bool TextureCache::GetConfigDrawResolutionScale(uint32_t& x_out,
                                                 uint32_t& y_out) {
-  // Clamp to valid range [1, max] to ensure safe conversion to uint32_t
-  int32_t config_x_signed =
-      std::clamp(cvars::draw_resolution_scale_x, INT32_C(1),
-                 static_cast<int32_t>(kMaxDrawResolutionScaleAlongAxis));
-  int32_t config_y_signed =
-      std::clamp(cvars::draw_resolution_scale_y, INT32_C(1),
-                 static_cast<int32_t>(kMaxDrawResolutionScaleAlongAxis));
-  uint32_t config_x = static_cast<uint32_t>(config_x_signed);
-  uint32_t config_y = static_cast<uint32_t>(config_y_signed);
+  uint32_t config_x =
+      uint32_t(std::max(INT32_C(1), cvars::draw_resolution_scale_x));
+  uint32_t config_y =
+      uint32_t(std::max(INT32_C(1), cvars::draw_resolution_scale_y));
 
   uint32_t clamped_x = std::min(kMaxDrawResolutionScaleAlongAxis, config_x);
   uint32_t clamped_y = std::min(kMaxDrawResolutionScaleAlongAxis, config_y);
