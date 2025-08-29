@@ -138,8 +138,32 @@ dword_result_t XamInputSetState_entry(
   }
 
   auto input_system = kernel_state()->emulator()->input_system();
-  auto lock = input_system->lock();
-  return input_system->SetState(user_index, vibration);
+
+  if (!input_system) {
+    XELOGW("XamInputSetState: input_system is null for user {}",
+           uint32_t(user_index));
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+
+  // If vibration is disabled, just return success without locking
+  // This avoids potential mutex issues when vibration is disabled
+  if (!input_system->GetVibrationCvar()) {
+    return X_ERROR_SUCCESS;
+  }
+
+  // Try to lock with exception handling to avoid crashes
+  try {
+    auto lock = input_system->lock();
+    return input_system->SetState(user_index, vibration);
+  } catch (const std::exception& e) {
+    XELOGE("XamInputSetState: Failed to acquire lock for user {}: {}",
+           uint32_t(user_index), e.what());
+    return X_ERROR_SUCCESS;
+  } catch (...) {
+    XELOGE("XamInputSetState: Unknown error acquiring lock for user {}",
+           uint32_t(user_index));
+    return X_ERROR_SUCCESS;
+  }
 }
 DECLARE_XAM_EXPORT1(XamInputSetState, kInput, kImplemented);
 
