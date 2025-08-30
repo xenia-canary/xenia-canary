@@ -1896,19 +1896,26 @@ void EmulatorWindow::GamepadHotKeys() {
 
   if (input_sys) {
     while (true) {
-      auto input_lock = input_sys->lock();
+      // Collect controller states while holding the lock
+      std::array<std::pair<bool, X_INPUT_STATE>, XUserMaxUserCount>
+          controller_states;
+      {
+        auto input_lock = input_sys->lock();
+        for (uint32_t user_index = 0; user_index < XUserMaxUserCount;
+             ++user_index) {
+          X_RESULT result = input_sys->GetState(
+              user_index, X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD, &state);
+          controller_states[user_index] = {result == X_ERROR_SUCCESS, state};
+        }
+      }  // Lock is released here when input_lock goes out of scope
 
+      // Process hotkeys without holding the lock
       for (uint32_t user_index = 0; user_index < XUserMaxUserCount;
            ++user_index) {
-        X_RESULT result = input_sys->GetState(
-            user_index, X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD, &state);
-
-        // Release the lock before processing the hotkey
-        input_lock.mutex()->unlock();
-
-        // Check if the controller is connected
-        if (result == X_ERROR_SUCCESS) {
-          if (ProcessControllerHotkey(state.gamepad.buttons).rumble) {
+        if (controller_states[user_index].first) {
+          if (ProcessControllerHotkey(
+                  controller_states[user_index].second.gamepad.buttons)
+                  .rumble) {
             // Enable Vibration
             VibrateController(input_sys, user_index, true);
 
