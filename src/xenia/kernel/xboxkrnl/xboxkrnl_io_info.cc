@@ -7,6 +7,9 @@
  ******************************************************************************
  */
 
+#include <algorithm>
+#include <cctype>
+
 #include "xenia/base/logging.h"
 #include "xenia/kernel/info/file.h"
 #include "xenia/kernel/info/volume.h"
@@ -244,11 +247,21 @@ dword_result_t NtSetInformationFile_entry(
     }
     case XFileDispositionInformation: {
       auto info = info_ptr.as<X_FILE_DISPOSITION_INFORMATION*>();
-      bool delete_on_close = info->delete_file ? true : false;
-      file->entry()->SetForDeletion(static_cast<bool>(info->delete_file));
+
+      // Don't allow deletion of cache files to prevent runtime cache
+      // corruption. It's likely this logic should be inverted and
+      // SetForDeletion should only set be applied those targets where deletions
+      // is valid instead.
+      std::string mount_path = file->device()->mount_path();
+      std::transform(mount_path.begin(), mount_path.end(), mount_path.begin(),
+                     [](unsigned char c) { return std::toupper(c); });
+      bool is_cache_file = mount_path.find("\\CACHE") != std::string::npos;
+
+      if (!is_cache_file) {
+        file->entry()->SetForDeletion(static_cast<bool>(info->delete_file));
+      }
+
       out_length = 0;
-      XELOGW("NtSetInformationFile set deleting flag for {} on close to: {}",
-             file->name(), delete_on_close);
       break;
     }
     case XFilePositionInformation: {
