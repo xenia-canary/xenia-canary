@@ -31,5 +31,6 @@ project("xenia-ui")
     links({
       "xcb",
       "X11",
-      "X11-xcb"
+      "X11-xcb",
+      "fontconfig"
     })

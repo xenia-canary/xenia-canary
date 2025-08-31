@@ -30,6 +30,10 @@
 #include <ShlObj_core.h>
 #endif
 
+#if XE_PLATFORM_LINUX
+#include <fontconfig/fontconfig.h>
+#endif
+
 DEFINE_path(
     custom_font_path, "",
     "Allows user to load custom font and use it instead of default one.", "UI");
@@ -356,7 +360,6 @@ bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
 }
 
 bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
-  // TODO(benvanik): jp font on other platforms?
 #if XE_PLATFORM_WIN32
   PWSTR fonts_dir;
   HRESULT result = SHGetKnownFolderPath(FOLDERID_Fonts, 0, NULL, &fonts_dir);
@@ -382,6 +385,63 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   CoTaskMemFree(static_cast<void*>(fonts_dir));
   return true;
 #endif
+
+#if XE_PLATFORM_LINUX
+  // On Linux, find and merge CJK font using fontconfig
+  FcConfig* config = FcInitLoadConfigAndFonts();
+  if (!config) {
+    XELOGW(
+        "Unable to initialize fontconfig; CJK characters may not display "
+        "correctly");
+    return false;
+  }
+
+  // Create a pattern to search for fonts with CJK support
+  FcPattern* pattern = FcPatternCreate();
+  FcCharSet* charset = FcCharSetCreate();
+  FcCharSetAddChar(charset, 0x4E00);  // Add a CJK character to the charset
+  FcPatternAddCharSet(pattern, FC_CHARSET, charset);
+
+  // Configure the search
+  FcConfigSubstitute(config, pattern, FcMatchPattern);
+  FcDefaultSubstitute(pattern);
+
+  // Find the best matching font
+  FcResult result;
+  FcPattern* font = FcFontMatch(config, pattern, &result);
+
+  bool success = false;
+  if (font) {
+    FcChar8* file = nullptr;
+    if (FcPatternGetString(font, FC_FILE, 0, &file) == FcResultMatch) {
+      const char* font_path = reinterpret_cast<const char*>(file);
+
+      if (std::filesystem::exists(font_path)) {
+        ImFontConfig jp_font_config;
+        jp_font_config.MergeMode = true;
+        jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
+        jp_font_config.PixelSnapH = true;
+
+        io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config,
+                                     io.Fonts->GetGlyphRangesJapanese());
+        success = true;
+      }
+    }
+    FcPatternDestroy(font);
+  }
+
+  FcCharSetDestroy(charset);
+  FcPatternDestroy(pattern);
+  FcConfigDestroy(config);
+
+  if (!success) {
+    XELOGW(
+        "Unable to find CJK font; Japanese characters may not display "
+        "correctly");
+  }
+  return success;
+#endif
+
   return false;
 };
 
