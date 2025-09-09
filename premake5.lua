@@ -34,7 +34,6 @@ includedirs({
 
 defines({
   "VULKAN_HPP_NO_TO_STRING",
-  "IMGUI_DISABLE_OBSOLETE_FUNCTIONS",
   "IMGUI_DISABLE_DEFAULT_FONT",
   --"IMGUI_USE_WCHAR32",
   "IMGUI_USE_STB_SPRINTF",
@@ -238,6 +237,7 @@ filter("platforms:Windows")
     "WIN32",
     "_WIN64=1",
     "_AMD64=1",
+    "IMGUI_DISABLE_OBSOLETE_FUNCTIONS",
   })
   linkoptions({
     "/ignore:4006",  -- Ignores complaints about empty obj files.
