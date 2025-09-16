@@ -11,6 +11,7 @@
 #define XENIA_PATCH_DB_H_
 
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <regex>
@@ -66,6 +67,7 @@ struct PatchInfoEntry {
 struct PatchFileEntry {
   uint32_t title_id;
   std::string title_name;
+  std::string filename;
   std::vector<uint64_t> hashes;
   std::vector<PatchInfoEntry> patch_info;
 };

@@ -46,9 +46,10 @@ void PatchDB::LoadPatches() {
       continue;
     }
 
-    const PatchFileEntry loaded_title_patches =
+    PatchFileEntry loaded_title_patches =
         ReadPatchFile(patch_file.path / patch_file.name);
     if (loaded_title_patches.title_id != -1) {
+      loaded_title_patches.filename = path_to_utf8(patch_file.name);
       loaded_patches_.push_back(loaded_title_patches);
     }
   }

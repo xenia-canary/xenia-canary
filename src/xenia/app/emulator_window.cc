@@ -691,6 +691,10 @@ bool EmulatorWindow::Initialize() {
         std::bind(&EmulatorWindow::ShowContentDirectory, this)));
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "&Manage patches",
+                         std::bind(&EmulatorWindow::ShowPatchesDialog, this)));
+    file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+    file_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
                          [this]() { window_->RequestClose(); }));
   }
@@ -1388,6 +1392,15 @@ void EmulatorWindow::ShowContentDirectory() {
   }
 
   LaunchFileExplorer(content_root);
+}
+
+void EmulatorWindow::ShowPatchesDialog() {
+  if (emulator_) {
+    app_context_.CallInUIThread([this]() {
+      auto dialog = new PatchesDialog(imgui_drawer_.get(), this);
+      imgui_drawer_->AddDialog(dialog);
+    });
+  }
 }
 
 void EmulatorWindow::CpuTimeScalarReset() {
