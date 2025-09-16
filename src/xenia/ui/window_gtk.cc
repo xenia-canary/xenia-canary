@@ -484,6 +484,31 @@ VirtualKey GTKWindow::TranslateVirtualKey(guint keyval) {
       return VirtualKey::kSpace;
     case GDK_KEY_Caps_Lock:
       return VirtualKey::kCapital;
+    case GDK_KEY_F1:
+      return VirtualKey::kF1;
+    case GDK_KEY_F3:
+      return VirtualKey::kF3;
+    case GDK_KEY_F4:
+      return VirtualKey::kF4;
+    case GDK_KEY_F5:
+      return VirtualKey::kF5;
+    case GDK_KEY_F6:
+      return VirtualKey::kF6;
+    case GDK_KEY_F11:
+      return VirtualKey::kF11;
+    case GDK_KEY_F12:
+      return VirtualKey::kF12;
+    case GDK_KEY_KP_Multiply:
+      return VirtualKey::kMultiply;
+    case GDK_KEY_KP_Add:
+      return VirtualKey::kAdd;
+    case GDK_KEY_KP_Subtract:
+      return VirtualKey::kSubtract;
+    case GDK_KEY_KP_Divide:
+      return VirtualKey::kDivide;
+    case GDK_KEY_Pause:
+    case GDK_KEY_Break:
+      return VirtualKey::kPause;
     default:
       XELOGW("Unhandled key code: {}", keyval);
       return VirtualKey(keyval);
@@ -770,11 +795,27 @@ GTKMenuItem::GTKMenuItem(Type type, const std::string& text,
       menu_ = gtk_separator_menu_item_new();
       break;
     case MenuItem::Type::kString:
-      auto full_name = text;
       if (!hotkey.empty()) {
-        full_name += "\t" + hotkey;
+        // Create a box to hold the label and the accelerator
+        GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+
+        // Create the main label with mnemonic
+        GtkWidget* label_widget = gtk_label_new_with_mnemonic(gtk_label);
+        gtk_label_set_xalign(GTK_LABEL(label_widget), 0.0);
+        gtk_box_pack_start(GTK_BOX(box), label_widget, FALSE, FALSE, 0);
+
+        // Create the accelerator label (right-aligned)
+        GtkWidget* accel_label = gtk_label_new(hotkey.c_str());
+        gtk_widget_set_margin_start(accel_label, 20);
+        gtk_box_pack_end(GTK_BOX(box), accel_label, FALSE, FALSE, 0);
+
+        // Create menu item and add the box
+        menu_ = gtk_menu_item_new();
+        gtk_container_add(GTK_CONTAINER(menu_), box);
+        gtk_widget_show_all(box);
+      } else {
+        menu_ = gtk_menu_item_new_with_mnemonic(gtk_label);
       }
-      menu_ = gtk_menu_item_new_with_mnemonic(gtk_label);
       break;
   }
   if (menu_) {
