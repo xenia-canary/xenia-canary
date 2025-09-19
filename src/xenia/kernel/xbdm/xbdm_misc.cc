@@ -19,6 +19,8 @@
 
 DECLARE_bool(debug);
 
+DECLARE_bool(force_mount_devkit);
+
 namespace xe {
 namespace kernel {
 namespace xbdm {
@@ -130,6 +132,10 @@ dword_result_t DmCloseLoadedModules_entry(lpdword_t walk_modules_ptr) {
 DECLARE_XBDM_EXPORT1(DmCloseLoadedModules, kDebug, kStub);
 
 dword_result_t DmMapDevkitDrive_entry(const ppc_context_t& ctx) {
+  if (cvars::force_mount_devkit) {
+    return 0;
+  }
+
   auto devkit_device =
       std::make_unique<xe::vfs::HostPathDevice>("\\DEVKIT", "devkit", false);
 
