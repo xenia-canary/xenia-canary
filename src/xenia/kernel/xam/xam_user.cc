@@ -255,22 +255,28 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
   }
 
   auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    extended_error = 0;
+    length = 0;
+
     auto user_profile = kernel_state()->xam_state()->GetUserProfile(user_index);
 
     if (!user_profile && !xuids) {
-      return X_ERROR_NO_SUCH_USER;
+      extended_error = X_E_NO_SUCH_USER;
+      return X_ERROR_FUNCTION_FAILED;
     }
 
     if (xuids) {
       uint64_t user_xuid = static_cast<uint64_t>(xuids[0]);
       if (!kernel_state()->xam_state()->IsUserSignedIn(user_xuid)) {
-        return X_ERROR_NO_SUCH_USER;
+        extended_error = X_E_NO_SUCH_USER;
+        return X_ERROR_FUNCTION_FAILED;
       }
       user_profile = kernel_state()->xam_state()->GetUserProfile(user_xuid);
     }
 
     if (!user_profile) {
-      return X_ERROR_NO_SUCH_USER;
+      extended_error = X_E_NO_SUCH_USER;
+      return X_ERROR_FUNCTION_FAILED;
     }
 
     auto out_header = reinterpret_cast<X_USER_READ_PROFILE_SETTINGS*>(buffer);
