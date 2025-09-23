@@ -13,6 +13,12 @@
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/xbox.h"
 
+DEFINE_bool(allow_avatar_initialization, false,
+            "Enable Avatar Initialization\n"
+            " Only set true when testing Avatar games. Certain games may\n"
+            " require kinect implementation.",
+            "Kernel");
+
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -26,13 +32,11 @@ dword_result_t XamAvatarInitialize_entry(
     lpunknown_t unk5,          // ptr in data segment
     dword_t unk6               // flags - 0x00300000, 0x30, etc
 ) {
-  // This should only work for avatar editor to test avatar rendering
-  auto title_id = kernel_state()->title_id();
-  if (title_id == 0x584D07D1) {
+  if (kernel_state()->title_id() == kAvatarEditorID) {
     return X_STATUS_SUCCESS;
   }
-  // Negative to fail. Game should immediately call XamAvatarShutdown.
-  return ~0u;
+
+  return cvars::allow_avatar_initialization ? X_STATUS_SUCCESS : ~0u;
 }
 DECLARE_XAM_EXPORT1(XamAvatarInitialize, kAvatars, kStub);
 

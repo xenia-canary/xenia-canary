@@ -19,6 +19,7 @@ namespace kernel {
 inline constexpr uint32_t kXN_2001 = 0x584E07D1;
 inline constexpr uint32_t kXN_2002 = 0x584E07D2;
 inline constexpr uint32_t kDashboardID = 0xFFFE07D1;
+inline constexpr uint32_t kAvatarEditorID = 0x584D07D1;
 
 inline constexpr uint16_t GetGameId(const uint32_t title_id) {
   return title_id >> 16;
