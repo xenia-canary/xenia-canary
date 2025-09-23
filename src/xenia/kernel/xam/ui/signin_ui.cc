@@ -42,7 +42,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
 
       // Fill slot list.
       std::vector<uint8_t> slots;
-      slots.push_back(0xFF);
+      slots.push_back(XUserIndexAny);
       combo_items.push_back("---");
       for (auto& elem : slot_data_) {
         // Select the slot or skip it if it's already used.
@@ -81,7 +81,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
       std::vector<uint64_t> xuids;
       xuids.push_back(0);
       combo_items.push_back("---");
-      if (chosen_slots_[i] != 0xFF) {
+      if (chosen_slots_[i] != XUserIndexAny) {
         for (auto& elem : profile_data_) {
           // Select the profile or skip it if it's already used.
           bool already_taken = false;
@@ -106,7 +106,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
       }
       items_count = static_cast<int>(combo_items.size());
 
-      ImGui::BeginDisabled(chosen_slots_[i] == 0xFF);
+      ImGui::BeginDisabled(chosen_slots_[i] == XUserIndexAny);
       ImGui::Combo(fmt::format("##Profile{:d}", i).c_str(), &current_item,
                    combo_items.data(), items_count);
       chosen_xuids_[i] = xuids[current_item];
@@ -118,10 +118,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
       uint64_t xuid = chosen_xuids_[i];
       const auto account = profile_manager_->GetAccount(xuid);
 
-      if (slot == 0xFF || xuid == 0 || !account) {
-        float ypos = ImGui::GetCursorPosY();
-        ImGui::SetCursorPosY(ypos + ImGui::GetTextLineHeight() * 5);
-      } else {
+      if (slot != XUserIndexAny && account) {
         xeDrawProfileContent(imgui_drawer(), xuid, slot, account, nullptr, {},
                              {}, nullptr);
       }
@@ -184,7 +181,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
       for (uint32_t i = 0; i < users_needed_; i++) {
         uint8_t slot = chosen_slots_[i];
         uint64_t xuid = chosen_xuids_[i];
-        if (slot != 0xFF && xuid != 0) {
+        if (slot != XUserIndexAny && xuid != 0) {
           profile_map[slot] = xuid;
         }
       }
