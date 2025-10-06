@@ -103,21 +103,21 @@ xe::ui::ImmediateTexture* GameAchievementsUI::GetIcon(
 std::string GameAchievementsUI::GetUnlockedTime(
     const Achievement& achievement_entry) const {
   if (achievement_entry.IsUnlockedOnline()) {
-    const auto unlock_time = chrono::WinSystemClock::to_local(
-        achievement_entry.unlock_time.to_time_point());
+    const auto unlock_time =
+        std::chrono::system_clock::to_time_t(chrono::WinSystemClock::to_sys(
+            achievement_entry.unlock_time.to_time_point()));
 
-    return fmt::format(
-        "Unlocked: {:%Y-%m-%d %H:%M}",
-        std::chrono::system_clock::time_point(unlock_time.time_since_epoch()));
+    return fmt::format("Unlocked: {:%Y-%m-%d %H:%M}",
+                       fmt::localtime(unlock_time));
   }
 
   if (achievement_entry.unlock_time.is_valid()) {
-    const auto unlock_time = chrono::WinSystemClock::to_local(
-        achievement_entry.unlock_time.to_time_point());
+    const auto unlock_time =
+        std::chrono::system_clock::to_time_t(chrono::WinSystemClock::to_sys(
+            achievement_entry.unlock_time.to_time_point()));
 
-    return fmt::format(
-        "Unlocked: Offline ({:%Y-%m-%d %H:%M})",
-        std::chrono::system_clock::time_point(unlock_time.time_since_epoch()));
+    return fmt::format("Unlocked: Offline ({:%Y-%m-%d %H:%M})",
+                       fmt::localtime(unlock_time));
   }
   return fmt::format("Unlocked: Offline");
 }

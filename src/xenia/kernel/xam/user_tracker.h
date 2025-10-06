@@ -34,7 +34,7 @@ struct TitleInfo {
   X_XDBF_AVATARAWARDS_COUNTER all_avatar_awards;
   X_XDBF_AVATARAWARDS_COUNTER male_avatar_awards;
   X_XDBF_AVATARAWARDS_COUNTER female_avatar_awards;
-  std::chrono::local_time<std::chrono::system_clock::duration> last_played;
+  std::chrono::sys_time<std::chrono::system_clock::duration> last_played;
 
   std::span<const uint8_t> icon;
 

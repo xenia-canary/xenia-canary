@@ -235,8 +235,8 @@ std::optional<TitleInfo> UserTracker::GetUserTitleInfo(
   info.icon = game_gpd->second.GetImage(kXdbfIdTitle);
 
   if (title_data->last_played.is_valid()) {
-    info.last_played = chrono::WinSystemClock::to_local(
-        title_data->last_played.to_time_point());
+    info.last_played =
+        chrono::WinSystemClock::to_sys(title_data->last_played.to_time_point());
   }
 
   return info;
@@ -270,7 +270,7 @@ std::vector<TitleInfo> UserTracker::GetPlayedTitles(uint64_t xuid) const {
     info.title_name = user->dashboard_gpd_.GetTitleName(title_data->title_id);
 
     if (title_data->last_played.is_valid()) {
-      info.last_played = chrono::WinSystemClock::to_local(
+      info.last_played = chrono::WinSystemClock::to_sys(
           title_data->last_played.to_time_point());
     }
 
