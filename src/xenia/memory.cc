@@ -83,10 +83,13 @@ void CrashDump() {
 }
 
 xe::memory::PageAccess ToPageAccess(uint32_t protect) {
-  if ((protect & kMemoryProtectRead) && !(protect & kMemoryProtectWrite)) {
+  // Write-combine memory is CPU-writable (for GPU uploads)
+  bool is_writable =
+      (protect & kMemoryProtectWrite) || (protect & kMemoryProtectWriteCombine);
+
+  if ((protect & kMemoryProtectRead) && !is_writable) {
     return xe::memory::PageAccess::kReadOnly;
-  } else if ((protect & kMemoryProtectRead) &&
-             (protect & kMemoryProtectWrite)) {
+  } else if ((protect & kMemoryProtectRead) && is_writable) {
     return xe::memory::PageAccess::kReadWrite;
   } else {
     return xe::memory::PageAccess::kNoAccess;
@@ -1457,14 +1460,29 @@ xe::memory::PageAccess BaseHeap::QueryRangeAccess(uint32_t low_address,
   }
   uint32_t low_page_number = (low_address - heap_base_) >> page_size_shift_;
   uint32_t high_page_number = (high_address - heap_base_) >> page_size_shift_;
-  uint32_t protect = kMemoryProtectRead | kMemoryProtectWrite;
+  bool all_readable = true;
+  bool all_writable = true;
   {
     auto global_lock = global_critical_region_.Acquire();
-    for (uint32_t i = low_page_number; protect && i <= high_page_number; ++i) {
-      protect &= page_table_[i].current_protect;
+    for (uint32_t i = low_page_number; i <= high_page_number; ++i) {
+      uint32_t page_protect = page_table_[i].current_protect;
+      if (!(page_protect & kMemoryProtectRead)) {
+        all_readable = false;
+      }
+      // Check if page is writable in any form (Write or WriteCombine)
+      if (!(page_protect & kMemoryProtectWrite) &&
+          !(page_protect & kMemoryProtectWriteCombine)) {
+        all_writable = false;
+      }
     }
   }
-  return ToPageAccess(protect);
+  if (all_readable && all_writable) {
+    return xe::memory::PageAccess::kReadWrite;
+  } else if (all_readable) {
+    return xe::memory::PageAccess::kReadOnly;
+  } else {
+    return xe::memory::PageAccess::kNoAccess;
+  }
 }
 
 VirtualHeap::VirtualHeap() = default;
