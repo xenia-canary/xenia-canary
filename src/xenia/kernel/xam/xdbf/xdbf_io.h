@@ -187,6 +187,42 @@ class XdbfFile {
   void LoadFreeEntries(const XdbfFileLoc* free_entries);
 };
 
+struct X_STRB_HEADER {
+  uint32_t magic;
+  bool blockAlignmentStored;
+  bool littleEndian;
+  uint8_t guid[0x10];
+  uint8_t blockIDSize;
+  uint8_t blockSpanSize;
+  uint16_t unused;
+  uint8_t blockAlignment;
+  int32_t blockHeaderSize;
+  uint32_t blockStartAddress;
+};
+static_assert_size(X_STRB_HEADER, 36);
+
+enum X_STRRB_BLOCK_ID : uint8_t {
+  STRBEof = 0xFF,  // -1
+  STRBInvalid = 0,
+  STRBAnimation = 1,
+  STRBTexture = 2,
+  STRBModel = 3,
+  STRBShapeOverrides = 4,
+  STRBSkeleton = 5,
+  STRBAssetMetadata = 6,
+  STRBCustomColorTable = 7,
+  STRBAssetMetadataVersioned = 8,
+};
+
+struct X_STRB_BLOCK {
+  X_STRRB_BLOCK_ID id;
+  int32_t data_length;
+  int32_t field_size;
+  uint32_t data_ptr;  // uint8_t*
+  uint32_t data_address;
+};
+static_assert_size(X_STRB_BLOCK, 20);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
