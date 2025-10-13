@@ -231,7 +231,7 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
                                   dword_t cache_size, qword_t content_size,
                                   lpvoid_t overlapped_ptr) {
   uint64_t xuid = 0;
-  if (user_index != XUserIndexNone) {
+  if (user_index != XUserIndexNone && user_index != XUserIndexAny) {
     const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
 
     if (!user) {
