@@ -135,6 +135,17 @@ struct XCONTENT_DATA_AVATAR_ASSET {
 };
 static_assert_size(XCONTENT_DATA_AVATAR_ASSET, 0x1C);
 
+enum XCONTENT_INTERNAL_FLAGS : uint32_t {
+  Partial = 0x00000001,
+  Corrupt = 0x00000002,
+  KinectEnabled = 0x00000004,
+  DeepLinkSupported = 0x00000008,
+  DisableNetworkStorage = 0x00000010,
+  MoveOnlyTransfer = 0x00000020,
+  DeviceTransfer = 0x00000040,
+  ProfileTransfer = 0x00000080,
+};
+
 struct XCONTENT_DATA_INTERNAL : XCONTENT_DATA {  // 0x0 sz:0x134
   be<uint32_t> category;                         // 0x134 sz:0x4
   be<uint64_t> xuid;                             // 0x138 sz:0x8
@@ -153,9 +164,8 @@ struct XCONTENT_DATA_INTERNAL : XCONTENT_DATA {  // 0x0 sz:0x134
   // XCONTENT_DATA_AVATAR_ASSET avatar_content_data;  // 0x1D8 sz:0x1C
   // XCONTENT_DATA_MEDIA media_content_data;          // 0x1D8 sz:0x24
   //};
-  be<uint8_t> padding[0x24];  // 0x1D8 sz:0x1C
-  be<uint8_t> content_flag;   // 0x1FC sz:0x01
-  be<uint8_t> reserved[3];    // 0x1FD sz:0x3
+  be<uint8_t> padding[0x24];                  // 0x1D8 sz:0x1C
+  be<XCONTENT_INTERNAL_FLAGS> xcontent_flag;  // 0x1FC sz:0x04
 
   XCONTENT_DATA_INTERNAL() = default;
   XCONTENT_DATA_INTERNAL(const XCONTENT_DATA& other) {
