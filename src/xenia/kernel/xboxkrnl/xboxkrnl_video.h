@@ -16,7 +16,7 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-void VdQueryVideoMode(X_VIDEO_MODE* video_mode);
+void VdQueryVideoMode(X_VIDEO_MODE* video_mode, bool is_internal_resolution);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

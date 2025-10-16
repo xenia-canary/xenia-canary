@@ -25,9 +25,9 @@ enum X_VIDEO_CAPABILITIES : uint32_t {
 
 void XGetVideoMode_entry(pointer_t<X_VIDEO_MODE> video_mode) {
   // TODO(benvanik): actually check to see if these are the same.
-  xboxkrnl::VdQueryVideoMode(video_mode);
+  xboxkrnl::VdQueryVideoMode(video_mode, false);
 }
-DECLARE_XAM_EXPORT1(XGetVideoMode, kVideo, ExportTag::kSketchy);
+DECLARE_XAM_EXPORT1(XGetVideoMode, kVideo, kSketchy);
 
 dword_result_t XGetVideoCapabilities_entry() {
   uint32_t capabilities = 0;

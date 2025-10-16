@@ -175,7 +175,7 @@ static_assert_size(X_DISPLAY_INFO, 0x58);
 void VdGetCurrentDisplayInformation_entry(
     pointer_t<X_DISPLAY_INFO> display_info) {
   X_VIDEO_MODE mode;
-  VdQueryVideoMode(&mode);
+  VdQueryVideoMode(&mode, false);
 
   display_info.Zero();
   display_info->front_buffer_width = (uint16_t)mode.display_width;
@@ -200,7 +200,8 @@ void VdGetCurrentDisplayInformation_entry(
 }
 DECLARE_XBOXKRNL_EXPORT1(VdGetCurrentDisplayInformation, kVideo, kStub);
 
-void VdQueryVideoMode(X_VIDEO_MODE* video_mode) {
+void VdQueryVideoMode(X_VIDEO_MODE* video_mode,
+                      [[maybe_unused]] bool is_internal_resolution) {
   // TODO(benvanik): get info from actual display.
   std::memset(video_mode, 0, sizeof(X_VIDEO_MODE));
 
@@ -217,14 +218,19 @@ void VdQueryVideoMode(X_VIDEO_MODE* video_mode) {
   video_mode->widescreen_flag = cvars::widescreen ? 0x01 : 0x03;
 }
 
+void VdQueryRealVideoMode_entry(pointer_t<X_VIDEO_MODE> video_mode) {
+  VdQueryVideoMode(video_mode, true);
+}
+DECLARE_XBOXKRNL_EXPORT1(VdQueryRealVideoMode, kVideo, kStub);
+
 void VdQueryVideoMode_entry(pointer_t<X_VIDEO_MODE> video_mode) {
-  VdQueryVideoMode(video_mode);
+  VdQueryVideoMode(video_mode, false);
 }
 DECLARE_XBOXKRNL_EXPORT1(VdQueryVideoMode, kVideo, kStub);
 
 dword_result_t VdQueryVideoFlags_entry() {
   X_VIDEO_MODE mode;
-  VdQueryVideoMode(&mode);
+  VdQueryVideoMode(&mode, false);
 
   uint32_t flags = 0;
   flags |= mode.is_widescreen ? 1 : 0;

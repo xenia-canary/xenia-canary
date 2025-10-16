@@ -34,12 +34,27 @@ class Emulator;
 namespace xe {
 namespace gpu {
 
-inline const std::vector<std::pair<uint16_t, uint16_t>>
-    internal_display_resolution_entries = {
-        {640, 480},  {640, 576},   {720, 480},  {720, 576},  {800, 600},
-        {848, 480},  {1024, 768},  {1152, 864}, {1280, 720}, {1280, 768},
-        {1280, 960}, {1280, 1024}, {1360, 768}, {1440, 900}, {1680, 1050},
-        {1920, 540}, {1920, 1080}};
+constexpr std::array<std::pair<uint16_t, uint16_t>, 17>
+    internal_display_resolution_entries = {{{640, 480},
+                                            {640, 576},
+                                            {720, 480},
+                                            {720, 576},
+                                            {800, 600},
+                                            {848, 480},
+                                            {1024, 768},
+                                            {1152, 864},
+                                            {1280, 720},
+                                            {1280, 768},
+                                            {1280, 960},
+                                            {1280, 1024},
+                                            {1360, 768},
+                                            {1440, 900},
+                                            {1680, 1050},
+                                            {1920, 540},
+                                            {1920, 1080}}};
+
+constexpr std::array<std::pair<uint16_t, uint16_t>, 3>
+    driver_display_resolution = {{{1440, 900}, {1280, 720}, {1680, 1050}}};
 
 class CommandProcessor;
 
