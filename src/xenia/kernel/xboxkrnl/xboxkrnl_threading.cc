@@ -425,8 +425,7 @@ DECLARE_XBOXKRNL_EXPORT3(KeDelayExecutionThread, kThreading, kImplemented,
                          kBlocking, kHighFrequency);
 
 dword_result_t NtYieldExecution_entry() {
-  auto thread = XThread::GetCurrentThread();
-  thread->Delay(0, 0, 0);
+  xe::threading::MaybeYield();
   return 0;
 }
 DECLARE_XBOXKRNL_EXPORT2(NtYieldExecution, kThreading, kImplemented,
