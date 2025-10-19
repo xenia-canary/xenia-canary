@@ -9,6 +9,7 @@
 
 #include "xenia/apu/xma_context.h"
 
+#include <cmath>
 #include <cstring>
 
 #include "xenia/apu/xma_decoder.h"
@@ -123,8 +124,9 @@ void XmaContext::ConvertFrame(const uint8_t** samples, bool is_two_channel,
       // Raw samples sometimes aren't within [-1, 1]
       float scaled_sample = xe::clamp_float(in[i], -1.0f, 1.0f) * scale;
 
-      // Convert the sample and output it in big endian.
-      auto sample = static_cast<int16_t>(scaled_sample);
+      // Use proper rounding (banker's rounding via std::lrintf) for better
+      // quality and consistency with SIMD path which uses _mm_cvtps_epi32
+      auto sample = static_cast<int16_t>(std::lrintf(scaled_sample));
       out[o++] = xe::byte_swap(sample);
     }
   }
