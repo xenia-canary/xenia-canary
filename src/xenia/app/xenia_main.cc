@@ -444,9 +444,6 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
 }
 
 bool EmulatorApp::OnInitialize() {
-#if XE_ARCH_AMD64 == 1
-  amd64::InitFeatureFlags();
-#endif
   Profiler::Initialize();
   Profiler::ThreadEnter("Main");
 
@@ -471,6 +468,10 @@ bool EmulatorApp::OnInitialize() {
   XELOGI("Storage root: {}", storage_root);
 
   config::SetupConfig(storage_root);
+
+#if XE_ARCH_AMD64 == 1
+  amd64::InitFeatureFlags();
+#endif
 
   std::filesystem::path content_root = cvars::content_root;
   if (content_root.empty()) {
