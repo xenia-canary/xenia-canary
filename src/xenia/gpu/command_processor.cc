@@ -50,14 +50,14 @@ DEFINE_bool(clear_memory_page_state, false,
 
 DEFINE_bool(
     readback_resolve, false,
-    "[D3D12 Only] Read render-to-texture results on the CPU. This may be "
+    "Read render-to-texture results on the CPU. This may be "
     "needed in some games, for instance, for screenshots in saved games, but "
     "causes mid-frame synchronization, so it has a huge performance impact.",
     "GPU");
 
 DEFINE_bool(
     readback_memexport, false,
-    "[D3D12 Only] Read data written by memory export in shaders on the CPU. "
+    "Read data written by memory export in shaders on the CPU. "
     "This may be needed in some games (but many only access exported data on "
     "the GPU, and this flag isn't needed to handle such behavior), but causes "
     "mid-frame synchronization, so it has a huge performance impact.",

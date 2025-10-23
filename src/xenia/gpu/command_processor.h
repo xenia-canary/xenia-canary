@@ -160,6 +160,8 @@ class CommandProcessor {
     size_t length = 0;
   };
 
+  static constexpr uint32_t kReadbackBufferSizeIncrement = 16 * 1024 * 1024;
+
   void WorkerThreadMain();
   virtual bool SetupContext() = 0;
   virtual void ShutdownContext() = 0;

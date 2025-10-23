@@ -692,7 +692,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   D3D12_RESOURCE_STATES scratch_buffer_state_;
   bool scratch_buffer_used_ = false;
 
-  static constexpr uint32_t kReadbackBufferSizeIncrement = 16 * 1024 * 1024;
   ID3D12Resource* readback_buffer_ = nullptr;
   uint32_t readback_buffer_size_ = 0;
 
