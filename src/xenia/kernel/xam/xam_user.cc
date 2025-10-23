@@ -457,6 +457,7 @@ dword_result_t XamUserContentRestrictionCheckAccess_entry(
     // TODO(benvanik): does this need the access arg on it?
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
                                                 X_ERROR_SUCCESS);
+    return X_ERROR_IO_PENDING;
   }
 
   return X_ERROR_SUCCESS;
