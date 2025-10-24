@@ -192,6 +192,12 @@ if os.istarget("linux") and string.contains(CLANG_BIN, "clang") then
         "nontrivial-memcall",
       })
   end
+  if tonumber(string.match(os.outputof(CLANG_BIN.." --version"), "version (%d%d)")) >= 21 then
+    filter({"language:C++", "toolset:clang"}) -- "platforms:Linux"
+      disablewarnings({
+        "character-conversion",          -- Needed for utfcpp third-party library
+      })
+  end
 end
 
 filter({"language:C", "toolset:clang or gcc"}) -- "platforms:Linux"
