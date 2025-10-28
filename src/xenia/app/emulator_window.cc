@@ -175,8 +175,7 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
 #endif
                 " ("
 #ifdef XE_BUILD_IS_PR
-                "PR#" XE_BUILD_PR_NUMBER " " XE_BUILD_PR_REPO
-                " " XE_BUILD_PR_BRANCH "@" XE_BUILD_PR_COMMIT_SHORT " against "
+                "PR#" XE_BUILD_PR_NUMBER " - "
 #endif
                 XE_BUILD_BRANCH "@" XE_BUILD_COMMIT_SHORT " on " XE_BUILD_DATE
                 ")";

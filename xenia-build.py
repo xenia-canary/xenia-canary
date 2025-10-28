@@ -281,22 +281,12 @@ def generate_version_h():
     """
     header_file = "build/version.h"
     pr_number = None
-    pr_repo_name = ""
-    pr_branch_name = ""
-    pr_commit = ""
-    pr_commit_short = ""
-    #if os.getenv("APPVEYOR") == "True":
-    #  branch_name = os.getenv("APPVEYOR_REPO_BRANCH")
-    #  commit = os.getenv("APPVEYOR_REPO_COMMIT")
-    #  commit_short = commit[:9]
-    #  pr_number = os.getenv("APPVEYOR_PULL_REQUEST_NUMBER")
-    #  else:
-    #    pr_repo_name = os.getenv("APPVEYOR_PULL_REQUEST_HEAD_REPO_NAME")
-    #    pr_branch_name = os.getenv("APPVEYOR_PULL_REQUEST_HEAD_REPO_BRANCH")
-    #    pr_commit = os.getenv("APPVEYOR_PULL_REQUEST_HEAD_COMMIT")
-    #    pr_commit_short = pr_commit[:9]
+
     if git_is_repository():
         (branch_name, commit, commit_short) = git_get_head_info()
+
+        if is_pull_request():
+            pr_number = get_pr_number()
     else:
         branch_name = "tarball"
         commit = ":(-dont-do-this"
@@ -316,10 +306,6 @@ def generate_version_h():
     if pr_number:
       contents_new += f"""#define XE_BUILD_IS_PR
 #define XE_BUILD_PR_NUMBER "{pr_number}"
-#define XE_BUILD_PR_REPO "{pr_repo_name}"
-#define XE_BUILD_PR_BRANCH "{pr_branch_name}"
-#define XE_BUILD_PR_COMMIT "{pr_commit}"
-#define XE_BUILD_PR_COMMIT_SHORT "{pr_commit_short}"
 """
 
     # footer
@@ -424,7 +410,20 @@ def git_is_repository():
         "--is-inside-work-tree",
         ], throw_on_error=False, stdout_path=os.devnull, stderr_path=os.devnull) == 0
 
+def is_pull_request():
+    """Returns true if actions is building a pull request, otherwise false.
+    """
+    return os.getenv('GITHUB_EVENT_NAME') == 'pull_request'
 
+def get_pr_number():
+    """
+    Returns the pull request number if the workflow is triggered by a PR, otherwise None.
+    """
+    github_ref = os.getenv('GITHUB_REF')
+    
+    if github_ref and github_ref.startswith('refs/pull/'):
+        return github_ref.split('/')[2]
+    
 def git_submodule_update():
     """Runs a git submodule init and update.
     """
