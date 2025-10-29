@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_private.h"
 
 namespace xe {
@@ -70,42 +71,41 @@ dword_result_t XamProfileCreate_entry(
     pointer_t<X_USER_PAYMENT_INFO> payment_info,
     pointer_t<X_PASSPORT_SESSION_TOKEN> user_token,
     pointer_t<X_PASSPORT_SESSION_TOKEN> owner_token,
-    pointer_t<X_PROFILE_CREATION_INFO> profile_info_ptr) {
-  if ((flags & 0x80000000) == 0x80000000) {
-    profile_info_ptr->flags = flags & 0x7fffffff;
-    profile_info_ptr->unk2 = 1;
-  } else {
-    profile_info_ptr->flags = flags;
-    profile_info_ptr->unk2 = 0;
-  }
+    lpdword_t profile_info_ptr) {
+  *profile_info_ptr =
+      kernel_memory()->SystemHeapAlloc(sizeof(X_PROFILE_CREATION_INFO));
+  kernel_memory()->Fill(*profile_info_ptr, sizeof(X_PROFILE_CREATION_INFO), 0);
+
+  auto profile_info =
+      kernel_memory()->TranslateVirtual<X_PROFILE_CREATION_INFO*>(
+          *profile_info_ptr);
+
+  profile_info->flags = flags & 0x7fffffff;
 
   if (device_id) {
     *device_id = 0x1;
-    profile_info_ptr->device_id = *device_id;
+    profile_info->device_id = *device_id;
   }
 
-  profile_info_ptr->offline_xuid = xuid;
-  profile_info_ptr->account_info = *account;
-
-  X_XAMACCOUNTINFO account_info_data;
-  memcpy(&account_info_data, account, sizeof(X_XAMACCOUNTINFO));
-  xe::copy_and_swap<char16_t>(account_info_data.gamertag,
-                              account_info_data.gamertag, 16);
+  const uint64_t proper_xuid =
+      xuid == 0 ? GenerateXuid() : static_cast<uint64_t>(xuid);
+  profile_info->offline_xuid = proper_xuid;
+  profile_info->account_info = *account;
 
   if (payment_info) {
-    profile_info_ptr->user_payment_info = *payment_info;
+    profile_info->user_payment_info = *payment_info;
   }
   if (user_token) {
-    profile_info_ptr->user_token = *user_token;
+    profile_info->user_token = *user_token;
   }
   if (owner_token) {
-    profile_info_ptr->owner_token = *owner_token;
+    profile_info->owner_token = *owner_token;
   }
 
   // calls XamTaskSchedule
 
   bool result = kernel_state()->xam_state()->profile_manager()->CreateProfile(
-      &account_info_data, xuid);
+      &profile_info->account_info, proper_xuid);
 
   return result ? X_ERROR_SUCCESS : X_ERROR_INVALID_PARAMETER;
 }
@@ -128,7 +128,16 @@ dword_result_t XamProfileGetCreationStatus_entry(
   // XamTaskGetStatus(profile_info->task_handle_ptr);
   // if (result == 0) {
   // result = XamTaskGetCompletionStatus(profile_info->task_handle_ptr)
+
+  // Custom safeguard
+  if (!profile_info) {
+    XELOGE("XamProfileGetCreationStatus: Invalid profile_info provided!");
+    return X_ERROR_SUCCESS;
+  }
+
   *offline_xuid = profile_info->offline_xuid;
+
+  kernel_state()->memory()->SystemHeapFree(profile_info.guest_address());
   // XamTaskCloseHandle(profile_info->task_handle_ptr);
   //}
   return X_ERROR_SUCCESS;  // result

@@ -44,6 +44,13 @@ inline const std::string kDashboardStringID =
 
 constexpr std::string_view kDefaultMountFormat = "User_{:016X}";
 
+const static inline uint64_t GenerateXuid() {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+  return ((uint64_t)0xE03 << 52) + (gen() % (1 << 31));
+}
+
 class ProfileManager {
  public:
   static bool DecryptAccountFile(const uint8_t* data, X_XAMACCOUNTINFO* output,
@@ -115,13 +122,6 @@ class ProfileManager {
 
   uint8_t FindFirstFreeProfileSlot() const;
   std::bitset<XUserMaxUserCount> GetUsedUserSlots() const;
-
-  uint64_t GenerateXuid() const {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    return ((uint64_t)0xE03 << 52) + (gen() % (1 << 31));
-  }
 
   std::map<uint64_t, X_XAMACCOUNTINFO> accounts_;
   std::map<uint8_t, std::unique_ptr<UserProfile>> logged_profiles_;

@@ -54,9 +54,6 @@ bool ProfileManager::DecryptAccountFile(const uint8_t* data,
   if (std::memcmp(data, data_hash, 0x10) == 0) {
     // Copy account data to output
     std::memcpy(output, dec_data + 8, sizeof(X_XAMACCOUNTINFO));
-
-    // Swap gamertag endian
-    xe::copy_and_swap<char16_t>(output->gamertag, output->gamertag, 0x10);
     return true;
   }
 
@@ -73,10 +70,6 @@ void ProfileManager::EncryptAccountFile(const X_XAMACCOUNTINFO* input,
   X_XAMACCOUNTINFO* output_acct =
       reinterpret_cast<X_XAMACCOUNTINFO*>(output + 0x18);
   std::memcpy(output_acct, input, sizeof(X_XAMACCOUNTINFO));
-
-  // Swap gamertag endian
-  xe::copy_and_swap<char16_t>(output_acct->gamertag, output_acct->gamertag,
-                              0x10);
 
   // Set confounder, should be random but meh
   std::memset(output + 0x10, 0xFD, 8);
@@ -500,10 +493,10 @@ const X_XAMACCOUNTINFO* ProfileManager::GetAccount(const uint64_t xuid) {
 bool ProfileManager::CreateAccount(const uint64_t xuid,
                                    const std::string gamertag) {
   X_XAMACCOUNTINFO account = {};
-  std::u16string gamertag_u16 = xe::to_utf16(gamertag);
+  const std::u16string gamertag_u16 = xe::to_utf16(gamertag);
 
-  string_util::copy_truncating(account.gamertag, gamertag_u16,
-                               sizeof(account.gamertag));
+  string_util::copy_and_swap_truncating(account.gamertag, gamertag_u16,
+                                        sizeof(account.gamertag));
 
   const bool result = UpdateAccount(xuid, &account);
   DismountProfile(xuid);

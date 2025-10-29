@@ -99,7 +99,7 @@ struct X_XAMACCOUNTINFO {
   }
 
   std::string GetGamertagString() const {
-    return xe::to_utf8(std::u16string(gamertag));
+    return xe::to_utf8(xe::string_util::read_u16string_and_swap(gamertag));
   }
 
   void ToggleLiveFlag(bool is_live) {
@@ -293,7 +293,7 @@ struct X_PROFILE_CREATION_INFO {
   X_PASSPORT_SESSION_TOKEN user_token;
   X_PASSPORT_SESSION_TOKEN owner_token;
   uint32_t task_handle_ptr;
-  uint32_t unk2;
+  uint32_t profile_creation_ptr;
 };
 static_assert_size(X_PROFILE_CREATION_INFO, 0xAC0);
 

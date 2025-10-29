@@ -610,10 +610,10 @@ void GamercardUI::SaveAccountData() {
   account.SetSubscriptionTier(gamercardValues_.account_subscription_tier);
   account.ToggleLiveFlag(gamercardValues_.is_live_enabled);
 
-  std::u16string gamertag =
+  const std::u16string gamertag =
       xe::to_utf16(std::string(gamercardValues_.gamertag));
-  string_util::copy_truncating(account.gamertag, gamertag,
-                               std::size(account.gamertag));
+  string_util::copy_and_swap_truncating(account.gamertag, gamertag,
+                                        std::size(account.gamertag));
 
   if (std::memcmp(&account, &account_original, sizeof(X_XAMACCOUNTINFO)) != 0) {
     if (!is_signed_in_) {
