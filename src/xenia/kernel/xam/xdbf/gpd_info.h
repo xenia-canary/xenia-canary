@@ -34,6 +34,16 @@ enum class GpdSection : uint16_t {
   kProtectedAchievement = 0x6,  // GFWL only
 };
 
+enum class AchievementTypeFlags : uint32_t {
+  kCompletion = 0x1,
+  kLeveling = 0x2,
+  kUnlock = 0x3,
+  kEvent = 0x4,
+  kTournament = 0x5,
+  kCheckpoint = 0x6,
+  kOther = 0x7,
+};
+
 enum class AchievementFlags : uint32_t {
   kTypeMask = 0x7,
   kShowUnachieved = 0x8,
@@ -104,6 +114,39 @@ struct X_XDBF_GPD_SETTING_HEADER {
 };
 static_assert_size(X_XDBF_GPD_SETTING_HEADER, 0x18);
 #pragma pack(pop)
+
+inline AchievementTypeFlags constexpr GetAchievementType(const uint32_t flags) {
+  return static_cast<AchievementTypeFlags>(
+      flags & static_cast<uint32_t>(AchievementFlags::kTypeMask));
+}
+
+inline std::string constexpr GetAchievementTypeName(
+    const AchievementTypeFlags type) {
+  switch (type) {
+    case AchievementTypeFlags::kCompletion:
+      return "Completion";
+      break;
+    case AchievementTypeFlags::kLeveling:
+      return "Leveling";
+      break;
+    case AchievementTypeFlags::kUnlock:
+      return "Unlock";
+      break;
+    case AchievementTypeFlags::kEvent:
+      return "Event";
+      break;
+    case AchievementTypeFlags::kTournament:
+      return "Tournament";
+      break;
+    case AchievementTypeFlags::kCheckpoint:
+      return "Checkpoint";
+      break;
+    case AchievementTypeFlags::kOther:
+    default:
+      return "Other";
+      break;
+  }
+}
 
 class GpdInfo : public XdbfFile {
  public:

@@ -1525,14 +1525,18 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       // Show achievments data
       tabulate::Table table;
       table.format().multi_byte_characters(true);
-      table.add_row({"ID", "Title", "Description", "Gamerscore"});
+      table.add_row({"ID", "Title", "Description", "Type", "Gamerscore"});
 
       const std::vector<kernel::util::GameInfoDatabase::Achievement>
           achievement_list = game_info_database_->GetAchievements();
       for (const kernel::util::GameInfoDatabase::Achievement& entry :
            achievement_list) {
+        const std::string type = GetAchievementTypeName(
+            kernel::xam::GetAchievementType(entry.flags));
+
         table.add_row({fmt::format("{}", entry.id), entry.label,
-                       entry.description, fmt::format("{}", entry.gamerscore)});
+                       entry.description, type,
+                       fmt::format("{}", entry.gamerscore)});
       }
       XELOGI("-------------------- ACHIEVEMENTS --------------------\n{}",
              table.str());
