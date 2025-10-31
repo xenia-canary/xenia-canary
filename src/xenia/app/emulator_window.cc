@@ -50,7 +50,7 @@ DECLARE_bool(guide_button);
 
 DECLARE_bool(clear_memory_page_state);
 
-DECLARE_bool(readback_resolve);
+DECLARE_string(readback_resolve);
 
 DECLARE_bool(readback_memexport);
 
@@ -1822,10 +1822,10 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       xe::threading::Sleep(delay);
       break;
     case ButtonFunctions::ReadbackResolve:
-      ToggleGPUSetting(GPUSetting::ReadbackResolve);
+      CycleReadbackResolve();
 
-      notificationTitle = "Toggle Readback Resolve";
-      notificationDesc = cvars::readback_resolve ? "Enabled" : "Disabled";
+      notificationTitle = "Readback Resolve Mode";
+      notificationDesc = cvars::readback_resolve;
 
       // Extra Sleep
       xe::threading::Sleep(delay);
@@ -2009,12 +2009,20 @@ void EmulatorWindow::ToggleGPUSetting(gpu::GPUSetting setting) {
       SaveGPUSetting(GPUSetting::ClearMemoryPageState,
                      !cvars::clear_memory_page_state);
       break;
-    case GPUSetting::ReadbackResolve:
-      SaveGPUSetting(GPUSetting::ReadbackResolve, !cvars::readback_resolve);
-      break;
     case GPUSetting::ReadbackMemexport:
       SaveGPUSetting(GPUSetting::ReadbackMemexport, !cvars::readback_memexport);
       break;
+  }
+}
+
+void EmulatorWindow::CycleReadbackResolve() {
+  const std::string& current = cvars::readback_resolve;
+  if (current == "fast") {
+    gpu::SetReadbackResolveMode("full");
+  } else if (current == "full") {
+    gpu::SetReadbackResolveMode("none");
+  } else {
+    gpu::SetReadbackResolveMode("fast");
   }
 }
 
@@ -2056,8 +2064,7 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   msg.insert(0, msg_passthru);
   msg += "\n";
 
-  msg += "Readback Resolve: " +
-         xe::string_util::BoolToString(cvars::readback_resolve);
+  msg += "Readback Resolve: " + cvars::readback_resolve;
   msg += "\n";
 
   msg += "Clear Memory Page State: " +

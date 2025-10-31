@@ -754,10 +754,21 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Temporary storage for memexport stream constants used in the draw.
   std::vector<draw_util::MemExportRange> memexport_ranges_;
 
-  // Readback buffer for CPU access to resolved data
-  VkBuffer readback_buffer_ = VK_NULL_HANDLE;
-  VkDeviceMemory readback_buffer_memory_ = VK_NULL_HANDLE;
-  uint32_t readback_buffer_size_ = 0;
+  // Per-resolve double-buffered readback for delayed sync
+  struct ReadbackBuffer {
+    VkBuffer buffers[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkDeviceMemory memories[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    uint32_t sizes[2] = {0, 0};
+    uint32_t current_index = 0;
+    uint64_t last_used_frame = 0;
+  };
+  // Map: (written_address << 32 | written_length) -> ReadbackBuffer
+  std::unordered_map<uint64_t, ReadbackBuffer> readback_buffers_;
+
+  // Simple single buffer for memexport (always syncs, no double-buffering)
+  VkBuffer memexport_readback_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory memexport_readback_buffer_memory_ = VK_NULL_HANDLE;
+  uint32_t memexport_readback_buffer_size_ = 0;
 };
 
 }  // namespace vulkan

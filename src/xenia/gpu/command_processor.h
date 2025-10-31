@@ -33,14 +33,18 @@ class ByteStream;
 
 namespace gpu {
 
-enum class GPUSetting {
-  ClearMemoryPageState,
-  ReadbackResolve,
-  ReadbackMemexport
+enum class GPUSetting { ClearMemoryPageState, ReadbackMemexport };
+
+enum class ReadbackResolveMode {
+  kDisabled,  // No readback (none)
+  kFast,      // Delayed sync, 1 frame behind (fast)
+  kFull       // Immediate sync with GPU stall (full)
 };
 
 void SaveGPUSetting(GPUSetting setting, uint64_t value);
 bool GetGPUSetting(GPUSetting setting);
+ReadbackResolveMode GetReadbackResolveMode();
+void SetReadbackResolveMode(const std::string& mode);
 
 class GraphicsSystem;
 class Shader;
@@ -161,6 +165,27 @@ class CommandProcessor {
   };
 
   static constexpr uint32_t kReadbackBufferSizeIncrement = 16 * 1024 * 1024;
+
+  // Eviction policy constants for readback buffer cache
+  static constexpr size_t kMaxReadbackBuffers = 64;
+  static constexpr uint64_t kReadbackBufferEvictionAgeFrames = 60;
+
+  // Progressive alignment for readback buffers to avoid wasting memory
+  static inline uint32_t AlignReadbackBufferSize(uint32_t size) {
+    if (size < 1 * 1024 * 1024) {
+      return xe::align(size, 256u * 1024u);  // 256KB for < 1MB
+    } else if (size < 4 * 1024 * 1024) {
+      return xe::align(size, 1u * 1024u * 1024u);  // 1MB for < 4MB
+    } else {
+      return xe::align(size, kReadbackBufferSizeIncrement);  // 16MB for >= 4MB
+    }
+  }
+
+  // Generate a cache key for a specific resolve operation
+  static inline uint64_t MakeReadbackResolveKey(uint32_t address,
+                                                uint32_t length) {
+    return (uint64_t(address) << 32) | uint64_t(length);
+  }
 
   void WorkerThreadMain();
   virtual bool SetupContext() = 0;

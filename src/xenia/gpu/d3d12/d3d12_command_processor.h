@@ -692,8 +692,19 @@ class D3D12CommandProcessor final : public CommandProcessor {
   D3D12_RESOURCE_STATES scratch_buffer_state_;
   bool scratch_buffer_used_ = false;
 
-  ID3D12Resource* readback_buffer_ = nullptr;
-  uint32_t readback_buffer_size_ = 0;
+  // Per-resolve double-buffered readback for delayed sync
+  struct ReadbackBuffer {
+    ID3D12Resource* buffers[2] = {nullptr, nullptr};
+    uint32_t sizes[2] = {0, 0};
+    uint32_t current_index = 0;
+    uint64_t last_used_frame = 0;
+  };
+  // Map: (written_address << 32 | written_length) -> ReadbackBuffer
+  std::unordered_map<uint64_t, ReadbackBuffer> readback_buffers_;
+
+  // Simple single buffer for memexport (always syncs, no double-buffering)
+  ID3D12Resource* memexport_readback_buffer_ = nullptr;
+  uint32_t memexport_readback_buffer_size_ = 0;
 
   // The current fixed-function drawing state.
   D3D12_VIEWPORT ff_viewport_;
