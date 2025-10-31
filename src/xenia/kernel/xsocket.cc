@@ -26,6 +26,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -33,6 +34,28 @@
 
 namespace xe {
 namespace kernel {
+
+// Translate socket options to native
+// Note:
+// SO_DONTLINGER = ~SO_LINGER
+// SO_EXCLUSIVEADDRUSE = ~SO_REUSEADDR
+// TODO: Check SO_DONTLINGER and SO_EXCLUSIVEADDRUSE usage on linux
+const std::map<uint32_t, uint32_t> supported_socket_options = {
+    {0x0004, SO_REUSEADDR}, {0x0020, SO_BROADCAST}, {0x0080, SO_LINGER},
+    {0x1001, SO_SNDBUF},    {0x1002, SO_RCVBUF},    {0x1005, SO_SNDTIMEO},
+    {0x1006, SO_RCVTIMEO},  {~0x0080, ~SO_LINGER},  {~0x0004, ~SO_REUSEADDR}};
+
+// Translate socket TCP options to native
+const std::map<uint32_t, uint32_t> supported_tcp_options = {
+    {0x0001, TCP_NODELAY}};
+
+// Translate socket levels to native
+const std::map<uint32_t, uint32_t> supported_levels = {{0xFFFF, SOL_SOCKET},
+                                                       {0x6, IPPROTO_TCP}};
+
+// Translate ioctl commands to native
+const std::map<uint32_t, uint32_t> supported_controls = {
+    {0x8004667E, FIONBIO}, {0x4004667F, FIONREAD}};
 
 XSocket::XSocket(KernelState* kernel_state)
     : XObject(kernel_state, kObjectType) {}
@@ -93,73 +116,37 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     return X_STATUS_SUCCESS;
   }
 
-  // Translate Xbox socket level to native
   int native_level = level;
-  if (level == 0xFFFF) {  // Xbox SOL_SOCKET
-    native_level = SOL_SOCKET;
+
+  assert_false(!supported_levels.contains(level));
+
+  if (supported_levels.contains(level)) {
+    level = supported_levels.at(level);
   }
 
-  // Translate Xbox socket options to native
-  // Xbox uses Winsock constants which mostly match standard values
   int native_optname = optname;
+
   if (level == 0xFFFF) {
-    switch (optname) {
-      case 0x0001:  // SO_DEBUG
-        native_optname = SO_DEBUG;
-        break;
-      case 0x0002:  // SO_ACCEPTCONN
-        native_optname = SO_ACCEPTCONN;
-        break;
-      case 0x0004:  // SO_REUSEADDR
-        native_optname = SO_REUSEADDR;
-        break;
-      case 0x0008:  // SO_KEEPALIVE
-        native_optname = SO_KEEPALIVE;
-        break;
-      case 0x0010:  // SO_DONTROUTE
-        native_optname = SO_DONTROUTE;
-        break;
-      case 0x0020:  // SO_BROADCAST
-        native_optname = SO_BROADCAST;
-        break;
-      case 0x0080:  // SO_LINGER
-        native_optname = SO_LINGER;
-        break;
-      case 0x0100:  // SO_OOBINLINE
-        native_optname = SO_OOBINLINE;
-        break;
-      case 0x1001:  // SO_SNDBUF
-        native_optname = SO_SNDBUF;
-        break;
-      case 0x1002:  // SO_RCVBUF
-        native_optname = SO_RCVBUF;
-        break;
-      case 0x1003:  // SO_SNDLOWAT
-        native_optname = SO_SNDLOWAT;
-        break;
-      case 0x1004:  // SO_RCVLOWAT
-        native_optname = SO_RCVLOWAT;
-        break;
-      case 0x1005:  // SO_SNDTIMEO
-        native_optname = SO_SNDTIMEO;
-        break;
-      case 0x1006:  // SO_RCVTIMEO
-        native_optname = SO_RCVTIMEO;
-        break;
-      case 0x1007:  // SO_ERROR
-        native_optname = SO_ERROR;
-        break;
-      case 0x1008:  // SO_TYPE
-        native_optname = SO_TYPE;
-        break;
-        // Add more translations as needed
+    assert_false(!supported_socket_options.contains(optname));
+
+    if (supported_socket_options.contains(optname)) {
+      native_optname = supported_socket_options.at(optname);
+    }
+  }
+
+  if (level == IPPROTO_TCP) {
+    assert_false(!supported_tcp_options.contains(optname));
+
+    if (supported_tcp_options.contains(optname)) {
+      native_optname = supported_tcp_options.at(optname);
     }
   }
 
   int ret = setsockopt(native_handle_, native_level, native_optname,
                        static_cast<char*>(optval_ptr), optlen);
   if (ret < 0) {
-    XELOGE("XSocket::SetOption: setsockopt failed, errno={}", errno);
+    // TODO: WSAGetLastError()
+    XELOGE("XSocket::SetOption: failed with error {:08X}", GetLastWSAError());
     return X_STATUS_UNSUCCESSFUL;
   }
 
@@ -180,26 +167,20 @@ X_STATUS XSocket::IOControl(uint32_t cmd, uint8_t* arg_ptr) {
   }
   return X_STATUS_SUCCESS;
 #elif XE_PLATFORM_LINUX
-  // Translate Xbox/Windows ioctl commands to Linux equivalents
   int native_cmd = cmd;
-  switch (cmd) {
-    case 0x8004667E:  // Windows FIONBIO - set non-blocking mode
-      native_cmd = FIONBIO;
-      break;
-    case 0x4004667F:  // Windows FIONREAD - get bytes available
-      native_cmd = FIONREAD;
-      break;
-    default:
-      XELOGW("XSocket::IOControl: unknown cmd={:08X}, passing through", cmd);
-      break;
+
+  assert_false(!supported_controls.contains(cmd));
+
+  if (supported_controls.contains(cmd)) {
+    native_cmd = supported_controls.at(cmd);
   }
 
   int ret = ioctl(native_handle_, native_cmd, arg_ptr);
+
   if (ret < 0) {
-    XELOGE("XSocket::IOControl: ioctl failed, cmd={:08X} -> {:08X}, errno={}",
-           cmd, native_cmd, errno);
     return X_STATUS_UNSUCCESSFUL;
   }
+
   return X_STATUS_SUCCESS;
 #endif
 }
@@ -229,11 +210,6 @@ X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
   int ret = bind(native_handle_, (sockaddr*)name, name_len);
 
   if (ret < 0) {
-#ifdef XE_PLATFORM_WIN32
-    XELOGE("XSocket::Bind: bind() failed with WSA error {}", WSAGetLastError());
-#else
-    XELOGE("XSocket::Bind: bind() failed with errno={}", errno);
-#endif
     return X_STATUS_UNSUCCESSFUL;
   }
 

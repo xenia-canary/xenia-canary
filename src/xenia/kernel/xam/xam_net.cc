@@ -258,7 +258,7 @@ dword_result_t NetDll_WSAStartup_entry(dword_t caller, word_t version,
 #endif
 
   if (data_ptr) {
-    auto data_out = kernel_state()->memory()->TranslateVirtual(data_ptr);
+    data_ptr.Zero();
 
 #ifdef XE_PLATFORM_WIN32
     data_ptr->version = wsaData.wVersion;
@@ -267,22 +267,25 @@ dword_result_t NetDll_WSAStartup_entry(dword_t caller, word_t version,
     data_ptr->max_udpdg = wsaData.iMaxUdpDg;
     std::memcpy(&data_ptr->description, wsaData.szDescription, 0x100);
     std::memcpy(&data_ptr->system_status, wsaData.szSystemStatus, 0x80);
+    data_ptr->vendor_info_ptr = 0;
 #else
     // Match Windows behavior with reasonable values
-    data_ptr->version = version.value();
-    data_ptr->version_high = version.value();
-    data_ptr->max_sockets = 100;
-    data_ptr->max_udpdg = 1024;
-    // WinSock 2.2 typically returns empty strings for these fields
-    std::memset(&data_ptr->description, 0, 0x100);
-    std::memset(&data_ptr->system_status, 0, 0x80);
-#endif
+    data_ptr->version = 2;
+    data_ptr->version_high = 0x0202;
+    data_ptr->max_sockets = 0;
+    data_ptr->max_udpdg = 0;
 
-    // Some games (5841099F) want this value round-tripped - they'll compare if
-    // it changes and bugcheck if it does.
-    // vendor_info_ptr is at offset 0x18A (after max_udpdg at 0x188)
-    uint32_t vendor_ptr = xe::load_and_swap<uint32_t>(data_out + 0x18A);
-    xe::store_and_swap<uint32_t>(data_out + 0x18A, vendor_ptr);
+    const std::string description = "WinSock 2.0";
+    const std::string status = "Running";
+
+    std::memset(&data_ptr->description, 0, 0x100);
+    std::memcpy(&data_ptr->description, description.data(), description.size());
+
+    std::memset(&data_ptr->system_status, 0, 0x80);
+    std::memcpy(&data_ptr->system_status, status.data(), status.size());
+
+    data_ptr->vendor_info_ptr = 0;
+#endif
   }
 
   // DEBUG
@@ -765,7 +768,6 @@ dword_result_t NetDll_bind_entry(dword_t caller, dword_t socket_handle,
       kernel_state()->object_table()->LookupObject<XSocket>(socket_handle);
   if (!socket) {
     XThread::SetLastError(uint32_t(X_WSAError::X_WSAENOTSOCK));
-    XELOGE("NetDll_bind: failed - invalid socket");
     return -1;
   }
 
@@ -773,7 +775,7 @@ dword_result_t NetDll_bind_entry(dword_t caller, dword_t socket_handle,
   X_STATUS status = socket->Bind(&native_name, namelen);
   if (XFAILED(status)) {
     XThread::SetLastError(socket->GetLastWSAError());
-    XELOGE("NetDll_bind: failed with status {:08X}", status);
+    XELOGE("NetDll_bind: failed with error {:08X}", socket->GetLastWSAError());
     return -1;
   }
 
