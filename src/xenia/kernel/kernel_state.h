@@ -323,6 +323,9 @@ class KernelState {
                              uint32_t interrupt_callback_data, uint32_t source,
                              uint32_t cpu);
 
+  void InitializeXbdmCpuCounters();
+  std::array<uint32_t, 0x11> xbdm_counters_address = {};
+
  private:
   void LoadKernelModule(object_ref<KernelModule> kernel_module);
   void InitializeProcess(X_KPROCESS* process, uint32_t type, char unk_18,

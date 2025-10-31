@@ -1523,5 +1523,49 @@ void KernelState::InitializeKernelGuestGlobals() {
            offsetof32(KernelGuestGlobals, IoDeviceObjectType)}};
   xboxkrnl::xeKeSetEvent(&block->UsbdBootEnumerationDoneEvent, 1, 0);
 }
+
+void KernelState::InitializeXbdmCpuCounters() {
+  constexpr uint32_t counters_base_address = 0x91F00000;
+
+  // These are not confirmed and there seems to be multiple types of counters,
+  // but no idea how they're switched. For now this seems to be good enough.
+  constexpr std::array<const char*, 0x11> xbdm_counters = {
+      "load-hit-stores (S)",
+      "instructions committed",
+      "i-cache miss cycles",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "core 0 L2 data misses",
+      "Bad counter number - must be 0-15."};
+
+  auto xbdm_range = memory_->LookupHeap(counters_base_address);
+  if (!xbdm_range->AllocFixed(
+          counters_base_address, 0x1000, 0,
+          kMemoryAllocationCommit | kMemoryAllocationReserve,
+          kMemoryProtectRead | kMemoryProtectWrite)) {
+    return;
+  }
+
+  uint32_t address = counters_base_address;
+
+  for (size_t i = 0; i < xbdm_counters.size(); i++) {
+    xbdm_counters_address[i] = address;
+    const std::string entry = xbdm_counters[i];
+    std::memcpy(memory_->TranslateVirtual<char*>(address), entry.c_str(),
+                entry.size());
+    address += static_cast<uint32_t>(entry.size()) + 1;
+  }
+}
+
 }  // namespace kernel
 }  // namespace xe

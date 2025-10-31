@@ -468,6 +468,23 @@ DECLARE_XBDM_EXPORT1(DmSetDumpMode, kDebug, kStub);
 dword_result_t DmIsFastCAPEnabled_entry() { return XBDM_UNSUCCESSFUL; }
 DECLARE_XBDM_EXPORT1(DmIsFastCAPEnabled, kDebug, kStub);
 
+dword_result_t DmPMCInstallAndStart_entry(dword_t group_setup) {
+  // Not initialized, so let's initialize it
+  if (kernel_state()->xbdm_counters_address[0] == 0) {
+    kernel_state()->InitializeXbdmCpuCounters();
+  }
+  return XBDM_SUCCESSFUL;
+}
+DECLARE_XBDM_EXPORT1(DmPMCInstallAndStart, kDebug, kSketchy);
+
+dword_result_t DmPMCGetCounterName_entry(dword_t counter_id) {
+  // This returns pointer to already preallocated string with counter names.
+  // We should make allocation somewhere during xbdm initialization once
+  return kernel_state()->xbdm_counters_address
+      [counter_id < 0x10 ? static_cast<uint32_t>(counter_id) : 0x10];
+}
+DECLARE_XBDM_EXPORT1(DmPMCGetCounterName, kDebug, kSketchy);
+
 void __CAP_Start_Profiling_entry(dword_t a1, dword_t a2) {}
 
 DECLARE_XBDM_EXPORT1(__CAP_Start_Profiling, kDebug, kStub);

@@ -26,6 +26,7 @@ static constexpr char DmXboxName[] = "Xbox360Name";
 #define XBDM_UNSUCCESSFUL       0x82DA0000
 #define XBDM_FASTCAPENABLED     0x82DA0007
 #define XBDM_ALREADYEXISTS      0x82DA0010
+#define XBDM_UNKNOWNFAILURE     0x82DA002C
 #define XBDM_ENDOFLIST          0x82DA0104
 #define XBDM_BUFFER_TOO_SMALL   0x82DA0105
 
