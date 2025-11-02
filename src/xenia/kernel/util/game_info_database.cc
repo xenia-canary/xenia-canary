@@ -149,6 +149,85 @@ GameInfoDatabase::Achievement GameInfoDatabase::GetAchievement(
   return achievement;
 }
 
+GameInfoDatabase::PropertyBag GameInfoDatabase::GetPropertyBag(
+    const xam::PropertyBag& property_bag) const {
+  PropertyBag property_bag_native = {};
+
+  property_bag_native.contexts = {property_bag.contexts.cbegin(),
+                                  property_bag.contexts.cend()};
+  property_bag_native.properties = {property_bag.properties.cbegin(),
+                                    property_bag.properties.cend()};
+
+  return property_bag_native;
+}
+
+GameInfoDatabase::Field GameInfoDatabase::GetField(
+    const xam::ViewFieldEntry& field_entry) const {
+  Field field = {};
+
+  field.property_id = field_entry.property_id;
+  field.flags = field_entry.flags;
+  field.attribute_id = field_entry.attribute_id;
+  field.aggregation_type = field_entry.aggregation_type;
+  field.ordinal = field_entry.ordinal;
+  field.field_type = field_entry.field_type;
+  field.format_type = field_entry.format_type;
+  field.name = GetLocalizedString(field_entry.string_id);
+
+  if (field.name.empty()) {
+    field.name = xam::AttributeIdToName(field.attribute_id);
+  }
+
+  return field;
+}
+
+GameInfoDatabase::StatsView GameInfoDatabase::GetStatsView(
+    const uint32_t id) const {
+  StatsView stats_view = {};
+
+  if (!is_valid_) {
+    return stats_view;
+  }
+
+  const auto xdbf_stats_view = spa_gamedata_->GetStatsView(id);
+
+  if (!xdbf_stats_view.has_value()) {
+    return stats_view;
+  }
+
+  stats_view.view.id = xdbf_stats_view->view_entry.id;
+
+  stats_view.view.arbitrated =
+      xam::IsArbitrated(xdbf_stats_view->view_entry.flags);
+  stats_view.view.hidden = xam::IsHidden(xdbf_stats_view->view_entry.flags);
+  stats_view.view.team_view =
+      xam::IsTeamView(xdbf_stats_view->view_entry.flags);
+  stats_view.view.online_only =
+      xam::IsOnlineOnly(xdbf_stats_view->view_entry.flags);
+
+  stats_view.view.view_type =
+      xam::GetViewType(xdbf_stats_view->view_entry.flags);
+  stats_view.view.skilled = xam::IsLeaderboardIdSkill(stats_view.view.id);
+
+  stats_view.view.shared_index = xdbf_stats_view->view_entry.shared_index;
+
+  stats_view.view.name =
+      GetLocalizedString(xdbf_stats_view->view_entry.string_id);
+
+  for (const auto& column : xdbf_stats_view->shared_view.column_entries) {
+    stats_view.shared_view.column_entries.push_back(GetField(column));
+  }
+
+  for (const auto& row : xdbf_stats_view->shared_view.row_entries) {
+    stats_view.shared_view.row_entries.push_back(GetField(row));
+  }
+
+  stats_view.shared_view.properties =
+      GetPropertyBag(xdbf_stats_view->shared_view.property_bag);
+
+  return stats_view;
+}
+
 std::vector<uint32_t> GameInfoDatabase::GetMatchmakingAttributes(
     const uint32_t id) const {
   // TODO(Gliniak): Implement when we will fully understand how to read it from
@@ -277,6 +356,23 @@ std::vector<GameInfoDatabase::Achievement> GameInfoDatabase::GetAchievements()
   }
 
   return achievements;
+}
+
+std::vector<GameInfoDatabase::StatsView> GameInfoDatabase::GetStatsViews()
+    const {
+  std::vector<StatsView> stats_views;
+
+  if (!is_valid_) {
+    return stats_views;
+  }
+
+  const auto xdbf_stats_views = spa_gamedata_->GetStatsViews();
+
+  for (const auto& entry : *xdbf_stats_views) {
+    stats_views.push_back(GetStatsView(entry.view_entry.id));
+  }
+
+  return stats_views;
 }
 
 }  // namespace util

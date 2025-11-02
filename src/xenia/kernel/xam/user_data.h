@@ -75,6 +75,19 @@ using UserDataTypes = std::variant<uint32_t, int32_t, float, int64_t, double,
                                    std::u16string, std::vector<uint8_t>>;
 
 constexpr uint32_t kMaxUserDataSize = 0x03E8;
+constexpr uint32_t kInvalidSize = 0xFFFF;
+
+constexpr uint32_t kPropertyScopeMask = 0x8000;
+constexpr uint32_t kPropertyIdMask = 0x7FFF;
+constexpr uint32_t kPropertyTypeMask = 0xF0000000;
+
+constexpr uint32_t kInvalidPropertyId = 0xFFFF;
+
+constexpr uint32_t kInvalidContextId = 0xFFFF;
+constexpr uint32_t kMaxContextId = 0x7FFF;
+
+constexpr uint32_t kInvalidContextValue = 0xFFFF;
+constexpr uint32_t kMaxContextValue = 0x7FFF;
 
 class UserData {
  public:

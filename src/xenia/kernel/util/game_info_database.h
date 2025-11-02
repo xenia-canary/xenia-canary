@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_UTIL_GAME_INFO_DATABASE_H_
 #define XENIA_KERNEL_UTIL_GAME_INFO_DATABASE_H_
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,11 @@ namespace util {
 
 class GameInfoDatabase {
  public:
+  struct PropertyBag {
+    std::set<uint32_t> contexts;
+    std::set<uint32_t> properties;
+  };
+
   struct Context {
     uint32_t id;
     uint32_t max_value;
@@ -60,18 +66,37 @@ class GameInfoDatabase {
   };
 
   struct Field {
-    uint32_t ordinal;
-    std::string name;
-    bool is_hidden;
+    uint32_t property_id;
+    uint32_t flags;
     uint16_t attribute_id;
-    // std::map<property_id, aggregation string>
-    std::map<uint32_t, std::string> property_aggregation;
+    uint16_t aggregation_type;
+    uint8_t ordinal;
+    uint8_t field_type;
+    uint32_t format_type;
+    std::string name;
+  };
+
+  struct SharedView {
+    std::vector<Field> column_entries;
+    std::vector<Field> row_entries;
+    PropertyBag properties;
+  };
+
+  struct View {
+    uint32_t id;
+    bool arbitrated;
+    bool hidden;
+    bool team_view;
+    bool online_only;
+    bool skilled;
+    kernel::xam::ViewType view_type;
+    uint16_t shared_index;
+    std::string name;
   };
 
   struct StatsView {
-    uint32_t id;
-    std::string name;
-    std::vector<Field> fields;
+    View view;
+    SharedView shared_view;
   };
 
   struct ProductInformation {
@@ -106,9 +131,11 @@ class GameInfoDatabase {
   Context GetContext(const uint32_t id) const;
   Property GetProperty(const uint32_t id) const;
   Achievement GetAchievement(const uint32_t id) const;
+  PropertyBag GetPropertyBag(const xam::PropertyBag& property_bag) const;
+  Field GetField(const xam::ViewFieldEntry& field_entry) const;
+  StatsView GetStatsView(const uint32_t id) const;
 
   // TODO: Implement it in the future.
-  StatsView GetStatsView(const uint32_t id) const;
   std::vector<uint32_t> GetMatchmakingAttributes(const uint32_t id) const;
 
   // This is extracted from XLast.
@@ -120,7 +147,6 @@ class GameInfoDatabase {
   std::vector<Context> GetContexts() const;
   std::vector<Property> GetProperties() const;
   std::vector<Achievement> GetAchievements() const;
-  // TODO: Implement it in the future.
   std::vector<StatsView> GetStatsViews() const;
 
  private:

@@ -24,6 +24,7 @@ void SpaInfo::Load() {
   LoadAchievements();
   LoadProperties();
   LoadContexts();
+  LoadStatsViews();
 }
 
 bool operator<(const SpaInfo& first, const SpaInfo& second) {
@@ -145,6 +146,109 @@ void SpaInfo::LoadContexts() {
     auto entry = reinterpret_cast<const XdbfContextTableEntry*>(ptr);
     ptr += sizeof(XdbfContextTableEntry);
     contexts_.push_back(entry);
+  }
+}
+
+void SpaInfo::LoadStatsViews() {
+  auto stats_metadata =
+      GetEntry(static_cast<uint16_t>(SpaSection::kMetadata), kXdbfIdXvc2);
+  if (!stats_metadata) {
+    return;
+  }
+
+  auto xvc2_head =
+      reinterpret_cast<const XdbfSectionHeader*>(stats_metadata->data.data());
+  assert_true(xvc2_head->magic == kXdbfSignatureXvc2);
+  assert_true(xvc2_head->version == 1);
+
+  std::vector<SharedView> shared_views = {};
+
+  const uint16_t shared_view_metadata_count =
+      xe::load_and_swap<uint16_t>(xvc2_head + 1);
+
+  auto shared_view_meta_table_entry_ptr =
+      reinterpret_cast<const uint8_t*>(xvc2_head + 1);
+
+  shared_view_meta_table_entry_ptr += sizeof(uint16_t);
+
+  for (uint32_t i = 0; i < shared_view_metadata_count; i++) {
+    SharedView shared_view = {};
+
+    auto shared_view_entry_ptr =
+        reinterpret_cast<const SharedViewMetaTableEntry*>(
+            shared_view_meta_table_entry_ptr);
+
+    auto view_field_ptr =
+        reinterpret_cast<const ViewFieldEntry*>(shared_view_entry_ptr + 1);
+
+    for (uint32_t i = 0; i < shared_view_entry_ptr->column_count; i++) {
+      shared_view.column_entries.push_back(
+          *reinterpret_cast<const ViewFieldEntry*>(view_field_ptr + i));
+    }
+
+    for (uint32_t i = 0; i < shared_view_entry_ptr->row_count; i++) {
+      shared_view.row_entries.push_back(
+          *reinterpret_cast<const ViewFieldEntry*>(
+              view_field_ptr + shared_view_entry_ptr->column_count + i));
+    }
+
+    const uint32_t entries_count =
+        shared_view_entry_ptr->column_count + shared_view_entry_ptr->row_count;
+
+    auto xpbm_head = reinterpret_cast<const XdbfSectionHeader*>(view_field_ptr +
+                                                                entries_count);
+
+    assert_true(xpbm_head->magic == kXdbfSignatureXpbm);
+    assert_true(xpbm_head->version == 1);
+
+    const PropertyBagEntry* property_bag_header_ptr =
+        reinterpret_cast<const PropertyBagEntry*>(xpbm_head + 1);
+
+    auto contexts_ptr =
+        reinterpret_cast<const xe::be<uint32_t>*>(property_bag_header_ptr + 1);
+
+    auto properties_ptr = reinterpret_cast<const xe::be<uint32_t>*>(
+        contexts_ptr + property_bag_header_ptr->contexts_count);
+
+    for (uint32_t i = 0; i < property_bag_header_ptr->contexts_count; i++) {
+      shared_view.property_bag.contexts.insert(contexts_ptr[i]);
+    }
+
+    for (uint32_t i = 0; i < property_bag_header_ptr->properties_count; i++) {
+      shared_view.property_bag.properties.insert(properties_ptr[i]);
+    }
+
+    const uint32_t xpbm_size = xpbm_head->size + sizeof(uint32_t);
+
+    shared_view_meta_table_entry_ptr =
+        reinterpret_cast<const uint8_t*>(xpbm_head) + xpbm_size;
+
+    shared_views.push_back(shared_view);
+  }
+
+  const uint16_t tables_count =
+      xe::load_and_swap<uint16_t>(shared_view_meta_table_entry_ptr);
+
+  const StatsViewTableEntry* stats_views_ptr =
+      reinterpret_cast<const StatsViewTableEntry*>(
+          shared_view_meta_table_entry_ptr + sizeof(uint16_t));
+
+  const auto views = std::vector<StatsViewTableEntry>(
+      stats_views_ptr, stats_views_ptr + tables_count);
+
+  for (const auto& view : views) {
+    ViewTable view_table = {};
+
+    // What are kContextByProperty and kContextByContext views?
+    assert_zero(static_cast<uint32_t>(GetViewType(view.flags)));
+
+    if (view.shared_index < shared_views.size()) {
+      view_table.shared_view = shared_views.at(view.shared_index);
+    }
+
+    view_table.view_entry = view;
+
+    stats_views_.push_back(view_table);
   }
 }
 
@@ -274,6 +378,14 @@ const XdbfContextTableEntry* SpaInfo::GetContext(uint32_t id) {
 
 const XdbfPropertyTableEntry* SpaInfo::GetProperty(uint32_t id) {
   return GetSpaEntry<const XdbfPropertyTableEntry*>(properties_, id);
+}
+
+const std::optional<ViewTable> SpaInfo::GetStatsView(uint32_t id) {
+  const auto itr = std::ranges::find_if(
+      stats_views_,
+      [id](const ViewTable& view) { return view.view_entry.id == id; });
+
+  return itr != stats_views_.cend() ? std::make_optional(*itr) : std::nullopt;
 }
 
 template <typename T>
