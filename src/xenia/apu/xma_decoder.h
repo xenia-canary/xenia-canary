@@ -51,6 +51,12 @@ class XmaDecoder {
   void Pause();
   void Resume();
 
+  void SignalWork() {
+    if (work_event_) {
+      work_event_->Set();
+    }
+  }
+
  protected:
   int GetContextId(uint32_t guest_ptr);
 

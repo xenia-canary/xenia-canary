@@ -260,6 +260,12 @@ dword_result_t XMASetInputBuffer0Valid_entry(lpvoid_t context_ptr) {
   context.input_buffer_0_valid = 1;
   context.Store(context_ptr);
 
+  // Wake up the worker thread so it can process the new input data.
+  auto audio_system = kernel_state()->emulator()->audio_system();
+  if (audio_system) {
+    audio_system->xma_decoder()->SignalWork();
+  }
+
   return 0;
 }
 DECLARE_XBOXKRNL_EXPORT2(XMASetInputBuffer0Valid, kAudio, kImplemented,
@@ -300,6 +306,12 @@ dword_result_t XMASetInputBuffer1Valid_entry(lpvoid_t context_ptr) {
   XMA_CONTEXT_DATA context(context_ptr);
   context.input_buffer_1_valid = 1;
   context.Store(context_ptr);
+
+  // Wake up the worker thread so it can process the new input data.
+  auto audio_system = kernel_state()->emulator()->audio_system();
+  if (audio_system) {
+    audio_system->xma_decoder()->SignalWork();
+  }
 
   return 0;
 }
