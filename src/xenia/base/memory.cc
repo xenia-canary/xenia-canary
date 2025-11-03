@@ -308,6 +308,11 @@ void copy_and_swap_32_aligned(void* dest_ptr, const void* src_ptr,
   }
 }
 
+// Enable AVX2 for this function even when building with -mavx
+// The function has runtime detection to only use AVX2 on supported CPUs
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("avx2")))
+#endif
 void copy_and_swap_32_unaligned(void* dest_ptr, const void* src_ptr,
                                 size_t count) {
   auto dest = reinterpret_cast<uint32_t*>(dest_ptr);

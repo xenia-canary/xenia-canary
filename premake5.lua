@@ -126,7 +126,7 @@ filter({"configurations:Release", "platforms:Windows"}) -- "toolset:msc"
 filter("platforms:Linux")
   system("linux")
   toolset("clang")
-  vectorextensions("AVX2")
+  vectorextensions("AVX")
   --buildoptions({
   --    "-mlzcnt",   -- (don't) Assume lzcnt is supported.
   --})
