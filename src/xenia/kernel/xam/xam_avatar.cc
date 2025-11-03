@@ -74,26 +74,21 @@ dword_result_t XamAvatarGetManifestLocalUser_entry(
     const uint32_t avatar_info_id =
         static_cast<uint32_t>(UserSettingId::XPROFILE_GAMERCARD_AVATAR_INFO_1);
 
-    X_USER_PROFILE_SETTING avatar_info_setting_data = {};
-
-    avatar_info_setting_data.user_index = static_cast<uint32_t>(user_index);
-    avatar_info_setting_data.setting_id = avatar_info_id;
-    avatar_info_setting_data.data.type = X_USER_DATA_TYPE::BINARY;
-    avatar_info_setting_data.data.data.binary.size = kMaxUserDataSize;
-    avatar_info_setting_data.data.data.binary.ptr = 0;
-
-    uint32_t avatar_metadata_address = avatar_metadata_ptr.guest_address();
-
-    const bool has_avatar_info_setting =
-        kernel_state()->xam_state()->user_tracker()->GetUserSetting(
-            user_profile->xuid(), kDashboardID, avatar_info_id,
-            &avatar_info_setting_data, avatar_metadata_address);
+    const std::optional<UserSetting> avatar_info_setting =
+        kernel_state()->xam_state()->user_tracker()->GetSetting(
+            user_profile, kDashboardID, avatar_info_id);
 
     // Profile doesn't have avatar info setting
-    if (!avatar_info_setting_data.data.data.binary.ptr) {
+    if (!avatar_info_setting.has_value()) {
       extended_error = X_E_FAIL;
       return X_ERROR_FUNCTION_FAILED;
     }
+
+    Avatar avatar =
+        Avatar::ParseManifest(avatar_info_setting->get_extended_data());
+
+    *avatar_metadata_ptr =
+        *reinterpret_cast<X_AVATAR_METADATA*>(avatar.GetManifest().data());
 
     return X_ERROR_SUCCESS;
   };
@@ -137,9 +132,13 @@ DECLARE_XAM_EXPORT1(XamAvatarGetAssetsResultSize, kAvatars, kStub);
 
 dword_result_t XamAvatarGetAssets_entry(
     pointer_t<X_AVATAR_METADATA> avatar_metadata_ptr,
-    dword_t avatar_component_mask, dword_t flags, lpdword_t result_buffer_ptr,
+    dword_t avatar_component_mask, dword_t load_flags,
+    pointer_t<X_AVATAR_ASSETS> result_buffer_ptr,
     lpdword_t gpu_resource_buffer_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  const Avatar avatar =
+      Avatar::ParseManifest({avatar_metadata_ptr->manifest, kMaxUserDataSize});
+
   // 58410907 doesn't crash if we return failure.
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediateEx(
@@ -148,7 +147,7 @@ dword_result_t XamAvatarGetAssets_entry(
     return X_ERROR_IO_PENDING;
   }
 
-  return X_STATUS_SUCCESS;
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamAvatarGetAssets, kAvatars, kStub);
 
@@ -179,7 +178,7 @@ dword_result_t XamAvatarSetManifest_entry(
     const uint32_t avatar_info_id =
         static_cast<uint32_t>(UserSettingId::XPROFILE_GAMERCARD_AVATAR_INFO_1);
 
-    X_USER_PROFILE_SETTING setting_data;
+    X_USER_PROFILE_SETTING setting_data = {};
     setting_data.user_index = static_cast<uint32_t>(user_index);
     setting_data.setting_id = avatar_info_id;
     setting_data.data.type = X_USER_DATA_TYPE::BINARY;
@@ -191,7 +190,7 @@ dword_result_t XamAvatarSetManifest_entry(
     kernel_state()->xam_state()->user_tracker()->UpsertSetting(
         user_profile->xuid(), kDashboardID, &setting);
 
-    return X_STATUS_SUCCESS;
+    return X_ERROR_SUCCESS;
   };
 
   if (!overlapped_ptr) {
@@ -210,6 +209,9 @@ dword_result_t XamAvatarGetMetadataRandom_entry(
     dword_t body_type, dword_t avatars_count,
     pointer_t<X_AVATAR_METADATA> avatar_metadata_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  X_AVATAR_BODY_TYPE gender_type =
+      static_cast<X_AVATAR_BODY_TYPE>(body_type.value());
+
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
                                                 X_ERROR_SUCCESS);
@@ -247,9 +249,12 @@ DECLARE_XAM_EXPORT1(XamAvatarGetMetadataSignedOutProfile, kAvatars, kStub);
 
 dword_result_t XamAvatarManifestGetBodyType_entry(
     pointer_t<X_AVATAR_METADATA> avatar_metadata_ptr) {
-  return static_cast<uint8_t>(X_AVATAR_BODY_TYPE::Male);
+  const Avatar avatar =
+      Avatar::ParseManifest({avatar_metadata_ptr->manifest, kMaxUserDataSize});
+
+  return static_cast<uint32_t>(avatar.GetBodyType());
 }
-DECLARE_XAM_EXPORT1(XamAvatarManifestGetBodyType, kAvatars, kStub);
+DECLARE_XAM_EXPORT1(XamAvatarManifestGetBodyType, kAvatars, kImplemented);
 
 dword_result_t XamAvatarGetInstrumentation_entry(qword_t unk1, lpdword_t unk2) {
   /* Notes:
@@ -291,19 +296,33 @@ dword_result_t XamAvatarGetAssetBinary_entry(
 DECLARE_XAM_EXPORT1(XamAvatarGetAssetBinary, kAvatars, kStub);
 
 void XamAvatarGetInstalledAssetPackageDescription_entry(
-    pointer_t<X_ASSET_ID> asset_id_ptr,
+    pointer_t<X_AVATAR_ASSET_ID> asset_id_ptr,
     pointer_t<XCONTENT_AGGREGATE_DATA>
         content_data_ptr  // pointer_t<XCONTENT_DATA_INTERNAL>
 ) {
-  XCONTENT_AGGREGATE_DATA content_data;
+  auto asset_id_data = asset_id_ptr->ToByteArray();
+  uint8_t* asset_id_data_ptr = asset_id_data.data();
+
+  const uint64_t part1 = *reinterpret_cast<uint64_t*>(asset_id_data_ptr);
+  asset_id_data_ptr += sizeof(uint64_t);
+
+  const uint32_t part2 = *reinterpret_cast<uint32_t*>(asset_id_data_ptr);
+  asset_id_data_ptr += sizeof(uint32_t);
+
+  const uint32_t title_id = *reinterpret_cast<uint32_t*>(asset_id_data_ptr);
+  asset_id_data_ptr += sizeof(uint32_t);
+
+  const std::string file_name =
+      fmt::format("{:016X}{:08X}{:08X}", part1, part2, title_id);
+
+  XCONTENT_AGGREGATE_DATA content_data = {};
   content_data.content_type = XContentType::kAvatarItem;
   content_data.xuid = 0;
-  content_data.title_id = asset_id_ptr->title_id;
-  std::string file_name =
-      fmt::format("{:016X}{:08X}{:08X}", asset_id_ptr->data,
-                  asset_id_ptr->data2, asset_id_ptr->title_id);
+  content_data.title_id = title_id;
   content_data.set_file_name(file_name);
+
   *content_data_ptr = content_data;
+
   XELOGD("Looking for avatar asset: {:X}", file_name);
 }
 DECLARE_XAM_EXPORT1(XamAvatarGetInstalledAssetPackageDescription, kAvatars,

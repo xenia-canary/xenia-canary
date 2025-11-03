@@ -14,6 +14,7 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/string.h"
+#include "xenia/base/string_util.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -207,14 +208,6 @@ struct X_DASH_BACKSTACK_DATA {
 };
 static_assert_size(X_DASH_BACKSTACK_DATA, 0x314);
 
-struct X_GUID {
-  xe::be<uint32_t> Data1;
-  xe::be<uint16_t> Data2;
-  xe::be<uint16_t> Data3;
-  uint8_t Data4[8];
-};
-static_assert_size(X_GUID, 0x10);
-
 struct X_PASSPORT_SESSION_TOKEN {
   uint8_t SessionToken[28];
 };
@@ -237,6 +230,71 @@ struct X_USER_READ_PROFILE_SETTINGS {
   xe::be<uint32_t> settings_ptr;
 };
 static_assert_size(X_USER_READ_PROFILE_SETTINGS, 8);
+
+struct X_GUID {
+  xe::be<uint32_t> _a;
+  xe::be<uint16_t> _b;
+  xe::be<uint16_t> _c;
+  xe::be<uint8_t> _d;
+  xe::be<uint8_t> _e;
+  xe::be<uint8_t> _f;
+  xe::be<uint8_t> _g;
+  xe::be<uint8_t> _h;
+  xe::be<uint8_t> _i;
+  xe::be<uint8_t> _j;
+  xe::be<uint8_t> _k;
+
+  X_GUID() = default;
+
+  X_GUID(uint32_t a, uint16_t b, uint16_t c, uint8_t d, uint8_t e, uint8_t f,
+         uint8_t g, uint8_t h, uint8_t i, uint8_t j, uint8_t k) {
+    _a = a;
+    _b = b;
+    _c = c;
+    _d = d;
+    _e = e;
+    _f = f;
+    _g = g;
+    _h = h;
+    _i = i;
+    _j = j;
+    _k = k;
+  }
+
+  std::vector<uint8_t> ToByteArray() const {
+    std::vector<uint8_t> data = {};
+
+    data.push_back(_a & 0xFF);
+    data.push_back((_a >> 8) & 0xFF);
+    data.push_back((_a >> 16) & 0xFF);
+    data.push_back((_a >> 24) & 0xFF);
+
+    data.push_back(_b & 0xFF);
+    data.push_back((_b >> 8) & 0xFF);
+
+    data.push_back(_c & 0xFF);
+    data.push_back((_c >> 8) & 0xFF);
+
+    data.push_back(_d);
+    data.push_back(_e);
+    data.push_back(_f);
+    data.push_back(_g);
+    data.push_back(_h);
+    data.push_back(_i);
+    data.push_back(_j);
+    data.push_back(_k);
+
+    return data;
+  }
+};
+static_assert_size(X_GUID, 0x10);
+
+inline bool operator==(const X_GUID& lhs, const X_GUID& rhs) {
+  return std::tie(lhs._a, lhs._b, lhs._c, lhs._d, lhs._d, lhs._e, lhs._f,
+                  lhs._g, lhs._h, lhs._i, lhs._h, lhs._k) ==
+         std::tie(rhs._a, rhs._b, rhs._c, rhs._d, rhs._d, rhs._e, rhs._f,
+                  rhs._g, rhs._h, rhs._i, rhs._h, rhs._k);
+};
 
 // clang-format off
 #define XMBox_NOICON                0x00000000
