@@ -107,7 +107,7 @@ std::string GameAchievementsUI::GetUnlockedTime(
         std::chrono::system_clock::to_time_t(chrono::WinSystemClock::to_sys(
             achievement_entry.unlock_time.to_time_point()));
 
-    return fmt::format("Unlocked: {:%Y-%m-%d %H:%M}",
+    return fmt::format("Unlocked: Online {:%Y-%m-%d %H:%M}",
                        fmt::localtime(unlock_time));
   }
 
