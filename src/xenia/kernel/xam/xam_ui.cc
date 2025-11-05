@@ -884,6 +884,7 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           ImGuiSelectableFlags_SpanAllColumns,
                           end_draw_position)) {
       *selected_xuid = xuid;
+      ImGui::OpenPopup("Profile Menu");
     }
 
     if (context_menu) {
