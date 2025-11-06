@@ -30,6 +30,7 @@ cxxopts::Options options("xenia", "Xbox 360 Emulator");
 std::map<std::string, ICommandVar*>* CmdVars;
 std::map<std::string, IConfigVar*>* ConfigVars;
 std::multimap<uint32_t, const IConfigVarUpdate*>* IConfigVarUpdate::updates_;
+std::vector<std::string>* config_type_mismatch_warnings = nullptr;
 
 void PrintHelpAndExit() {
   std::cout << options.help({""}) << std::endl;

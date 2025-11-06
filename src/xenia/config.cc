@@ -16,6 +16,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
 #include "xenia/base/string_buffer.h"
+#include "xenia/base/system.h"
 
 toml::parse_result ParseFile(const std::filesystem::path& filename) {
   return toml::parse_file(xe::path_to_utf8(filename));
@@ -116,6 +117,26 @@ void ReadConfig(const std::filesystem::path& file_path,
   uint32_t config_defaults_date = defaults_date_cvar->GetTypedConfigValue();
   if (update_if_no_version_stored || config_defaults_date) {
     cvar::IConfigVarUpdate::ApplyUpdates(config_defaults_date);
+  }
+
+  // Check for type mismatch warnings
+  if (cvar::config_type_mismatch_warnings &&
+      !cvar::config_type_mismatch_warnings->empty()) {
+    std::string warning_message =
+        "The following config values had invalid types and have been reset to "
+        "defaults:\n\n";
+    for (const auto& name : *cvar::config_type_mismatch_warnings) {
+      warning_message += "  - " + name + "\n";
+    }
+    warning_message +=
+        "\nPlease check your config file. The config will be saved with the "
+        "correct types.";
+
+    xe::ShowSimpleMessageBox(xe::SimpleMessageBoxType::Warning,
+                             warning_message);
+
+    // Clear warnings
+    cvar::config_type_mismatch_warnings->clear();
   }
 
   XELOGI("Loaded config: {}", file_path);
