@@ -103,6 +103,8 @@ GameInfoDatabase::Context GameInfoDatabase::GetContext(
   context.max_value = xdbf_context->max_value;
   context.is_system = xam::UserData::is_system_property(xdbf_context->id);
   context.is_presence = GetPresence().property_bag.contexts.contains(id);
+  context.is_matchmaking =
+      GetMatchmakingCollection().contexts.contains(xdbf_context->id);
   context.description = GetLocalizedString(xdbf_context->string_id);
   return context;
 }
@@ -124,6 +126,8 @@ GameInfoDatabase::Property GameInfoDatabase::GetProperty(
   property.data_size = xdbf_property->data_size;
   property.is_system = xam::UserData::is_system_property(xdbf_property->id);
   property.is_presence = GetPresence().property_bag.properties.contains(id);
+  property.is_matchmaking =
+      GetMatchmakingCollection().properties.contains(xdbf_property->id);
   property.description = GetLocalizedString(xdbf_property->string_id);
   return property;
 }
@@ -348,6 +352,11 @@ GameInfoDatabase::ProductInformation GameInfoDatabase::GetProductInformation()
     }
   }
   return info;
+}
+
+GameInfoDatabase::PropertyBag GameInfoDatabase::GetMatchmakingCollection()
+    const {
+  return GetPropertyBag(*spa_gamedata_->GetMatchCollection());
 }
 
 // Aggregators

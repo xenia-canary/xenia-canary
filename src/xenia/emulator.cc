@@ -1548,13 +1548,15 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
       table = tabulate::Table();
       table.format().multi_byte_characters(true);
-      table.add_row({"ID", "Name", "Data Size"});
+      table.add_row({"ID", "Name", "Matchmaking", "Data Size"});
 
       for (const kernel::util::GameInfoDatabase::Property& entry :
            properties_list) {
         std::string label =
             string_util::remove_eol(string_util::trim(entry.description));
+
         table.add_row({fmt::format("{:08X}", entry.id), label,
+                       entry.is_matchmaking ? "True" : "False",
                        fmt::format("{}", entry.data_size)});
       }
       XELOGI("\n-------------------- PROPERTIES --------------------\n{}",
@@ -1565,13 +1567,16 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
       table = tabulate::Table();
       table.format().multi_byte_characters(true);
-      table.add_row({"ID", "Name", "Default Value", "Max Value"});
+      table.add_row(
+          {"ID", "Name", "Matchmaking", "Default Value", "Max Value"});
 
       for (const kernel::util::GameInfoDatabase::Context& entry :
            contexts_list) {
         std::string label =
             string_util::remove_eol(string_util::trim(entry.description));
+
         table.add_row({fmt::format("{:08X}", entry.id), label,
+                       entry.is_matchmaking ? "True" : "False",
                        fmt::format("{}", entry.default_value),
                        fmt::format("{}", entry.max_value)});
       }

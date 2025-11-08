@@ -34,6 +34,7 @@ class GameInfoDatabase {
     uint32_t default_value;
     bool is_system;
     bool is_presence;
+    bool is_matchmaking;
     std::string description;
   };
 
@@ -42,6 +43,7 @@ class GameInfoDatabase {
     uint32_t data_size;
     bool is_system;
     bool is_presence;
+    bool is_matchmaking;
     std::string description;
   };
 
@@ -160,6 +162,7 @@ class GameInfoDatabase {
   Query GetQueryData(const uint32_t id) const;
   std::vector<XLanguage> GetSupportedLanguages() const;
   ProductInformation GetProductInformation() const;
+  PropertyBag GetMatchmakingCollection() const;
 
   // Aggregators for specific usecases
   std::vector<Context> GetContexts() const;
