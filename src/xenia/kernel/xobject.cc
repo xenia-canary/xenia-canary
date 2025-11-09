@@ -333,7 +333,8 @@ uint8_t* XObject::CreateNative(uint32_t size) {
     header->object_type_ptr = object_type;
   }
 
-  return memory()->TranslateVirtual(guest_object_ptr_);
+  return memory()->TranslateVirtual(guest_object_ptr_ +
+                                    sizeof(X_DISPATCH_HEADER));
 }
 
 void XObject::SetNativePointer(uint32_t native_ptr, bool uninitialized) {
