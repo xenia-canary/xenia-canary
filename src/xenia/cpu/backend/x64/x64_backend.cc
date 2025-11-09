@@ -1616,11 +1616,11 @@ void X64HelperEmitter::EmitSaveVolatileRegs() {
   mov(qword[rsp + offsetof(StackLayout::Thunk, r[8])], r11);
 
   // vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[0])], xmm0);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[1])], xmm1);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[2])], xmm2);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[3])], xmm3);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[4])], xmm4);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[5])], xmm5);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[1])], xmm1);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[2])], xmm2);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[3])], xmm3);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[4])], xmm4);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[5])], xmm5);
 }
 
 void X64HelperEmitter::EmitLoadVolatileRegs() {
@@ -1637,11 +1637,11 @@ void X64HelperEmitter::EmitLoadVolatileRegs() {
   mov(r11, qword[rsp + offsetof(StackLayout::Thunk, r[8])]);
 
   // vmovaps(xmm0, qword[rsp + offsetof(StackLayout::Thunk, xmm[0])]);
-  vmovaps(xmm1, qword[rsp + offsetof(StackLayout::Thunk, xmm[1])]);
-  vmovaps(xmm2, qword[rsp + offsetof(StackLayout::Thunk, xmm[2])]);
-  vmovaps(xmm3, qword[rsp + offsetof(StackLayout::Thunk, xmm[3])]);
-  vmovaps(xmm4, qword[rsp + offsetof(StackLayout::Thunk, xmm[4])]);
-  vmovaps(xmm5, qword[rsp + offsetof(StackLayout::Thunk, xmm[5])]);
+  vmovups(xmm1, qword[rsp + offsetof(StackLayout::Thunk, xmm[1])]);
+  vmovups(xmm2, qword[rsp + offsetof(StackLayout::Thunk, xmm[2])]);
+  vmovups(xmm3, qword[rsp + offsetof(StackLayout::Thunk, xmm[3])]);
+  vmovups(xmm4, qword[rsp + offsetof(StackLayout::Thunk, xmm[4])]);
+  vmovups(xmm5, qword[rsp + offsetof(StackLayout::Thunk, xmm[5])]);
 }
 
 void X64HelperEmitter::EmitSaveNonvolatileRegs() {
@@ -1659,16 +1659,16 @@ void X64HelperEmitter::EmitSaveNonvolatileRegs() {
 
   // SysV does not have nonvolatile XMM registers.
 #if XE_PLATFORM_WIN32
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[0])], xmm6);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[1])], xmm7);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[2])], xmm8);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[3])], xmm9);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[4])], xmm10);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[5])], xmm11);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[6])], xmm12);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[7])], xmm13);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[8])], xmm14);
-  vmovaps(qword[rsp + offsetof(StackLayout::Thunk, xmm[9])], xmm15);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[0])], xmm6);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[1])], xmm7);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[2])], xmm8);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[3])], xmm9);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[4])], xmm10);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[5])], xmm11);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[6])], xmm12);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[7])], xmm13);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[8])], xmm14);
+  vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[9])], xmm15);
 #endif
 }
 
@@ -1686,16 +1686,16 @@ void X64HelperEmitter::EmitLoadNonvolatileRegs() {
   mov(r15, qword[rsp + offsetof(StackLayout::Thunk, r[8])]);
 
 #if XE_PLATFORM_WIN32
-  vmovaps(xmm6, qword[rsp + offsetof(StackLayout::Thunk, xmm[0])]);
-  vmovaps(xmm7, qword[rsp + offsetof(StackLayout::Thunk, xmm[1])]);
-  vmovaps(xmm8, qword[rsp + offsetof(StackLayout::Thunk, xmm[2])]);
-  vmovaps(xmm9, qword[rsp + offsetof(StackLayout::Thunk, xmm[3])]);
-  vmovaps(xmm10, qword[rsp + offsetof(StackLayout::Thunk, xmm[4])]);
-  vmovaps(xmm11, qword[rsp + offsetof(StackLayout::Thunk, xmm[5])]);
-  vmovaps(xmm12, qword[rsp + offsetof(StackLayout::Thunk, xmm[6])]);
-  vmovaps(xmm13, qword[rsp + offsetof(StackLayout::Thunk, xmm[7])]);
-  vmovaps(xmm14, qword[rsp + offsetof(StackLayout::Thunk, xmm[8])]);
-  vmovaps(xmm15, qword[rsp + offsetof(StackLayout::Thunk, xmm[9])]);
+  vmovups(xmm6, qword[rsp + offsetof(StackLayout::Thunk, xmm[0])]);
+  vmovups(xmm7, qword[rsp + offsetof(StackLayout::Thunk, xmm[1])]);
+  vmovups(xmm8, qword[rsp + offsetof(StackLayout::Thunk, xmm[2])]);
+  vmovups(xmm9, qword[rsp + offsetof(StackLayout::Thunk, xmm[3])]);
+  vmovups(xmm10, qword[rsp + offsetof(StackLayout::Thunk, xmm[4])]);
+  vmovups(xmm11, qword[rsp + offsetof(StackLayout::Thunk, xmm[5])]);
+  vmovups(xmm12, qword[rsp + offsetof(StackLayout::Thunk, xmm[6])]);
+  vmovups(xmm13, qword[rsp + offsetof(StackLayout::Thunk, xmm[7])]);
+  vmovups(xmm14, qword[rsp + offsetof(StackLayout::Thunk, xmm[8])]);
+  vmovups(xmm15, qword[rsp + offsetof(StackLayout::Thunk, xmm[9])]);
 #endif
 }
 void X64Backend::InitializeBackendContext(void* ctx) {
