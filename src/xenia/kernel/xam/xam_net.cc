@@ -252,8 +252,8 @@ dword_result_t NetDll_WSAStartup_entry(dword_t caller, word_t version,
   int ret = 0;
 
 #ifdef XE_PLATFORM_WIN32
-  WSADATA wsaData;
-  ZeroMemory(&wsaData, sizeof(WSADATA));
+  WSADATA wsaData = {};
+
   ret = WSAStartup(version, &wsaData);
 #endif
 
@@ -263,28 +263,9 @@ dword_result_t NetDll_WSAStartup_entry(dword_t caller, word_t version,
 #ifdef XE_PLATFORM_WIN32
     data_ptr->version = wsaData.wVersion;
     data_ptr->version_high = wsaData.wHighVersion;
-    data_ptr->max_sockets = wsaData.iMaxSockets;
-    data_ptr->max_udpdg = wsaData.iMaxUdpDg;
-    std::memcpy(&data_ptr->description, wsaData.szDescription, 0x100);
-    std::memcpy(&data_ptr->system_status, wsaData.szSystemStatus, 0x80);
-    data_ptr->vendor_info_ptr = 0;
 #else
-    // Match Windows behavior with reasonable values
-    data_ptr->version = 2;
+    data_ptr->version = version.value();
     data_ptr->version_high = 0x0202;
-    data_ptr->max_sockets = 0;
-    data_ptr->max_udpdg = 0;
-
-    const std::string description = "WinSock 2.0";
-    const std::string status = "Running";
-
-    std::memset(&data_ptr->description, 0, 0x100);
-    std::memcpy(&data_ptr->description, description.data(), description.size());
-
-    std::memset(&data_ptr->system_status, 0, 0x80);
-    std::memcpy(&data_ptr->system_status, status.data(), status.size());
-
-    data_ptr->vendor_info_ptr = 0;
 #endif
   }
 
