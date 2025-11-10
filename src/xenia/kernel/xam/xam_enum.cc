@@ -114,7 +114,7 @@ dword_result_t XamGetPrivateEnumStructureFromHandle_entry(
 
   return X_STATUS_SUCCESS;
 }
-DECLARE_XAM_EXPORT1(XamGetPrivateEnumStructureFromHandle, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamGetPrivateEnumStructureFromHandle, kNone, kImplemented);
 
 dword_result_t XamProfileCreateEnumerator_entry(dword_t device_id,
                                                 lpdword_t handle_ptr) {
