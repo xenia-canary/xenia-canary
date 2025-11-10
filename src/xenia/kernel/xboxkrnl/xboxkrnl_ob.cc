@@ -254,25 +254,31 @@ dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
   }
 
   uint32_t native_ptr = object->guest_object();
-  auto& object_types =
-      kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
-  auto object_type = object_types.find(object->type());
-  if (object_type != object_types.end()) {
-    if (object_type_ptr && object_type_ptr != object_type->second) {
-      return X_STATUS_OBJECT_TYPE_MISMATCH;
+
+  if (object_type_ptr) {
+    auto& object_types =
+        kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
+
+    if (object_types.contains(object->type())) {
+      if (object_type_ptr != object_types[object->type()]) {
+        return X_STATUS_OBJECT_TYPE_MISMATCH;
+      }
+    } else {
+      assert_unhandled_case(object->type());
+      native_ptr = 0xDEADF00D;
     }
-  } else {
-    assert_unhandled_case(object->type());
-    native_ptr = 0xDEADF00D;
   }
+
   // Caller takes the reference.
   // It's released in ObDereferenceObject.
   object->RetainHandle();
 
-  xenia_assert(native_ptr != 0);
+  assert_not_zero(native_ptr);
+
   if (out_object_ptr.guest_address()) {
     *out_object_ptr = native_ptr;
   }
+
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(ObReferenceObjectByHandle, kNone, kImplemented);
