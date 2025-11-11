@@ -80,7 +80,7 @@ class GraphicsSystem {
   // from a device loss.
   void OnHostGpuLossFromAnyThread(bool is_responsible);
 
-  RegisterFile* register_file() { return register_file_; }
+  RegisterFile* register_file() { return &register_file_; }
   CommandProcessor* command_processor() const {
     return command_processor_.get();
   }
@@ -144,13 +144,13 @@ class GraphicsSystem {
   std::atomic<bool> frame_limiter_worker_running_;
   kernel::object_ref<kernel::XHostThread> frame_limiter_worker_thread_;
 
-  RegisterFile* register_file_;
+  RegisterFile register_file_;
   std::unique_ptr<CommandProcessor> command_processor_;
 
   bool paused_ = false;
 
-  uint32_t scaled_aspect_x_ = 0;
-  uint32_t scaled_aspect_y_ = 0;
+  uint32_t scaled_aspect_x_ = 16;
+  uint32_t scaled_aspect_y_ = 9;
 
  private:
   std::unique_ptr<ui::Presenter> presenter_;

@@ -32,8 +32,8 @@ void DeferredCommandList::Execute(ID3D12GraphicsCommandList* command_list,
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
-  const uintmax_t* stream = (const uintmax_t*)command_stream_.data();
-  size_t stream_remaining = command_stream_.size() / sizeof(uintmax_t);
+  const uintmax_t* stream = command_stream_.data();
+  size_t stream_remaining = command_stream_.size();
   ID3D12PipelineState* current_pipeline_state = nullptr;
   while (stream_remaining != 0) {
     const CommandHeader& header =
@@ -145,7 +145,7 @@ void DeferredCommandList::Execute(ID3D12GraphicsCommandList* command_list,
             *reinterpret_cast<const D3DOMSetRenderTargetsArguments*>(stream);
         command_list->OMSetRenderTargets(
             args.num_render_target_descriptors, args.render_target_descriptors,
-            args.rts_single_handle_to_descriptor_range ? true : false,
+            args.rts_single_handle_to_descriptor_range ? TRUE : FALSE,
             args.depth_stencil ? &args.depth_stencil_descriptor : nullptr);
       } break;
       case Command::kD3DOMSetStencilRef: {
@@ -268,19 +268,15 @@ void DeferredCommandList::Execute(ID3D12GraphicsCommandList* command_list,
 void* DeferredCommandList::WriteCommand(Command command,
                                         size_t arguments_size_bytes) {
   size_t arguments_size_elements =
-      round_up(arguments_size_bytes, sizeof(uintmax_t), false);
-
+      (arguments_size_bytes + sizeof(uintmax_t) - 1) / sizeof(uintmax_t);
   size_t offset = command_stream_.size();
-  constexpr size_t kCommandHeaderSizeBytes =
-      kCommandHeaderSizeElements * sizeof(uintmax_t);
-  command_stream_.resize(offset + kCommandHeaderSizeBytes +
+  command_stream_.resize(offset + kCommandHeaderSizeElements +
                          arguments_size_elements);
   CommandHeader& header =
       *reinterpret_cast<CommandHeader*>(command_stream_.data() + offset);
   header.command = command;
-  header.arguments_size_elements =
-      uint32_t(arguments_size_elements) / sizeof(uintmax_t);
-  return command_stream_.data() + (offset + kCommandHeaderSizeBytes);
+  header.arguments_size_elements = uint32_t(arguments_size_elements);
+  return command_stream_.data() + (offset + kCommandHeaderSizeElements);
 }
 
 }  // namespace d3d12

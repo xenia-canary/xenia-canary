@@ -392,7 +392,7 @@ bool D3D12SharedMemory::AllocateSparseHostGpuMemoryRange(
   region_start_coordinates.Subresource = 0;
   D3D12_TILE_REGION_SIZE region_size;
   region_size.NumTiles = length_bytes / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
-  region_size.UseBox = false;
+  region_size.UseBox = FALSE;
   D3D12_TILE_RANGE_FLAGS range_flags = D3D12_TILE_RANGE_FLAG_NONE;
   UINT heap_range_start_offset = 0;
   direct_queue->UpdateTileMappings(
@@ -404,21 +404,18 @@ bool D3D12SharedMemory::AllocateSparseHostGpuMemoryRange(
 }
 
 bool D3D12SharedMemory::UploadRanges(
-    const std::pair<uint32_t, uint32_t>* upload_page_ranges,
-    uint32_t num_upload_page_ranges) {
-  if (!num_upload_page_ranges) {
+    const std::vector<std::pair<uint32_t, uint32_t>>& upload_page_ranges) {
+  if (upload_page_ranges.empty()) {
     return true;
   }
   CommitUAVWritesAndTransitionBuffer(D3D12_RESOURCE_STATE_COPY_DEST);
   command_processor_.SubmitBarriers();
   auto& command_list = command_processor_.GetDeferredCommandList();
-  for (uint32_t i = 0; i < num_upload_page_ranges; ++i) {
-    auto& upload_range = upload_page_ranges[i];
+  for (auto upload_range : upload_page_ranges) {
     uint32_t upload_range_start = upload_range.first;
     uint32_t upload_range_length = upload_range.second;
     trace_writer_.WriteMemoryRead(upload_range_start << page_size_log2(),
                                   upload_range_length << page_size_log2());
-
     while (upload_range_length != 0) {
       ID3D12Resource* upload_buffer;
       size_t upload_buffer_offset, upload_buffer_size;
@@ -433,20 +430,10 @@ bool D3D12SharedMemory::UploadRanges(
       }
       MakeRangeValid(upload_range_start << page_size_log2(),
                      uint32_t(upload_buffer_size), false, false);
-
-      if (upload_buffer_size < (1ULL << 32) && upload_buffer_size > 8192) {
-        memory::vastcpy(
-            upload_buffer_mapping,
-            memory().TranslatePhysical(upload_range_start << page_size_log2()),
-            static_cast<uint32_t>(upload_buffer_size));
-        swcache::WriteFence();
-
-      } else {
-        memcpy(
-            upload_buffer_mapping,
-            memory().TranslatePhysical(upload_range_start << page_size_log2()),
-            upload_buffer_size);
-      }
+      std::memcpy(
+          upload_buffer_mapping,
+          memory().TranslatePhysical(upload_range_start << page_size_log2()),
+          upload_buffer_size);
       command_list.D3DCopyBufferRegion(
           buffer_, upload_range_start << page_size_log2(), upload_buffer,
           UINT64(upload_buffer_offset), UINT64(upload_buffer_size));

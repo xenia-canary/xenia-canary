@@ -226,7 +226,6 @@ class PipelineCache {
 
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
 
-    inline bool operator==(const PipelineDescription& other) const;
     static constexpr uint32_t kVersion = 0x20210425;
   });
 
@@ -403,8 +402,8 @@ class PipelineCache {
   // Pipeline creation threads.
   void CreationThread(size_t thread_index);
   void CreateQueuedPipelinesOnProcessorThread();
-  xe_mutex creation_request_lock_;
-  std::condition_variable_any creation_request_cond_;
+  std::mutex creation_request_lock_;
+  std::condition_variable creation_request_cond_;
   // Protected with creation_request_lock_, notify_one creation_request_cond_
   // when set.
   std::deque<Pipeline*> creation_queue_;
@@ -425,34 +424,7 @@ class PipelineCache {
   size_t creation_threads_shutdown_from_ = SIZE_MAX;
   std::vector<std::unique_ptr<xe::threading::Thread>> creation_threads_;
 };
-inline bool PipelineCache::PipelineDescription::operator==(
-    const PipelineDescription& other) const {
-  constexpr size_t cmp_size = sizeof(PipelineDescription);
-#if XE_ARCH_AMD64 == 1
-  if constexpr (cmp_size == 64) {
-    if (vertex_shader_hash != other.vertex_shader_hash ||
-        vertex_shader_modification != other.vertex_shader_modification) {
-      return false;
-    }
-    const __m128i* thiz = (const __m128i*)this;
-    const __m128i* thoze = (const __m128i*)&other;
-    __m128i cmp32 =
-        _mm_cmpeq_epi8(_mm_loadu_si128(thiz + 1), _mm_loadu_si128(thoze + 1));
 
-    cmp32 = _mm_and_si128(cmp32, _mm_cmpeq_epi8(_mm_loadu_si128(thiz + 2),
-                                                _mm_loadu_si128(thoze + 2)));
-
-    cmp32 = _mm_and_si128(cmp32, _mm_cmpeq_epi8(_mm_loadu_si128(thiz + 3),
-                                                _mm_loadu_si128(thoze + 3)));
-
-    return _mm_movemask_epi8(cmp32) == 0xFFFF;
-
-  } else
-#endif
-  {
-    return !memcmp(this, &other, cmp_size);
-  }
-}
 }  // namespace d3d12
 }  // namespace gpu
 }  // namespace xe

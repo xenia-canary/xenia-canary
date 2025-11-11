@@ -9,6 +9,12 @@
 
 #include "xenia/gpu/graphics_system.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <utility>
+
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
@@ -75,11 +81,7 @@ __declspec(dllexport) uint32_t AmdPowerXpressRequestHighPerformance = 1;
 }  // extern "C"
 #endif  // XE_PLATFORM_WIN32
 
-GraphicsSystem::GraphicsSystem() : frame_limiter_worker_running_(false) {
-  register_file_ = reinterpret_cast<RegisterFile*>(memory::AllocFixed(
-      nullptr, sizeof(RegisterFile), memory::AllocationType::kReserveCommit,
-      memory::PageAccess::kReadWrite));
-}
+GraphicsSystem::GraphicsSystem() : frame_limiter_worker_running_(false) {}
 
 GraphicsSystem::~GraphicsSystem() = default;
 
@@ -91,9 +93,6 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
   processor_ = processor;
   kernel_state_ = kernel_state;
   app_context_ = app_context;
-
-  scaled_aspect_x_ = 16;
-  scaled_aspect_y_ = 9;
 
   auto custom_res_x = cvars::internal_display_resolution_x;
   auto custom_res_y = cvars::internal_display_resolution_y;
@@ -168,7 +167,7 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
             constexpr double duration_scalar = 0.90;
 
             while (frame_limiter_worker_running_) {
-              register_file()->values[XE_GPU_REG_D1MODE_V_COUNTER] +=
+              register_file()->values[XE_GPU_REG_AVIVO_D1MODE_V_COUNTER] +=
                   GetInternalDisplayResolution().second;
 
               if (cvars::vsync) {
@@ -220,6 +219,7 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
   frame_limiter_worker_thread_->Create();
   frame_limiter_worker_thread_->thread()->set_priority(
       threading::ThreadPriority::kLowest);
+
   if (cvars::trace_gpu_stream) {
     BeginTracing();
   }
@@ -296,13 +296,13 @@ uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
                   // maximum [width(0x0FFF), height(0x0FFF)]
       return 0x050002D0;
     default:
-      if (!register_file()->IsValidRegister(r)) {
+      if (!register_file_.GetRegisterInfo(r)) {
         XELOGE("GPU: Read from unknown register ({:04X})", r);
       }
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
-  return register_file()->values[r];
+  return register_file_.values[r];
 }
 
 void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
@@ -320,7 +320,7 @@ void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
-  this->register_file()->values[r] = value;
+  register_file_.values[r] = value;
 }
 
 void GraphicsSystem::InitializeRingBuffer(uint32_t ptr, uint32_t size_log2) {

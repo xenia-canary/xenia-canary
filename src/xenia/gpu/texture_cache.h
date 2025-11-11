@@ -19,7 +19,6 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/hash.h"
-#include "xenia/base/math.h"
 #include "xenia/base/mutex.h"
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/shared_memory.h"
@@ -71,14 +70,6 @@ class TextureCache {
   static bool GetConfigDrawResolutionScale(uint32_t& x_out, uint32_t& y_out);
   uint32_t draw_resolution_scale_x() const { return draw_resolution_scale_x_; }
   uint32_t draw_resolution_scale_y() const { return draw_resolution_scale_y_; }
-
-  divisors::MagicDiv draw_resolution_scale_x_divisor() const {
-    return draw_resolution_scale_x_divisor_;
-  }
-  divisors::MagicDiv draw_resolution_scale_y_divisor() const {
-    return draw_resolution_scale_y_divisor_;
-  }
-
   bool IsDrawResolutionScaled() const {
     return draw_resolution_scale_x_ > 1 || draw_resolution_scale_y_ > 1;
   }
@@ -104,16 +95,6 @@ class TextureCache {
   void TextureFetchConstantWritten(uint32_t index) {
     texture_bindings_in_sync_ &= ~(UINT32_C(1) << index);
   }
-  void TextureFetchConstantsWritten(uint32_t first_index, uint32_t last_index) {
-    // generate a mask of all bits from before the first index, and xor it with
-    // all bits before the last index this produces a mask covering only the
-    // bits between first and last
-    uint32_t res = ((1U << first_index) - 1) ^
-                   static_cast<uint32_t>((1ULL << (last_index + 1)) - 1ULL);
-    // todo: check that this is right
-
-    texture_bindings_in_sync_ &= ~res;
-  }
 
   virtual void RequestTextures(uint32_t used_texture_mask);
 
@@ -137,14 +118,6 @@ class TextureCache {
     }
     return (binding->texture && binding->texture->IsResolved()) ||
            (binding->texture_signed && binding->texture_signed->IsResolved());
-  }
-  template <swcache::PrefetchTag tag>
-  void PrefetchTextureBinding(uint32_t fetch_constant_index) const {
-    swcache::Prefetch<tag>(&texture_bindings_[fetch_constant_index]);
-    swcache::Prefetch<tag>(
-        &texture_bindings_[fetch_constant_index +
-                           1]);  // we may cross a cache line boundary :( size
-                                 // of the structure is 0x28
   }
 
  protected:
@@ -569,7 +542,6 @@ class TextureCache {
     return load_shader_info_[load_shader_index];
   }
   bool LoadTextureData(Texture& texture);
-  void LoadTexturesData(Texture** textures, uint32_t n_textures);
   // Writes the texture data (for base, mips or both - but not neither) from the
   // shared memory or the scaled resolve memory. The shared memory management is
   // done outside this function, the implementation just needs to load the data
@@ -623,8 +595,7 @@ class TextureCache {
   SharedMemory& shared_memory_;
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
-  divisors::MagicDiv draw_resolution_scale_x_divisor_;
-  divisors::MagicDiv draw_resolution_scale_y_divisor_;
+
   static const LoadShaderInfo load_shader_info_[kLoadShaderCount];
 
   xe::global_critical_region global_critical_region_;

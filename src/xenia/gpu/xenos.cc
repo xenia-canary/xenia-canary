@@ -122,7 +122,7 @@ float Float7e3To32(uint32_t f10) {
 // Based on CFloat24 from d3dref9.dll and the 6e4 code from:
 // https://github.com/Microsoft/DirectXTex/blob/master/DirectXTex/DirectXTexConvert.cpp
 // 6e4 has a different exponent bias allowing [0,512) values, 20e4 allows [0,2).
-XE_NOALIAS
+
 uint32_t Float32To20e4(float f32, bool round_to_nearest_even) noexcept {
   if (!(f32 > 0.0f)) {
     // Positive only, and not -0 or NaN.
@@ -147,7 +147,7 @@ uint32_t Float32To20e4(float f32, bool round_to_nearest_even) noexcept {
   }
   return (f32u32 >> 3) & 0xFFFFFF;
 }
-XE_NOALIAS
+
 float Float20e4To32(uint32_t f24) noexcept {
   f24 &= 0xFFFFFF;
   if (!f24) {
@@ -207,39 +207,7 @@ const char* GetDepthRenderTargetFormatName(DepthRenderTargetFormat format) {
       return "kUnknown";
   }
 }
-static const char* const g_endian_names[] = {"none", "8 in 16", "8 in 32",
-                                             "16 in 32"};
 
-const char* GetEndianEnglishDescription(xenos::Endian endian) {
-  return g_endian_names[static_cast<uint32_t>(endian)];
-}
-static const char* const g_primtype_human_names[] = {"none",
-                                                     "point list",
-                                                     "line list",
-                                                     "line strip",
-                                                     "triangle list",
-                                                     "triangle fan",
-                                                     "triangle strip",
-                                                     "triangle with flags",
-                                                     "rectangle list",
-                                                     "unused1",
-                                                     "unused2",
-                                                     "unused3",
-                                                     "line loop",
-                                                     "quad list",
-                                                     "quad strip",
-                                                     "polygon",
-                                                     "2D copy rect list v0",
-                                                     "2D copy rect list v1",
-                                                     "2D copy rect list v2",
-                                                     "2D copy rect list v3",
-                                                     "2D fillrect list",
-                                                     "2D line strip",
-                                                     "2D triangle strip"};
-
-const char* GetPrimitiveTypeEnglishDescription(xenos::PrimitiveType prim_type) {
-  return g_primtype_human_names[static_cast<uint32_t>(prim_type)];
-}
 }  // namespace xenos
 }  // namespace gpu
 }  // namespace xe

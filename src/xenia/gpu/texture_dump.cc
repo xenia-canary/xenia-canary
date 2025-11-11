@@ -85,7 +85,7 @@ void TextureDump(const TextureInfo& src, void* buffer, size_t length) {
       assert_unhandled_case(src.format);
       std::memset(&dds_header.pixel_format, 0xCD,
                   sizeof(dds_header.pixel_format));
-      XELOGW("Skipping {} for texture dump.", src.format_name());
+      XELOGW("Skipping {} for texture dump.", src.format_info()->name);
       return;
     }
   }
@@ -96,7 +96,7 @@ void TextureDump(const TextureInfo& src, void* buffer, size_t length) {
   std::filesystem::path path = "texture_dumps";
   path /= fmt::format(fmt::runtime("{:05d}_{:08X}_{:08X}_{:08X}.dds"),
                       dump_counter++, src.memory.base_address,
-                      src.memory.mip_address, src.format_name());
+                      src.memory.mip_address, src.format_info()->name);
 
   FILE* handle = filesystem::OpenFile(path, "wb");
   if (handle) {

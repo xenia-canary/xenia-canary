@@ -15,21 +15,11 @@
 #include "xenia/ui/d3d12/d3d12_api.h"
 #include "xenia/ui/graphics_provider.h"
 
-// chrispy: this is here to prevent clang format from moving d3d12_nvapi above
-// the headers it depends on
-#define HEADERFENCE
-#undef HEADERFENCE
-#include "xenia/gpu/d3d12/d3d12_nvapi.hpp"
+#define XE_UI_D3D12_FINE_GRAINED_DRAW_SCOPES 1
 
 namespace xe {
 namespace ui {
 namespace d3d12 {
-
-enum {
-  UPLOAD_RESULT_CREATE_FAILED = 0,
-  UPLOAD_RESULT_CREATE_SUCCESS = 1,
-  UPLOAD_RESULT_CREATE_CPUVISIBLE = 2
-};
 
 class D3D12Provider : public GraphicsProvider {
  public:
@@ -44,11 +34,6 @@ class D3D12Provider : public GraphicsProvider {
           Presenter::FatalErrorHostGpuLossCallback) override;
 
   std::unique_ptr<ImmediateDrawer> CreateImmediateDrawer() override;
-  uint32_t CreateUploadResource(
-      D3D12_HEAP_FLAGS HeapFlags, _In_ const D3D12_RESOURCE_DESC* pDesc,
-      D3D12_RESOURCE_STATES InitialResourceState, REFIID riidResource,
-      void** ppvResource, bool try_create_cpuvisible = false,
-      const D3D12_CLEAR_VALUE* pOptimizedClearValue = nullptr) const;
 
   IDXGIFactory2* GetDXGIFactory() const { return dxgi_factory_; }
   // nullptr if PIX not attached.
@@ -102,44 +87,6 @@ class D3D12Provider : public GraphicsProvider {
 
   // Adapter info.
   GpuVendorID GetAdapterVendorID() const { return adapter_vendor_id_; }
-
-  bool IsIntelArcGpu() const {
-    if (adapter_vendor_id_ != GpuVendorID::kIntel) {
-      return false;
-    }
-
-    // Desktop IDs - Alchemist
-    if (adapter_device_id_ >= 0x56A0 && adapter_device_id_ <= 0x56BD) {
-      return true;
-    }
-
-    // Mobile IDs - Alchemist
-    if (adapter_device_id_ >= 0x5690 && adapter_device_id_ <= 0x5697) {
-      return true;
-    }
-
-    // Desktop IDs - Battlemage
-    if (adapter_device_id_ >= 0xE20B && adapter_device_id_ <= 0xE20C) {
-      return true;
-    }
-
-    // Meteor Lake
-    if (adapter_device_id_ >= 0x7D40 && adapter_device_id_ <= 0x7DD5) {
-      return true;
-    }
-
-    // Lunar Lake
-    if (adapter_device_id_ >= 0x6420 && adapter_device_id_ <= 0x64B0) {
-      return true;
-    }
-
-    // Arrow Lake
-    if (adapter_device_id_ >= 0x7D41 && adapter_device_id_ <= 0x7D67) {
-      return true;
-    }
-
-    return false;
-  }
 
   // Device features.
   D3D12_HEAP_FLAGS GetHeapFlagCreateNotZeroed() const {
@@ -199,6 +146,8 @@ class D3D12Provider : public GraphicsProvider {
     return pfn_dxcompiler_dxc_create_instance_(rclsid, riid, ppv);
   }
 
+  bool IsIntelArcGpu() const;
+
  private:
   D3D12Provider() = default;
 
@@ -248,13 +197,13 @@ class D3D12Provider : public GraphicsProvider {
   bool rasterizer_ordered_views_supported_;
   bool unaligned_block_textures_supported_;
 
-  lightweight_nvapi::nvapi_state_t* nvapi_;
-  lightweight_nvapi::cb_NvAPI_D3D12_CreateCommittedResource
-      nvapi_createcommittedresource_ = nullptr;
-  lightweight_nvapi::cb_NvAPI_D3D12_UseDriverHeapPriorities
-      nvapi_usedriverheappriorities_ = nullptr;
-  lightweight_nvapi::cb_NvAPI_D3D12_QueryCpuVisibleVidmem
-      nvapi_querycpuvisiblevidmem_ = nullptr;
+  static constexpr std::array<std::pair<uint32_t, uint32_t>, 6>
+      intel_arc_gpu_adapter_ids_ = {{{0x56A0, 0x56BD},
+                                     {0x5690, 0x5697},
+                                     {0xE20B, 0xE20C},
+                                     {0x7D40, 0x7DD5},
+                                     {0x6420, 0x64B0},
+                                     {0x7D41, 0x7D67}}};
 };
 
 }  // namespace d3d12

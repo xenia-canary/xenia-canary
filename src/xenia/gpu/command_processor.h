@@ -20,7 +20,9 @@
 #include <vector>
 
 #include "xenia/base/ring_buffer.h"
+#include "xenia/base/threading.h"
 #include "xenia/gpu/register_file.h"
+#include "xenia/gpu/registers.h"
 #include "xenia/gpu/trace_writer.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/xthread.h"
@@ -73,11 +75,6 @@ enum class GammaRampType {
 };
 
 class CommandProcessor {
- protected:
-  RingBuffer
-      reader_;  // chrispy: instead of having ringbuffer on stack, have it near
-                // the start of the class so we can access it via rel8. This
-                // also reduces the number of params we need to pass
  public:
   enum class SwapPostEffect {
     kNone,
@@ -88,6 +85,7 @@ class CommandProcessor {
   CommandProcessor(GraphicsSystem* graphics_system,
                    kernel::KernelState* kernel_state);
   virtual ~CommandProcessor();
+
   uint32_t counter() const { return counter_; }
   void increment_counter() { counter_++; }
 
@@ -112,7 +110,7 @@ class CommandProcessor {
   // screen right in the beginning of 4D530AA4 is not a resolved render target,
   // for instance).
   virtual void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
-                         uint32_t frontbuffer_height) {}
+                         uint32_t frontbuffer_height) = 0;
 
   // May be called not only from the command processor thread when the command
   // processor is paused, and the termination of this function may be explicitly
@@ -140,9 +138,7 @@ class CommandProcessor {
 
   void UpdateWritePointer(uint32_t value);
 
-  void LogRegisterSet(uint32_t register_index, uint32_t value);
-  void LogRegisterSets(uint32_t base_register_index, const uint32_t* values,
-                       uint32_t n_values);
+  void ExecutePacket(uint32_t ptr, uint32_t count);
 
   bool is_paused() const { return paused_; }
   void Pause();
@@ -165,57 +161,8 @@ class CommandProcessor {
   void WorkerThreadMain();
   virtual bool SetupContext() = 0;
   virtual void ShutdownContext() = 0;
-  // rarely needed, most register writes have no special logic here
-  XE_NOINLINE
-  void HandleSpecialRegisterWrite(uint32_t index, uint32_t value);
 
   virtual void WriteRegister(uint32_t index, uint32_t value);
-
-  // mem has big-endian register values
-  XE_FORCEINLINE
-  virtual void WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
-                                     uint32_t num_registers);
-
-  XE_FORCEINLINE
-  virtual void WriteRegisterRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                          uint32_t num_registers);
-
-  XE_NOINLINE
-  void WriteOneRegisterFromRing(
-      uint32_t base,
-      uint32_t
-          num_times);  // repeatedly write a value to one register, presumably a
-                       // register with special handling for writes
-
-  void WriteALURangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                             uint32_t num_times);
-
-  void WriteFetchRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                               uint32_t num_times);
-
-  void WriteBoolRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  void WriteLoopRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  void WriteREGISTERSRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                   uint32_t num_times);
-
-  void WriteALURangeFromMem(uint32_t start_index, uint32_t* base,
-                            uint32_t num_registers);
-
-  void WriteFetchRangeFromMem(uint32_t start_index, uint32_t* base,
-                              uint32_t num_registers);
-
-  void WriteBoolRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  void WriteLoopRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  void WriteREGISTERSRangeFromMem(uint32_t start_index, uint32_t* base,
-                                  uint32_t num_registers);
 
   const reg::DC_LUT_30_COLOR* gamma_ramp_256_entry_table() const {
     return gamma_ramp_256_entry_table_;
@@ -230,23 +177,77 @@ class CommandProcessor {
   virtual void PrepareForWait();
   virtual void ReturnFromWait();
 
+  uint32_t ExecutePrimaryBuffer(uint32_t start_index, uint32_t end_index);
   virtual void OnPrimaryBufferEnd() {}
+  void ExecuteIndirectBuffer(uint32_t ptr, uint32_t length);
+  bool ExecutePacket(RingBuffer* reader);
+  bool ExecutePacketType0(RingBuffer* reader, uint32_t packet);
+  bool ExecutePacketType1(RingBuffer* reader, uint32_t packet);
+  bool ExecutePacketType2(RingBuffer* reader, uint32_t packet);
+  bool ExecutePacketType3(RingBuffer* reader, uint32_t packet);
+  bool ExecutePacketType3_ME_INIT(RingBuffer* reader, uint32_t packet,
+                                  uint32_t count);
+  bool ExecutePacketType3_NOP(RingBuffer* reader, uint32_t packet,
+                              uint32_t count);
+  bool ExecutePacketType3_INTERRUPT(RingBuffer* reader, uint32_t packet,
+                                    uint32_t count);
+  bool ExecutePacketType3_XE_SWAP(RingBuffer* reader, uint32_t packet,
+                                  uint32_t count);
+  bool ExecutePacketType3_INDIRECT_BUFFER(RingBuffer* reader, uint32_t packet,
+                                          uint32_t count);
+  bool ExecutePacketType3_WAIT_REG_MEM(RingBuffer* reader, uint32_t packet,
+                                       uint32_t count);
+  bool ExecutePacketType3_REG_RMW(RingBuffer* reader, uint32_t packet,
+                                  uint32_t count);
+  bool ExecutePacketType3_REG_TO_MEM(RingBuffer* reader, uint32_t packet,
+                                     uint32_t count);
+  bool ExecutePacketType3_MEM_WRITE(RingBuffer* reader, uint32_t packet,
+                                    uint32_t count);
+  bool ExecutePacketType3_COND_WRITE(RingBuffer* reader, uint32_t packet,
+                                     uint32_t count);
+  bool ExecutePacketType3_EVENT_WRITE(RingBuffer* reader, uint32_t packet,
+                                      uint32_t count);
+  bool ExecutePacketType3_EVENT_WRITE_SHD(RingBuffer* reader, uint32_t packet,
+                                          uint32_t count);
+  bool ExecutePacketType3_EVENT_WRITE_EXT(RingBuffer* reader, uint32_t packet,
+                                          uint32_t count);
+  bool ExecutePacketType3_EVENT_WRITE_ZPD(RingBuffer* reader, uint32_t packet,
+                                          uint32_t count);
+  bool ExecutePacketType3Draw(RingBuffer* reader, uint32_t packet,
+                              const char* opcode_name,
+                              uint32_t viz_query_condition,
+                              uint32_t count_remaining);
+  bool ExecutePacketType3_DRAW_INDX(RingBuffer* reader, uint32_t packet,
+                                    uint32_t count);
+  bool ExecutePacketType3_DRAW_INDX_2(RingBuffer* reader, uint32_t packet,
+                                      uint32_t count);
+  bool ExecutePacketType3_SET_CONSTANT(RingBuffer* reader, uint32_t packet,
+                                       uint32_t count);
+  bool ExecutePacketType3_SET_CONSTANT2(RingBuffer* reader, uint32_t packet,
+                                        uint32_t count);
+  bool ExecutePacketType3_LOAD_ALU_CONSTANT(RingBuffer* reader, uint32_t packet,
+                                            uint32_t count);
+  bool ExecutePacketType3_SET_SHADER_CONSTANTS(RingBuffer* reader,
+                                               uint32_t packet, uint32_t count);
+  bool ExecutePacketType3_IM_LOAD(RingBuffer* reader, uint32_t packet,
+                                  uint32_t count);
+  bool ExecutePacketType3_IM_LOAD_IMMEDIATE(RingBuffer* reader,
 
-#include "pm4_command_processor_declare.h"
+                                            uint32_t packet, uint32_t count);
+  bool ExecutePacketType3_INVALIDATE_STATE(RingBuffer* reader, uint32_t packet,
+                                           uint32_t count);
+  bool ExecutePacketType3_VIZ_QUERY(RingBuffer* reader, uint32_t packet,
+                                    uint32_t count);
 
   virtual Shader* LoadShader(xenos::ShaderType shader_type,
                              uint32_t guest_address,
                              const uint32_t* host_address,
-                             uint32_t dword_count) {
-    return nullptr;
-  }
+                             uint32_t dword_count) = 0;
 
   virtual bool IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,
                          IndexBufferInfo* index_buffer_info,
-                         bool major_mode_explicit) {
-    return false;
-  }
-  virtual bool IssueCopy() { return false; }
+                         bool major_mode_explicit) = 0;
+  virtual bool IssueCopy() = 0;
 
   // "Actual" is for the command processor thread, to be read by the
   // implementations.
@@ -259,7 +260,7 @@ class CommandProcessor {
   Memory* memory_ = nullptr;
   kernel::KernelState* kernel_state_ = nullptr;
   GraphicsSystem* graphics_system_ = nullptr;
-  RegisterFile* XE_RESTRICT register_file_ = nullptr;
+  RegisterFile* register_file_ = nullptr;
 
   TraceWriter trace_writer_;
   enum class TraceState {
@@ -308,8 +309,6 @@ class CommandProcessor {
   reg::DC_LUT_30_COLOR gamma_ramp_256_entry_table_[256] = {};
   reg::DC_LUT_PWL_DATA gamma_ramp_pwl_rgb_[128][3] = {};
   uint32_t gamma_ramp_rw_component_ = 0;
-
-  XE_NOINLINE XE_COLD void LogKickoffInitator(uint32_t value);
 };
 
 }  // namespace gpu

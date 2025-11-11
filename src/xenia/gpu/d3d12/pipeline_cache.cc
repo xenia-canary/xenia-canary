@@ -14,6 +14,7 @@
 
 #include "third_party/dxbc/DXBCChecksum.h"
 #include "third_party/fmt/include/fmt/format.h"
+#include "third_party/fmt/include/fmt/xchar.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/clock.h"
@@ -34,8 +35,6 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/d3d12/d3d12_util.h"
-
-#include "third_party/fmt/include/fmt/xchar.h"
 
 DEFINE_bool(d3d12_dxbc_disasm, false,
             "Disassemble DXBC shaders after generation.", "D3D12");
@@ -177,7 +176,7 @@ void PipelineCache::Shutdown() {
   // creating them.
   if (!creation_threads_.empty()) {
     {
-      std::lock_guard<xe_mutex> lock(creation_request_lock_);
+      std::lock_guard<std::mutex> lock(creation_request_lock_);
       creation_threads_shutdown_from_ = 0;
     }
     creation_request_cond_.notify_all();
@@ -236,7 +235,7 @@ void PipelineCache::InitializeShaderStorage(
       XELOGE(
           "Failed to create the shareable shader storage directory, persistent "
           "shader storage will be disabled: {}",
-          shader_storage_shareable_root);
+          xe::path_to_utf8(shader_storage_shareable_root));
       return;
     }
   }
@@ -259,7 +258,7 @@ void PipelineCache::InitializeShaderStorage(
     XELOGE(
         "Failed to open the Direct3D 12 pipeline description storage file for "
         "writing, persistent shader storage will be disabled: {}",
-        pipeline_storage_file_path);
+        xe::path_to_utf8(pipeline_storage_file_path));
     return;
   }
   pipeline_storage_file_flush_needed_ = false;
@@ -347,7 +346,7 @@ void PipelineCache::InitializeShaderStorage(
     XELOGE(
         "Failed to open the guest shader storage file for writing, persistent "
         "shader storage will be disabled: {}",
-        shader_storage_file_path);
+        xe::path_to_utf8(shader_storage_file_path));
     fclose(pipeline_storage_file_);
     pipeline_storage_file_ = nullptr;
     return;
@@ -421,9 +420,7 @@ void PipelineCache::InitializeShaderStorage(
           ++shader_translation_threads_busy;
           break;
         }
-        if (!shader_to_translate->is_ucode_analyzed()) {
-          shader_to_translate->AnalyzeUcode(ucode_disasm_buffer);
-        }
+        shader_to_translate->AnalyzeUcode(ucode_disasm_buffer);
         // Translate each needed modification on this thread after performing
         // modification-independent analysis of the whole shader.
         uint64_t ucode_data_hash = shader_to_translate->ucode_data_hash();
@@ -675,7 +672,7 @@ void PipelineCache::InitializeShaderStorage(
       if (!creation_threads_.empty()) {
         // Submit the pipeline for creation to any available thread.
         {
-          std::lock_guard<xe_mutex> lock(creation_request_lock_);
+          std::lock_guard<std::mutex> lock(creation_request_lock_);
           creation_queue_.push_back(new_pipeline);
         }
         creation_request_cond_.notify_one();
@@ -689,7 +686,7 @@ void PipelineCache::InitializeShaderStorage(
       CreateQueuedPipelinesOnProcessorThread();
       if (creation_threads_.size() > creation_thread_original_count) {
         {
-          std::lock_guard<xe_mutex> lock(creation_request_lock_);
+          std::lock_guard<std::mutex> lock(creation_request_lock_);
           creation_threads_shutdown_from_ = creation_thread_original_count;
           // Assuming the queue is empty because of
           // CreateQueuedPipelinesOnProcessorThread.
@@ -702,7 +699,7 @@ void PipelineCache::InitializeShaderStorage(
         bool await_creation_completion_event;
         {
           // Cleanup so additional threads can be created later again.
-          std::lock_guard<xe_mutex> lock(creation_request_lock_);
+          std::lock_guard<std::mutex> lock(creation_request_lock_);
           creation_threads_shutdown_from_ = SIZE_MAX;
           // If the invocation is blocking, all the shader storage
           // initialization is expected to be done before proceeding, to avoid
@@ -807,7 +804,7 @@ void PipelineCache::EndSubmission() {
     // Await creation of all queued pipelines.
     bool await_creation_completion_event;
     {
-      std::lock_guard<xe_mutex> lock(creation_request_lock_);
+      std::lock_guard<std::mutex> lock(creation_request_lock_);
       // Assuming the creation queue is already empty (because the processor
       // thread also worked on creating the leftover pipelines), so only check
       // if there are threads with pipelines currently being created.
@@ -828,7 +825,7 @@ bool PipelineCache::IsCreatingPipelines() {
   if (creation_threads_.empty()) {
     return false;
   }
-  std::lock_guard<xe_mutex> lock(creation_request_lock_);
+  std::lock_guard<std::mutex> lock(creation_request_lock_);
   return !creation_queue_.empty() || creation_threads_busy_ != 0;
 }
 
@@ -976,9 +973,7 @@ bool PipelineCache::ConfigurePipeline(
                   xenos::VertexShaderExportMode::kPosition2VectorsEdgeKill);
   assert_false(register_file_.Get<reg::SQ_PROGRAM_CNTL>().gen_index_vtx);
   if (!vertex_shader->is_translated()) {
-    if (!vertex_shader->shader().is_ucode_analyzed()) {
-      vertex_shader->shader().AnalyzeUcode(ucode_disasm_buffer_);
-    }
+    vertex_shader->shader().AnalyzeUcode(ucode_disasm_buffer_);
     if (!TranslateAnalyzedShader(*shader_translator_, *vertex_shader,
                                  dxbc_converter_, dxc_utils_, dxc_compiler_)) {
       XELOGE("Failed to translate the vertex shader!");
@@ -1002,9 +997,7 @@ bool PipelineCache::ConfigurePipeline(
   }
   if (pixel_shader != nullptr) {
     if (!pixel_shader->is_translated()) {
-      if (!pixel_shader->shader().is_ucode_analyzed()) {
-        pixel_shader->shader().AnalyzeUcode(ucode_disasm_buffer_);
-      }
+      pixel_shader->shader().AnalyzeUcode(ucode_disasm_buffer_);
       if (!TranslateAnalyzedShader(*shader_translator_, *pixel_shader,
                                    dxbc_converter_, dxc_utils_,
                                    dxc_compiler_)) {
@@ -1041,7 +1034,8 @@ bool PipelineCache::ConfigurePipeline(
   PipelineDescription& description = runtime_description.description;
 
   if (current_pipeline_ != nullptr &&
-      current_pipeline_->description.description == description) {
+      !std::memcmp(&current_pipeline_->description.description, &description,
+                   sizeof(description))) {
     *pipeline_handle_out = current_pipeline_;
     *root_signature_out = runtime_description.root_signature;
     return true;
@@ -1052,7 +1046,8 @@ bool PipelineCache::ConfigurePipeline(
   auto found_range = pipelines_.equal_range(hash);
   for (auto it = found_range.first; it != found_range.second; ++it) {
     Pipeline* found_pipeline = it->second;
-    if (found_pipeline->description.description == description) {
+    if (!std::memcmp(&found_pipeline->description.description, &description,
+                     sizeof(description))) {
       current_pipeline_ = found_pipeline;
       *pipeline_handle_out = found_pipeline;
       *root_signature_out = found_pipeline->description.root_signature;
@@ -1070,7 +1065,7 @@ bool PipelineCache::ConfigurePipeline(
   if (!creation_threads_.empty()) {
     // Submit the pipeline for creation to any available thread.
     {
-      std::lock_guard<xe_mutex> lock(creation_request_lock_);
+      std::lock_guard<std::mutex> lock(creation_request_lock_);
       creation_queue_.push_back(new_pipeline);
     }
     creation_request_cond_.notify_one();
@@ -3021,7 +3016,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
       break;
   }
   state_desc.RasterizerState.FrontCounterClockwise =
-      description.front_counter_clockwise ? true : false;
+      description.front_counter_clockwise ? TRUE : FALSE;
   state_desc.RasterizerState.DepthBias = description.depth_bias;
   state_desc.RasterizerState.DepthBiasClamp = 0.0f;
   // With non-square resolution scaling, make sure the worst-case impact is
@@ -3033,7 +3028,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
       float(std::max(render_target_cache_.draw_resolution_scale_x(),
                      render_target_cache_.draw_resolution_scale_y()));
   state_desc.RasterizerState.DepthClipEnable =
-      description.depth_clip ? true : false;
+      description.depth_clip ? TRUE : FALSE;
   uint32_t msaa_sample_count = uint32_t(1)
                                << uint32_t(description.host_msaa_samples);
   if (edram_rov_used) {
@@ -3074,7 +3069,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
     // Depth/stencil.
     if (description.depth_func != xenos::CompareFunction::kAlways ||
         description.depth_write) {
-      state_desc.DepthStencilState.DepthEnable = true;
+      state_desc.DepthStencilState.DepthEnable = TRUE;
       state_desc.DepthStencilState.DepthWriteMask =
           description.depth_write ? D3D12_DEPTH_WRITE_MASK_ALL
                                   : D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -3085,7 +3080,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
                                 uint32_t(description.depth_func));
     }
     if (description.stencil_enable) {
-      state_desc.DepthStencilState.StencilEnable = true;
+      state_desc.DepthStencilState.StencilEnable = TRUE;
       state_desc.DepthStencilState.StencilReadMask =
           description.stencil_read_mask;
       state_desc.DepthStencilState.StencilWriteMask =
@@ -3123,7 +3118,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
     }
 
     // Render targets and blending.
-    state_desc.BlendState.IndependentBlendEnable = true;
+    state_desc.BlendState.IndependentBlendEnable = TRUE;
     static constexpr D3D12_BLEND kBlendFactorMap[] = {
         D3D12_BLEND_ZERO,          D3D12_BLEND_ONE,
         D3D12_BLEND_SRC_COLOR,     D3D12_BLEND_INV_SRC_COLOR,
@@ -3161,7 +3156,8 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
           rt.src_blend_alpha != PipelineBlendFactor::kOne ||
           rt.dest_blend_alpha != PipelineBlendFactor::kZero ||
           rt.blend_op_alpha != xenos::BlendOp::kAdd) {
-        blend_desc.BlendEnable = true;
+        blend_desc.BlendEnable = TRUE;
+
         blend_desc.BlendOp = kBlendOpMap[uint32_t(rt.blend_op)];
         if (blend_desc.BlendOp == D3D12_BLEND_OP_MIN ||
             blend_desc.BlendOp == D3D12_BLEND_OP_MAX) {
@@ -3196,8 +3192,8 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
   if (description.cull_mode == PipelineCullMode::kDisableRasterization) {
     state_desc.PS.pShaderBytecode = nullptr;
     state_desc.PS.BytecodeLength = 0;
-    state_desc.DepthStencilState.DepthEnable = false;
-    state_desc.DepthStencilState.StencilEnable = false;
+    state_desc.DepthStencilState.DepthEnable = FALSE;
+    state_desc.DepthStencilState.StencilEnable = FALSE;
   }
 
   // Create the D3D12 pipeline state object.
@@ -3317,7 +3313,7 @@ void PipelineCache::CreationThread(size_t thread_index) {
     // Check if need to shut down or set the completion event and dequeue the
     // pipeline if there is any.
     {
-      std::unique_lock<xe_mutex> lock(creation_request_lock_);
+      std::unique_lock<std::mutex> lock(creation_request_lock_);
       if (thread_index >= creation_threads_shutdown_from_ ||
           creation_queue_.empty()) {
         if (creation_completion_set_event_ && creation_threads_busy_ == 0) {
@@ -3348,7 +3344,7 @@ void PipelineCache::CreationThread(size_t thread_index) {
     // completion event if needed (at the next iteration, or in some other
     // thread).
     {
-      std::lock_guard<xe_mutex> lock(creation_request_lock_);
+      std::lock_guard<std::mutex> lock(creation_request_lock_);
       --creation_threads_busy_;
     }
   }
@@ -3359,7 +3355,7 @@ void PipelineCache::CreateQueuedPipelinesOnProcessorThread() {
   while (true) {
     Pipeline* pipeline_to_create;
     {
-      std::lock_guard<xe_mutex> lock(creation_request_lock_);
+      std::lock_guard<std::mutex> lock(creation_request_lock_);
       if (creation_queue_.empty()) {
         break;
       }

@@ -35,7 +35,6 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
-#include "xenia/kernel/user_module.h"
 #include "xenia/ui/d3d12/d3d12_descriptor_heap_pool.h"
 #include "xenia/ui/d3d12/d3d12_provider.h"
 #include "xenia/ui/d3d12/d3d12_upload_buffer_pool.h"
@@ -43,23 +42,9 @@
 
 namespace xe {
 namespace gpu {
-
-enum class D3D12GPUSetting {
-  ReadbackResolve,
-};
-
-void D3D12SaveGPUSetting(D3D12GPUSetting setting, uint64_t value);
-
 namespace d3d12 {
-struct MemExportRange {
-  uint32_t base_address_dwords;
-  uint32_t size_dwords;
-};
-class D3D12CommandProcessor final : public CommandProcessor {
- protected:
-#define OVERRIDING_BASE_CMDPROCESSOR
-#include "../pm4_command_processor_declare.h"
-#undef OVERRIDING_BASE_CMDPROCESSOR
+
+class D3D12CommandProcessor : public CommandProcessor {
  public:
   explicit D3D12CommandProcessor(D3D12GraphicsSystem* graphics_system,
                                  kernel::KernelState* kernel_state);
@@ -228,82 +213,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
  protected:
   bool SetupContext() override;
   void ShutdownContext() override;
-  XE_FORCEINLINE
-  void WriteRegisterForceinline(uint32_t index, uint32_t value);
+
   void WriteRegister(uint32_t index, uint32_t value) override;
-
-  virtual void WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
-                                     uint32_t num_registers) override;
-  /*helper functions for WriteRegistersFromMem*/
-  XE_FORCEINLINE
-  void WriteShaderConstantsFromMem(uint32_t start_index, uint32_t* base,
-                                   uint32_t num_registers);
-  XE_FORCEINLINE
-  void WriteBoolLoopFromMem(uint32_t start_index, uint32_t* base,
-                            uint32_t num_registers);
-  XE_FORCEINLINE
-  void WriteFetchFromMem(uint32_t start_index, uint32_t* base,
-                         uint32_t num_registers);
-
-  void WritePossiblySpecialRegistersFromMem(uint32_t start_index,
-                                            uint32_t* base,
-                                            uint32_t num_registers);
-  template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-  XE_FORCEINLINE void WriteRegisterRangeFromMem_WithKnownBound(
-      uint32_t start_index, uint32_t* base, uint32_t num_registers);
-  XE_FORCEINLINE
-  virtual void WriteRegisterRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                          uint32_t num_registers) override;
-  template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-  XE_FORCEINLINE void WriteRegisterRangeFromRing_WithKnownBound(
-      xe::RingBuffer* ring, uint32_t base, uint32_t num_registers);
-
-  XE_NOINLINE
-  void WriteRegisterRangeFromRing_WraparoundCase(xe::RingBuffer* ring,
-                                                 uint32_t base,
-                                                 uint32_t num_registers);
-  XE_NOINLINE
-  void WriteOneRegisterFromRing(uint32_t base, uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteALURangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                             uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteFetchRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                               uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteBoolRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteLoopRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteREGISTERSRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                   uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteALURangeFromMem(uint32_t start_index, uint32_t* base,
-                            uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteFetchRangeFromMem(uint32_t start_index, uint32_t* base,
-                              uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteBoolRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteLoopRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteREGISTERSRangeFromMem(uint32_t start_index, uint32_t* base,
-                                  uint32_t num_registers);
 
   void OnGammaRamp256EntryTableValueWritten() override;
   void OnGammaRampPWLValueWritten() override;
@@ -320,10 +231,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
   bool IssueDraw(xenos::PrimitiveType primitive_type, uint32_t index_count,
                  IndexBufferInfo* index_buffer_info,
                  bool major_mode_explicit) override;
-
   bool IssueCopy() override;
-  XE_NOINLINE
-  bool IssueCopy_ReadbackResolvePath();
+
   void InitializeTrace() override;
 
  private:
@@ -402,8 +311,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   };
   // Gets the indices of optional root parameters. Returns the total parameter
   // count.
-  XE_NOINLINE
-  XE_COLD
   static uint32_t GetRootBindfulExtraParameterIndices(
       const DxbcShader* vertex_shader, const DxbcShader* pixel_shader,
       RootBindfulExtraParameterIndices& indices_out);
@@ -459,14 +366,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
                                 const draw_util::Scissor& scissor,
                                 bool primitive_polygonal,
                                 reg::RB_DEPTHCONTROL normalized_depth_control);
-
-  template <bool primitive_polygonal, bool edram_rov_used>
-  XE_NOINLINE void UpdateSystemConstantValues_Impl(
-      bool shared_memory_is_uav, uint32_t line_loop_closing_index,
-      xenos::Endian index_endian, const draw_util::ViewportInfo& viewport_info,
-      uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
-      uint32_t normalized_color_mask);
-
   void UpdateSystemConstantValues(bool shared_memory_is_uav,
                                   bool primitive_polygonal,
                                   uint32_t line_loop_closing_index,
@@ -479,18 +378,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
                       const D3D12Shader* pixel_shader,
                       ID3D12RootSignature* root_signature,
                       bool shared_memory_is_uav);
-  XE_COLD
-  XE_NOINLINE
-  void UpdateBindings_UpdateRootBindful();
-  XE_NOINLINE
-  XE_COLD
-  bool UpdateBindings_BindfulPath(
-      const size_t texture_layout_uid_vertex,
-      const std::vector<xe::gpu::DxbcShader::TextureBinding>& textures_vertex,
-      const size_t texture_layout_uid_pixel,
-      const std::vector<xe::gpu::DxbcShader::TextureBinding>* textures_pixel,
-      const size_t sampler_count_vertex, const size_t sampler_count_pixel,
-      bool& retflag);
 
   // Returns a buffer for reading GPU data back to the CPU. Assuming
   // synchronizing immediately after use. Always in COPY_DEST state.
@@ -692,8 +579,12 @@ class D3D12CommandProcessor final : public CommandProcessor {
   D3D12_RESOURCE_STATES scratch_buffer_state_;
   bool scratch_buffer_used_ = false;
 
+  static constexpr uint32_t kReadbackBufferSizeIncrement = 16 * 1024 * 1024;
   ID3D12Resource* readback_buffer_ = nullptr;
   uint32_t readback_buffer_size_ = 0;
+
+  std::atomic<bool> pix_capture_requested_ = false;
+  bool pix_capturing_;
 
   // The current fixed-function drawing state.
   D3D12_VIEWPORT ff_viewport_;
@@ -720,15 +611,12 @@ class D3D12CommandProcessor final : public CommandProcessor {
   uint32_t current_graphics_root_up_to_date_;
 
   // System shader constants.
-  alignas(XE_HOST_CACHE_LINE_SIZE)
-      DxbcShaderTranslator::SystemConstants system_constants_;
+  DxbcShaderTranslator::SystemConstants system_constants_;
 
   // Float constant usage masks of the last draw call.
-  // chrispy: make sure accesses to these cant cross cacheline boundaries
-  struct alignas(XE_HOST_CACHE_LINE_SIZE) {
-    uint64_t current_float_constant_map_vertex_[4];
-    uint64_t current_float_constant_map_pixel_[4];
-  };
+  uint64_t current_float_constant_map_vertex_[4];
+  uint64_t current_float_constant_map_pixel_[4];
+
   // Constant buffer bindings.
   struct ConstantBufferBinding {
     D3D12_GPU_VIRTUAL_ADDRESS address;
@@ -790,12 +678,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   // Current primitive topology.
   D3D_PRIMITIVE_TOPOLOGY primitive_topology_;
-
-  draw_util::GetViewportInfoArgs previous_viewport_info_args_;
-  draw_util::ViewportInfo previous_viewport_info_;
-
-  std::atomic<bool> pix_capture_requested_ = false;
-  bool pix_capturing_;
 
   // Temporary storage for memexport stream constants used in the draw.
   std::vector<draw_util::MemExportRange> memexport_ranges_;

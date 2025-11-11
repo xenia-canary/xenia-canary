@@ -9,12 +9,20 @@
 
 #include "xenia/gpu/draw_util.h"
 
+#include <algorithm>
+#include <cmath>
+
+#include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/registers.h"
 #include "xenia/gpu/texture_cache.h"
+#include "xenia/gpu/texture_info.h"
+#include "xenia/gpu/texture_util.h"
+#include "xenia/gpu/xenos.h"
 #include "xenia/ui/graphics_util.h"
 
 // Very prominent in 545407F2.
@@ -77,8 +85,8 @@ reg::RB_DEPTHCONTROL GetNormalizedDepthControl(const RegisterFile& regs) {
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_standard_multisample_quality_levels
-constexpr int8_t kD3D10StandardSamplePositions2x[2][2] = {{4, 4}, {-4, -4}};
-constexpr int8_t kD3D10StandardSamplePositions4x[4][2] = {
+const int8_t kD3D10StandardSamplePositions2x[2][2] = {{4, 4}, {-4, -4}};
+const int8_t kD3D10StandardSamplePositions4x[4][2] = {
     {-2, -6}, {6, -2}, {-6, 2}, {2, 6}};
 
 void GetPreferredFacePolygonOffset(const RegisterFile& regs,
@@ -93,7 +101,6 @@ void GetPreferredFacePolygonOffset(const RegisterFile& regs,
         !pa_su_sc_mode_cntl.cull_front) {
       scale = regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_SCALE);
       offset = regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_OFFSET);
-      scale = roundToNearestOrderOfMagnitude(scale);
     }
     if (pa_su_sc_mode_cntl.poly_offset_back_enable &&
         !pa_su_sc_mode_cntl.cull_back && !scale && !offset) {
@@ -159,17 +166,17 @@ bool IsPixelShaderNeededWithRasterization(const Shader& shader,
   return false;
 }
 
-static float ViewportRecip2_0(float f) {
-  float f1 = ArchReciprocalRefined(f);
-  return f1 + f1;
-}
-
-// chrispy: todo, the int/float divides and the nan-checked mins show up
-// relatively high on uprof when i uc to 1.7ghz
-void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
+void GetHostViewportInfo(const RegisterFile& regs,
+                         uint32_t draw_resolution_scale_x,
+                         uint32_t draw_resolution_scale_y,
+                         bool origin_bottom_left, uint32_t x_max,
+                         uint32_t y_max, bool allow_reverse_z,
+                         reg::RB_DEPTHCONTROL normalized_depth_control,
+                         bool convert_z_to_float24, bool full_float24_in_0_to_1,
+                         bool pixel_shader_writes_depth,
                          ViewportInfo& viewport_info_out) {
-  assert_not_zero(args->draw_resolution_scale_x);
-  assert_not_zero(args->draw_resolution_scale_y);
+  assert_not_zero(draw_resolution_scale_x);
+  assert_not_zero(draw_resolution_scale_y);
 
   // A vertex position goes the following path:
   //
@@ -296,31 +303,40 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
   // TODO(Triang3l): Investigate the need for clamping of oDepth to 0...1 for
   // D24FS8 as well.
 
-  auto pa_cl_clip_cntl = args->pa_cl_clip_cntl;
-  auto pa_cl_vte_cntl = args->pa_cl_vte_cntl;
-  auto pa_su_sc_mode_cntl = args->pa_su_sc_mode_cntl;
-  auto pa_su_vtx_cntl = args->pa_su_vtx_cntl;
+  auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
+  auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
+  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
+  auto pa_su_vtx_cntl = regs.Get<reg::PA_SU_VTX_CNTL>();
 
   // Obtain the original viewport values in a normalized way.
   float scale_xy[] = {
-      pa_cl_vte_cntl.vport_x_scale_ena ? args->PA_CL_VPORT_XSCALE : 1.0f,
-      pa_cl_vte_cntl.vport_y_scale_ena ? args->PA_CL_VPORT_YSCALE : 1.0f,
+      pa_cl_vte_cntl.vport_x_scale_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XSCALE)
+          : 1.0f,
+      pa_cl_vte_cntl.vport_y_scale_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE)
+          : 1.0f,
   };
-  float scale_z =
-      pa_cl_vte_cntl.vport_z_scale_ena ? args->PA_CL_VPORT_ZSCALE : 1.0f;
-
+  float scale_z = pa_cl_vte_cntl.vport_z_scale_ena
+                      ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_ZSCALE)
+                      : 1.0f;
   float offset_base_xy[] = {
-      pa_cl_vte_cntl.vport_x_offset_ena ? args->PA_CL_VPORT_XOFFSET : 0.0f,
-      pa_cl_vte_cntl.vport_y_offset_ena ? args->PA_CL_VPORT_YOFFSET : 0.0f,
+      pa_cl_vte_cntl.vport_x_offset_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XOFFSET)
+          : 0.0f,
+      pa_cl_vte_cntl.vport_y_offset_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET)
+          : 0.0f,
   };
-  float offset_z =
-      pa_cl_vte_cntl.vport_z_offset_ena ? args->PA_CL_VPORT_ZOFFSET : 0.0f;
+  float offset_z = pa_cl_vte_cntl.vport_z_offset_ena
+                       ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_ZOFFSET)
+                       : 0.0f;
   // Calculate all the integer.0 or integer.5 offsetting exactly at full
   // precision, separately so it can be used in other integer calculations
   // without double rounding if needed.
   float offset_add_xy[2] = {};
   if (pa_su_sc_mode_cntl.vtx_window_offset_enable) {
-    auto pa_sc_window_offset = args->pa_sc_window_offset;
+    auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
     offset_add_xy[0] += float(pa_sc_window_offset.window_x_offset);
     offset_add_xy[1] += float(pa_sc_window_offset.window_y_offset);
   }
@@ -332,11 +348,8 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
 
   // The maximum value is at least the maximum host render target size anyway -
   // and a guest pixel is always treated as a whole with resolution scaling.
-  // cbrispy: todo, this integer divides show up high on the profiler somehow
-  // (it was a very long session, too)
-  uint32_t xy_max_unscaled[] = {
-      args->draw_resolution_scale_x_divisor.Apply(args->x_max),
-      args->draw_resolution_scale_y_divisor.Apply(args->y_max)};
+  uint32_t xy_max_unscaled[] = {x_max / draw_resolution_scale_x,
+                                y_max / draw_resolution_scale_y};
   assert_not_zero(xy_max_unscaled[0]);
   assert_not_zero(xy_max_unscaled[1]);
 
@@ -356,11 +369,9 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
           std::min(xenos::kTexture2DCubeMaxWidthHeight, xy_max_unscaled[i]);
       viewport_info_out.xy_extent[i] =
           extent_axis_unscaled *
-          (i ? args->draw_resolution_scale_y : args->draw_resolution_scale_x);
+          (i ? draw_resolution_scale_y : draw_resolution_scale_x);
       float extent_axis_unscaled_float = float(extent_axis_unscaled);
-
-      float pixels_to_ndc_axis = ViewportRecip2_0(extent_axis_unscaled_float);
-
+      float pixels_to_ndc_axis = 2.0f / extent_axis_unscaled_float;
       ndc_scale[i] = scale_xy[i] * pixels_to_ndc_axis;
       ndc_offset[i] = (offset_base_xy[i] - extent_axis_unscaled_float * 0.5f +
                        offset_add_xy[i]) *
@@ -385,7 +396,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       // doing truncation for simplicity - since maxing with 0 is done anyway
       // (we only return viewports in the positive quarter-plane).
       uint32_t axis_resolution_scale =
-          i ? args->draw_resolution_scale_y : args->draw_resolution_scale_x;
+          i ? draw_resolution_scale_y : draw_resolution_scale_x;
       float offset_axis = offset_base_xy[i] + offset_add_xy[i];
       float scale_axis = scale_xy[i];
       float scale_axis_abs = std::abs(scale_xy[i]);
@@ -408,14 +419,11 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
         // space, a region previously outside -W...W should end up within it, so
         // the scale should be < 1.
         float axis_extent_rounded = float(axis_extent_int);
-        float inv_axis_extent_rounded =
-            ArchReciprocalRefined(axis_extent_rounded);
-
-        ndc_scale_axis = scale_axis * 2.0f * inv_axis_extent_rounded;
+        ndc_scale_axis = scale_axis * 2.0f / axis_extent_rounded;
         // Move the origin of the snapped coordinates back to the original one.
         ndc_offset_axis = (float(offset_axis) -
                            (float(axis_0_int) + axis_extent_rounded * 0.5f)) *
-                          2.0f * inv_axis_extent_rounded;
+                          2.0f / axis_extent_rounded;
       } else {
         // Empty viewport (everything outside the viewport scissor).
         ndc_scale_axis = 1.0f;
@@ -486,7 +494,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       ndc_scale[2] = 0.5f;
       ndc_offset[2] = 0.5f;
     }
-    if (args->pixel_shader_writes_depth) {
+    if (pixel_shader_writes_depth) {
       // Allow the pixel shader to write any depth value since
       // PA_SC_VPORT_ZMIN/ZMAX isn't present on the Adreno 200; guest pixel
       // shaders don't have access to the original Z in the viewport space
@@ -504,7 +512,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       // Direct3D 12 doesn't allow reverse depth range - on some drivers it
       // works, on some drivers it doesn't, actually, but it was never
       // explicitly allowed by the specification.
-      if (!args->allow_reverse_z && z_min > z_max) {
+      if (!allow_reverse_z && z_min > z_max) {
         std::swap(z_min, z_max);
         ndc_scale[2] = -ndc_scale[2];
         ndc_offset[2] = 1.0f - ndc_offset[2];
@@ -512,9 +520,10 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
     }
   }
 
-  if (args->normalized_depth_control.z_enable &&
-      args->depth_format == xenos::DepthRenderTargetFormat::kD24FS8) {
-    if (args->convert_z_to_float24) {
+  if (normalized_depth_control.z_enable &&
+      regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+          xenos::DepthRenderTargetFormat::kD24FS8) {
+    if (convert_z_to_float24) {
       // Need to adjust the bounds that the resulting depth values will be
       // clamped to after the pixel shader. Preferring adding some error to
       // interpolated Z instead if conversion can't be done exactly, without
@@ -525,7 +534,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       z_min = xenos::Float20e4To32(xenos::Float32To20e4(z_min, true));
       z_max = xenos::Float20e4To32(xenos::Float32To20e4(z_max, true));
     }
-    if (args->full_float24_in_0_to_1) {
+    if (full_float24_in_0_to_1) {
       // Remap the full [0...2) float24 range to [0...1) support data round-trip
       // during render target ownership transfer of EDRAM tiles through depth
       // input without unrestricted depth range.
@@ -536,7 +545,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
   viewport_info_out.z_min = z_min;
   viewport_info_out.z_max = z_max;
 
-  if (args->origin_bottom_left) {
+  if (origin_bottom_left) {
     ndc_scale[1] = -ndc_scale[1];
     ndc_offset[1] = -ndc_offset[1];
   }
@@ -545,76 +554,31 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
     viewport_info_out.ndc_offset[i] = ndc_offset[i];
   }
 }
-template <bool clamp_to_surface_pitch>
-static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
-                                  Scissor& XE_RESTRICT scissor_out) {
-#if XE_ARCH_AMD64 == 1
+
+void GetScissor(const RegisterFile& regs, Scissor& scissor_out,
+                bool clamp_to_surface_pitch) {
   auto pa_sc_window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
+  int32_t tl_x = int32_t(pa_sc_window_scissor_tl.tl_x);
+  int32_t tl_y = int32_t(pa_sc_window_scissor_tl.tl_y);
   auto pa_sc_window_scissor_br = regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>();
-  auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
-  auto pa_sc_screen_scissor_tl = regs.Get<reg::PA_SC_SCREEN_SCISSOR_TL>();
-  auto pa_sc_screen_scissor_br = regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>();
-  uint32_t surface_pitch = 0;
-  if constexpr (clamp_to_surface_pitch) {
-    surface_pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;
+  int32_t br_x = int32_t(pa_sc_window_scissor_br.br_x);
+  int32_t br_y = int32_t(pa_sc_window_scissor_br.br_y);
+  if (!pa_sc_window_scissor_tl.window_offset_disable) {
+    auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
+    tl_x += pa_sc_window_offset.window_x_offset;
+    tl_y += pa_sc_window_offset.window_y_offset;
+    br_x += pa_sc_window_offset.window_x_offset;
+    br_y += pa_sc_window_offset.window_y_offset;
   }
-  uint32_t pa_sc_window_scissor_tl_tl_x = pa_sc_window_scissor_tl.tl_x,
-           pa_sc_window_scissor_tl_tl_y = pa_sc_window_scissor_tl.tl_y,
-           pa_sc_window_scissor_br_br_x = pa_sc_window_scissor_br.br_x,
-           pa_sc_window_scissor_br_br_y = pa_sc_window_scissor_br.br_y,
-           pa_sc_window_offset_window_x_offset =
-               pa_sc_window_offset.window_x_offset,
-           pa_sc_window_offset_window_y_offset =
-               pa_sc_window_offset.window_y_offset,
-           pa_sc_screen_scissor_tl_tl_x = pa_sc_screen_scissor_tl.tl_x,
-           pa_sc_screen_scissor_tl_tl_y = pa_sc_screen_scissor_tl.tl_y,
-           pa_sc_screen_scissor_br_br_x = pa_sc_screen_scissor_br.br_x,
-           pa_sc_screen_scissor_br_br_y = pa_sc_screen_scissor_br.br_y;
-
-  int32_t tl_x = int32_t(pa_sc_window_scissor_tl_tl_x);
-  int32_t tl_y = int32_t(pa_sc_window_scissor_tl_tl_y);
-
-  int32_t br_x = int32_t(pa_sc_window_scissor_br_br_x);
-  int32_t br_y = int32_t(pa_sc_window_scissor_br_br_y);
-
-  __m128i tmp1 = _mm_setr_epi32(tl_x, tl_y, br_x, br_y);
-  __m128i pa_sc_scissor = _mm_setr_epi32(
-      pa_sc_screen_scissor_tl_tl_x, pa_sc_screen_scissor_tl_tl_y,
-      pa_sc_screen_scissor_br_br_x, pa_sc_screen_scissor_br_br_y);
-#if XE_PLATFORM_WIN32
-  __m128i xyoffsetadd = _mm_cvtsi64x_si128(
-      static_cast<unsigned long long>(pa_sc_window_offset_window_x_offset) |
-      (static_cast<unsigned long long>(pa_sc_window_offset_window_y_offset)
-       << 32));
-#else
-  __m128i xyoffsetadd = _mm_cvtsi64_si128(
-      static_cast<unsigned long long>(pa_sc_window_offset_window_x_offset) |
-      (static_cast<unsigned long long>(pa_sc_window_offset_window_y_offset)
-       << 32));
-#endif
-  xyoffsetadd = _mm_unpacklo_epi64(xyoffsetadd, xyoffsetadd);
-  // chrispy: put this here to make it clear that the shift by 31 is extracting
-  // this field
-  XE_MAYBE_UNUSED
-  uint32_t window_offset_disable_reference =
-      pa_sc_window_scissor_tl.window_offset_disable;
-
-  __m128i offset_disable_mask = _mm_set1_epi32(pa_sc_window_scissor_tl.value);
-
-  __m128i addend = _mm_blendv_epi8(xyoffsetadd, _mm_setzero_si128(),
-                                   _mm_srai_epi32(offset_disable_mask, 31));
-
-  tmp1 = _mm_add_epi32(tmp1, addend);
-
-  //}
   // Screen scissor is not used by Direct3D 9 (always 0, 0 to 8192, 8192), but
   // still handled here for completeness.
-  __m128i lomax = _mm_max_epi32(tmp1, pa_sc_scissor);
-  __m128i himin = _mm_min_epi32(tmp1, pa_sc_scissor);
-
-  tmp1 = _mm_blend_epi16(lomax, himin, 0b11110000);
-
-  if constexpr (clamp_to_surface_pitch) {
+  auto pa_sc_screen_scissor_tl = regs.Get<reg::PA_SC_SCREEN_SCISSOR_TL>();
+  tl_x = std::max(tl_x, int32_t(pa_sc_screen_scissor_tl.tl_x));
+  tl_y = std::max(tl_y, int32_t(pa_sc_screen_scissor_tl.tl_y));
+  auto pa_sc_screen_scissor_br = regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>();
+  br_x = std::min(br_x, int32_t(pa_sc_screen_scissor_br.br_x));
+  br_y = std::min(br_y, int32_t(pa_sc_screen_scissor_br.br_y));
+  if (clamp_to_surface_pitch) {
     // Clamp the horizontal scissor to surface_pitch for safety, in case that's
     // not done by the guest for some reason (it's not when doing draws without
     // clipping in Direct3D 9, for instance), to prevent overflow - this is
@@ -622,78 +586,7 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
     // rasterization without render target width at all (pixel shader
     // interlock-based custom RB implementations) and using conventional render
     // targets, but padded to EDRAM tiles.
-    tmp1 = _mm_blend_epi16(
-        tmp1, _mm_min_epi32(tmp1, _mm_set1_epi32(surface_pitch)), 0b00110011);
-  }
-
-  tmp1 = _mm_max_epi32(tmp1, _mm_setzero_si128());
-
-  __m128i tl_in_high = _mm_unpacklo_epi64(tmp1, tmp1);
-
-  __m128i final_br = _mm_max_epi32(tmp1, tl_in_high);
-  final_br = _mm_sub_epi32(final_br, tl_in_high);
-  __m128i scissor_res = _mm_blend_epi16(tmp1, final_br, 0b11110000);
-  _mm_storeu_si128((__m128i*)&scissor_out, scissor_res);
-#else
-  auto pa_sc_window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
-  auto pa_sc_window_scissor_br = regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>();
-  auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
-  auto pa_sc_screen_scissor_tl = regs.Get<reg::PA_SC_SCREEN_SCISSOR_TL>();
-  auto pa_sc_screen_scissor_br = regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>();
-  uint32_t surface_pitch = 0;
-  if constexpr (clamp_to_surface_pitch) {
-    surface_pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;
-  }
-  uint32_t pa_sc_window_scissor_tl_tl_x = pa_sc_window_scissor_tl.tl_x,
-           pa_sc_window_scissor_tl_tl_y = pa_sc_window_scissor_tl.tl_y,
-           pa_sc_window_scissor_br_br_x = pa_sc_window_scissor_br.br_x,
-           pa_sc_window_scissor_br_br_y = pa_sc_window_scissor_br.br_y,
-           pa_sc_window_offset_window_x_offset =
-               pa_sc_window_offset.window_x_offset,
-           pa_sc_window_offset_window_y_offset =
-               pa_sc_window_offset.window_y_offset,
-           pa_sc_screen_scissor_tl_tl_x = pa_sc_screen_scissor_tl.tl_x,
-           pa_sc_screen_scissor_tl_tl_y = pa_sc_screen_scissor_tl.tl_y,
-           pa_sc_screen_scissor_br_br_x = pa_sc_screen_scissor_br.br_x,
-           pa_sc_screen_scissor_br_br_y = pa_sc_screen_scissor_br.br_y;
-
-  int32_t tl_x = int32_t(pa_sc_window_scissor_tl_tl_x);
-  int32_t tl_y = int32_t(pa_sc_window_scissor_tl_tl_y);
-
-  int32_t br_x = int32_t(pa_sc_window_scissor_br_br_x);
-  int32_t br_y = int32_t(pa_sc_window_scissor_br_br_y);
-
-  // chrispy: put this here to make it clear that the shift by 31 is extracting
-  // this field
-  XE_MAYBE_UNUSED
-  uint32_t window_offset_disable_reference =
-      pa_sc_window_scissor_tl.window_offset_disable;
-  int32_t window_offset_disable_mask =
-      ~(static_cast<int32_t>(pa_sc_window_scissor_tl.value) >> 31);
-  // if (!pa_sc_window_scissor_tl.window_offset_disable) {
-
-  tl_x += pa_sc_window_offset_window_x_offset & window_offset_disable_mask;
-  tl_y += pa_sc_window_offset_window_y_offset & window_offset_disable_mask;
-  br_x += pa_sc_window_offset_window_x_offset & window_offset_disable_mask;
-  br_y += pa_sc_window_offset_window_y_offset & window_offset_disable_mask;
-  //}
-  // Screen scissor is not used by Direct3D 9 (always 0, 0 to 8192, 8192), but
-  // still handled here for completeness.
-
-  tl_x = std::max(tl_x, int32_t(pa_sc_screen_scissor_tl_tl_x));
-  tl_y = std::max(tl_y, int32_t(pa_sc_screen_scissor_tl_tl_y));
-
-  br_x = std::min(br_x, int32_t(pa_sc_screen_scissor_br_br_x));
-  br_y = std::min(br_y, int32_t(pa_sc_screen_scissor_br_br_y));
-  if constexpr (clamp_to_surface_pitch) {
-    // Clamp the horizontal scissor to surface_pitch for safety, in case that's
-    // not done by the guest for some reason (it's not when doing draws without
-    // clipping in Direct3D 9, for instance), to prevent overflow - this is
-    // important for host implementations, both based on target-indepedent
-    // rasterization without render target width at all (pixel shader
-    // interlock-based custom RB implementations) and using conventional render
-    // targets, but padded to EDRAM tiles.
-
+    uint32_t surface_pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;
     tl_x = std::min(tl_x, int32_t(surface_pitch));
     br_x = std::min(br_x, int32_t(surface_pitch));
   }
@@ -710,16 +603,6 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
   scissor_out.offset[1] = uint32_t(tl_y);
   scissor_out.extent[0] = uint32_t(br_x - tl_x);
   scissor_out.extent[1] = uint32_t(br_y - tl_y);
-#endif
-}
-
-void GetScissor(const RegisterFile& XE_RESTRICT regs,
-                Scissor& XE_RESTRICT scissor_out, bool clamp_to_surface_pitch) {
-  if (clamp_to_surface_pitch) {
-    return GetScissorTmpl<true>(regs, scissor_out);
-  } else {
-    return GetScissorTmpl<false>(regs, scissor_out);
-  }
 }
 
 uint32_t GetNormalizedColorMask(const RegisterFile& regs,
@@ -790,8 +673,7 @@ void AddMemExportRanges(const RegisterFile& regs, const Shader& shader,
     const FormatInfo& format_info =
         *FormatInfo::Get(xenos::TextureFormat(stream.format));
     if (format_info.type != FormatType::kResolvable) {
-      XELOGE("Unsupported memexport format {}",
-             FormatInfo::GetName(format_info.format));
+      XELOGE("Unsupported memexport format {}", format_info.name);
       // Translated shaders shouldn't be performing exports with an unknown
       // format, the draw can still be performed.
       continue;
@@ -806,7 +688,7 @@ void AddMemExportRanges(const RegisterFile& regs, const Shader& shader,
         XELOGW(
             "Memexport done to an unresearched format {}, report the game to "
             "Xenia developers!",
-            FormatInfo::GetName(format_info.format));
+            format_info.name);
         break;
       default:
         break;
@@ -830,9 +712,6 @@ void AddMemExportRanges(const RegisterFile& regs, const Shader& shader,
     }
   }
 }
-
-XE_NOINLINE
-XE_NOALIAS
 
 xenos::CopySampleSelect SanitizeCopySampleSelect(
     xenos::CopySampleSelect copy_sample_select, xenos::MsaaSamples msaa_samples,
@@ -908,7 +787,7 @@ void GetResolveEdramTileSpan(ResolveEdramInfo edram_info,
   rows_out = y1 - y0;
 }
 
-constexpr ResolveCopyShaderInfo
+const ResolveCopyShaderInfo
     resolve_copy_shader_info[size_t(ResolveCopyShaderIndex::kCount)] = {
         {"Resolve Copy Fast 32bpp 1x/2xMSAA", false, 4, 4, 6, 3},
         {"Resolve Copy Fast 32bpp 4xMSAA", false, 4, 4, 6, 3},
@@ -920,7 +799,7 @@ constexpr ResolveCopyShaderInfo
         {"Resolve Copy Full 64bpp", true, 2, 4, 5, 3},
         {"Resolve Copy Full 128bpp", true, 2, 4, 4, 3},
 };
-XE_MSVC_OPTIMIZE_SMALL()
+
 bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                     TraceWriter& trace_writer, uint32_t draw_resolution_scale_x,
                     uint32_t draw_resolution_scale_y,
@@ -1052,9 +931,8 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
            xenos::kMaxResolveSize);
     y1 = y0 + int32_t(xenos::kMaxResolveSize);
   }
-  // fails in forza horizon 1
-  // x0 is 0, x1 is 0x100, y0 is 0x100, y1 is 0x100
-  assert_true(x0 <= x1 && y0 <= y1);
+
+  assert_true(x0 < x1 && y0 < y1);
   if (x0 >= x1 || y0 >= y1) {
     XELOGE("Resolve region is empty");
     return false;
@@ -1083,8 +961,7 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
         "{}",
         1 << uint32_t(rb_surface_info.msaa_samples),
         is_depth ? "depth" : "color",
-        static_cast<uint32_t>(rb_copy_control.copy_sample_select),
-        static_cast<uint32_t>(sample_select));
+        uint32_t(rb_copy_control.copy_sample_select), uint32_t(sample_select));
   }
   info_out.copy_dest_coordinate_info.copy_sample_select = sample_select;
   // Get the format to pass to the shader in a unified way - for depth (for
@@ -1115,8 +992,8 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
       XELOGW(
           "Resolving to format {}, which is untested - treating like {}. "
           "Report the game to Xenia developers!",
-          FormatInfo::GetName(dest_format),
-          FormatInfo::GetName(dest_closest_format));
+          FormatInfo::Get(dest_format)->name,
+          FormatInfo::Get(dest_closest_format)->name);
     }
   }
 
@@ -1188,7 +1065,7 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
     }
   } else {
     XELOGE("Tried to resolve to format {}, which is not a ColorFormat",
-           FormatInfo::GetName(dest_format));
+           dest_format_info.name);
     copy_dest_extent_start = copy_dest_base_adjusted;
     copy_dest_extent_end = copy_dest_base_adjusted;
   }
@@ -1297,7 +1174,6 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
   info_out.rb_color_clear = regs[XE_GPU_REG_RB_COLOR_CLEAR];
   info_out.rb_color_clear_lo = regs[XE_GPU_REG_RB_COLOR_CLEAR_LO];
 
-#if 0
   XELOGD(
       "Resolve: {},{} <= x,y < {},{}, {} -> {} at 0x{:08X} (potentially "
       "modified memory range 0x{:08X} to 0x{:08X})",
@@ -1306,12 +1182,12 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                      xenos::DepthRenderTargetFormat(depth_edram_info.format))
                : xenos::GetColorRenderTargetFormatName(
                      xenos::ColorRenderTargetFormat(color_edram_info.format)),
-      FormatInfo::GetName(dest_format), rb_copy_dest_base, copy_dest_extent_start,
+      dest_format_info.name, rb_copy_dest_base, copy_dest_extent_start,
       copy_dest_extent_end);
-#endif
+
   return true;
 }
-XE_MSVC_OPTIMIZE_REVERT()
+
 ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
     uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y,
     ResolveCopyShaderConstants& constants_out, uint32_t& group_count_x_out,

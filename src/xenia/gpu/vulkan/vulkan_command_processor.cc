@@ -19,7 +19,6 @@
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/gpu_flags.h"
-#include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_shader_translator.h"
@@ -28,8 +27,6 @@
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/gpu/xenos.h"
-#include "xenia/kernel/kernel_state.h"
-#include "xenia/kernel/user_module.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 
@@ -1238,14 +1235,7 @@ void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
     }
   }
 }
-void VulkanCommandProcessor::WriteRegistersFromMem(uint32_t start_index,
-                                                   uint32_t* base,
-                                                   uint32_t num_registers) {
-  for (uint32_t i = 0; i < num_registers; ++i) {
-    uint32_t data = xe::load_and_swap<uint32_t>(base + i);
-    VulkanCommandProcessor::WriteRegister(start_index + i, data);
-  }
-}
+
 void VulkanCommandProcessor::SparseBindBuffer(
     VkBuffer buffer, uint32_t bind_count, const VkSparseMemoryBind* binds,
     VkPipelineStageFlags wait_stage_mask) {
@@ -2478,23 +2468,19 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // life. Or even disregard the viewport bounds range in the fragment shader
   // interlocks case completely - apply the viewport and the scissor offset
   // directly to pixel address and to things like ps_param_gen.
-  uint32_t draw_resolution_scale_x = texture_cache_->draw_resolution_scale_x();
-  uint32_t draw_resolution_scale_y = texture_cache_->draw_resolution_scale_y();
-  draw_util::GetViewportInfoArgs gviargs{};
-  gviargs.Setup(draw_resolution_scale_x, draw_resolution_scale_y,
-                texture_cache_->draw_resolution_scale_x_divisor(),
-                texture_cache_->draw_resolution_scale_y_divisor(), false,
-                device_properties.maxViewportDimensions[0],
-                device_properties.maxViewportDimensions[1], true,
-                normalized_depth_control, false, host_render_targets_used,
-                pixel_shader && pixel_shader->writes_depth());
-  gviargs.SetupRegisterValues(regs);
+  draw_util::GetHostViewportInfo(
+      regs, texture_cache_->draw_resolution_scale_x(),
+      texture_cache_->draw_resolution_scale_y(), false,
+      device_properties.maxViewportDimensions[0],
+      device_properties.maxViewportDimensions[1], true,
+      normalized_depth_control, false, host_render_targets_used,
+      pixel_shader && pixel_shader->writes_depth(), viewport_info);
 
-  draw_util::GetHostViewportInfo(&gviargs, viewport_info);
   // Update dynamic graphics pipeline state.
   UpdateDynamicState(viewport_info, primitive_polygonal,
-                     normalized_depth_control, draw_resolution_scale_x,
-                     draw_resolution_scale_y);
+                     normalized_depth_control,
+                     texture_cache_->draw_resolution_scale_x(),
+                     texture_cache_->draw_resolution_scale_y());
 
   auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
 
@@ -2756,7 +2742,7 @@ bool VulkanCommandProcessor::IssueCopy() {
       // Ensure shared memory is ready for transfer.
       shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
 
-      // Copy GPU buffer → staging buffer.
+      // Copy GPU buffer to staging buffer.
       VkBufferCopy copy_region = {};
       copy_region.srcOffset = written_address;
       copy_region.dstOffset = 0;
@@ -4753,8 +4739,6 @@ uint32_t VulkanCommandProcessor::WriteTransientTextureBindings(
   return descriptor_set_write_count;
 }
 
-#define COMMAND_PROCESSOR VulkanCommandProcessor
-#include "../pm4_command_processor_implement.h"
 }  // namespace vulkan
 }  // namespace gpu
 }  // namespace xe

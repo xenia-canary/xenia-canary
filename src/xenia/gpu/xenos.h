@@ -46,9 +46,6 @@ enum class PrimitiveType : uint32_t {
   kTriangleStrip = 0x06,
   kTriangleWithWFlags = 0x07,
   kRectangleList = 0x08,
-  kUnused1 = 0x09,
-  kUnused2 = 0x0A,
-  kUnused3 = 0x0B,
   kLineLoop = 0x0C,
   kQuadList = 0x0D,
   kQuadStrip = 0x0E,
@@ -324,14 +321,7 @@ constexpr bool IsColorRenderTargetFormat64bpp(ColorRenderTargetFormat format) {
          format == ColorRenderTargetFormat::k_32_32_FLOAT;
 }
 
-// if 0, 1
-// if 1, 2
-// if 3, 4
-// 2 bits per entry, shift and add 1
-
-using ColorFormatComponentTable = uint32_t;
-
-static constexpr uint32_t GetComponentCountConst(
+inline uint32_t GetColorRenderTargetFormatComponentCount(
     ColorRenderTargetFormat format) {
   switch (format) {
     case ColorRenderTargetFormat::k_8_8_8_8:
@@ -342,51 +332,19 @@ static constexpr uint32_t GetComponentCountConst(
     case ColorRenderTargetFormat::k_16_16_16_16_FLOAT:
     case ColorRenderTargetFormat::k_2_10_10_10_AS_10_10_10_10:
     case ColorRenderTargetFormat::k_2_10_10_10_FLOAT_AS_16_16_16_16:
-      return 4 - 1;
+      return 4;
     case ColorRenderTargetFormat::k_16_16:
     case ColorRenderTargetFormat::k_16_16_FLOAT:
     case ColorRenderTargetFormat::k_32_32_FLOAT:
-      return 2 - 1;
+      return 2;
     case ColorRenderTargetFormat::k_32_FLOAT:
-      return 1 - 1;
+      return 1;
     default:
+      assert_unhandled_case(format);
       return 0;
   }
 }
-namespace detail {
-static constexpr uint32_t encode_format_component_table() {
-  uint32_t result = 0;
 
-#define ADDFORMAT(name)                                           \
-  result |= GetComponentCountConst(ColorRenderTargetFormat::name) \
-            << (static_cast<uint32_t>(ColorRenderTargetFormat::name) * 2)
-  ADDFORMAT(k_8_8_8_8);
-  ADDFORMAT(k_8_8_8_8_GAMMA);
-  ADDFORMAT(k_2_10_10_10);
-  ADDFORMAT(k_2_10_10_10_FLOAT);
-
-  ADDFORMAT(k_16_16_16_16);
-  ADDFORMAT(k_16_16_16_16_FLOAT);
-  ADDFORMAT(k_2_10_10_10_AS_10_10_10_10);
-  ADDFORMAT(k_2_10_10_10_FLOAT_AS_16_16_16_16);
-
-  ADDFORMAT(k_16_16);
-  ADDFORMAT(k_16_16_FLOAT);
-  ADDFORMAT(k_32_32_FLOAT);
-  ADDFORMAT(k_32_FLOAT);
-  return result;
-}
-constexpr uint32_t color_format_component_table =
-    encode_format_component_table();
-
-}  // namespace detail
-constexpr uint32_t GetColorRenderTargetFormatComponentCount(
-    ColorRenderTargetFormat format) {
-  return ((detail::color_format_component_table >>
-           (static_cast<uint32_t>(format) * 2)) &
-          0b11) +
-         1;
-}
 // Returns the version of the format with the same packing and meaning of values
 // stored in it, but without blending precision modifiers.
 constexpr ColorRenderTargetFormat GetStorageColorFormat(
@@ -419,11 +377,9 @@ float Float7e3To32(uint32_t f10);
 // floating-point number.
 // Converts an IEEE-754 32-bit floating-point number to Xenos floating-point
 // depth, rounding to the nearest even or towards zero.
-XE_NOALIAS
 uint32_t Float32To20e4(float f32, bool round_to_nearest_even) noexcept;
 // Converts Xenos floating-point depth in bits 0:23 (not clamping) to an
 // IEEE-754 32-bit floating-point number.
-XE_NOALIAS
 float Float20e4To32(uint32_t f24) noexcept;
 // Converts 24-bit unorm depth in the value (not clamping) to an IEEE-754 32-bit
 // floating-point number.
@@ -1087,9 +1043,8 @@ inline uint16_t GpuSwap(uint16_t value, Endian endianness) {
       return value;
   }
 }
-XE_FORCEINLINE
-XE_NOALIAS
-static uint32_t GpuSwapInline(uint32_t value, Endian endianness) {
+
+inline uint32_t GpuSwap(uint32_t value, Endian endianness) {
   switch (endianness) {
     default:
     case Endian::kNone:
@@ -1106,11 +1061,6 @@ static uint32_t GpuSwapInline(uint32_t value, Endian endianness) {
       // Swap half words.
       return ((value >> 16) & 0xFFFF) | (value << 16);
   }
-}
-XE_NOINLINE
-XE_NOALIAS
-static uint32_t GpuSwap(uint32_t value, Endian endianness) {
-  return GpuSwapInline(value, endianness);
 }
 
 inline float GpuSwap(float value, Endian endianness) {
@@ -1707,11 +1657,7 @@ inline uint32_t MakePacketType3(Type3Opcode opcode, uint16_t count,
   return (3u << 30) | (((count - 1) & 0x3FFF) << 16) | ((opcode & 0x7F) << 8) |
          (predicate ? 1 : 0);
 }
-/*
- * pretty english descriptions of enumeration values for the packet disassembler
- */
-const char* GetEndianEnglishDescription(xenos::Endian endian);
-const char* GetPrimitiveTypeEnglishDescription(xenos::PrimitiveType prim_type);
+
 }  // namespace xenos
 }  // namespace gpu
 }  // namespace xe

@@ -9,7 +9,10 @@
 
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
@@ -370,21 +373,18 @@ bool VulkanSharedMemory::AllocateSparseHostGpuMemoryRange(
 }
 
 bool VulkanSharedMemory::UploadRanges(
-    const std::pair<uint32_t, uint32_t>* upload_page_ranges,
-    uint32_t num_upload_ranges) {
-  if (!num_upload_ranges) {
+    const std::vector<std::pair<uint32_t, uint32_t>>& upload_page_ranges) {
+  if (upload_page_ranges.empty()) {
     return true;
   }
-
-  auto& range_front = upload_page_ranges[0];
-  auto& range_back = upload_page_ranges[num_upload_ranges - 1];
-
   // upload_page_ranges are sorted, use them to determine the range for the
   // ordering barrier.
   Use(Usage::kTransferDestination,
-      std::make_pair(range_front.first << page_size_log2(),
-                     (range_back.first + range_back.second - range_front.first)
-                         << page_size_log2()));
+      std::make_pair(
+          upload_page_ranges.front().first << page_size_log2(),
+          (upload_page_ranges.back().first + upload_page_ranges.back().second -
+           upload_page_ranges.front().first)
+              << page_size_log2()));
   command_processor_.SubmitBarriers(true);
   DeferredCommandBuffer& command_buffer =
       command_processor_.deferred_command_buffer();
@@ -392,11 +392,9 @@ bool VulkanSharedMemory::UploadRanges(
   bool successful = true;
   upload_regions_.clear();
   VkBuffer upload_buffer_previous = VK_NULL_HANDLE;
-
-  // for (auto upload_range : upload_page_ranges) {
-  for (unsigned int i = 0; i < num_upload_ranges; ++i) {
-    uint32_t upload_range_start = upload_page_ranges[i].first;
-    uint32_t upload_range_length = upload_page_ranges[i].second;
+  for (auto upload_range : upload_page_ranges) {
+    uint32_t upload_range_start = upload_range.first;
+    uint32_t upload_range_length = upload_range.second;
     trace_writer_.WriteMemoryRead(upload_range_start << page_size_log2(),
                                   upload_range_length << page_size_log2());
     while (upload_range_length) {
