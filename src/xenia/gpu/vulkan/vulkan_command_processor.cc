@@ -117,8 +117,8 @@ void VulkanCommandProcessor::ReturnFromWait() {
   CommandProcessor::ReturnFromWait();
 }
 
-bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(uint32_t packet,
-                                                               uint32_t count) {
+bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
+    uint32_t packet, uint32_t count) {
   if (!use_host_occlusion_queries_) {
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
   }
@@ -3013,8 +3013,8 @@ bool VulkanCommandProcessor::InitializeOcclusionQueryResources() {
   }
 
   if (dfn.vkBindBufferMemory(device, occlusion_query_readback_buffer_,
-                             occlusion_query_readback_memory_, 0) !=
-      VK_SUCCESS) {
+                             occlusion_query_readback_memory_,
+                             0) != VK_SUCCESS) {
     XELOGW(
         "VulkanCommandProcessor: Failed to bind occlusion query readback "
         "memory.");
