@@ -3135,8 +3135,7 @@ bool VulkanCommandProcessor::EndGuestOcclusionQuery(
   command_buffer.CmdVkEndQuery(occlusion_query_pool_, host_index);
   command_buffer.CmdVkCopyQueryPoolResults(
       occlusion_query_pool_, host_index, 1, occlusion_query_readback_buffer_,
-      sizeof(uint64_t) * host_index, sizeof(uint64_t),
-      VK_QUERY_RESULT_64_BIT);
+      sizeof(uint64_t) * host_index, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
   pending_occlusion_queries_.push_back(
       {host_index, GetCurrentSubmission(),
        active_occlusion_query_.sample_count_address});
