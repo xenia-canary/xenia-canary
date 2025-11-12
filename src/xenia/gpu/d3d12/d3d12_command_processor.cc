@@ -102,8 +102,8 @@ void D3D12CommandProcessor::ReturnFromWait() {
   CommandProcessor::ReturnFromWait();
 }
 
-bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
-    uint32_t packet, uint32_t count) {
+bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(uint32_t packet,
+                                                               uint32_t count) {
   if (!use_host_occlusion_queries_) {
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
   }
@@ -115,20 +115,17 @@ bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
 
   uint32_t sample_count_addr =
       register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
-  auto* sample_counts =
-      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-          sample_count_addr);
+  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+      sample_count_addr);
   if (!sample_counts) {
     DisableHostOcclusionQueries();
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
   }
 
-  bool is_end_via_z_pass =
-      sample_counts->ZPass_A == kQueryFinished &&
-      sample_counts->ZPass_B == kQueryFinished;
-  bool is_end_via_z_fail =
-      sample_counts->ZFail_A == kQueryFinished &&
-      sample_counts->ZFail_B == kQueryFinished;
+  bool is_end_via_z_pass = sample_counts->ZPass_A == kQueryFinished &&
+                           sample_counts->ZPass_B == kQueryFinished;
+  bool is_end_via_z_fail = sample_counts->ZFail_A == kQueryFinished &&
+                           sample_counts->ZFail_B == kQueryFinished;
   bool is_end = is_end_via_z_pass || is_end_via_z_fail;
 
   if (!is_end) {
@@ -5228,9 +5225,9 @@ void D3D12CommandProcessor::DisableHostOcclusionQueries() {
 bool D3D12CommandProcessor::AcquireOcclusionQueryIndex(
     uint32_t& host_index_out) {
   if (occlusion_query_cursor_ >= kMaxOcclusionQueries) {
-    ProcessReadyOcclusionQueries(
-        submission_fence_ ? submission_fence_->GetCompletedValue()
-                          : UINT64_MAX);
+    ProcessReadyOcclusionQueries(submission_fence_
+                                     ? submission_fence_->GetCompletedValue()
+                                     : UINT64_MAX);
     if (!pending_occlusion_queries_.empty()) {
       if (!AwaitAllQueueOperationsCompletion()) {
         return false;
@@ -5310,9 +5307,8 @@ uint64_t D3D12CommandProcessor::NormalizeOcclusionSamples(
 
 void D3D12CommandProcessor::WriteGuestOcclusionResult(
     uint32_t sample_count_address, uint64_t samples) {
-  auto* sample_counts =
-      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-          sample_count_address);
+  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+      sample_count_address);
   if (!sample_counts) {
     return;
   }
@@ -5330,8 +5326,7 @@ void D3D12CommandProcessor::WriteGuestOcclusionResult(
 
 void D3D12CommandProcessor::ProcessReadyOcclusionQueries(
     uint64_t completed_submission_hint) {
-  if (!use_host_occlusion_queries_ ||
-      pending_occlusion_queries_.empty() ||
+  if (!use_host_occlusion_queries_ || pending_occlusion_queries_.empty() ||
       occlusion_query_readback_ == nullptr) {
     return;
   }
@@ -5349,13 +5344,11 @@ void D3D12CommandProcessor::ProcessReadyOcclusionQueries(
   read_range.Begin = 0;
   read_range.End = sizeof(uint64_t) * kMaxOcclusionQueries;
   void* mapping = nullptr;
-  if (FAILED(
-          occlusion_query_readback_->Map(0, &read_range, &mapping))) {
+  if (FAILED(occlusion_query_readback_->Map(0, &read_range, &mapping))) {
     DisableHostOcclusionQueries();
     return;
   }
-  const uint64_t* results =
-      reinterpret_cast<const uint64_t*>(mapping);
+  const uint64_t* results = reinterpret_cast<const uint64_t*>(mapping);
   while (!pending_occlusion_queries_.empty() &&
          pending_occlusion_queries_.front().submission <=
              completed_submission) {

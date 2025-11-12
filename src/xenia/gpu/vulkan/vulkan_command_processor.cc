@@ -117,8 +117,8 @@ void VulkanCommandProcessor::ReturnFromWait() {
   CommandProcessor::ReturnFromWait();
 }
 
-bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
-    uint32_t packet, uint32_t count) {
+bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(uint32_t packet,
+                                                               uint32_t count) {
   if (!use_host_occlusion_queries_) {
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
   }
@@ -130,20 +130,17 @@ bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
 
   uint32_t sample_count_addr =
       register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
-  auto* sample_counts =
-      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-          sample_count_addr);
+  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+      sample_count_addr);
   if (!sample_counts) {
     DisableHostOcclusionQueries();
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
   }
 
-  bool is_end_via_z_pass =
-      sample_counts->ZPass_A == kQueryFinished &&
-      sample_counts->ZPass_B == kQueryFinished;
-  bool is_end_via_z_fail =
-      sample_counts->ZFail_A == kQueryFinished &&
-      sample_counts->ZFail_B == kQueryFinished;
+  bool is_end_via_z_pass = sample_counts->ZPass_A == kQueryFinished &&
+                           sample_counts->ZPass_B == kQueryFinished;
+  bool is_end_via_z_fail = sample_counts->ZFail_A == kQueryFinished &&
+                           sample_counts->ZFail_B == kQueryFinished;
   bool is_end = is_end_via_z_pass || is_end_via_z_fail;
 
   if (!is_end) {
@@ -3025,10 +3022,10 @@ bool VulkanCommandProcessor::InitializeOcclusionQueryResources() {
     return false;
   }
 
-  if (dfn.vkMapMemory(device, occlusion_query_readback_memory_, 0,
-                      VK_WHOLE_SIZE, 0,
-                      reinterpret_cast<void**>(
-                          &occlusion_query_readback_mapping_)) != VK_SUCCESS) {
+  if (dfn.vkMapMemory(
+          device, occlusion_query_readback_memory_, 0, VK_WHOLE_SIZE, 0,
+          reinterpret_cast<void**>(&occlusion_query_readback_mapping_)) !=
+      VK_SUCCESS) {
     XELOGW(
         "VulkanCommandProcessor: Failed to map occlusion query readback "
         "memory.");
@@ -3047,8 +3044,8 @@ void VulkanCommandProcessor::ShutdownOcclusionQueryResources() {
   const ui::vulkan::VulkanDevice* vulkan_device = GetVulkanDevice();
   if (occlusion_query_readback_mapping_ &&
       occlusion_query_readback_memory_ != VK_NULL_HANDLE && vulkan_device) {
-    vulkan_device->functions().vkUnmapMemory(
-        vulkan_device->device(), occlusion_query_readback_memory_);
+    vulkan_device->functions().vkUnmapMemory(vulkan_device->device(),
+                                             occlusion_query_readback_memory_);
   }
   occlusion_query_readback_mapping_ = nullptr;
   if (occlusion_query_readback_buffer_ != VK_NULL_HANDLE && vulkan_device) {
@@ -3164,9 +3161,8 @@ uint64_t VulkanCommandProcessor::NormalizeOcclusionSamples(
 
 void VulkanCommandProcessor::WriteGuestOcclusionResult(
     uint32_t sample_count_address, uint64_t samples) {
-  auto* sample_counts =
-      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-          sample_count_address);
+  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+      sample_count_address);
   if (!sample_counts) {
     return;
   }
@@ -3184,8 +3180,7 @@ void VulkanCommandProcessor::WriteGuestOcclusionResult(
 
 void VulkanCommandProcessor::ProcessReadyOcclusionQueries(
     uint64_t completed_submission_hint) {
-  if (!use_host_occlusion_queries_ ||
-      pending_occlusion_queries_.empty() ||
+  if (!use_host_occlusion_queries_ || pending_occlusion_queries_.empty() ||
       occlusion_query_readback_mapping_ == nullptr) {
     return;
   }
