@@ -76,6 +76,12 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void RestoreEdramSnapshot(const void* snapshot) override;
 
+  void PrepareForWait() override;
+  void ReturnFromWait() override;
+  bool SupportsGuestOcclusionQueries() const override {
+    return use_host_occlusion_queries_;
+  }
+
   ui::d3d12::D3D12Provider& GetD3D12Provider() const {
     return *static_cast<ui::d3d12::D3D12Provider*>(
         graphics_system_->provider());
@@ -498,6 +504,18 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void WriteGammaRampSRV(bool is_pwl, D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
 
+  void ProcessReadyOcclusionQueries(
+      uint64_t completed_submission_hint = UINT64_MAX);
+  bool InitializeOcclusionQueryResources();
+  void ShutdownOcclusionQueryResources();
+  bool BeginGuestOcclusionQuery(uint32_t sample_count_address);
+  bool EndGuestOcclusionQuery(uint32_t sample_count_address);
+  bool AcquireOcclusionQueryIndex(uint32_t& host_index_out);
+  void DisableHostOcclusionQueries();
+  uint64_t NormalizeOcclusionSamples(uint64_t samples) const;
+  void WriteGuestOcclusionResult(uint32_t sample_count_address,
+                                 uint64_t samples);
+
   bool device_removed_ = false;
 
   bool cache_clear_requested_ = false;
@@ -679,6 +697,24 @@ class D3D12CommandProcessor final : public CommandProcessor {
   // Kept in NON_PIXEL_SHADER_RESOURCE state.
   Microsoft::WRL::ComPtr<ID3D12Resource> fxaa_source_texture_;
   uint64_t fxaa_source_texture_submission_ = 0;
+
+  // Occlusion query resources.
+  static constexpr uint32_t kMaxOcclusionQueries = 16384;
+  Microsoft::WRL::ComPtr<ID3D12QueryHeap> occlusion_query_heap_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> occlusion_query_readback_;
+  uint32_t occlusion_query_cursor_ = 0;
+  bool use_host_occlusion_queries_ = false;
+  struct ActiveOcclusionQuery {
+    uint32_t sample_count_address = 0;
+    uint32_t host_index = UINT32_MAX;
+    bool valid = false;
+  } active_occlusion_query_;
+  struct PendingOcclusionQuery {
+    uint32_t host_index;
+    uint64_t submission;
+    uint32_t sample_count_address;
+  };
+  std::deque<PendingOcclusionQuery> pending_occlusion_queries_;
 
   // Unsubmitted barrier batch.
   std::vector<D3D12_RESOURCE_BARRIER> barriers_;

@@ -116,6 +116,28 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
         dfn.vkCmdBindVertexBuffers(command_buffer, args.first_binding,
                                    args.binding_count, buffers, offsets);
       } break;
+      case Command::kVkBeginQuery: {
+        auto& args = *reinterpret_cast<const ArgsVkBeginQuery*>(stream);
+        dfn.vkCmdBeginQuery(command_buffer, args.query_pool, args.query,
+                            args.flags);
+      } break;
+      case Command::kVkEndQuery: {
+        auto& args = *reinterpret_cast<const ArgsVkEndQuery*>(stream);
+        dfn.vkCmdEndQuery(command_buffer, args.query_pool, args.query);
+      } break;
+      case Command::kVkCopyQueryPoolResults: {
+        auto& args =
+            *reinterpret_cast<const ArgsVkCopyQueryPoolResults*>(stream);
+        dfn.vkCmdCopyQueryPoolResults(command_buffer, args.query_pool,
+                                      args.first_query, args.query_count,
+                                      args.dst_buffer, args.dst_offset,
+                                      args.stride, args.flags);
+      } break;
+      case Command::kVkResetQueryPool: {
+        auto& args = *reinterpret_cast<const ArgsVkResetQueryPool*>(stream);
+        dfn.vkCmdResetQueryPool(command_buffer, args.query_pool,
+                                args.first_query, args.query_count);
+      } break;
 
       case Command::kVkClearAttachments: {
         auto& args = *reinterpret_cast<const ArgsVkClearAttachments*>(stream);

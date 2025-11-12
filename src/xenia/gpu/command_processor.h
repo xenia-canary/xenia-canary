@@ -247,6 +247,7 @@ class CommandProcessor {
     return false;
   }
   virtual bool IssueCopy() { return false; }
+  virtual bool SupportsGuestOcclusionQueries() const { return false; }
 
   // "Actual" is for the command processor thread, to be read by the
   // implementations.

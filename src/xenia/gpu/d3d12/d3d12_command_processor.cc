@@ -92,6 +92,63 @@ void D3D12CommandProcessor::RestoreEdramSnapshot(const void* snapshot) {
   render_target_cache_->RestoreEdramSnapshot(snapshot);
 }
 
+void D3D12CommandProcessor::PrepareForWait() {
+  ProcessReadyOcclusionQueries();
+  CommandProcessor::PrepareForWait();
+}
+
+void D3D12CommandProcessor::ReturnFromWait() {
+  ProcessReadyOcclusionQueries();
+  CommandProcessor::ReturnFromWait();
+}
+
+bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
+    uint32_t packet, uint32_t count) {
+  if (!use_host_occlusion_queries_) {
+    return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
+  }
+
+  const uint32_t kQueryFinished = xe::byte_swap(0xFFFFFEED);
+  assert_true(count == 1);
+  uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
+  CommandProcessor::WriteEventInitiator(initiator & 0x3F);
+
+  uint32_t sample_count_addr =
+      register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
+  auto* sample_counts =
+      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+          sample_count_addr);
+  if (!sample_counts) {
+    DisableHostOcclusionQueries();
+    return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
+  }
+
+  bool is_end_via_z_pass =
+      sample_counts->ZPass_A == kQueryFinished &&
+      sample_counts->ZPass_B == kQueryFinished;
+  bool is_end_via_z_fail =
+      sample_counts->ZFail_A == kQueryFinished &&
+      sample_counts->ZFail_B == kQueryFinished;
+  bool is_end = is_end_via_z_pass || is_end_via_z_fail;
+
+  if (!is_end) {
+    std::memset(sample_counts, 0, sizeof(xe_gpu_depth_sample_counts));
+    if (!BeginGuestOcclusionQuery(sample_count_addr)) {
+      DisableHostOcclusionQueries();
+      return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet,
+                                                                  count);
+    }
+    return true;
+  }
+
+  if (!EndGuestOcclusionQuery(sample_count_addr)) {
+    DisableHostOcclusionQueries();
+    return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
+  }
+
+  return true;
+}
+
 bool D3D12CommandProcessor::PushTransitionBarrier(
     ID3D12Resource* resource, D3D12_RESOURCE_STATES old_state,
     D3D12_RESOURCE_STATES new_state, UINT subresource) {
@@ -1601,6 +1658,8 @@ bool D3D12CommandProcessor::SetupContext() {
                           uint32_t(SystemBindlessView::kGammaRampPWLSRV)));
   }
 
+  use_host_occlusion_queries_ = InitializeOcclusionQueryResources();
+
   pix_capture_requested_.store(false, std::memory_order_relaxed);
   pix_capturing_ = false;
 
@@ -1612,6 +1671,8 @@ bool D3D12CommandProcessor::SetupContext() {
 
 void D3D12CommandProcessor::ShutdownContext() {
   AwaitAllQueueOperationsCompletion();
+
+  ShutdownOcclusionQueryResources();
 
   ui::d3d12::util::ReleaseAndNull(readback_buffer_);
   readback_buffer_size_ = 0;
@@ -3210,6 +3271,8 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
   primitive_processor_->CompletedSubmissionUpdated();
 
   texture_cache_->CompletedSubmissionUpdated(submission_completed_);
+
+  ProcessReadyOcclusionQueries(submission_completed_);
 }
 
 bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
@@ -5099,6 +5162,211 @@ ID3D12Resource* D3D12CommandProcessor::RequestReadbackBuffer(uint32_t size) {
     readback_buffer_size_ = size;
   }
   return readback_buffer_;
+}
+
+bool D3D12CommandProcessor::InitializeOcclusionQueryResources() {
+  active_occlusion_query_ = {};
+  pending_occlusion_queries_.clear();
+  occlusion_query_cursor_ = 0;
+  use_host_occlusion_queries_ = false;
+  occlusion_query_heap_.Reset();
+  occlusion_query_readback_.Reset();
+
+  ID3D12Device* device = GetD3D12Provider().GetDevice();
+  if (!device) {
+    return false;
+  }
+
+  D3D12_QUERY_HEAP_DESC heap_desc;
+  heap_desc.Type = D3D12_QUERY_HEAP_TYPE_OCCLUSION;
+  heap_desc.Count = kMaxOcclusionQueries;
+  heap_desc.NodeMask = 0;
+  if (FAILED(device->CreateQueryHeap(&heap_desc,
+                                     IID_PPV_ARGS(&occlusion_query_heap_)))) {
+    XELOGW(
+        "D3D12CommandProcessor: Failed to create the occlusion query heap, "
+        "falling back to fake sample counts.");
+    return false;
+  }
+
+  D3D12_RESOURCE_DESC buffer_desc;
+  ui::d3d12::util::FillBufferResourceDesc(
+      buffer_desc, sizeof(uint64_t) * kMaxOcclusionQueries,
+      D3D12_RESOURCE_FLAG_NONE);
+  if (FAILED(device->CreateCommittedResource(
+          &ui::d3d12::util::kHeapPropertiesReadback,
+          GetD3D12Provider().GetHeapFlagCreateNotZeroed(), &buffer_desc,
+          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+          IID_PPV_ARGS(&occlusion_query_readback_)))) {
+    XELOGW(
+        "D3D12CommandProcessor: Failed to allocate the occlusion query "
+        "readback buffer, falling back to fake sample counts.");
+    occlusion_query_heap_.Reset();
+    return false;
+  }
+
+  use_host_occlusion_queries_ = true;
+  return true;
+}
+
+void D3D12CommandProcessor::ShutdownOcclusionQueryResources() {
+  pending_occlusion_queries_.clear();
+  active_occlusion_query_ = {};
+  occlusion_query_cursor_ = 0;
+  use_host_occlusion_queries_ = false;
+  occlusion_query_heap_.Reset();
+  occlusion_query_readback_.Reset();
+}
+
+void D3D12CommandProcessor::DisableHostOcclusionQueries() {
+  use_host_occlusion_queries_ = false;
+  active_occlusion_query_ = {};
+  pending_occlusion_queries_.clear();
+  occlusion_query_cursor_ = 0;
+}
+
+bool D3D12CommandProcessor::AcquireOcclusionQueryIndex(
+    uint32_t& host_index_out) {
+  if (occlusion_query_cursor_ >= kMaxOcclusionQueries) {
+    ProcessReadyOcclusionQueries(
+        submission_fence_ ? submission_fence_->GetCompletedValue()
+                          : UINT64_MAX);
+    if (!pending_occlusion_queries_.empty()) {
+      if (!AwaitAllQueueOperationsCompletion()) {
+        return false;
+      }
+      ProcessReadyOcclusionQueries(submission_completed_);
+      if (!pending_occlusion_queries_.empty()) {
+        return false;
+      }
+    }
+    occlusion_query_cursor_ = 0;
+  }
+  host_index_out = occlusion_query_cursor_++;
+  return true;
+}
+
+bool D3D12CommandProcessor::BeginGuestOcclusionQuery(
+    uint32_t sample_count_address) {
+  if (!use_host_occlusion_queries_ || occlusion_query_heap_ == nullptr ||
+      occlusion_query_readback_ == nullptr) {
+    return false;
+  }
+  if (active_occlusion_query_.valid) {
+    return false;
+  }
+  uint32_t host_index = 0;
+  if (!AcquireOcclusionQueryIndex(host_index)) {
+    return false;
+  }
+  if (!BeginSubmission(true)) {
+    return false;
+  }
+  deferred_command_list_.D3DBeginQuery(occlusion_query_heap_.Get(),
+                                       D3D12_QUERY_TYPE_OCCLUSION, host_index);
+  active_occlusion_query_.sample_count_address = sample_count_address;
+  active_occlusion_query_.host_index = host_index;
+  active_occlusion_query_.valid = true;
+  return true;
+}
+
+bool D3D12CommandProcessor::EndGuestOcclusionQuery(
+    uint32_t /*sample_count_address*/) {
+  if (!use_host_occlusion_queries_ || !active_occlusion_query_.valid ||
+      occlusion_query_heap_ == nullptr ||
+      occlusion_query_readback_ == nullptr) {
+    return false;
+  }
+  if (!BeginSubmission(true)) {
+    return false;
+  }
+  const uint32_t host_index = active_occlusion_query_.host_index;
+  deferred_command_list_.D3DEndQuery(occlusion_query_heap_.Get(),
+                                     D3D12_QUERY_TYPE_OCCLUSION, host_index);
+  deferred_command_list_.D3DResolveQueryData(
+      occlusion_query_heap_.Get(), D3D12_QUERY_TYPE_OCCLUSION, host_index, 1,
+      occlusion_query_readback_.Get(), sizeof(uint64_t) * host_index);
+  pending_occlusion_queries_.push_back(
+      {host_index, submission_current_,
+       active_occlusion_query_.sample_count_address});
+  active_occlusion_query_.valid = false;
+  return true;
+}
+
+uint64_t D3D12CommandProcessor::NormalizeOcclusionSamples(
+    uint64_t samples) const {
+  if (samples == 0 || !texture_cache_) {
+    return samples;
+  }
+  uint64_t scale_x = texture_cache_->draw_resolution_scale_x();
+  uint64_t scale_y = texture_cache_->draw_resolution_scale_y();
+  uint64_t scale = scale_x * scale_y;
+  if (scale <= 1) {
+    return samples;
+  }
+  double normalized = double(samples) / double(scale);
+  return uint64_t(normalized + 0.5);
+}
+
+void D3D12CommandProcessor::WriteGuestOcclusionResult(
+    uint32_t sample_count_address, uint64_t samples) {
+  auto* sample_counts =
+      memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+          sample_count_address);
+  if (!sample_counts) {
+    return;
+  }
+  uint32_t clamped =
+      samples > uint64_t(UINT32_MAX) ? UINT32_MAX : uint32_t(samples);
+  sample_counts->Total_A = clamped;
+  sample_counts->Total_B = 0;
+  sample_counts->ZPass_A = clamped;
+  sample_counts->ZPass_B = 0;
+  sample_counts->ZFail_A = 0;
+  sample_counts->ZFail_B = 0;
+  sample_counts->StencilFail_A = 0;
+  sample_counts->StencilFail_B = 0;
+}
+
+void D3D12CommandProcessor::ProcessReadyOcclusionQueries(
+    uint64_t completed_submission_hint) {
+  if (!use_host_occlusion_queries_ ||
+      pending_occlusion_queries_.empty() ||
+      occlusion_query_readback_ == nullptr) {
+    return;
+  }
+  uint64_t completed_submission = completed_submission_hint;
+  if (completed_submission == UINT64_MAX) {
+    if (!submission_fence_) {
+      return;
+    }
+    completed_submission = submission_fence_->GetCompletedValue();
+  }
+  if (pending_occlusion_queries_.front().submission > completed_submission) {
+    return;
+  }
+  D3D12_RANGE read_range;
+  read_range.Begin = 0;
+  read_range.End = sizeof(uint64_t) * kMaxOcclusionQueries;
+  void* mapping = nullptr;
+  if (FAILED(
+          occlusion_query_readback_->Map(0, &read_range, &mapping))) {
+    DisableHostOcclusionQueries();
+    return;
+  }
+  const uint64_t* results =
+      reinterpret_cast<const uint64_t*>(mapping);
+  while (!pending_occlusion_queries_.empty() &&
+         pending_occlusion_queries_.front().submission <=
+             completed_submission) {
+    PendingOcclusionQuery query = pending_occlusion_queries_.front();
+    pending_occlusion_queries_.pop_front();
+    uint64_t samples = results[query.host_index];
+    samples = NormalizeOcclusionSamples(samples);
+    WriteGuestOcclusionResult(query.sample_count_address, samples);
+  }
+  D3D12_RANGE written_range = {};
+  occlusion_query_readback_->Unmap(0, &written_range);
 }
 
 void D3D12CommandProcessor::WriteGammaRampSRV(

@@ -445,6 +445,18 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void DestroyScratchBuffer();
 
+  void ProcessReadyOcclusionQueries(
+      uint64_t completed_submission_hint = UINT64_MAX);
+  bool InitializeOcclusionQueryResources();
+  void ShutdownOcclusionQueryResources();
+  bool BeginGuestOcclusionQuery(uint32_t sample_count_address);
+  bool EndGuestOcclusionQuery(uint32_t sample_count_address);
+  bool AcquireOcclusionQueryIndex(uint32_t& host_index_out);
+  void DisableHostOcclusionQueries();
+  uint64_t NormalizeOcclusionSamples(uint64_t samples) const;
+  void WriteGuestOcclusionResult(uint32_t sample_count_address,
+                                 uint64_t samples);
+
   void UpdateDynamicState(const draw_util::ViewportInfo& viewport_info,
                           bool primitive_polygonal,
                           reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -753,6 +765,26 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   // Temporary storage for memexport stream constants used in the draw.
   std::vector<draw_util::MemExportRange> memexport_ranges_;
+
+  // Occlusion query support.
+  static constexpr uint32_t kMaxOcclusionQueries = 16384;
+  VkQueryPool occlusion_query_pool_ = VK_NULL_HANDLE;
+  VkBuffer occlusion_query_readback_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory occlusion_query_readback_memory_ = VK_NULL_HANDLE;
+  uint8_t* occlusion_query_readback_mapping_ = nullptr;
+  uint32_t occlusion_query_cursor_ = 0;
+  bool use_host_occlusion_queries_ = false;
+  struct ActiveOcclusionQuery {
+    uint32_t sample_count_address = 0;
+    uint32_t host_index = UINT32_MAX;
+    bool valid = false;
+  } active_occlusion_query_;
+  struct PendingOcclusionQuery {
+    uint32_t host_index;
+    uint64_t submission;
+    uint32_t sample_count_address;
+  };
+  std::deque<PendingOcclusionQuery> pending_occlusion_queries_;
 
   // Readback buffer for CPU access to resolved data
   VkBuffer readback_buffer_ = VK_NULL_HANDLE;

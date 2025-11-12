@@ -1086,7 +1086,9 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
 
   if (draw_succeeded) {
     auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();
-    if (!(viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z)) {
+    bool viz_query_active =
+        viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z;
+    if (!viz_query_active || SupportsGuestOcclusionQueries()) {
       // TODO(Triang3l): Don't drop the draw call completely if the vertex
       // shader has memexport.
       // TODO(Triang3l || JoelLinn): Handle this properly in the render
