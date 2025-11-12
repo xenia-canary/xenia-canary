@@ -130,8 +130,9 @@ bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
 
   uint32_t sample_count_addr =
       register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
-  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-      sample_count_addr);
+  auto* sample_counts =
+      memory_->TranslatePhysical<xenos::xe_gpu_depth_sample_counts*>(
+          sample_count_addr);
   if (!sample_counts) {
     DisableHostOcclusionQueries();
     return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet, count);
@@ -144,7 +145,7 @@ bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(
   bool is_end = is_end_via_z_pass || is_end_via_z_fail;
 
   if (!is_end) {
-    std::memset(sample_counts, 0, sizeof(xe_gpu_depth_sample_counts));
+    std::memset(sample_counts, 0, sizeof(xenos::xe_gpu_depth_sample_counts));
     if (!BeginGuestOcclusionQuery(sample_count_addr)) {
       DisableHostOcclusionQueries();
       return CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(packet,
@@ -3160,8 +3161,9 @@ uint64_t VulkanCommandProcessor::NormalizeOcclusionSamples(
 
 void VulkanCommandProcessor::WriteGuestOcclusionResult(
     uint32_t sample_count_address, uint64_t samples) {
-  auto* sample_counts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-      sample_count_address);
+  auto* sample_counts =
+      memory_->TranslatePhysical<xenos::xe_gpu_depth_sample_counts*>(
+          sample_count_address);
   if (!sample_counts) {
     return;
   }
@@ -5078,7 +5080,10 @@ uint32_t VulkanCommandProcessor::WriteTransientTextureBindings(
 }
 
 #define COMMAND_PROCESSOR VulkanCommandProcessor
+#define XE_GPU_OVERRIDES_EVENT_WRITE_ZPD
 #include "../pm4_command_processor_implement.h"
+#undef XE_GPU_OVERRIDES_EVENT_WRITE_ZPD
+#undef COMMAND_PROCESSOR
 }  // namespace vulkan
 }  // namespace gpu
 }  // namespace xe

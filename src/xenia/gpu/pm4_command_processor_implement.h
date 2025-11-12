@@ -956,6 +956,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
 
 static uint32_t samples = cvars::query_occlusion_sample_upper_threshold;
 
+#if !defined(XE_GPU_OVERRIDES_EVENT_WRITE_ZPD)
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
     uint32_t packet, uint32_t count) XE_RESTRICT {
@@ -995,6 +996,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
 
   return true;
 }
+#endif  // !defined(XE_GPU_OVERRIDES_EVENT_WRITE_ZPD)
 
 bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
     uint32_t packet, const char* opcode_name, uint32_t viz_query_condition,

@@ -147,6 +147,12 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void RestoreEdramSnapshot(const void* snapshot) override;
 
+  void PrepareForWait() override;
+  void ReturnFromWait() override;
+  bool SupportsGuestOcclusionQueries() const override {
+    return use_host_occlusion_queries_;
+  }
+
   ui::vulkan::VulkanDevice* GetVulkanDevice() const {
     return static_cast<const ui::vulkan::VulkanProvider*>(
                graphics_system_->provider())

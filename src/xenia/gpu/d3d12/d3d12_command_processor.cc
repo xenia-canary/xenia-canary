@@ -5384,8 +5384,10 @@ void D3D12CommandProcessor::WriteGammaRampSRV(
 }
 
 #define COMMAND_PROCESSOR D3D12CommandProcessor
+#define XE_GPU_OVERRIDES_EVENT_WRITE_ZPD
 
 #include "../pm4_command_processor_implement.h"
+#undef XE_GPU_OVERRIDES_EVENT_WRITE_ZPD
 #undef COMMAND_PROCESSOR
 }  // namespace d3d12
 }  // namespace gpu
