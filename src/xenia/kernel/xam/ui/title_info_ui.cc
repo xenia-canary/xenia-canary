@@ -84,12 +84,13 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
                        ImGui::GetTextLineHeight());
 
   if (entry.WasTitlePlayed()) {
-    ImGui::TextUnformatted(
-        fmt::format("Last played: {:%Y-%m-%d %H:%M}",
-                    fmt::localtime(std::chrono::system_clock::to_time_t(
-                        std::chrono::system_clock::time_point(
-                            entry.last_played.time_since_epoch()))))
-            .c_str());
+    const auto time_date = std::chrono::system_clock::to_time_t(
+        std::chrono::system_clock::time_point(
+            entry.last_played.time_since_epoch()));
+
+    ImGui::TextUnformatted(fmt::format("Last played: {:%Y-%m-%d %H:%M}",
+                                       *std::localtime(&time_date))
+                               .c_str());
   } else {
     ImGui::TextUnformatted("Last played: Unknown");
   }

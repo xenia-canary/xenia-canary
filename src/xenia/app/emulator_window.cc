@@ -1095,7 +1095,8 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
   auto t = std::time(nullptr);
 
   // The format is: Year-Month-DayTHours-Minutes-Seconds based off ISO 8601
-  std::string datetime = fmt::format("{:%Y-%m-%dT%H-%M-%S}", fmt::localtime(t));
+  std::string datetime =
+      fmt::format("{:%Y-%m-%dT%H-%M-%S}", *std::localtime(&t));
 
   // Get the title id of the game because some titles contain characters that
   // cannot be used as a directory

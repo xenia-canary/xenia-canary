@@ -108,7 +108,7 @@ std::string GameAchievementsUI::GetUnlockedTime(
             achievement_entry.unlock_time.to_time_point()));
 
     return fmt::format("Unlocked: Online {:%Y-%m-%d %H:%M}",
-                       fmt::localtime(unlock_time));
+                       *std::localtime(&unlock_time));
   }
 
   if (achievement_entry.unlock_time.is_valid()) {
@@ -117,7 +117,7 @@ std::string GameAchievementsUI::GetUnlockedTime(
             achievement_entry.unlock_time.to_time_point()));
 
     return fmt::format("Unlocked: Offline ({:%Y-%m-%d %H:%M})",
-                       fmt::localtime(unlock_time));
+                       *std::localtime(&unlock_time));
   }
   return fmt::format("Unlocked: Offline");
 }
