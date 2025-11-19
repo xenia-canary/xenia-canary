@@ -222,6 +222,11 @@ struct ViewTable {
   SharedView shared_view;
 };
 
+struct PresenceTableEntry {
+  PropertyBag property_bag;
+  std::vector<PropertyBag> presence_modes;
+};
+
 struct AchievementTableEntry {
   xe::be<uint16_t> id;
   xe::be<uint16_t> label_id;
@@ -290,9 +295,13 @@ class SpaInfo : public XdbfFile {
 
   const std::vector<ViewTable>* GetStatsViews() const { return &stats_views_; }
 
+  const PresenceTableEntry* GetPresence() const { return &presence_; }
+
   const XdbfContextTableEntry* GetContext(uint32_t id);
   const XdbfPropertyTableEntry* GetProperty(uint32_t id);
   const std::optional<ViewTable> GetStatsView(uint32_t id);
+  const std::optional<PropertyBag> GetPresenceMode(
+      uint32_t context_value) const;
 
   uint32_t total_gamerscore() const {
     return std::accumulate(achievements_.cbegin(), achievements_.cend(), 0,
@@ -318,6 +327,7 @@ class SpaInfo : public XdbfFile {
   std::vector<const XdbfContextTableEntry*> contexts_;
   std::vector<const XdbfPropertyTableEntry*> properties_;
   std::vector<ViewTable> stats_views_;
+  PresenceTableEntry presence_;
 
   using XdbfLanguageStrings = std::map<uint16_t, std::string>;
 
@@ -332,6 +342,8 @@ class SpaInfo : public XdbfFile {
   void LoadProperties();
 
   void LoadStatsViews();
+
+  void LoadPresenceModes();
 
   template <typename T>
   static T GetSpaEntry(std::vector<T>& container, uint32_t id);

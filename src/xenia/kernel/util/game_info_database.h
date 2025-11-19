@@ -33,6 +33,7 @@ class GameInfoDatabase {
     uint32_t max_value;
     uint32_t default_value;
     bool is_system;
+    bool is_presence;
     std::string description;
   };
 
@@ -40,6 +41,7 @@ class GameInfoDatabase {
     uint32_t id;
     uint32_t data_size;
     bool is_system;
+    bool is_presence;
     std::string description;
   };
 
@@ -51,6 +53,16 @@ class GameInfoDatabase {
     uint32_t image_id;
     uint32_t gamerscore;
     uint32_t flags;
+  };
+
+  struct PresenceMode {
+    uint32_t context_value;
+    PropertyBag property_bag;
+  };
+
+  struct Presence {
+    PropertyBag property_bag;
+    std::vector<PresenceMode> presence_modes;
   };
 
   struct Query {
@@ -136,6 +148,10 @@ class GameInfoDatabase {
   PropertyBag GetPropertyBag(const xam::PropertyBag& property_bag) const;
   Field GetField(const xam::ViewFieldEntry& field_entry) const;
   StatsView GetStatsView(const uint32_t id) const;
+  Presence GetPresence() const;
+  PresenceMode GetPresenceMode(const uint32_t context_value) const;
+  std::vector<PresenceMode> GetPresenceModes(
+      const std::vector<xam::PropertyBag> property_bags) const;
 
   // TODO: Implement it in the future.
   std::vector<uint32_t> GetMatchmakingAttributes(const uint32_t id) const;
@@ -149,6 +165,7 @@ class GameInfoDatabase {
   std::vector<Context> GetContexts() const;
   std::vector<Property> GetProperties() const;
   std::vector<Achievement> GetAchievements() const;
+  std::vector<PresenceMode> GetPresenceModes() const;
   std::vector<StatsView> GetStatsViews() const;
 
  private:

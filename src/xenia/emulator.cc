@@ -1611,9 +1611,25 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
         totals = fmt::format("\nViews: {}/{}", stats_views_limit.size(),
                              stats_views.size());
       }
-
       XELOGI("\n-------------------- Stats Views --------------------{}\n{}",
              totals.c_str(), table.str());
+
+      const std::vector<kernel::util::GameInfoDatabase::PresenceMode>
+          presence_modes = game_info_database_->GetPresenceModes();
+
+      table = tabulate::Table();
+      table.format().multi_byte_characters(true);
+      table.add_row({"Context Value", "Contexts Count", "Properties Count"});
+
+      for (const kernel::util::GameInfoDatabase::PresenceMode& entry :
+           presence_modes) {
+        table.add_row(
+            {fmt::format("{}", entry.context_value),
+             fmt::format("{}", entry.property_bag.contexts.size()),
+             fmt::format("{}", entry.property_bag.properties.size())});
+      }
+      XELOGI("\n-------------------- PRESENCE MODES --------------------\n{}",
+             table.str());
 
       auto icon_block = game_info_database_->GetIcon();
       if (!icon_block.empty()) {
