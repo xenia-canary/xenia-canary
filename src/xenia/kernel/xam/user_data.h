@@ -24,8 +24,7 @@ namespace xam {
 union AttributeKey {
   uint32_t value;
   struct {
-    uint32_t id : 14;
-    uint32_t unk : 2;
+    uint32_t id : 16;
     uint32_t size : 12;
     uint32_t type : 4;
   };
@@ -134,6 +133,11 @@ class UserData {
   static X_USER_DATA_TYPE get_type(uint32_t id) {
     return static_cast<X_USER_DATA_TYPE>(id >> 28);
   }
+
+  static bool is_system_property(uint32_t id) {
+    return (id & kPropertyScopeMask);
+  }
+
   static uint16_t get_max_size(uint32_t id) {
     return static_cast<uint16_t>(id >> 16) & kMaxUserDataSize;
   }

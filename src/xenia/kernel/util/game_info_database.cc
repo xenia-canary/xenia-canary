@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/util/game_info_database.h"
 #include "xenia/base/logging.h"
+#include "xenia/kernel/xam/user_data.h"
 
 namespace xe {
 namespace kernel {
@@ -86,7 +87,7 @@ std::string GameInfoDatabase::GetLocalizedString(const uint32_t id,
 
 GameInfoDatabase::Context GameInfoDatabase::GetContext(
     const uint32_t id) const {
-  Context context = {};
+  Context context = {.id = xam::kInvalidContextId};
 
   if (!is_valid_) {
     return context;
@@ -100,13 +101,14 @@ GameInfoDatabase::Context GameInfoDatabase::GetContext(
   context.id = xdbf_context->id;
   context.default_value = xdbf_context->default_value;
   context.max_value = xdbf_context->max_value;
+  context.is_system = xam::UserData::is_system_property(xdbf_context->id);
   context.description = GetLocalizedString(xdbf_context->string_id);
   return context;
 }
 
 GameInfoDatabase::Property GameInfoDatabase::GetProperty(
     const uint32_t id) const {
-  Property property = {};
+  Property property = {.id = xam::kInvalidPropertyId};
 
   if (!is_valid_) {
     return property;
@@ -119,6 +121,7 @@ GameInfoDatabase::Property GameInfoDatabase::GetProperty(
 
   property.id = xdbf_property->id;
   property.data_size = xdbf_property->data_size;
+  property.is_system = xam::UserData::is_system_property(xdbf_property->id);
   property.description = GetLocalizedString(xdbf_property->string_id);
   return property;
 }

@@ -32,12 +32,14 @@ class GameInfoDatabase {
     uint32_t id;
     uint32_t max_value;
     uint32_t default_value;
+    bool is_system;
     std::string description;
   };
 
   struct Property {
     uint32_t id;
     uint32_t data_size;
+    bool is_system;
     std::string description;
   };
 
