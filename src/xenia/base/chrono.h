@@ -75,11 +75,10 @@ struct NtSystemClock {
   }
 
   // To convert XSystemClock to sys, do clock_cast<WinSystemTime>(tp) first
-  // SFINAE hack https://stackoverflow.com/a/58813009
-  template <Domain domain_fresh_ = domain_>
-  static constexpr std::enable_if_t<domain_fresh_ == Domain::Host,
-                                    std::chrono::system_clock::time_point>
-  to_sys(const time_point& tp) {
+  static constexpr std::chrono::system_clock::time_point to_sys(
+      const time_point& tp)
+    requires(domain_ == Domain::Host)
+  {
     using sys_duration = std::chrono::system_clock::duration;
     using sys_time = std::chrono::system_clock::time_point;
 
@@ -91,17 +90,15 @@ struct NtSystemClock {
 
   // TODO(Gliniak): Disable until WINE will implement tzdb.
   /*
-  template <Domain domain_fresh_ = domain_>
-  static constexpr std::enable_if_t<
-      domain_fresh_ == Domain::Host,
-      std::chrono::local_time<std::chrono::system_clock::duration>>
-  to_local(const time_point& tp) {
+  static constexpr std::chrono::local_time<std::chrono::system_clock::duration>
+  to_local(const time_point& tp) requires (domain_ == Domain::Host) {
     return std::chrono::current_zone()->to_local(to_sys(tp));
   }*/
 
-  template <Domain domain_fresh_ = domain_>
-  static constexpr std::enable_if_t<domain_fresh_ == Domain::Host, time_point>
-  from_sys(const std::chrono::system_clock::time_point& tp) {
+  static constexpr time_point from_sys(
+      const std::chrono::system_clock::time_point& tp)
+    requires(domain_ == Domain::Host)
+  {
     auto ctp = std::chrono::time_point_cast<duration>(tp);
     auto dp = time_point{ctp.time_since_epoch()};
     dp -= unix_epoch_delta();

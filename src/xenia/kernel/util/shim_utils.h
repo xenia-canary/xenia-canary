@@ -500,15 +500,16 @@ enum class KernelModuleId {
 };
 
 template <size_t I = 0, typename... Ps>
-typename std::enable_if<I == sizeof...(Ps)>::type AppendKernelCallParams(
-    StringBuffer& string_buffer, xe::cpu::Export* export_entry,
-    const std::tuple<Ps...>&) {}
+  requires(I == sizeof...(Ps))
+void AppendKernelCallParams(StringBuffer& string_buffer,
+                            xe::cpu::Export* export_entry,
+                            const std::tuple<Ps...>&) {}
 
 template <size_t I = 0, typename... Ps>
-    typename std::enable_if <
-    I<sizeof...(Ps)>::type AppendKernelCallParams(
-        StringBuffer& string_buffer, xe::cpu::Export* export_entry,
-        const std::tuple<Ps...>& params) {
+  requires(I < sizeof...(Ps))
+void AppendKernelCallParams(StringBuffer& string_buffer,
+                            xe::cpu::Export* export_entry,
+                            const std::tuple<Ps...>& params) {
   if (I) {
     string_buffer.Append(", ");
   }
