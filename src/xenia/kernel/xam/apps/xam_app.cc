@@ -64,11 +64,11 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
 
       assert_true(enum_struct->magic == kXObjSignature);
 
-      // This is a struct of XCONTENT_AGGREGATE_DATA
+      // This is a struct of XCONTENT_DATA_INTERNAL
       uint8_t* content_data_ptr =
           memory_->TranslateVirtual<uint8_t*>(data_ptr->buffer_ptr);
 
-      assert_true(data_ptr->buffer_size == sizeof(XCONTENT_AGGREGATE_DATA));
+      assert_true(data_ptr->buffer_size == sizeof(XCONTENT_DATA_INTERNAL));
 
       std::memset(content_data_ptr, 0, data_ptr->buffer_size);
 
@@ -77,11 +77,11 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
 
       result = X_HRESULT_FROM_WIN32(result);
 
-      if (result == X_E_SUCCESS && data_ptr->items_returned_ptr &&
-          item_count >= 1) {
-        xe::store_and_swap<uint32_t>(
-            memory_->TranslateVirtual(data_ptr->items_returned_ptr), 1);
-      }
+      xe::be<uint32_t>* items_returned_ptr =
+          memory_->TranslateVirtual<xe::be<uint32_t>*>(
+              data_ptr->items_returned_ptr);
+
+      *items_returned_ptr = item_count;
 
       return result;
     }

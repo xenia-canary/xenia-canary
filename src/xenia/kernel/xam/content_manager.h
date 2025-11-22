@@ -119,6 +119,12 @@ struct XCONTENT_AGGREGATE_DATA : XCONTENT_DATA {
 };
 static_assert_size(XCONTENT_AGGREGATE_DATA, 0x148);
 
+struct XCONTENT_CROSS_TITLE_DATA {
+  XCONTENT_DATA content_data;
+  xe::be<uint32_t> title_id;
+};
+static_assert_size(XCONTENT_CROSS_TITLE_DATA, 0x138);
+
 struct XCONTENT_DATA_MEDIA {
   be<uint8_t> series_id[0x10];  // 0x0 sz:0x10
   be<uint8_t> seasonid[0x10];   // 0x10 sz:0x10

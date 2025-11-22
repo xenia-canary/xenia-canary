@@ -89,7 +89,7 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
     return X_E_INVALIDARG;
   }
 
-  auto e = make_object<XStaticEnumerator<XCONTENT_AGGREGATE_DATA>>(
+  auto e = make_object<XStaticEnumerator<XCONTENT_CROSS_TITLE_DATA>>(
       kernel_state(), 1);
   X_KENUMERATOR_CONTENT_AGGREGATE* extra;
   auto result = e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, &extra);
@@ -125,15 +125,24 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
         auto item = e->AppendItem();
         assert_not_null(item);
         if (item) {
-          *item = content_data;
+          item->content_data.device_id = content_data.device_id;
+          item->content_data.content_type = content_data.content_type;
+          item->content_data.display_name_raw = content_data.display_name_raw;
+          std::memcpy(item->content_data.file_name_raw,
+                      content_data.file_name_raw,
+                      sizeof(content_data.file_name_raw));
+          item->content_data.padding[0] = 0;
+          item->content_data.padding[1] = 0;
+
+          item->title_id = content_data.title_id;
         }
       }
     }
   }
 
-  if (!device_info || device_info->device_type == DeviceType::ODD) {
-    AddODDContentTest(e, content_type_enum);
-  }
+  // if (!device_info || device_info->device_type == DeviceType::ODD) {
+  //   AddODDContentTest(e, content_type_enum);
+  // }
 
   XELOGD("XamContentAggregateCreateEnumerator: added {} items to enumerator",
          e->item_count());
