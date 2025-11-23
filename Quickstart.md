@@ -9,16 +9,16 @@ CPU         | 6 or more cores<br>You can check with [CPU-Z](https://www.cpuid.co
 GPU         | NVIDIA GTX 980 Ti or later<br>You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)
 RAM         | 6 GB or more
 
-[Microsoft Visual C++ Redistributable for Visual Studio 2015-2022](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+[Microsoft Visual C++ Redistributable for Visual Studio 2017-2026](https://aka.ms/vc14/vc_redist.x64.exe)
 
 Minimum |   |
 ------- | -
-OS      | Windows 10 x64 or later<br>Linux with Proton. Vulkan is recommended due to VKD3D potentially having graphical issues.
+OS      | Windows 10 x64 or later<br>Linux with Proton.
 CPU     | 64-bit x86 processor with AVX or AVX2 support<br>You can check with [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html)
 GPU     | Direct3D **12**-compatible or **Vulkan**-compatible GPU<br>You can check with [GPU-Z](https://www.techpowerup.com/download/techpowerup-gpu-z/)<br>OpenGL and Direct3D 11 or lower are not, and never will be supported.<br>AMD GPUs are not recommended due to having driver bugs that can cause crashes with Xenia.<br>Integrated GPUs generally provide frame rates too low for comfortable playing.
 RAM     | 4 GB
 
-[2015-2022 x64 Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+[2017-2026 x64 Visual C++ Redistributable](https://aka.ms/vc14/vc_redist.x64.exe)
 
 Xenia doesn't require any Xbox 360 system files.
 
@@ -183,7 +183,11 @@ To run games in full/activated mode you need to change [this option](Options#use
 
 ## Redump method (rare/specific drives)
 
-See http://wiki.redump.org/index.php?title=Microsoft_Xbox_and_Xbox_360_Dumping_Guide
+See:
+- http://wiki.redump.org/index.php?title=Disc_Dumping_Guide_(MPF)
+
+Compatible drives list:
+- http://wiki.redump.org/index.php?title=Optical_Disc_Drive_Compatibility:_Xbox_(original)_%26_Xbox_360
 
 <!--## Modded console method
 
@@ -196,7 +200,7 @@ While you can use a modded console to dump games, it is unnecessary in 99% of ca
 
 -->
 
-# How to install DLCs (Canary)
+# How to install DLCs, TUs, Savefiles (Canary)
 1. Identify what the Game Title ID is.
 This can be identified by running the game in Xenia.
 
@@ -204,13 +208,13 @@ This can be identified by running the game in Xenia.
 
 ![](https://i.imgur.com/fc0rmSc.png)</details>
 
-2. Locate your DLC Content folder from your removable storage.
+2. Locate your Content folder on your removable storage.
 
 <details><summary>Image (click to expand)</summary>
 
 ![](https://i.imgur.com/t8IMZiG.png)</details>
 
-3. Open Xenia and select "Install Content" option, then select package with DLC from your device. License for DLC is applied automatically.
+3. Open Xenia and select "Install Content" option, then select package with Content from your device. License for DLC is applied automatically.
 
 # How to install DLCs (Master)
 
