@@ -226,11 +226,9 @@ X_RESULT SDLInputDriver::GetState(uint32_t user_index,
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
-  // Make sure packet_number is only incremented by 1, even if there have been
-  // multiple updates between GetState calls. Also track `is_active` to
-  // increment the packet number if it changed.
-  if (controller->is_active || controller->state_changed) {
+  if (controller->state_changed) {
     controller->state.packet_number++;
+    controller->state_changed = false;
   }
   std::memcpy(out_state, &controller->state, sizeof(*out_state));
   return X_ERROR_SUCCESS;
