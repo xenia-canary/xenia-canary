@@ -26,6 +26,10 @@
 namespace xe {
 namespace kernel {
 
+// Exported from kernel_state.cc.
+KernelState* kernel_state();
+inline Memory* kernel_memory() { return kernel_state()->memory(); }
+
 using PPCContext = xe::cpu::ppc::PPCContext;
 
 #define SHIM_CALL void
@@ -367,6 +371,44 @@ class ResultBase : public Result {
   T value_;
 };
 
+template <typename T>
+class GuestTypedPointer {
+ public:
+  GuestTypedPointer(const uint32_t guest_address)
+      : guest_address_(guest_address) {
+    assert_not_zero(guest_address_);
+    host_ptr_ = kernel_memory()->TranslateVirtual<T*>(guest_address);
+  }
+  uint32_t guest_address() const { return guest_address_; }
+  uintptr_t host_address() const {
+    return reinterpret_cast<uintptr_t>(host_ptr_);
+  }
+  operator T*() const { return host_ptr_; }
+  operator bool() const { return host_ptr_ != nullptr; }
+  T* operator->() const {
+    assert_not_null(host_ptr_);
+    return host_ptr_;
+  }
+
+  GuestTypedPointer& operator=(const T& value) {
+    if constexpr (std::is_fundamental_v<T>) {
+      *host_ptr_ = xe::byte_swap<T>(value);
+    } else {
+      std::memcpy(host_ptr_, &value, sizeof(T));
+    }
+    return *this;
+  }
+
+  void Zero() const {
+    assert_not_null(host_ptr_);
+    std::memset(host_ptr_, 0, sizeof(T));
+  }
+
+ protected:
+  uint32_t guest_address_;
+  T* host_ptr_;
+};
+
 }  // namespace shim
 
 using int_t = const shim::ParamBase<int32_t>&;
@@ -389,16 +431,15 @@ using lpunknown_t = const shim::PointerParam&;
 template <typename T>
 using pointer_t = const shim::TypedPointerParam<T>&;
 
+template <typename T>
+using guest_pointer_t = const shim::GuestTypedPointer<T>&;
+
 using int_result_t = shim::ResultBase<int32_t>;
 using dword_result_t = shim::ResultBase<uint32_t>;
 using qword_result_t = shim::ResultBase<uint64_t>;
 using pointer_result_t = shim::ResultBase<uint32_t>;
 using X_HRESULT_result_t = shim::ResultBase<X_HRESULT>;
 using ppc_context_t = shim::ContextParam;
-
-// Exported from kernel_state.cc.
-KernelState* kernel_state();
-inline Memory* kernel_memory() { return kernel_state()->memory(); }
 
 namespace shim {
 
