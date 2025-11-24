@@ -178,7 +178,7 @@ dword_result_t XamUserGetGamerTag_entry(dword_t user_index, dword_t buffer,
   }
 
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
-    return X_ERROR_NO_SUCH_USER;
+    return X_E_NO_SUCH_USER;
   }
 
   const auto& user_profile =
@@ -482,11 +482,11 @@ DECLARE_XAM_EXPORT1(XamUserIsOnlineEnabled, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
   if (user_index >= XUserMaxUserCount) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
-    return X_ERROR_NO_SUCH_USER;
+    return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
   return kernel_state()
@@ -499,7 +499,7 @@ DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kImplemented);
 dword_result_t XamUserGetMembershipTierFromXUID_entry(qword_t xuid) {
   const auto profile = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!profile) {
-    return 0;
+    return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
   return profile->GetSubscriptionTier();
@@ -918,7 +918,7 @@ dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
                                                 lpdword_t r5,
                                                 dword_t overlapped_ptr) {
   if (user_index >= XUserMaxUserCount) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_E_INVALIDARG;
   }
 
   if (!subscription_ptr || !r5) {
