@@ -121,7 +121,7 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
   assert_false(!supported_levels.contains(level));
 
   if (supported_levels.contains(level)) {
-    level = supported_levels.at(level);
+    native_level = supported_levels.at(level);
   }
 
   int native_optname = optname;
