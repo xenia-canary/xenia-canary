@@ -128,36 +128,51 @@ bool XmaContextNew::Work() {
 
   RingBuffer output_rb = PrepareOutputRingBuffer(&data);
 
-  const int32_t minimum_subframe_decode_count =
-      (data.subframe_decode_count * 2) - 1;
-
-  // We don't have enough space to even make one pass
-  // Waiting for decoder to return more space.
-  if (minimum_subframe_decode_count >
-      remaining_subframe_blocks_in_output_buffer_) {
-    XELOGD("XmaContext {}: No space for subframe decoding {}/{}!", id(),
-           minimum_subframe_decode_count,
-           remaining_subframe_blocks_in_output_buffer_);
-    data.Store(context_ptr);
-    return true;
-  }
-
-  while (remaining_subframe_blocks_in_output_buffer_ >=
-         minimum_subframe_decode_count) {
-    XELOGAPU(
-        "XmaContext {}: Write Count: {}, Capacity: {} - {} {} Subframes: {} "
-        "Skip: {}",
-        id(), (uint32_t)output_rb.write_count(),
-        remaining_subframe_blocks_in_output_buffer_,
-        data.input_buffer_0_valid + (data.input_buffer_1_valid << 1),
-        data.output_buffer_valid, data.subframe_decode_count,
-        data.subframe_skip_count);
-
+  if (data.IsConsumeOnlyContext()) {
+    Consume(&output_rb, &data);
+    if (data.output_buffer_read_offset == data.output_buffer_write_offset) {
+      Clear();
+      data.Store(context_ptr);
+      return true;
+    }
+  } else if (data.IsStreamingContext()) {
     Decode(&data);
     Consume(&output_rb, &data);
+  } else {
+    const int32_t minimum_subframe_decode_count =
+        (data.subframe_decode_count * 2) - 1;
 
-    if (!data.IsAnyInputBufferValid() || data.error_status == 4) {
-      break;
+    // We don't have enough space to even make one pass
+    // Waiting for decoder to return more space.
+    if (minimum_subframe_decode_count >
+        remaining_subframe_blocks_in_output_buffer_) {
+      XELOGD("XmaContext {}: No space for subframe decoding {}/{}!", id(),
+             minimum_subframe_decode_count,
+             remaining_subframe_blocks_in_output_buffer_);
+
+      data.output_buffer_valid = 0;
+      data.error_status = 2;
+      data.Store(context_ptr);
+      return true;
+    }
+
+    while (remaining_subframe_blocks_in_output_buffer_ >=
+           minimum_subframe_decode_count) {
+      XELOGAPU(
+          "XmaContext {}: Write Count: {}, Capacity: {} - {} {} Subframes: {} "
+          "Skip: {}",
+          id(), (uint32_t)output_rb.write_count(),
+          remaining_subframe_blocks_in_output_buffer_,
+          data.input_buffer_0_valid + (data.input_buffer_1_valid << 1),
+          data.output_buffer_valid, data.subframe_decode_count,
+          data.subframe_skip_count);
+
+      Decode(&data);
+      Consume(&output_rb, &data);
+
+      if (!data.IsAnyInputBufferValid() || data.error_status == 4) {
+        break;
+      }
     }
   }
 
@@ -257,7 +272,8 @@ void XmaContextNew::SwapInputBuffer(XMA_CONTEXT_DATA* data) {
   data->input_buffer_read_offset = kBitsPerPacketHeader;
 }
 
-void XmaContextNew::Consume(RingBuffer* output_rb, XMA_CONTEXT_DATA* data) {
+void XmaContextNew::Consume(RingBuffer* output_rb,
+                            const XMA_CONTEXT_DATA* const data) {
   if (!current_frame_remaining_subframes_) {
     return;
   }

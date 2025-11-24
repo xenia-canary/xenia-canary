@@ -106,7 +106,7 @@ class XmaContextNew : public XmaContext {
   static uint32_t GetCurrentInputBufferSize(XMA_CONTEXT_DATA* data);
 
   void Decode(XMA_CONTEXT_DATA* data);
-  void Consume(RingBuffer* output_rb, XMA_CONTEXT_DATA* data);
+  void Consume(RingBuffer* output_rb, const XMA_CONTEXT_DATA* const data);
 
   void UpdateLoopStatus(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(int sample_rate, bool is_two_channel);

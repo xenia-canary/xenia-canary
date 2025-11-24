@@ -146,6 +146,12 @@ struct XMA_CONTEXT_DATA {
   const uint32_t GetCurrentInputBufferPacketCount() const {
     return GetInputBufferPacketCount(current_buffer);
   }
+  const bool IsStreamingContext() const {
+    return (input_buffer_0_packet_count | input_buffer_1_packet_count) == 1;
+  }
+  const bool IsConsumeOnlyContext() const {
+    return (input_buffer_0_packet_count + input_buffer_1_packet_count) == 0;
+  }
 };
 static_assert_size(XMA_CONTEXT_DATA, 64);
 
