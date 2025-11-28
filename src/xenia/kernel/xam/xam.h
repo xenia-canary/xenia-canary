@@ -329,6 +329,17 @@ enum class UserContextDevice : uint32_t {
   Microphone = 4,
 };
 
+constexpr uint32_t XMP_MAX_METADATA_STRING = 40;
+constexpr uint32_t XMP_MAX_USER_PLAYLIST_ID = 572;
+constexpr uint32_t XMP_USER_PLAYLIST_RESERVED_FIELD_SIZE = 168;
+
+struct XMP_USER_PLAYLIST_INFO {
+  uint8_t id[XMP_MAX_USER_PLAYLIST_ID];
+  xe::be<char16_t> title[XMP_MAX_METADATA_STRING];
+  uint8_t reserved[XMP_USER_PLAYLIST_RESERVED_FIELD_SIZE];
+};
+static_assert_size(XMP_USER_PLAYLIST_INFO, 0x334);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

@@ -79,20 +79,63 @@ dword_result_t XamEnumerate_entry(dword_t handle, dword_t flags,
 }
 DECLARE_XAM_EXPORT1(XamEnumerate, kNone, kImplemented);
 
-dword_result_t XamCreateEnumeratorHandle_entry(
-    dword_t user_index, dword_t app_id, dword_t open_message,
-    dword_t close_message, dword_t extra_size, dword_t item_count,
-    dword_t flags, lpdword_t out_handle) {
-  auto e = object_ref<XStaticUntypedEnumerator>(
-      new XStaticUntypedEnumerator(kernel_state(), item_count, extra_size));
+static uint32_t XMPCreateUserPlaylistEnumeratorHandle(
+    uint32_t user_index, uint32_t app_id, uint32_t open_message,
+    uint32_t close_message, uint32_t extra_size, uint32_t item_count,
+    uint32_t flags, uint32_t& out_enum_handle) {
+  auto e = object_ref<XMPCreateUserPlaylistEnumerator>(
+      new XMPCreateUserPlaylistEnumerator(kernel_state(), item_count));
 
   auto result = e->Initialize(user_index, app_id, open_message, close_message,
                               flags, extra_size, nullptr);
+
   if (XFAILED(result)) {
     return result;
   }
 
-  *out_handle = e->handle();
+  std::vector<xam::XMP_USER_PLAYLIST_INFO> user_playlist_info = {};
+
+  for (const auto& playlist_info : user_playlist_info) {
+    e->AppendItem(playlist_info);
+  }
+
+  XELOGI("{}: added {} items to enumerator", __func__, e->item_count());
+
+  out_enum_handle = e->handle();
+  return X_ERROR_SUCCESS;
+}
+
+constexpr uint32_t XMPCreateUserPlaylistEnumeratorMessage = 0x70026;
+
+dword_result_t XamCreateEnumeratorHandle_entry(
+    dword_t user_index, dword_t app_id, dword_t open_message,
+    dword_t close_message, dword_t extra_size, dword_t item_count,
+    dword_t flags, lpdword_t out_handle) {
+  uint32_t enum_handle = 0;
+  X_STATUS result = 0;
+
+  switch (open_message) {
+    case XMPCreateUserPlaylistEnumeratorMessage: {
+      result = XMPCreateUserPlaylistEnumeratorHandle(
+          user_index, app_id, open_message, close_message, extra_size,
+          item_count, flags, enum_handle);
+    } break;
+    default: {
+      auto e = object_ref<XStaticUntypedEnumerator>(
+          new XStaticUntypedEnumerator(kernel_state(), item_count, extra_size));
+
+      result = e->Initialize(user_index, app_id, open_message, close_message,
+                             flags, extra_size, nullptr);
+      enum_handle = e->handle();
+    } break;
+  }
+
+  if (XFAILED(result)) {
+    return result;
+  }
+
+  *out_handle = enum_handle;
+
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamCreateEnumeratorHandle, kNone, kImplemented);

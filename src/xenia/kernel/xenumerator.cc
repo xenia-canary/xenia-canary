@@ -40,6 +40,8 @@ X_STATUS XEnumerator::Initialize(uint32_t user_index, uint32_t app_id,
     *extra_buffer =
         !extra_buffer ? nullptr : &native_object[sizeof(X_KENUMERATOR)];
   }
+
+  extra_size_ = extra_size;
   return X_STATUS_SUCCESS;
 }
 
@@ -171,6 +173,32 @@ uint32_t XUserStatsEnumerator::WriteItems(uint32_t buffer_ptr,
   }
 
   size_t size = count * item_size();
+
+  return X_ERROR_SUCCESS;
+}
+
+uint32_t XMPCreateUserPlaylistEnumerator::WriteItems(uint32_t buffer_ptr,
+                                                     uint8_t* buffer_data,
+                                                     uint32_t* written_count) {
+  // Fixed 545408C0 freezing at main menu.
+  std::memset(buffer_data, 0, extra_size());
+
+  size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
+  if (!count) {
+    return X_ERROR_NO_MORE_FILES;
+  }
+
+  xam::XMP_USER_PLAYLIST_INFO* results =
+      reinterpret_cast<xam::XMP_USER_PLAYLIST_INFO*>(buffer_data);
+
+  for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
+    const auto& item = items_[current_item_];
+    results[i] = item;
+  }
+
+  if (written_count) {
+    *written_count = static_cast<uint32_t>(count);
+  }
 
   return X_ERROR_SUCCESS;
 }

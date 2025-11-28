@@ -14,6 +14,7 @@
 
 #include "xenia/kernel/xam/achievement_manager.h"
 #include "xenia/kernel/xam/user_tracker.h"
+#include "xenia/kernel/xam/xam.h"
 #include "xenia/kernel/xobject.h"
 
 namespace xe {
@@ -89,10 +90,12 @@ class XEnumerator : public XObject {
 
   size_t item_size() const { return item_size_; }
   size_t items_per_enumerate() const { return items_per_enumerate_; }
+  size_t extra_size() const { return extra_size_; }
 
  private:
   size_t items_per_enumerate_;
   size_t item_size_;
+  size_t extra_size_;
 };
 
 class XStaticUntypedEnumerator : public XEnumerator {
@@ -216,6 +219,26 @@ class XUserStatsEnumerator : public XEnumerator {
 
  private:
   std::vector<XUSER_STATS_SPEC> items_;
+  size_t current_item_ = 0;
+};
+
+class XMPCreateUserPlaylistEnumerator : public XEnumerator {
+ public:
+  XMPCreateUserPlaylistEnumerator(KernelState* kernel_state,
+                                  size_t items_per_enumerate)
+      : XEnumerator(kernel_state, items_per_enumerate, 0) {}
+
+  size_t item_count() const { return items_.size(); }
+
+  void AppendItem(const xam::XMP_USER_PLAYLIST_INFO& item) {
+    items_.push_back(item);
+  }
+
+  uint32_t WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
+                      uint32_t* written_count) override;
+
+ private:
+  std::vector<xam::XMP_USER_PLAYLIST_INFO> items_;
   size_t current_item_ = 0;
 };
 
