@@ -140,6 +140,11 @@ DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
              "General");
+DEFINE_bool(disable_doubleclick_fullscreen, false,
+            "Allows the user to disable the behavior where a fast double-click "
+            "causes Xenia to enter fullscreen mode.",
+            "General");
+
 namespace xe {
 namespace app {
 
@@ -1152,6 +1157,10 @@ void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
 }
 
 void EmulatorWindow::ToggleFullscreenOnDoubleClick() {
+  if (cvars::disable_doubleclick_fullscreen) {
+    return;
+  }
+
   // this function tests if user has double clicked.
   // if double click was achieved the fullscreen gets toggled
   const auto now = steady_clock::now();  // current mouse event time
