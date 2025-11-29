@@ -2898,7 +2898,7 @@ void DxbcShaderTranslator::WriteInputSignature() {
     // shading.
     size_t sample_index_position = SIZE_MAX;
     if (current_shader().memexport_eM_written() && IsSampleRate()) {
-      size_t sample_index_position = shader_object_.size();
+      sample_index_position = shader_object_.size();
       shader_object_.resize(shader_object_.size() + kParameterDwords);
       ++parameter_count;
       {
