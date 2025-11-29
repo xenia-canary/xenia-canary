@@ -13,6 +13,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xbdm/xbdm_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/xbox.h"
@@ -464,6 +465,55 @@ dword_result_t DmSetDumpMode_entry(dword_t dump_mode) {
   return XBDM_SUCCESSFUL;
 }
 DECLARE_XBDM_EXPORT1(DmSetDumpMode, kDebug, kStub);
+
+struct X_DM_QUERY_MEMORY_STATISTICS_RESULT {
+  xe::be<uint32_t> size;
+  xe::be<uint32_t> total_pages;
+  xe::be<uint32_t> available_pages;
+  xe::be<uint32_t> stack_pages;
+  xe::be<uint32_t> virtual_page_table_pages;
+  xe::be<uint32_t> system_page_table_pages;
+  xe::be<uint32_t> pool_pages;
+  xe::be<uint32_t> virtual_mapped_pages;
+  xe::be<uint32_t> image_pages;
+  xe::be<uint32_t> file_cache_pages;
+  xe::be<uint32_t> contiguous_pages;
+  xe::be<uint32_t> debugger_pages;
+};
+static_assert_size(X_DM_QUERY_MEMORY_STATISTICS_RESULT, 48);
+
+dword_result_t DmQueryTitleMemoryStatistics_entry(
+    pointer_t<X_DM_QUERY_MEMORY_STATISTICS_RESULT> stats_ptr) {
+  if (stats_ptr->size != sizeof(X_DM_QUERY_MEMORY_STATISTICS_RESULT)) {
+    return X_E_INVALIDARG;
+  }
+
+  xe::kernel::xboxkrnl::X_MM_QUERY_STATISTICS_RESULT stats;
+  stats.size = sizeof(xe::kernel::xboxkrnl::X_MM_QUERY_STATISTICS_RESULT);
+  dword_result_t result = xe::kernel::xboxkrnl::xeMmQueryStatistics(&stats);
+  if (result < 0) {
+    return X_HRESULT_FROM_NT(result);
+  }
+
+  stats_ptr->available_pages = stats.title.available_pages;
+  stats_ptr->stack_pages = stats.title.stack_pages;
+  stats_ptr->virtual_page_table_pages = stats.title.page_table_pages;
+  stats_ptr->system_page_table_pages = 0;
+  stats_ptr->pool_pages = stats.title.pool_pages;
+  stats_ptr->virtual_mapped_pages =
+      stats.title.heap_pages + stats.title.virtual_pages;
+  stats_ptr->image_pages = stats.title.image_pages;
+  stats_ptr->file_cache_pages = stats.title.cache_pages;
+  stats_ptr->contiguous_pages = stats.title.physical_pages;
+  stats_ptr->debugger_pages = 0;
+  stats_ptr->total_pages =
+      stats_ptr->available_pages + stats_ptr->stack_pages +
+      stats_ptr->virtual_page_table_pages + stats_ptr->pool_pages +
+      stats_ptr->virtual_mapped_pages + stats_ptr->image_pages +
+      stats_ptr->file_cache_pages + stats_ptr->contiguous_pages;
+  return XBDM_SUCCESSFUL;
+}
+DECLARE_XBDM_EXPORT1(DmQueryTitleMemoryStatistics, kDebug, kStub);
 
 dword_result_t DmIsFastCAPEnabled_entry() { return XBDM_UNSUCCESSFUL; }
 DECLARE_XBDM_EXPORT1(DmIsFastCAPEnabled, kDebug, kStub);

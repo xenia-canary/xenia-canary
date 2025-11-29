@@ -557,32 +557,7 @@ dword_result_t MmQueryAllocationSize_entry(lpvoid_t base_address) {
 }
 DECLARE_XBOXKRNL_EXPORT1(MmQueryAllocationSize, kMemory, kImplemented);
 
-// https://code.google.com/p/vdash/source/browse/trunk/vdash/include/kernel.h
-struct X_MM_QUERY_STATISTICS_SECTION {
-  xe::be<uint32_t> available_pages;
-  xe::be<uint32_t> total_virtual_memory_bytes;
-  xe::be<uint32_t> reserved_virtual_memory_bytes;
-  xe::be<uint32_t> physical_pages;
-  xe::be<uint32_t> pool_pages;
-  xe::be<uint32_t> stack_pages;
-  xe::be<uint32_t> image_pages;
-  xe::be<uint32_t> heap_pages;
-  xe::be<uint32_t> virtual_pages;
-  xe::be<uint32_t> page_table_pages;
-  xe::be<uint32_t> cache_pages;
-};
-
-struct X_MM_QUERY_STATISTICS_RESULT {
-  xe::be<uint32_t> size;
-  xe::be<uint32_t> total_physical_pages;
-  xe::be<uint32_t> kernel_pages;
-  X_MM_QUERY_STATISTICS_SECTION title;
-  X_MM_QUERY_STATISTICS_SECTION system;
-  xe::be<uint32_t> highest_physical_page;
-};
-static_assert_size(X_MM_QUERY_STATISTICS_RESULT, 104);
-
-dword_result_t MmQueryStatistics_entry(
+dword_result_t xeMmQueryStatistics(
     pointer_t<X_MM_QUERY_STATISTICS_RESULT> stats_ptr) {
   if (!stats_ptr) {
     return X_STATUS_INVALID_PARAMETER;
@@ -648,6 +623,11 @@ dword_result_t MmQueryStatistics_entry(
   stats_ptr->highest_physical_page = 0x0001FFFF;
 
   return X_STATUS_SUCCESS;
+}
+
+dword_result_t MmQueryStatistics_entry(
+    pointer_t<X_MM_QUERY_STATISTICS_RESULT> stats_ptr) {
+  return xeMmQueryStatistics(stats_ptr);
 }
 DECLARE_XBOXKRNL_EXPORT2(MmQueryStatistics, kMemory, kImplemented,
                          kHighFrequency);

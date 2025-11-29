@@ -26,6 +26,7 @@ typedef uint32_t X_HANDLE;
 // https://msdn.microsoft.com/en-us/library/cc704588.aspx
 // Adding as needed.
 typedef uint32_t X_STATUS;
+#define X_FACILITY_NT_BIT 0x10000000
 #define XSUCCEEDED(s)     ((s & 0xC0000000) == 0)
 #define XFAILED(s)        (!XSUCCEEDED(s))
 #define X_STATUS_SUCCESS                                ((X_STATUS)0x00000000L)
@@ -111,6 +112,7 @@ typedef uint32_t X_RESULT;
 
 // HRESULT codes
 typedef uint32_t X_HRESULT;
+#define X_HRESULT_FROM_NT(x) (static_cast<X_HRESULT>((x) | X_FACILITY_NT_BIT))
 #define X_HRESULT_FROM_WIN32(x) ((int32_t)(x) <= 0 \
                                   ? (static_cast<X_HRESULT>(x)) \
                                   : (static_cast<X_HRESULT>(((x) & 0xFFFF) | (X_FACILITY_WIN32 << 16) | \
