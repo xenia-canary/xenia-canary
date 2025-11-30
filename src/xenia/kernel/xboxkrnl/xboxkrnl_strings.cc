@@ -1025,8 +1025,9 @@ SHIM_CALL _vsnprintf_entry(PPCContext* ppc_context) {
       buffer[count] = '\0';
     }
   } else {
-    // Overflowed buffer. We still return the count we would have written.
+    // Overflowed buffer.
     std::memcpy(buffer, data.str().c_str(), buffer_count);
+    count = -1;
   }
   SHIM_SET_RETURN_32(count);
 }
