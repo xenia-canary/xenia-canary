@@ -33,6 +33,10 @@ DEFINE_bool(
     "may be used to bypass fetch constant type errors in certain games until "
     "the real reason why they're invalid is found.",
     "GPU");
+DEFINE_bool(
+    gpu_allow_invalid_upload_range, false,
+    "Allows games to read data from pages that are marked as no access.",
+    "GPU");
 
 DEFINE_bool(
     non_seamless_cube_map, true,
