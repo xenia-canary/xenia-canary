@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_APU_XMA_CONTEXT_OLD_H_
-#define XENIA_APU_XMA_CONTEXT_OLD_H_
+#ifndef XENIA_APU_XMA_CONTEXT_MASTER_H_
+#define XENIA_APU_XMA_CONTEXT_MASTER_H_
 
 #include <array>
 #include <atomic>
@@ -29,10 +29,10 @@ struct AVPacket;
 namespace xe {
 namespace apu {
 
-class XmaContextOld : public XmaContext {
+class XmaContextMaster : public XmaContext {
  public:
-  explicit XmaContextOld();
-  ~XmaContextOld();
+  explicit XmaContextMaster();
+  ~XmaContextMaster();
 
   int Setup(uint32_t id, Memory* memory, uint32_t guest_ptr);
   bool Work();
@@ -66,10 +66,6 @@ class XmaContextOld : public XmaContext {
   void Decode(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(uint8_t* packet, int sample_rate, bool is_two_channel);
 
-  // This method should be used ONLY when we're at the last packet of the stream
-  // and we want to find offset in next buffer
-  uint32_t GetPacketFirstFrameOffset(const XMA_CONTEXT_DATA* data);
-
   // uint32_t decoded_consumed_samples_ = 0; // TODO do this dynamically
   // int decoded_idx_ = -1;
 
@@ -98,4 +94,4 @@ class XmaContextOld : public XmaContext {
 }  // namespace apu
 }  // namespace xe
 
-#endif  // XENIA_APU_XMA_CONTEXT_H_
+#endif  // XENIA_APU_XMA_CONTEXT_MASTER_H_

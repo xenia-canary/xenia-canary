@@ -166,8 +166,13 @@ static_assert_size(Xma2ExtraData, 34);
 class XmaContext {
  public:
   static constexpr uint32_t kBytesPerPacket = 2048;
+  static constexpr uint32_t kBytesPerPacketHeader = 4;
+  static constexpr uint32_t kBytesPerPacketData =
+      kBytesPerPacket - kBytesPerPacketHeader;
+
   static constexpr uint32_t kBitsPerPacket = kBytesPerPacket * 8;
   static constexpr uint32_t kBitsPerHeader = 32;
+  static constexpr uint32_t kBitsPerFrameHeader = 15;
 
   static constexpr uint32_t kBytesPerSample = 2;
   static constexpr uint32_t kSamplesPerFrame = 512;
@@ -177,8 +182,10 @@ class XmaContext {
   static constexpr uint32_t kBytesPerSubframeChannel =
       kSamplesPerSubframe * kBytesPerSample;
 
-  // static const uint32_t kOutputBytesPerBlock = 256;
-  // static const uint32_t kOutputMaxSizeBytes = 31 * kOutputBytesPerBlock;
+  static constexpr uint32_t kOutputBytesPerBlock = 256;
+  static constexpr uint32_t kOutputMaxSizeBytes = 31 * kOutputBytesPerBlock;
+
+  static constexpr uint32_t kLastFrameMarker = 0x7FFF;
 
   explicit XmaContext();
   virtual ~XmaContext();
