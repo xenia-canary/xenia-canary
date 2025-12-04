@@ -919,8 +919,9 @@ void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
   }
   if (!has_notified_live_startup_ && listener->mask() & kXNotifyLive) {
     has_notified_live_startup_ = true;
+    // X_ONLINE_S_LOGON_DISCONNECTED
     listener->EnqueueNotification(kXNotificationLiveConnectionChanged,
-                                  0x80151802L);
+                                  0x001510F1L);
     listener->EnqueueNotification(kXNotificationLiveLinkStateChanged, 0);
   }
 }
