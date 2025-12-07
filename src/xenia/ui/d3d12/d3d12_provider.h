@@ -97,43 +97,8 @@ class D3D12Provider : public GraphicsProvider {
   // Adapter info.
   GpuVendorID GetAdapterVendorID() const { return adapter_vendor_id_; }
 
-  bool IsIntelArcGpu() const {
-    if (adapter_vendor_id_ != GpuVendorID::kIntel) {
-      return false;
-    }
-
-    // Desktop IDs - Alchemist
-    if (adapter_device_id_ >= 0x56A0 && adapter_device_id_ <= 0x56BD) {
-      return true;
-    }
-
-    // Mobile IDs - Alchemist
-    if (adapter_device_id_ >= 0x5690 && adapter_device_id_ <= 0x5697) {
-      return true;
-    }
-
-    // Desktop IDs - Battlemage
-    if (adapter_device_id_ >= 0xE20B && adapter_device_id_ <= 0xE20C) {
-      return true;
-    }
-
-    // Meteor Lake
-    if (adapter_device_id_ >= 0x7D40 && adapter_device_id_ <= 0x7DD5) {
-      return true;
-    }
-
-    // Lunar Lake
-    if (adapter_device_id_ >= 0x6420 && adapter_device_id_ <= 0x64B0) {
-      return true;
-    }
-
-    // Arrow Lake
-    if (adapter_device_id_ >= 0x7D41 && adapter_device_id_ <= 0x7D67) {
-      return true;
-    }
-
-    return false;
-  }
+  const std::string& GetAdapterDescription() const;
+  bool IsIntelArcGpu() const;
 
   // Device features.
   D3D12_HEAP_FLAGS GetHeapFlagCreateNotZeroed() const {
@@ -232,6 +197,7 @@ class D3D12Provider : public GraphicsProvider {
 
   GpuVendorID adapter_vendor_id_;
   uint32_t adapter_device_id_;
+  std::string adapter_description_;
 
   D3D12_HEAP_FLAGS heap_flag_create_not_zeroed_;
   D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER programmable_sample_positions_tier_;

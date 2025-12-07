@@ -223,6 +223,9 @@ bool D3D12RenderTargetCache::Initialize() {
     // UHD Graphics 630), the "always" stencil comparison function isn't working
     // properly, so clears in the Xbox 360's Direct3D 9 don't work. Forcing ROV
     // there.
+    // As of December 2025, Intel pre-Arc still suffers from this issue.
+    // Intel Arc (Alchemist and newer) does not have this issue so an
+    // exception is made so they default to RTV.
 #if 1
     // The ROV path is currently much slower generally.
     // TODO(Triang3l): Make ROV the default when it's optimized better (for
@@ -446,8 +449,10 @@ bool D3D12RenderTargetCache::Initialize() {
   use_stencil_reference_output_ =
       cvars::native_stencil_value_output &&
       provider.IsPSSpecifiedStencilReferenceSupported() &&
-      (cvars::native_stencil_value_output_d3d12_intel ||
-       !provider.IsIntelArcGpu());
+      (provider.IsIntelArcGpu() ||
+       cvars::native_stencil_value_output_d3d12_intel ||
+       provider.GetAdapterVendorID() !=
+           ui::GraphicsProvider::GpuVendorID::kIntel);
 
   if (path_ == Path::kHostRenderTargets) {
     // Host render targets.

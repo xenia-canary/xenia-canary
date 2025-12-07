@@ -47,6 +47,20 @@ bool D3D12Provider::IsD3D12APIAvailable() {
   return true;
 }
 
+const std::string& D3D12Provider::GetAdapterDescription() const {
+  return adapter_description_;
+}
+
+// Check for Intel Arc cards and Intel Graphics iGPUs which use
+// the same architecture.
+bool D3D12Provider::IsIntelArcGpu() const {
+  if (adapter_vendor_id_ != GpuVendorID::kIntel) {
+    return false;
+  }
+  return adapter_description_.starts_with("Intel(R) Arc(TM)") ||
+         adapter_description_.starts_with("Intel(R) Graphics");
+}
+
 std::unique_ptr<D3D12Provider> D3D12Provider::Create() {
   std::unique_ptr<D3D12Provider> provider(new D3D12Provider);
   if (!provider->Initialize()) {
@@ -300,6 +314,7 @@ bool D3D12Provider::Initialize() {
     if (WideCharToMultiByte(CP_UTF8, 0, adapter_desc.Description, -1,
                             adapter_name_mb, adapter_name_mb_size, nullptr,
                             nullptr) != 0) {
+      adapter_description_ = adapter_name_mb;
       XELOGD3D("DXGI adapter: {} (vendor 0x{:04X}, device 0x{:04X})",
                adapter_name_mb, adapter_desc.VendorId, adapter_desc.DeviceId);
     }
