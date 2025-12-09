@@ -5129,8 +5129,12 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       transfer_viewport.minDepth = 0.0f;
       transfer_viewport.maxDepth = 1.0f;
       command_processor_.SetViewport(transfer_viewport);
-      float pixels_to_ndc_x = 2.0f / transfer_viewport.width;
-      float pixels_to_ndc_y = 2.0f / transfer_viewport.height;
+      // GetRectangles returns coordinates in guest pixels, so scale
+      // pixels_to_ndc to convert guest pixels to NDC correctly.
+      float pixels_to_ndc_x =
+          2.0f / transfer_viewport.width * draw_resolution_scale_x();
+      float pixels_to_ndc_y =
+          2.0f / transfer_viewport.height * draw_resolution_scale_y();
       VkRect2D transfer_scissor;
       transfer_scissor.offset.x = 0;
       transfer_scissor.offset.y = 0;
