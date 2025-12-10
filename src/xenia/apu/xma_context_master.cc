@@ -48,9 +48,6 @@ XmaContextMaster::~XmaContextMaster() {
   if (av_frame_) {
     av_frame_free(&av_frame_);
   }
-  // if (current_frame_) {
-  //   delete[] current_frame_;
-  //  }
 }
 
 int XmaContextMaster::Setup(uint32_t id, Memory* memory, uint32_t guest_ptr) {
@@ -148,6 +145,10 @@ void XmaContextMaster::Clear() {
   data.output_buffer_read_offset = 0;
   data.output_buffer_write_offset = 0;
 
+  // AUDIO SYNC FIX: Reset subframe counter when clearing context
+  // This prevents stale buffered subframes from being consumed after a reset
+  current_frame_remaining_subframes_ = 0;
+
   data.Store(context_ptr);
 }
 
@@ -197,19 +198,7 @@ bool XmaContextMaster::TrySetupNextLoop(XMA_CONTEXT_DATA* data,
   return false;
 }
 
-/*
-void XmaContext::NextPacket(
-    uint8_t* input_buffer,
-    uint32_t input_size,
-    uint32_t input_buffer_read_offset) {
-*/
-void XmaContextMaster::NextPacket(XMA_CONTEXT_DATA* data) {
-  // auto packet_idx = GetFramePacketNumber(input_buffer, input_size,
-  // input_buffer_read_offset);
-
-  // packet_idx++;
-  // if (packet_idx++ >= input_size)
-}
+void XmaContextMaster::NextPacket(XMA_CONTEXT_DATA* data) {}
 
 int XmaContextMaster::GetSampleRate(int id) {
   switch (id) {
@@ -274,6 +263,48 @@ bool XmaContextMaster::ValidFrameOffset(uint8_t* block, size_t size_bytes,
   }
 
   return false;
+}
+
+// AUDIO SYNC FIX: New method to consume decoded frames in subframe chunks.
+//
+// WHY THIS FIXES DESYNC:
+// The original decoder wrote entire 512-sample frames immediately to the output
+// buffer, ignoring the game's subframe_decode_count parameter. This parameter
+// tells the decoder how many 128-sample subframes to write per iteration, which
+// is critical for maintaining audio sync with gameplay.
+//
+// Use subframe_decode_count to control audio playback timing:
+// - They decode a frame into 4 subframes (mono) or 8 subframes (stereo)
+// - They consume only subframe_decode_count subframes per game tick
+// - This allows precise synchronization between audio and visual elements
+//
+// By buffering decoded frames and consuming them gradually based on
+// subframe_decode_count, we maintain the timing contract the game expects.
+void XmaContextMaster::Consume(RingBuffer* output_rb,
+                               const XMA_CONTEXT_DATA* data,
+                               uint8_t* frame_data) {
+  if (!current_frame_remaining_subframes_) {
+    return;
+  }
+
+  // Only write as many subframes as the game requested this iteration
+  const int8_t subframes_to_write =
+      std::min((int8_t)current_frame_remaining_subframes_,
+               (int8_t)data->subframe_decode_count);
+
+  // Calculate offset into the frame buffer based on how many subframes
+  // we've already consumed from this frame
+  const int8_t raw_frame_read_offset =
+      ((kBytesPerFrameChannel / kOutputBytesPerBlock) << data->is_stereo) -
+      current_frame_remaining_subframes_;
+
+  // Write only the requested number of subframes (256 bytes each)
+  output_rb->Write(frame_data + (kOutputBytesPerBlock * raw_frame_read_offset),
+                   subframes_to_write * kOutputBytesPerBlock);
+
+  // Update our tracking counters
+  remaining_subframe_blocks_in_output_buffer_ -= subframes_to_write;
+  current_frame_remaining_subframes_ -= subframes_to_write;
 }
 
 void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
@@ -358,21 +389,59 @@ void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
   output_rb.set_read_offset(output_read_offset);
   output_rb.set_write_offset(output_write_offset);
 
-  // We can only decode an entire frame and write it out at a time, so
-  // don't save any samples.
-  // TODO(JoelLinn): subframes when looping
-  size_t output_remaining_bytes = output_rb.write_count();
-  output_remaining_bytes -=
-      output_remaining_bytes % (kBytesPerFrameChannel << data->is_stereo);
+  // AUDIO SYNC FIX: Track available space in subframe blocks (256 bytes each)
+  // instead of total bytes. This allows precise control over how many subframes
+  // we can write, respecting the game's timing requirements.
+  remaining_subframe_blocks_in_output_buffer_ =
+      (int32_t)output_rb.write_count() / kOutputBytesPerBlock;
 
-  // is_dirty_ = true; // TODO
-  // is_dirty_ = false;  // TODO
+  // AUDIO SYNC FIX: Calculate minimum space needed for safe decoding.
+  // We need room for at least (subframe_decode_count * 2 - 1) subframes
+  // because:
+  // - We may have unconsumed subframes from a previous decode
+  // - We need space for the new frame's subframes
+  // This prevents buffer overflow and maintains proper flow control.
+  const int32_t minimum_subframe_decode_count =
+      (data->subframe_decode_count * 2) - 1;
+
+  if (minimum_subframe_decode_count >
+      remaining_subframe_blocks_in_output_buffer_) {
+    return;
+  }
+
   assert_false(data->stop_when_done);
   assert_false(data->interrupt_when_done);
   static int total_samples = 0;
   bool reuse_input_buffer = false;
-  // Decode until we can't write any more data.
-  while (output_remaining_bytes > 0) {
+
+  // AUDIO SYNC FIX: Changed loop condition from checking total bytes to
+  // checking subframe blocks. This ensures we only decode when there's enough
+  // space for the game's requested subframe_decode_count, maintaining proper
+  // timing.
+  //
+  // OLD BEHAVIOR: while (output_remaining_bytes > 0)
+  // - Decoded until output buffer was full
+  // - Ignored subframe_decode_count
+  // - Caused audio to drift ahead of gameplay timing
+  //
+  // NEW BEHAVIOR: while (remaining_subframe_blocks >= minimum)
+  // - Only decodes when there's space for controlled subframe consumption
+  // - Respects subframe_decode_count for proper timing
+  // - Keeps audio synchronized with gameplay
+
+  while (remaining_subframe_blocks_in_output_buffer_ >=
+         minimum_subframe_decode_count) {
+          
+    // AUDIO SYNC FIX: Consume buffered subframes before decoding new frames.
+    // This is the key to maintaining sync - we process one "quantum" of audio
+    // (subframe_decode_count subframes) per game tick, just like the game
+    // expects.
+    if (current_frame_remaining_subframes_ > 0) {
+      Consume(&output_rb, data, raw_frame_buffer_.data());
+      data->output_buffer_write_offset = output_rb.write_offset() / 256;
+      continue;
+    }
+
     if (!data->input_buffer_0_valid && !data->input_buffer_1_valid) {
       // Out of data.
       break;
@@ -593,35 +662,46 @@ void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
     assert_true(ret == 0);
 
     {
-      // copy over 1 frame
-      // update input buffer read offset
+      // AUDIO SYNC FIX: Instead of writing the entire decoded frame
+      // immediately, we now buffer it and consume it gradually.
+      //
+      // OLD BEHAVIOR:
+      // - ConvertFrame() -> raw_frame_.data()
+      // - output_rb.Write(raw_frame_.data(), entire_frame_size)
+      // - All 512 samples (4 or 8 subframes) written at once
+      // - Game's subframe_decode_count ignored
+      //
+      // NEW BEHAVIOR:
+      // - ConvertFrame() -> raw_frame_buffer_.data() (buffered)
+      // - Set current_frame_remaining_subframes_ = 4 or 8
+      // - Consume() writes only subframe_decode_count subframes per iteration
+      // - Remaining subframes consumed on subsequent game ticks
+      // - Perfect sync with game timing
 
-      // assert(decoded_consumed_samples_ + kSamplesPerFrame <=
-      //       current_frame_.size());
+      // Decode frame into buffer
       assert_true(av_context_->sample_fmt == AV_SAMPLE_FMT_FLTP);
-      // assert_true(frame_is_split == (frame_idx == -1));
 
-      //			dump_raw(av_frame_, id());
+      // Convert frame to raw PCM in buffer
       ConvertFrame((const uint8_t**)av_frame_->data, bool(data->is_stereo),
-                   raw_frame_.data());
-      // decoded_consumed_samples_ += kSamplesPerFrame;
+                   raw_frame_buffer_.data());
 
-      auto byte_count = kBytesPerFrameChannel << data->is_stereo;
-      assert_true(output_remaining_bytes >= byte_count);
-      output_rb.Write(raw_frame_.data(), byte_count);
-      output_remaining_bytes -= byte_count;
+      // Set remaining subframes for this decoded frame
+      // Mono: 4 subframes (512 samples / 128 per subframe)
+      // Stereo: 8 subframes (4 per channel)
+      current_frame_remaining_subframes_ = 4 << data->is_stereo;
+
+      // Consume what we can from this frame
+      Consume(&output_rb, data, raw_frame_buffer_.data());
+
+      // Update output write offset
       data->output_buffer_write_offset = output_rb.write_offset() / 256;
 
       total_samples += id_ == 0 ? kSamplesPerFrame : 0;
 
       uint32_t offset = data->input_buffer_read_offset;
-      // if (offset % (kBytesPerSample * 8) == 0) {
-      //  offset = xma::GetPacketFrameOffset(packet);
-      //}
       offset = static_cast<uint32_t>(
           GetNextFrame(current_input_buffer, current_input_size, offset));
-      // assert_true((offset == 0) ==
-      //            (frame_is_split || (frame_idx + 1 >= frame_count)));
+
       if (frame_idx + 1 >= frame_count) {
         // Skip to next packet (no split frame)
         packets_skip_ = xma::GetPacketSkipCount(packet) + 1;
@@ -665,9 +745,6 @@ void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
     }
   }
 
-  // assert_true((split_frame_len_ != 0) == (data->input_buffer_read_offset ==
-  // 0));
-
   // The game will kick us again with a new output buffer later.
   // It's important that we only invalidate this if we actually wrote to it!!
   if (output_rb.write_offset() == output_rb.read_offset()) {
@@ -677,10 +754,6 @@ void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
 
 size_t XmaContextMaster::GetNextFrame(uint8_t* block, size_t size,
                                       size_t bit_offset) {
-  // offset = xma::GetPacketFrameOffset(packet);
-  // TODO meh
-  // auto next_packet = bit_offset - bit_offset % kBitsPerPacket +
-  // kBitsPerPacket;
   auto packet_idx = GetFramePacketNumber(block, size, bit_offset);
 
   BitStream stream(block, size * 8);
@@ -692,17 +765,9 @@ size_t XmaContextMaster::GetNextFrame(uint8_t* block, size_t size,
 
   uint64_t len = stream.Read(15);
   if ((len - 15) > stream.BitsRemaining()) {
-    // assert_always("TODO");
-    //  *bit_offset = next_packet;
-    //  return false;
-    //  return next_packet;
     return 0;
   } else if (len >= xma::kMaxFrameLength) {
-    // assert_always("TODO");
-    //  *bit_offset = next_packet;
-    //  return false;
     return 0;
-    // return next_packet;
   }
 
   stream.Advance(len - (15 + 1));

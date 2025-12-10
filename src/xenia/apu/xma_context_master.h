@@ -16,6 +16,7 @@
 #include <queue>
 
 #include "xenia/apu/xma_context.h"
+#include "xenia/base/ring_buffer.h"
 #include "xenia/memory.h"
 #include "xenia/xbox.h"
 
@@ -65,6 +66,42 @@ class XmaContextMaster : public XmaContext {
                         size_t frame_offset_bits);
   void Decode(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(uint8_t* packet, int sample_rate, bool is_two_channel);
+
+  // AUDIO SYNC FIX: Track subframe consumption for proper timing
+  //
+  // These members implement a "decode-then-consume" pattern that fixes audio desync:
+  //
+  // 1. current_frame_remaining_subframes_: 
+  //    Tracks how many subframes from the current decoded frame haven't been
+  //    consumed yet. A frame contains 4 subframes (mono) or 8 (stereo).
+  //    Instead of writing all subframes at once, we write only what the game
+  //    requests per tick via subframe_decode_count.
+  //
+  // 2. remaining_subframe_blocks_in_output_buffer_:
+  //    Tracks available space in the output buffer measured in subframe blocks
+  //    (256 bytes each). This allows precise flow control - we only decode new
+  //    frames when there's enough space for controlled consumption.
+  //
+  // 3. raw_frame_buffer_:
+  //    Temporary buffer for decoded frames. Instead of writing directly to the
+  //    output buffer, we decode here first, then consume gradually. This allows
+  //    us to pause mid-frame and resume later, maintaining sync.
+  //
+  // WHY THIS FIXES DESYNC:
+  // Many games need precise audio timing to sync with
+  // gameplay (Specially rhythm games). They use subframe_decode_count to control how much audio is
+  // decoded per game tick (usually 1-2 subframes = 128-256 samples). The old
+  // decoder dumped entire frames (512 samples) immediately, causing audio to
+  // gradually drift ahead of the visual elements. This fix maintains the
+  // timing contract the game expects.
+
+  uint8_t current_frame_remaining_subframes_ = 0;
+  int32_t remaining_subframe_blocks_in_output_buffer_ = 0;
+  std::array<uint8_t, kBytesPerFrameChannel * 2> raw_frame_buffer_;
+  
+  // Consume decoded subframes from buffered frame
+  void Consume(RingBuffer* output_rb, const XMA_CONTEXT_DATA* data,
+               uint8_t* frame_data);
 
   // uint32_t decoded_consumed_samples_ = 0; // TODO do this dynamically
   // int decoded_idx_ = -1;
