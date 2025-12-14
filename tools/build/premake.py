@@ -52,7 +52,7 @@ setup_premake_path_override()
 
 
 def main():
-    premake_bin_name = "premake5.exe" if sys.platform is "win32" else "premake 5"
+    premake_bin_name = "premake5.exe" if sys.platform is "win32" else "premake5"
     premake_build_bin = os.path.join(premake_path, "bin", "release", premake_bin_name)
     premake_local_bin = os.path.join(self_path, "bin", premake_bin_name)
     premake5_bin = None
