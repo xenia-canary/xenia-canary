@@ -72,6 +72,10 @@ void XamState::LoadSpaInfo(const SpaInfo* info) {
   user_tracker_->UpdateSpaInfo(spa_info_.get());
 }
 
+void XamState::SetContentRegisterCallback(uint32_t callback) {
+  content_register_callback = callback;
+}
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

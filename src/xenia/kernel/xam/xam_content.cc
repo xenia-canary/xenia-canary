@@ -794,6 +794,11 @@ dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
 
 DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kStub);
 
+void XamContentRegisterChangeCallback_entry(dword_t callback) {
+  kernel_state()->xam_state()->SetContentRegisterCallback(callback);
+}
+DECLARE_XAM_EXPORT1(XamContentRegisterChangeCallback, kContent, kImplemented);
+
 dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
                                                    lpvoid_t path_ptr,
                                                    dword_t path_size,
