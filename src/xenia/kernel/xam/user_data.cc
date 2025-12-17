@@ -27,10 +27,24 @@ UserData::UserData(X_USER_DATA_TYPE data_type, UserDataTypes user_data) {
   switch (data_type) {
     case X_USER_DATA_TYPE::BINARY:
       extended_data_ = std::get<std::vector<uint8_t>>(user_data);
-      data_.data.binary.size = static_cast<uint16_t>(extended_data_.size());
+
+      data_.data.binary.size = std::min(
+          static_cast<uint32_t>(extended_data_.size()), kMaxUserDataSize);
+
+      if (extended_data_.size() > kMaxUserDataSize) {
+        extended_data_.resize(kMaxUserDataSize);
+      }
       break;
     case X_USER_DATA_TYPE::WSTRING: {
       std::u16string str = std::get<std::u16string>(user_data);
+      uint32_t max_chars = (kMaxUserDataSize / sizeof(char16_t)) - 1;
+
+      if (str.size() > max_chars) {
+        str.resize(max_chars);
+      }
+
+      str.push_back(u'\0');
+
       data_.data.unicode.size =
           static_cast<uint16_t>(string_util::size_in_bytes(str, false));
 
