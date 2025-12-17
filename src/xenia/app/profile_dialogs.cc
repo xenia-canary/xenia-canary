@@ -29,7 +29,7 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
                              ->profile_manager();
 
   if (profile_manager->GetAccountCount()) {
-    delete this;
+    Close();
     return;
   }
 

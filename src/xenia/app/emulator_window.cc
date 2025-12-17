@@ -703,7 +703,8 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
   ImGui::End();
 
   if (!dialog_open) {
-    emulator_window_.ToggleXMPConfigDialog();
+    Close();
+    emulator_window_.xmp_config_dialog_.release();
     return;
   }
 }
