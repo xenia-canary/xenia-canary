@@ -103,16 +103,6 @@ dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
 DECLARE_XAM_EXPORT2(XamUserGetSigninState, kUserProfiles, kImplemented,
                     kHighFrequency);
 
-typedef struct {
-  xe::be<uint64_t> xuid;
-  xe::be<uint32_t> flags;
-  xe::be<uint32_t> signin_state;
-  xe::be<uint32_t> guest_num;
-  xe::be<uint32_t> sponsor_user_index;
-  char name[16];
-} X_USER_SIGNIN_INFO;
-static_assert_size(X_USER_SIGNIN_INFO, 40);
-
 X_HRESULT_result_t XamUserGetSigninInfo_entry(
     dword_t user_index, dword_t flags, pointer_t<X_USER_SIGNIN_INFO> info) {
   if (!info) {
@@ -198,12 +188,6 @@ dword_result_t XamUserGetGamerTag_entry(dword_t user_index, dword_t buffer,
   return X_E_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetGamerTag, kUserProfiles, kImplemented);
-
-typedef struct {
-  xe::be<uint32_t> setting_count;
-  xe::be<uint32_t> settings_ptr;
-} X_USER_READ_PROFILE_SETTINGS;
-static_assert_size(X_USER_READ_PROFILE_SETTINGS, 8);
 
 // https://github.com/oukiar/freestyledash/blob/master/Freestyle/Tools/Generic/xboxtools.cpp
 uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
@@ -993,14 +977,19 @@ dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
 DECLARE_XAM_EXPORT1(XamUserGetOnlineCountryFromXUID, kUserProfiles,
                     kImplemented);
 
-constexpr uint8_t kStatsMaxAmount = 64;
-
-struct X_STATS_DETAILS {
-  xe::be<uint32_t> id;
-  xe::be<uint32_t> stats_amount;
-  xe::be<uint16_t> stats[kStatsMaxAmount];
-};
-static_assert_size(X_STATS_DETAILS, 8 + kStatsMaxAmount * 2);
+dword_result_t XamUserIsParentalControlled_entry(dword_t user_index) {
+  /* Notes:
+      - if (data_address < 1 || XamExecutingOnBehalfOfTitle == 0 || title id ==
+     kDashboardID || user_type != offline) (type mask used in XamUserGetXUID) go
+     forward else return false
+  */
+  const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
+  if (!user || !user->IsParentalControlled()) {
+    return false;
+  }
+  return true;
+}
+DECLARE_XAM_EXPORT1(XamUserIsParentalControlled, kUserProfiles, kImplemented);
 
 dword_result_t XamUserCreateStatsEnumerator_entry(
     dword_t title_id, dword_t user_index, dword_t count, dword_t flags,
