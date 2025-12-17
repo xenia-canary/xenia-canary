@@ -124,7 +124,7 @@ inline constexpr bool IsGamerPictureCustom(const uint32_t title_id) {
 }
 
 inline constexpr bool IsGamerPictureFromDash(const uint32_t title_id) {
-  return title_id == 0xFFFE07D1;
+  return title_id == kDashboardID;
 }
 
 inline constexpr bool IsGamerPictureKeySet(const uint32_t title_id) {
@@ -134,8 +134,8 @@ inline constexpr bool IsGamerPictureKeySet(const uint32_t title_id) {
 static_assert(IsGamerPictureAvatar(0xFFFE0854));  // Avatar Gamer Picture
 static_assert(IsGamerPictureCustom(0xFFFE0700));  // Custom Gamer Picture
 static_assert(
-    IsGamerPictureFromDash(0xFFFE07D1));  // Default or OS Gamer Picture?
-static_assert(!IsGamerPictureKeySet(0));  // No Gamer Picture Key
+    IsGamerPictureFromDash(kDashboardID));  // Default or OS Gamer Picture?
+static_assert(!IsGamerPictureKeySet(0));    // No Gamer Picture Key
 
 }  // namespace kernel
 }  // namespace xe

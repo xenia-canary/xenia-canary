@@ -758,8 +758,7 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
       kernel_memory()->TranslateVirtual<const char16_t*>(
           key_ptr->data.unicode.ptr)));
 
-  // Default key size is 24 bytes, but we need to include null terminator
-  if (tile_key.empty() || tile_key.size() != 24) {
+  if (tile_key.empty() || tile_key.size() != sizeof(GamerPictureKey)) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -770,23 +769,20 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
   if (!is_valid_hex_string) {
     return X_ERROR_INVALID_PARAMETER;
   }
-  // Simple parser for key. Key (lower case) contains: title_id (8 chars),
-  // big_tile_id (8 chars), small_tile_id (8 chars)
-  std::string title_id = tile_key.substr(0, 8);
-  std::string big_tile_id = tile_key.substr(8, 8);
-  std::string small_tile_id = tile_key.substr(16, 8);
+
+  const GamerPictureKey* gamer_picture_key =
+      reinterpret_cast<const GamerPictureKey*>(tile_key.data());
 
   if (title_id_ptr) {
-    *title_id_ptr = string_util::from_string<uint32_t>(title_id, true);
+    *title_id_ptr = gamer_picture_key->GetTitleId();
   }
 
   if (big_tile_id_ptr) {
-    *big_tile_id_ptr = string_util::from_string<uint32_t>(big_tile_id, true);
+    *big_tile_id_ptr = gamer_picture_key->GetBigTileId();
   }
 
   if (small_tile_id_ptr) {
-    *small_tile_id_ptr =
-        string_util::from_string<uint32_t>(small_tile_id, true);
+    *small_tile_id_ptr = gamer_picture_key->GetSmallTileId();
   }
 
   bool is_from_dash = false;

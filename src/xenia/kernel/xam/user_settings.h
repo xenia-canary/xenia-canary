@@ -445,6 +445,25 @@ enum ACCELERATOR_CONTROL_OPTIONS : uint8_t {
   ACCELERATOR_CONTROL_BUTTON
 };
 
+struct GamerPictureKey {
+  char title_id[8];
+  char big_tile_id[8];
+  char small_tile_id[8];
+
+  uint32_t GetTitleId() const {
+    return string_util::from_string<uint32_t>(title_id, true);
+  }
+
+  uint32_t GetBigTileId() const {
+    return string_util::from_string<uint32_t>(big_tile_id, true);
+  }
+
+  uint32_t GetSmallTileId() const {
+    return string_util::from_string<uint32_t>(small_tile_id, true);
+  }
+};
+static_assert_size(GamerPictureKey, 0x18);
+
 class UserSetting : public UserData {
  public:
   UserSetting(const UserSetting& setting);
