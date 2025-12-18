@@ -38,30 +38,38 @@ X_HRESULT XLiveBaseApp::DispatchMessageSync(uint32_t message,
       return X_E_FAIL;
     }
     case 0x00058003: {
-      // Called on startup of dashboard (netplay build)
-      XELOGD("XLiveBaseLogonGetHR, unimplemented");
-      return X_E_SUCCESS;
+      /* Notes:
+         - Called on startup of dashboard (netplay build)
+         - used by other internet funtions to check if online (e.g.
+         XamGetLiveHiveValueA)
+         - Return is Saved elsewhere and used here
+      */
+      XELOGD("XLiveBaseLogonGetHR, implemented in netplay");
+      return 0x001510F1;  // X_ONLINE_S_LOGON_DISCONNECTED
     }
     case 0x00058004: {
-      // Called on startup, seems to just return a bool in the buffer.
+      /* Notes:
+         - Called on startup, seems to just return a bool in the buffer.
+         - It is Saved elsewhere and used here
+      */
       assert_true(!buffer_length || buffer_length == 4);
       XELOGD("XLiveBaseGetLogonId({:08X})", buffer_ptr);
-      xe::store_and_swap<uint32_t>(buffer + 0, 1);  // ?
+      xe::store_and_swap<uint32_t>(buffer, 1);  // ?
       return X_E_SUCCESS;
     }
     case 0x00058006: {
+      // Buffer only set when online
       assert_true(!buffer_length || buffer_length == 4);
       XELOGD("XLiveBaseGetNatType({:08X})", buffer_ptr);
-      xe::store_and_swap<uint32_t>(buffer + 0, 1);  // XONLINE_NAT_OPEN
-      return X_E_SUCCESS;
+      return 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
     }
     case 0x00058007: {
       // Occurs if title calls XOnlineGetServiceInfo, expects dwServiceId
       // and pServiceInfo. pServiceInfo should contain pointer to
       // XONLINE_SERVICE_INFO structure.
-      XELOGD("CXLiveLogon::GetServiceInfo({:08X}, {:08X})", buffer_ptr,
+      XELOGD("XLiveBaseOnlineGetServiceInfo({:08X}, {:08X})", buffer_ptr,
              buffer_length);
-      return 0x80151802;  // ERROR_CONNECTION_INVALID
+      return 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
     }
     case 0x00058020: {
       // 0x00058004 is called right before this.
