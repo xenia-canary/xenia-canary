@@ -17,6 +17,7 @@ from shutil import rmtree
 import subprocess
 import sys
 import stat
+import enum
 
 __author__ = "ben.vanik@gmail.com (Ben Vanik)"
 
@@ -28,11 +29,29 @@ class bcolors:
 #    OKBLUE = "\033[94m"
     OKCYAN = "\033[96m"
 #    OKGREEN = "\033[92m"
-#    WARNING = "\033[93m"
+    WARNING = "\033[93m"
     FAIL = "\033[91m"
     ENDC = "\033[0m"
 #    BOLD = "\033[1m"
 #    UNDERLINE = "\033[4m"
+
+def print_error(text: str):
+    print(f"{bcolors.FAIL}ERROR: {text}{bcolors.ENDC}")
+
+def print_warning(text: str):
+    print(f"{bcolors.WARNING}WARNING: {text}{bcolors.ENDC}")
+
+class ResultStatus(enum.Enum):
+    SUCCESS = enum.auto()
+    FAILURE = enum.auto()
+
+def print_status(status: ResultStatus):
+    match status:
+        case ResultStatus.SUCCESS:
+            print(f"{bcolors.OKCYAN}Success!{bcolors.ENDC}")
+        case ResultStatus.FAILURE:
+            print(f"{bcolors.FAIL}Error!{bcolors.ENDC}")
+
 
 # Detect if building on Android via Termux.
 host_linux_platform_is_android = False
@@ -146,19 +165,19 @@ def main():
 
     # Check git exists.
     if not has_bin("git"):
-        print("WARNING: Git should be installed and on PATH. Version info will be omitted from all binaries!\n")
+        print_warning("Git should be installed and on PATH. Version info will be omitted from all binaries!\n")
     elif not git_is_repository():
-        print("WARNING: The source tree is unversioned. Version info will be omitted from all binaries!\n")
+        print_warning("The source tree is unversioned. Version info will be omitted from all binaries!\n")
 
     # Check python version.
     python_minimum_ver = 3,10
     if not sys.version_info[:2] >= (python_minimum_ver[0], python_minimum_ver[1]) or not sys.maxsize > 2**32:
-        print(f"ERROR: Python {python_minimum_ver[0]}.{python_minimum_ver[1]}+ 64-bit must be installed and on PATH")
+        print_error(f"Python {python_minimum_ver[0]}.{python_minimum_ver[1]}+ 64-bit must be installed and on PATH")
         sys.exit(1)
 
     # Grab Visual Studio version and execute shell to set up environment.
     if sys.platform == "win32" and not vs_version:
-        print("WARNING: Visual Studio not found!"
+        print_warning("Visual Studio not found!"
               "\nBuilding for Windows will not be supported."
               " Please refer to the building guide:"
               f"\nhttps://github.com/xenia-canary/xenia-canary/blob/{default_branch}/docs/building.md")
@@ -327,7 +346,7 @@ def generate_source_class(path):
     source_path = f"{path}.cc"
 
     if os.path.isfile(header_path) or os.path.isfile(source_path):
-        print("ERROR: Target file already exists")
+        print_error("Target file already exists")
         return 1
 
     if generate_source_file(header_path) > 0:
@@ -352,13 +371,13 @@ def generate_source_file(path):
  */"""
 
     if os.path.isfile(path):
-        print("ERROR: Target file already exists")
+        print_error("Target file already exists")
         return 1
     try:
         with open(path, "w") as f:
             f.write(copyright)
     except Exception as e:
-        print(f"ERROR: Could not write to file [path {path}]")
+        print_error(f"Could not write to file [path {path}]")
         return 1
 
     return 0
@@ -473,7 +492,7 @@ def get_clang_format_binary():
             if int(clang_format_out.split("version ")[1].split(".")[0]) == int(clang_format_version_req):
                 print(clang_format_out)
                 return binary
-    print(f"{bcolors.FAIL}ERROR: clang-format {clang_format_version_req} is not on PATH{bcolors.ENDC}")
+    print_error(f"clang-format {clang_format_version_req} is not on PATH")
     sys.exit(1)
 
 
@@ -502,8 +521,8 @@ def get_premake_target_os(target_os_override=None):
         if target_os_override == "android":
             target_os = target_os_override
         else:
-            print(
-                "ERROR: cross-compilation is only supported for Android target")
+            print_error(
+                "cross-compilation is only supported for Android target")
             sys.exit(1)
     return target_os
 
@@ -707,12 +726,11 @@ class SetupCommand(Command):
         if git_is_repository():
             git_submodule_update()
         else:
-            print("WARNING: Git not available or not a repository. Dependencies may be missing.")
+            print_warning("Git not available or not a repository. Dependencies may be missing.")
 
         print("\n- running premake...")
         ret = run_platform_premake(target_os_override=args["target_os"])
-        print("\nSuccess!" if ret == 0 else "\nError!")
-
+        print_status(ResultStatus.SUCCESS if not ret else ResultStatus.FAILURE)
         return ret
 
 
@@ -763,7 +781,7 @@ class PullCommand(Command):
 
         print("- running premake...")
         if run_platform_premake(target_os_override=args["target_os"]) == 0:
-            print("\nSuccess!")
+            print_status(ResultStatus.SUCCESS)
 
         return 0
 
@@ -791,7 +809,7 @@ class PremakeCommand(Command):
         print("Running premake...\n")
         ret = run_platform_premake(target_os_override=args["target_os"],
                                    cc=args["cc"], devenv=args["devenv"])
-        print("Success!" if ret == 0 else "Error!")
+        print_status(ResultStatus.SUCCESS if not ret else ResultStatus.FAILURE)
 
         return ret
 
@@ -830,7 +848,7 @@ class BaseBuildCommand(Command):
             args["config"]))
         if sys.platform == "win32":
             if not vs_version:
-                print("ERROR: Visual Studio is not installed.")
+                print_error("Visual Studio is not installed.")
                 result = 1
             else:
                 targets = None
@@ -872,14 +890,14 @@ class BaseBuildCommand(Command):
             ] + pass_args, env=dict(os.environ))
             print("")
             if result != 0:
-                print("ERROR: cmake failed with one or more errors.")
+                print_error("cmake failed with one or more errors.")
                 return result
             result = subprocess.call([
                     "ninja",
                     f"-Cbuild/build_{args['config']}",
                 ] + pass_args, env=dict(os.environ))
             if result != 0:
-                print("ERROR: ninja failed with one or more errors.")
+                print_error("ninja failed with one or more errors.")
         return result
 
 
@@ -899,10 +917,7 @@ class BuildCommand(BaseBuildCommand):
 
         result = super(BuildCommand, self).execute(args, pass_args, cwd)
 
-        if not result:
-            print(f"{bcolors.OKCYAN}Success!{bcolors.ENDC}")
-        else:
-            print(f"{bcolors.FAIL}Failed!{bcolors.ENDC}")
+        print_status(ResultStatus.SUCCESS if not result else ResultStatus.FAILURE)
 
         return result
 
@@ -958,7 +973,7 @@ class BuildShadersCommand(Command):
                 # Get the FXC path.
                 fxc = glob(os.path.join(os.environ["ProgramFiles(x86)"], "Windows Kits", "10", "bin", "*", "x64", "fxc.exe"))
                 if not fxc:
-                    print("ERROR: could not find fxc!")
+                    print_error("could not find fxc!")
                     return 1
                 fxc = fxc[-1] # Highest version is last
 
@@ -996,14 +1011,14 @@ class BuildShadersCommand(Command):
                            "/nologo",
                            src_path,
                            ], stdout=subprocess.DEVNULL) != 0:
-                        print("ERROR: failed to compile a DXBC shader")
+                        print_error("failed to compile a DXBC shader")
                         return 1
             else:
                 if all_targets:
-                    print("WARNING: Direct3D DXBC shader building is supported"
+                    print_warning("Direct3D DXBC shader building is supported"
                           " only on Windows")
                 else:
-                    print("ERROR: Direct3D DXBC shader building is supported"
+                    print_error("Direct3D DXBC shader building is supported"
                           " only on Windows")
                     return 1
 
@@ -1014,28 +1029,28 @@ class BuildShadersCommand(Command):
             # Get the SPIR-V tool paths.
             vulkan_sdk_path = os.environ["VULKAN_SDK"]
             if not os.path.exists(vulkan_sdk_path):
-                print("ERROR: could not find the Vulkan SDK in $VULKAN_SDK")
+                print_error("could not find the Vulkan SDK in $VULKAN_SDK")
                 return 1
             # bin is lowercase on Linux (even though it's uppercase on Windows).
             vulkan_bin_path = os.path.join(vulkan_sdk_path, "bin")
             if not os.path.exists(vulkan_bin_path):
-                print("ERROR: could not find the Vulkan SDK binaries")
+                print_error("could not find the Vulkan SDK binaries")
                 return 1
             glslang = os.path.join(vulkan_bin_path, "glslangValidator")
             if not has_bin(glslang):
-                print("ERROR: could not find glslangValidator")
+                print_error("could not find glslangValidator")
                 return 1
             spirv_opt = os.path.join(vulkan_bin_path, "spirv-opt")
             if not has_bin(spirv_opt):
-                print("ERROR: could not find spirv-opt")
+                print_error("could not find spirv-opt")
                 return 1
             spirv_remap = os.path.join(vulkan_bin_path, "spirv-remap")
             if not has_bin(spirv_remap):
-                print("ERROR: could not find spirv-remap")
+                print_error("could not find spirv-remap")
                 return 1
             spirv_dis = os.path.join(vulkan_bin_path, "spirv-dis")
             if not has_bin(spirv_dis):
-                print("ERROR: could not find spirv-dis")
+                print_error("could not find spirv-dis")
                 return 1
 
             # Build SPIR-V.
@@ -1090,7 +1105,7 @@ class BuildShadersCommand(Command):
                        input=(spirv_xesl_wrapper % src_name) if src_is_xesl
                                else None,
                        text=True).returncode != 0:
-                    print("ERROR: failed to build a SPIR-V shader")
+                    print_error("failed to build a SPIR-V shader")
                     return 1
                 # spirv-opt input and output files must be different.
                 spirv_file_path = f"{spirv_file_path_base}.spv"
@@ -1100,7 +1115,7 @@ class BuildShadersCommand(Command):
                        spirv_glslang_file_path,
                        "-o", spirv_file_path,
                        ]) != 0:
-                    print("ERROR: failed to optimize a SPIR-V shader")
+                    print_error("failed to optimize a SPIR-V shader")
                     return 1
                 os.remove(spirv_glslang_file_path)
                 # spirv-remap takes the output directory, but it may be the same
@@ -1111,7 +1126,7 @@ class BuildShadersCommand(Command):
                        "-i", spirv_file_path,
                        "-o", spirv_dir_path,
                        ]) != 0:
-                    print("ERROR: failed to remap a SPIR-V shader")
+                    print_error("failed to remap a SPIR-V shader")
                     return 1
                 spirv_dis_file_path = f"{spirv_file_path_base}.txt"
                 if subprocess.call([
@@ -1119,7 +1134,7 @@ class BuildShadersCommand(Command):
                        "-o", spirv_dis_file_path,
                        spirv_file_path,
                        ]) != 0:
-                    print("ERROR: failed to disassemble a SPIR-V shader")
+                    print_error("failed to disassemble a SPIR-V shader")
                     return 1
                 # Generate the header from the disassembly and the binary.
                 with open(f"{spirv_file_path_base}.h", "w") as out_file:
@@ -1139,7 +1154,7 @@ class BuildShadersCommand(Command):
                         c = spirv_file.read(4)
                         while len(c) != 0:
                             if len(c) != 4:
-                                print("ERROR: a SPIR-V shader is misaligned")
+                                print_error("a SPIR-V shader is misaligned")
                                 return 1
                             if index % 6 == 0:
                                 out_file.write("\n    ")
@@ -1200,7 +1215,7 @@ class TestCommand(BaseBuildCommand):
             for test_target in test_targets]
         for i in range(0, len(test_targets)):
             if test_executables[i] is None:
-                print(f"ERROR: Unable to find {test_targets[i]} - build it.")
+                print_error(f"Unable to find {test_targets[i]} - build it.")
                 return 1
 
         # Run tests.
@@ -1212,13 +1227,13 @@ class TestCommand(BaseBuildCommand):
             if result:
                 any_failed = True
                 if args["continue"]:
-                    print("ERROR: test failed but continuing due to --continue.")
+                    print_error("test failed but continuing due to --continue.")
                 else:
-                    print("ERROR: test failed, aborting, use --continue to keep going.")
+                    print_error("test failed, aborting, use --continue to keep going.")
                     return result
 
         if any_failed:
-            print("ERROR: one or more tests failed.")
+            print_error("one or more tests failed.")
             result = 1
         return result
 
@@ -1336,7 +1351,7 @@ class GenTestsCommand(Command):
 
 
         if any_errors:
-            print("ERROR: failed to build one or more tests.")
+            print_error("failed to build one or more tests.")
             return 1
 
         return 0
@@ -1387,7 +1402,7 @@ class GpuTestCommand(BaseBuildCommand):
             for test_target in test_targets]
         for i in range(0, len(test_targets)):
             if test_executables[i] is None:
-                print(f"ERROR: Unable to find {test_targets[i]} - build it.")
+                print_error(f"Unable to find {test_targets[i]} - build it.")
                 return 1
 
         output_path = os.path.join(self_path, "build", "gputest")
@@ -1416,7 +1431,7 @@ class GpuTestCommand(BaseBuildCommand):
             any_failed = True
 
         if any_failed:
-            print("ERROR: one or more tests failed.")
+            print_error("one or more tests failed.")
             result = 1
         print(f"Check {output_path}/results.html for more details.")
         return result
@@ -1441,7 +1456,7 @@ class CleanCommand(Command):
               "- premake clean...")
         run_premake(get_premake_target_os(args["target_os"]), "clean")
 
-        print("\nSuccess!")
+        print_status(ResultStatus.SUCCESS)
         return 0
 
 
@@ -1476,7 +1491,7 @@ class NukeCommand(Command):
         print("\n- running premake...")
         run_platform_premake(target_os_override=args["target_os"])
 
-        print("\nSuccess!")
+        print_status(ResultStatus.SUCCESS)
         return 0
 
 
@@ -1586,7 +1601,7 @@ class LintCommand(Command):
                     "--style=file",
                     "--diff",
                     ])
-                print("ERROR: 1+ diffs. Stage changes and run 'xb format' to fix.")
+                print_error("1+ diffs. Stage changes and run 'xb format' to fix.")
                 return 1
             else:
                 print("Linting completed successfully.")
@@ -1791,7 +1806,7 @@ class StubCommand(Command):
             print(f"Created file '{file_name}' at {target_dir}")
 
         else:
-            print("ERROR: Please specify a file/class to generate")
+            print_error("Please specify a file/class to generate")
             return 1
 
         run_platform_premake(target_os_override=args["target_os"])
@@ -1813,7 +1828,7 @@ class DevenvCommand(Command):
         show_reload_prompt = False
         if sys.platform == "win32":
             if not vs_version:
-                print("ERROR: Visual Studio is not installed.");
+                print_error("Visual Studio is not installed.");
                 return 1
             print("Launching Visual Studio...")
         elif sys.platform == "darwin":
