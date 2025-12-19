@@ -598,9 +598,9 @@ class D3D12TextureCache final : public TextureCache {
     Microsoft::WRL::ComPtr<ID3D12Resource> resource_;
     D3D12_RESOURCE_STATES resource_state_;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> resource_3d_as_2d_;
-    D3D12_RESOURCE_STATES resource_3d_as_2d_state_ =
-        D3D12_RESOURCE_STATE_COMMON;
+    // Cached 2D view of the first slice, managed as a standalone texture
+    // object.
+    std::unique_ptr<D3D12Texture> texture_3d_as_2d_;
 
     // For bindful - indices in the non-shader-visible descriptor cache for
     // copying to the shader-visible heap (much faster than recreating, which,

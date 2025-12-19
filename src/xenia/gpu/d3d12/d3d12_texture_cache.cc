@@ -1838,78 +1838,65 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     D3D12_RESOURCE_STATES end_state) {
   auto& d3d12_cache = static_cast<D3D12TextureCache&>(texture_cache());
 
-  // 1. If it already exists, just transition and return it.
-  if (resource_3d_as_2d_) {
-    if (resource_3d_as_2d_state_ != end_state) {
-      d3d12_cache.command_processor_.PushTransitionBarrier(
-          resource_3d_as_2d_.Get(), resource_3d_as_2d_state_, end_state);
-      resource_3d_as_2d_state_ = end_state;
-    }
-    return resource_3d_as_2d_.Get();
+  // 1. If cached, transition and return.
+  if (texture_3d_as_2d_) {
+    d3d12_cache.command_processor_.PushTransitionBarrier(
+        texture_3d_as_2d_->resource(),
+        texture_3d_as_2d_->SetResourceState(end_state), end_state);
+    return texture_3d_as_2d_->resource();
   }
 
-  // 2. Create the 2D Alias Resource.
-  D3D12_RESOURCE_DESC source_desc = resource_->GetDesc();
+  // 2. Prepare the Key for loading.
+  // keep the dimension as k3D.
+  TextureKey key_load = key();
+  key_load.depth_or_array_size_minus_1 = 0;  // Force Depth 1 (Slice 0)
+  key_load.mip_max_level = 0;                // Force 1 Mip (Base level only)
 
-  D3D12_RESOURCE_DESC desc = source_desc;
+  // 3. Manually create the 2D D3D12 Resource.
+  D3D12_RESOURCE_DESC desc = resource_->GetDesc();
   desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   desc.DepthOrArraySize = 1;
   desc.MipLevels = 1;
+  desc.Alignment = 0;
+  desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+  desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
   const ui::d3d12::D3D12Provider& provider =
       d3d12_cache.command_processor_.GetD3D12Provider();
   ID3D12Device* device = provider.GetDevice();
 
+  Microsoft::WRL::ComPtr<ID3D12Resource> resource_2d;
+  // Start in COPY_DEST as LoadTextureData will write to it.
+  D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COPY_DEST;
+
   if (FAILED(device->CreateCommittedResource(
           &ui::d3d12::util::kHeapPropertiesDefault,
-          provider.GetHeapFlagCreateNotZeroed(), &desc,
-          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-          IID_PPV_ARGS(&resource_3d_as_2d_)))) {
-    XELOGE("D3D12Texture: Failed to create 3D-as-2D alias resource");
+          provider.GetHeapFlagCreateNotZeroed(), &desc, initial_state, nullptr,
+          IID_PPV_ARGS(&resource_2d)))) {
+    XELOGE("D3D12Texture: Failed to create 3D-as-2D resource");
     return nullptr;
   }
-  resource_3d_as_2d_state_ = D3D12_RESOURCE_STATE_COPY_DEST;
 
-  // 3. Perform the Copy (Slice 0 of 3D -> 2D).
-  // Transition MAIN 3D resource to COPY_SOURCE.
-  D3D12_RESOURCE_STATES old_main_state =
-      SetResourceState(D3D12_RESOURCE_STATE_COPY_SOURCE);
+  // 4. Create the Texture wrapper.
+  // This wrapper combines a "3D Key" (for correct shader math)
+  // with a "2D Resource" (for the actual destination storage).
+  std::unique_ptr<D3D12Texture> texture_wrap(new D3D12Texture(
+      d3d12_cache, key_load, resource_2d.Get(), initial_state));
+
+  // 5. Trigger the Load.
+  if (!d3d12_cache.LoadTextureData(*texture_wrap)) {
+    XELOGE("D3D12Texture: Failed to untile 3D-as-2D data");
+    return nullptr;
+  }
+
+  // 6. Transition to requested state.
   d3d12_cache.command_processor_.PushTransitionBarrier(
-      resource(), old_main_state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      texture_wrap->resource(), texture_wrap->SetResourceState(end_state),
+      end_state);
 
-  auto& command_list = d3d12_cache.command_processor_.GetDeferredCommandList();
-
-  D3D12_TEXTURE_COPY_LOCATION dest_loc = {};
-  dest_loc.pResource = resource_3d_as_2d_.Get();
-  dest_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-  dest_loc.SubresourceIndex = 0;
-
-  D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-  src_loc.pResource = resource();
-  src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-  src_loc.SubresourceIndex = 0;
-
-  // Define the copy box to select ONLY Slice 0
-  D3D12_BOX src_box;
-  src_box.left = 0;
-  src_box.top = 0;
-  src_box.front = 0;
-  src_box.right = static_cast<UINT>(source_desc.Width);
-  src_box.bottom = source_desc.Height;
-  src_box.back = 1;  // CRITICAL: Only copy 1 depth slice!
-
-  command_list.D3DCopyTextureRegion(&dest_loc, 0, 0, 0, &src_loc, &src_box);
-
-  // 4. Restore States.
-  d3d12_cache.command_processor_.PushTransitionBarrier(
-      resource(), D3D12_RESOURCE_STATE_COPY_SOURCE, old_main_state);
-  SetResourceState(old_main_state);
-
-  d3d12_cache.command_processor_.PushTransitionBarrier(
-      resource_3d_as_2d_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, end_state);
-  resource_3d_as_2d_state_ = end_state;
-
-  return resource_3d_as_2d_.Get();
+  // 7. Cache and return.
+  texture_3d_as_2d_ = std::move(texture_wrap);
+  return texture_3d_as_2d_->resource();
 }
 
 uint32_t D3D12TextureCache::FindOrCreateTextureDescriptor(
