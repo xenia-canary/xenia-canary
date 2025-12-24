@@ -93,6 +93,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   void LoadInputSystem(hid::InputSystem* input_system);
   void SetGuideButtonAction(std::function<void(uint8_t)> func);
 
+  bool IsAnyDialogOpen() const { return !dialogs_.empty(); };
+
  protected:
   void OnKeyDown(KeyEvent& e) override;
   void OnKeyUp(KeyEvent& e) override;

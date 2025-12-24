@@ -1073,6 +1073,10 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
 }
 
 void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
+  if (imgui_drawer_->IsAnyDialogOpen()) {
+    return;
+  }
+
   if (e.button() == ui::MouseEvent::Button::kLeft) {
     ToggleFullscreenOnDoubleClick();
   }
