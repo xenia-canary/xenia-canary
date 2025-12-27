@@ -1052,6 +1052,13 @@ void TextureCache::ScaledResolveGlobalWatchCallback(
   uint32_t resolve_l2_block_last = resolve_block_last >> 6;
   for (uint32_t i = resolve_l2_block_first; i <= resolve_l2_block_last; ++i) {
     uint64_t resolve_l2_block = scaled_resolve_pages_l2_[i];
+    // Pre-mask to only process blocks within the write range.
+    if (i == resolve_l2_block_first) {
+      resolve_l2_block &= ~((UINT64_C(1) << (resolve_block_first & 63)) - 1);
+    }
+    if (i == resolve_l2_block_last && (resolve_block_last & 63) != 63) {
+      resolve_l2_block &= (UINT64_C(1) << ((resolve_block_last & 63) + 1)) - 1;
+    }
     uint32_t resolve_block_relative_index;
     while (
         xe::bit_scan_forward(resolve_l2_block, &resolve_block_relative_index)) {
