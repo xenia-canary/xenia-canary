@@ -10,6 +10,7 @@
 #include "xenia/memory.h"
 
 #include <cstring>
+#include <random>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
@@ -30,7 +31,12 @@ DEFINE_bool(protect_zero, true, "Protect the zero page from reads and writes.",
 DEFINE_bool(protect_on_release, false,
             "Protect released memory to prevent accesses.", "Memory");
 DEFINE_bool(scribble_heap, false,
-            "Scribble 0xCD into all allocated heap memory.", "Memory");
+            "Scribble specific or random value into all allocated heap memory.",
+            "Memory");
+DEFINE_int32(scribble_heap_value, 0,
+             "Value used to fill all allocated heap memory. 0 - Random value. "
+             "Valid range: [1-255]",
+             "Memory");
 
 namespace xe {
 uint32_t get_page_count(uint32_t value, uint32_t page_size) {
@@ -93,6 +99,24 @@ xe::memory::PageAccess ToPageAccess(uint32_t protect) {
     return xe::memory::PageAccess::kReadWrite;
   } else {
     return xe::memory::PageAccess::kNoAccess;
+  }
+}
+
+void RandomizeMemory(void* range_start, uint32_t size) {
+  if (!cvars::scribble_heap) {
+    return;
+  }
+
+  if (!cvars::scribble_heap_value) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, std::numeric_limits<uint8_t>::max());
+
+    std::generate(static_cast<char*>(range_start),
+                  static_cast<char*>(range_start) + size,
+                  [&]() { return dis(gen); });
+  } else {
+    std::memset(range_start, cvars::scribble_heap_value, size);
   }
 }
 
@@ -975,7 +999,7 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
     }
 
     if (cvars::scribble_heap && protect & kMemoryProtectWrite) {
-      std::memset(result, 0xCD, page_count * page_size_);
+      RandomizeMemory(result, page_count * page_size_);
     }
   }
 
@@ -1137,7 +1161,7 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
     }
 
     if (cvars::scribble_heap && (protect & kMemoryProtectWrite)) {
-      std::memset(result, 0xCD, page_count << page_size_shift_);
+      RandomizeMemory(result, page_count << page_size_shift_);
     }
   }
 
