@@ -93,7 +93,7 @@ XContentContainerDevice::Result SvodContainerDevice::Read() {
   static_assert_size(root_data, 0x10);
 
   if (fread(&root_data, sizeof(root_data), 1, svod_header) != 1) {
-    XELOGE("ReadSVOD failed to read root block data at 0x{X}",
+    XELOGE("ReadSVOD failed to read root block data at 0x{:016X}",
            magic_offset + 0x14);
     return Result::kReadError;
   }
@@ -335,9 +335,11 @@ XContentContainerDevice::Result SvodContainerDevice::SetNormalLayout(
     FILE* header, size_t& magic_offset) {
   uint8_t magic_buf[20];
 
-  xe::filesystem::Seek(header, 0xD000, SEEK_SET);
+  const uint32_t magic_pos =
+      header_->content_metadata.data_file_count == 1 ? 0xD000 : 0x2000;
+  xe::filesystem::Seek(header, magic_pos, SEEK_SET);
   if (fread(magic_buf, 1, countof(magic_buf), header) != countof(magic_buf)) {
-    XELOGE("ReadSVOD failed to read SVOD magic at 0xD000");
+    XELOGE("ReadSVOD failed to read SVOD magic at 0x{:04X}", magic_pos);
     return Result::kReadError;
   }
 
@@ -350,18 +352,16 @@ XContentContainerDevice::Result SvodContainerDevice::SetNormalLayout(
   // is a single-file system. The STFS Header is 0xB000 bytes and the
   // remaining 0x2000 is from hash tables. In most cases, these will be
   // STFS, not SVOD.
-  svod_base_offset_ = 0xB000;
-  magic_offset = 0xD000;
-
-  // Check for single file system
   if (header_->content_metadata.data_file_count == 1) {
+    svod_base_offset_ = 0xB000;
     svod_layout_ = SvodLayoutType::kSingleFile;
     XELOGI("SVOD is a single file. Magic block present at 0xD000.");
+    magic_offset = 0xD000;
   } else {
-    svod_layout_ = SvodLayoutType::kUnknown;
-    XELOGE(
-        "SVOD is not a single file, but the magic block was found at "
-        "0xD000.");
+    svod_base_offset_ = 0x0000;
+    svod_layout_ = SvodLayoutType::kMultipleFiles;
+    XELOGI("SVOD is a multiple files. Magic block present at 0x2000.");
+    magic_offset = 0x2000;
   }
   return Result::kSuccess;
 }

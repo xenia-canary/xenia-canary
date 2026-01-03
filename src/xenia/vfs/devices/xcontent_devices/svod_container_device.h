@@ -41,6 +41,7 @@ class SvodContainerDevice : public XContentContainerDevice {
     kEnhancedGDF = 0x1,
     kXSF = 0x2,
     kSingleFile = 0x4,
+    kMultipleFiles = 0x8,
   };
   const char* MEDIA_MAGIC = "MICROSOFT*XBOX*MEDIA";
 
