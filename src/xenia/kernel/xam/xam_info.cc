@@ -383,30 +383,21 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   loader_data.launch_flags = flags;
 
   // Translate the launch path to a full path.
-  if (raw_name_ptr) {
-    auto path = raw_name_ptr.value();
-    if (path.empty()) {
-      loader_data.launch_path = "game:\\default.xex";
-    } else {
-      loader_data.launch_path = xe::path_to_utf8(path);
-      loader_data.launch_data_present = true;
-    }
-
+  if (raw_name_ptr && !raw_name_ptr.value().empty()) {
+    loader_data.launch_path = xe::path_to_utf8(raw_name_ptr.value());
+    loader_data.launch_data_present = true;
     xam->SaveLoaderData();
 
-    if (loader_data.launch_data_present) {
-      auto display_window = kernel_state()->emulator()->display_window();
-      auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
+    auto display_window = kernel_state()->emulator()->display_window();
+    auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
 
-      if (display_window && imgui_drawer) {
-        display_window->app_context().CallInUIThreadSynchronous(
-            [imgui_drawer]() {
-              xe::ui::ImGuiDialog::ShowMessageBox(
-                  imgui_drawer, "Title was restarted",
-                  "Title closed with new launch data. \nPlease restart Xenia. "
-                  "Game will be loaded automatically.");
-            });
-      }
+    if (display_window && imgui_drawer) {
+      display_window->app_context().CallInUIThreadSynchronous([imgui_drawer]() {
+        xe::ui::ImGuiDialog::ShowMessageBox(
+            imgui_drawer, "Title was restarted",
+            "Title closed with new launch data. \nPlease restart Xenia. "
+            "Game will be loaded automatically.");
+      });
     }
   } else {
     assert_always("Game requested exit to dashboard via XamLoaderLaunchTitle");
