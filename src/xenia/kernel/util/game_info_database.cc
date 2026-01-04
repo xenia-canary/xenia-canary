@@ -85,18 +85,18 @@ std::string GameInfoDatabase::GetLocalizedString(const uint32_t id,
       spa_gamedata_->GetExistingLanguage(language), id);
 }
 
-GameInfoDatabase::Context GameInfoDatabase::GetContext(
+std::optional<GameInfoDatabase::Context> GameInfoDatabase::GetContext(
     const uint32_t id) const {
-  Context context = {.id = xam::kInvalidContextId};
-
   if (!is_valid_) {
-    return context;
+    return std::nullopt;
   }
 
   const auto xdbf_context = spa_gamedata_->GetContext(id);
   if (!xdbf_context) {
-    return context;
+    return std::nullopt;
   }
+
+  Context context = {};
 
   context.id = xdbf_context->id;
   context.default_value = xdbf_context->default_value;
@@ -109,18 +109,18 @@ GameInfoDatabase::Context GameInfoDatabase::GetContext(
   return context;
 }
 
-GameInfoDatabase::Property GameInfoDatabase::GetProperty(
+std::optional<GameInfoDatabase::Property> GameInfoDatabase::GetProperty(
     const uint32_t id) const {
-  Property property = {.id = xam::kInvalidPropertyId};
-
   if (!is_valid_) {
-    return property;
+    return std::nullopt;
   }
 
   const auto xdbf_property = spa_gamedata_->GetProperty(id);
   if (!xdbf_property) {
-    return property;
+    return std::nullopt;
   }
+
+  Property property = {};
 
   property.id = xdbf_property->id;
   property.data_size = xdbf_property->data_size;
@@ -132,13 +132,13 @@ GameInfoDatabase::Property GameInfoDatabase::GetProperty(
   return property;
 }
 
-GameInfoDatabase::Achievement GameInfoDatabase::GetAchievement(
+std::optional<GameInfoDatabase::Achievement> GameInfoDatabase::GetAchievement(
     const uint32_t id) const {
-  Achievement achievement = {};
-
   if (!is_valid_) {
-    return achievement;
+    return std::nullopt;
   }
+
+  Achievement achievement = {};
 
   const auto xdbf_achievement = spa_gamedata_->GetAchievement(id);
   if (!xdbf_achievement) {
@@ -190,19 +190,19 @@ GameInfoDatabase::Field GameInfoDatabase::GetField(
   return field;
 }
 
-GameInfoDatabase::StatsView GameInfoDatabase::GetStatsView(
+std::optional<GameInfoDatabase::StatsView> GameInfoDatabase::GetStatsView(
     const uint32_t id) const {
-  StatsView stats_view = {};
-
   if (!is_valid_) {
-    return stats_view;
+    return std::nullopt;
   }
 
   const auto xdbf_stats_view = spa_gamedata_->GetStatsView(id);
 
   if (!xdbf_stats_view.has_value()) {
-    return stats_view;
+    return std::nullopt;
   }
+
+  StatsView stats_view = {};
 
   stats_view.view.id = xdbf_stats_view->view_entry.id;
 
@@ -252,13 +252,13 @@ GameInfoDatabase::Presence GameInfoDatabase::GetPresence() const {
   return presence;
 }
 
-GameInfoDatabase::PresenceMode GameInfoDatabase::GetPresenceMode(
+std::optional<GameInfoDatabase::PresenceMode> GameInfoDatabase::GetPresenceMode(
     const uint32_t context_value) const {
-  PresenceMode presence_mode = {};
-
   if (!is_valid_) {
-    return presence_mode;
+    return std::nullopt;
   }
+
+  PresenceMode presence_mode = {};
 
   const auto xdbf_presence_mode = spa_gamedata_->GetPresenceMode(context_value);
 
@@ -369,7 +369,11 @@ std::vector<GameInfoDatabase::Context> GameInfoDatabase::GetContexts() const {
 
   const auto xdbf_contexts = spa_gamedata_->GetContexts();
   for (const auto& entry : xdbf_contexts) {
-    contexts.push_back(GetContext(entry->id));
+    const auto context = GetContext(entry->id);
+
+    if (context.has_value()) {
+      contexts.push_back(context.value());
+    }
   }
 
   return contexts;
@@ -385,7 +389,11 @@ std::vector<GameInfoDatabase::Property> GameInfoDatabase::GetProperties()
 
   const auto xdbf_properties = spa_gamedata_->GetProperties();
   for (const auto& entry : xdbf_properties) {
-    properties.push_back(GetProperty(entry->id));
+    const auto property = GetProperty(entry->id);
+
+    if (property.has_value()) {
+      properties.push_back(property.value());
+    }
   }
 
   return properties;
@@ -401,7 +409,11 @@ std::vector<GameInfoDatabase::Achievement> GameInfoDatabase::GetAchievements()
 
   const auto xdbf_achievements = spa_gamedata_->GetAchievements();
   for (const auto& entry : xdbf_achievements) {
-    achievements.push_back(GetAchievement(entry->id));
+    auto achievement = GetAchievement(entry->id);
+
+    if (achievement.has_value()) {
+      achievements.push_back(achievement.value());
+    }
   }
 
   return achievements;
@@ -418,7 +430,11 @@ std::vector<GameInfoDatabase::StatsView> GameInfoDatabase::GetStatsViews()
   const auto xdbf_stats_views = spa_gamedata_->GetStatsViews();
 
   for (const auto& entry : *xdbf_stats_views) {
-    stats_views.push_back(GetStatsView(entry.view_entry.id));
+    auto stats_view = GetStatsView(entry.view_entry.id);
+
+    if (stats_view.has_value()) {
+      stats_views.push_back(stats_view.value());
+    }
   }
 
   return stats_views;
@@ -437,7 +453,11 @@ std::vector<GameInfoDatabase::PresenceMode> GameInfoDatabase::GetPresenceModes()
 
   for (uint32_t context_value = 0; context_value < xdbf_presence_modes.size();
        context_value++) {
-    presence_modes.push_back(GetPresenceMode(context_value));
+    const auto presence_mode = GetPresenceMode(context_value);
+
+    if (presence_mode.has_value()) {
+      presence_modes.push_back(presence_mode.value());
+    }
   }
 
   return presence_modes;

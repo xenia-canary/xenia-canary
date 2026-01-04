@@ -144,14 +144,18 @@ class GameInfoDatabase {
 
   std::vector<uint8_t> GetIcon() const;
 
-  Context GetContext(const uint32_t id) const;
-  Property GetProperty(const uint32_t id) const;
-  Achievement GetAchievement(const uint32_t id) const;
+  std::optional<GameInfoDatabase::Context> GetContext(const uint32_t id) const;
+  std::optional<GameInfoDatabase::Property> GetProperty(
+      const uint32_t id) const;
+  std::optional<GameInfoDatabase::Achievement> GetAchievement(
+      const uint32_t id) const;
   PropertyBag GetPropertyBag(const xam::PropertyBag& property_bag) const;
   Field GetField(const xam::ViewFieldEntry& field_entry) const;
-  StatsView GetStatsView(const uint32_t id) const;
+  std::optional<GameInfoDatabase::StatsView> GetStatsView(
+      const uint32_t id) const;
   Presence GetPresence() const;
-  PresenceMode GetPresenceMode(const uint32_t context_value) const;
+  std::optional<GameInfoDatabase::PresenceMode> GetPresenceMode(
+      const uint32_t context_value) const;
   std::vector<PresenceMode> GetPresenceModes(
       const std::vector<xam::PropertyBag> property_bags) const;
 
