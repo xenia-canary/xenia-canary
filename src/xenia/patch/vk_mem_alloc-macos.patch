@@ -1,0 +1,28 @@
+--- a/third_party/VulkanMemoryAllocator/include/vk_mem_alloc.h
++++ b/third_party/VulkanMemoryAllocator/include/vk_mem_alloc.h
+@@ -6771,7 +6771,12 @@ void VmaBlockMetadata::DebugLogAllocation(VkDeviceSize offset, VkDeviceSize size
+         VmaAllocation allocation = reinterpret_cast<VmaAllocation>(userData);
+ 
+         userData = allocation->GetUserData();
++#ifdef __APPLE__
++        // Suppress unused variable warning on Apple
++        const char* name __attribute__((unused)) = allocation->GetName();
++#else
+         const char* name = allocation->GetName();
++#endif
+ 
+ #if VMA_STATS_STRING_ENABLED
+         VMA_LEAK_LOG_FORMAT("UNFREED ALLOCATION; Offset: %" PRIu64 "; Size: %" PRIu64 "; UserData: %p; Name: %s; Type: %s; Usage: %" PRIu64,
+@@ -14414,7 +14419,12 @@ VkResult VmaAllocator_T::CheckCorruption(uint32_t memoryTypeBits)
+ VkResult VmaAllocator_T::AllocateVulkanMemory(const VkMemoryAllocateInfo* pAllocateInfo, VkDeviceMemory* pMemory)
+ {
+     AtomicTransactionalIncrement<VMA_ATOMIC_UINT32> deviceMemoryCountIncrement;
++#ifdef __APPLE__
++    // Variable is only used in debug mode with VMA_DEBUG_DONT_EXCEED_MAX_MEMORY_ALLOCATION_COUNT
++    const uint64_t prevDeviceMemoryCount __attribute__((unused)) = deviceMemoryCountIncrement.Increment(&m_DeviceMemoryCount);
++#else
+     const uint64_t prevDeviceMemoryCount = deviceMemoryCountIncrement.Increment(&m_DeviceMemoryCount);
++#endif
+ #if VMA_DEBUG_DONT_EXCEED_MAX_MEMORY_ALLOCATION_COUNT
+     if(prevDeviceMemoryCount >= m_PhysicalDeviceProperties.limits.maxMemoryAllocationCount)
+     {
