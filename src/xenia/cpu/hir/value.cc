@@ -911,8 +911,23 @@ void Value::Insert(Value* index, Value* part, TypeName type) {
     case INT32_TYPE:
       me->u32[index->constant.u8] = part->constant.u32;
       break;
+#ifdef __APPLE__
+    case FLOAT32_TYPE:
+      me->u32[index->constant.u8] = part->constant.u32;
+      break;
+    case INT64_TYPE:
+    case FLOAT64_TYPE:
+      me->u64[index->constant.u8] = part->constant.u64;
+      break;
+    case VEC128_TYPE:
+      me->v = part->constant.v128.v;
+      break;
+    case MAX_TYPENAME:
+      break;
+#endif
   }
 }
+
 void Value::Swizzle(uint32_t mask, TypeName type) {
   if (type == INT32_TYPE || type == FLOAT32_TYPE) {
     vec128_t result = vec128b(0);
@@ -948,6 +963,14 @@ void Value::Select(Value* other, Value* ctrl) {
         case FLOAT64_TYPE:
           constant.u64 = other->constant.u64;
           break;
+#ifdef __APPLE__
+        case VEC128_TYPE:
+          constant.v128 = other->constant.v128;
+          break;
+        case MAX_TYPENAME:
+          // Should never be reached
+          break;
+#endif
       }
     }
   }
@@ -1615,27 +1638,12 @@ void Value::ByteSwap() {
   }
 }
 void Value::DenormalFlush() {
-  switch (type) {
-    case VEC128_TYPE:
-      for (int i = 0; i < 4; ++i) {
-        uint32_t current_element = constant.v128.u32[i];
-        if ((current_element & 0x7f800000) == 0) {
-          current_element = current_element & 0x80000000;
-        }
-        constant.v128.u32[i] = current_element;
-      }
-      break;
-    // Deal with do-nothing cases (macOS exclusive)
-    case INT8_TYPE:
-    case INT16_TYPE:
-    case INT32_TYPE:
-    case INT64_TYPE:
-    case FLOAT32_TYPE:
-    case FLOAT64_TYPE:
-      break;
-    default:
-      assert_unhandled_case(type);
-      break;
+  for (int i = 0; i < 4; ++i) {
+    uint32_t current_element = constant.v128.u32[i];
+    if ((current_element & 0x7f800000) == 0) {
+      current_element = current_element & 0x80000000;
+    }
+    constant.v128.u32[i] = current_element;
   }
 }
 
@@ -1653,17 +1661,8 @@ void Value::CountLeadingZeros(const Value* other) {
     case INT64_TYPE:
       constant.i8 = xe::lzcnt(other->constant.i64);
       break;
-    // Deal with do-nothing cases (macOS exclusive)
-    case FLOAT32_TYPE:
-    case FLOAT64_TYPE:
-    case VEC128_TYPE:
-      assert_unhandled_case(other->type);
-      constant.i8 = 0;
-      break;
     default:
-      // macOS needs you to also handle MAX_TYPENAME
-      assert_unhandled_case(other->type);
-      constant.i8 = 0;
+      assert_unhandled_case(type);
       break;
   }
 }
