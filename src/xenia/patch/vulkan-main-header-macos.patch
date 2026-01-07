@@ -1,0 +1,45 @@
+--- a/third_party/Vulkan-Headers/include/vulkan/vulkan.hpp
++++ b/third_party/Vulkan-Headers/include/vulkan/vulkan.hpp
+@@ -8,7 +8,7 @@
+ #ifndef VULKAN_HPP
+ #define VULKAN_HPP
+ 
+-#include <vulkan/vulkan_hpp_macros.hpp>
++#include "vulkan/vulkan_hpp_macros.hpp"
+ 
+ #if defined( VULKAN_HPP_ENABLE_STD_MODULE ) && defined( VULKAN_HPP_STD_MODULE )
+ #  include <string.h>
+@@ -37,7 +37,7 @@ import VULKAN_HPP_STD_MODULE;
+ #    include <span>
+ #  endif
+ #endif
+-#include <vulkan/vulkan.h>
++#include "vulkan/vulkan.h"
+ 
+ #if VULKAN_HPP_ENABLE_DYNAMIC_LOADER_TOOL == 1
+ #  if defined( __unix__ ) || defined( __APPLE__ ) || defined( __QNX__ ) || defined( __Fuchsia__ )
+@@ -6514,9 +6514,9 @@ namespace VULKAN_HPP_NAMESPACE
+   };
+ }  // namespace VULKAN_HPP_NAMESPACE
+ 
+-#include <vulkan/vulkan_enums.hpp>
++#include "vulkan/vulkan_enums.hpp"
+ #if !defined( VULKAN_HPP_NO_TO_STRING )
+-#  include <vulkan/vulkan_to_string.hpp>
++#  include "vulkan/vulkan_to_string.hpp"
+ #endif
+ 
+ #ifndef VULKAN_HPP_NO_EXCEPTIONS
+@@ -9045,9 +9045,9 @@ namespace VULKAN_HPP_NAMESPACE
+ }  // namespace VULKAN_HPP_NAMESPACE
+ 
+ // clang-format off
+-#include <vulkan/vulkan_handles.hpp>
+-#include <vulkan/vulkan_structs.hpp>
+-#include <vulkan/vulkan_funcs.hpp>
++#include "vulkan/vulkan_handles.hpp"
++#include "vulkan/vulkan_structs.hpp"
++#include "vulkan/vulkan_funcs.hpp"
+ 
+ // clang-format on
+ 
