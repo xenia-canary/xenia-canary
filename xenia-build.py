@@ -580,6 +580,55 @@ def get_build_bin_path(args):
     return os.path.join(self_path, "build", "bin", platform.capitalize(), args["config"].capitalize())
 
 
+def apply_patches():
+    """Applies patches from src/xenia/patch/*.patch.
+    """
+    print("Applying patches...")
+    patches = sorted(
+        glob(os.path.join("src", "xenia", "patch", "*.patch")),
+        reverse=True
+    )
+    if not patches:
+        print("No patches found.")
+        return
+
+    for patch in patches:
+        print(f"- applying {os.path.basename(patch)}...")
+        shell_call([
+            "patch",
+            "-p1",
+            "--binary",
+            "-N",
+            "-r", "-",
+            "-i", patch,
+            ], throw_on_error=False)
+
+
+def revert_patches():
+    """Reverts patches from src/xenia/patch/*.patch.
+    """
+    print("Reverting patches...")
+    patches = sorted(
+        glob(os.path.join("src", "xenia", "patch", "*.patch")),
+        reverse=True
+    )
+    if not patches:
+        print("No patches found.")
+        return
+
+    for patch in patches:
+        print(f"- reverting {os.path.basename(patch)}...")
+        shell_call([
+            "patch",
+            "-p1",
+            "--binary",
+            "-R",
+            "-f",
+            "-r", "-",
+            "-i", patch,
+            ], throw_on_error=False)
+
+
 def create_clion_workspace():
     """Creates some basic workspace information inside the .idea directory for first start.
     """
@@ -710,10 +759,13 @@ class SetupCommand(Command):
             print("WARNING: Git not available or not a repository. Dependencies may be missing.")
 
         print("\n- running premake...")
-        ret = run_platform_premake(target_os_override=args["target_os"])
-        print("\nSuccess!" if ret == 0 else "\nError!")
-
-        return ret
+        apply_patches()
+        try:
+            ret = run_platform_premake(target_os_override=args["target_os"])
+            print("\nSuccess!" if ret == 0 else "\nError!")
+            return ret
+        finally:
+            revert_patches()
 
 
 class PullCommand(Command):
@@ -789,11 +841,14 @@ class PremakeCommand(Command):
     def execute(self, args, pass_args, cwd):
         # Update premake. If no binary found, it will be built from source.
         print("Running premake...\n")
-        ret = run_platform_premake(target_os_override=args["target_os"],
-                                   cc=args["cc"], devenv=args["devenv"])
-        print("Success!" if ret == 0 else "Error!")
-
-        return ret
+        apply_patches()
+        try:
+            ret = run_platform_premake(target_os_override=args["target_os"],
+                                       cc=args["cc"], devenv=args["devenv"])
+            print("Success!" if ret == 0 else "Error!")
+            return ret
+        finally:
+            revert_patches()
 
 
 class BaseBuildCommand(Command):
@@ -820,67 +875,71 @@ class BaseBuildCommand(Command):
             help="Skips running premake before building.")
 
     def execute(self, args, pass_args, cwd):
-        if not args["no_premake"]:
-            print("- running premake...")
-            run_platform_premake(cc=args["cc"])
-            print("")
+        apply_patches()
+        try:
+            if not args["no_premake"]:
+                print("- running premake...")
+                run_platform_premake(cc=args["cc"])
+                print("")
 
-        print("- building (%s):%s..." % (
-            "all" if not len(args["target"]) else ", ".join(args["target"]),
-            args["config"]))
-        if sys.platform == "win32":
-            if not vs_version:
-                print("ERROR: Visual Studio is not installed.")
-                result = 1
-            else:
-                targets = None
-                if args["target"]:
-                    targets = "/t:" + ";".join(
-                        target + (":Rebuild" if args["force"] else "")
-                        for target in args["target"])
+            print("- building (%s):%s..." % (
+                "all" if not len(args["target"]) else ", ".join(args["target"]),
+                args["config"]))
+            if sys.platform == "win32":
+                if not vs_version:
+                    print("ERROR: Visual Studio is not installed.")
+                    result = 1
                 else:
-                    targets = "/t:Rebuild" if args["force"] else None
+                    targets = None
+                    if args["target"]:
+                        targets = "/t:" + ";".join(
+                            target + (":Rebuild" if args["force"] else "")
+                            for target in args["target"])
+                    else:
+                        targets = "/t:Rebuild" if args["force"] else None
 
+                    result = subprocess.call([
+                        "msbuild",
+                        "build/xenia.sln",
+                        "/nologo",
+                        "/m",
+                        "/v:m",
+                        f"/p:Configuration={args['config']}",
+                        ] + ([targets] if targets else []) + pass_args)
+            elif sys.platform == "darwin":
+                schemes = args["target"] or ["xenia-app"]
+                nested_args = [["-scheme", scheme] for scheme in schemes]
+                scheme_args = [arg for pair in nested_args for arg in pair]
                 result = subprocess.call([
-                    "msbuild",
-                    "build/xenia.sln",
-                    "/nologo",
-                    "/m",
-                    "/v:m",
-                    f"/p:Configuration={args['config']}",
-                    ] + ([targets] if targets else []) + pass_args)
-        elif sys.platform == "darwin":
-            schemes = args["target"] or ["xenia-app"]
-            nested_args = [["-scheme", scheme] for scheme in schemes]
-            scheme_args = [arg for pair in nested_args for arg in pair]
-            result = subprocess.call([
-                "xcodebuild",
-                "-workspace",
-                "build/xenia.xcworkspace",
-                "-configuration",
-                args["config"]
-            ] + scheme_args + pass_args, env=dict(os.environ))
-        else:
-            result = subprocess.call([
-                "cmake",
-                "-Sbuild",
-                f"-Bbuild/build_{args['config']}",
-                f"-DCMAKE_BUILD_TYPE={args['config'].title()}",
-                f"-DCMAKE_C_COMPILER={os.environ.get('CC', 'clang')}",
-                f"-DCMAKE_CXX_COMPILER={os.environ.get('CXX', 'clang++')}",
-                "-GNinja"
-            ] + pass_args, env=dict(os.environ))
-            print("")
-            if result != 0:
-                print("ERROR: cmake failed with one or more errors.")
-                return result
-            result = subprocess.call([
-                    "ninja",
-                    f"-Cbuild/build_{args['config']}",
+                    "xcodebuild",
+                    "-workspace",
+                    "build/xenia.xcworkspace",
+                    "-configuration",
+                    args["config"]
+                ] + scheme_args + pass_args, env=dict(os.environ))
+            else:
+                result = subprocess.call([
+                    "cmake",
+                    "-Sbuild",
+                    f"-Bbuild/build_{args['config']}",
+                    f"-DCMAKE_BUILD_TYPE={args['config'].title()}",
+                    f"-DCMAKE_C_COMPILER={os.environ.get('CC', 'clang')}",
+                    f"-DCMAKE_CXX_COMPILER={os.environ.get('CXX', 'clang++')}",
+                    "-GNinja"
                 ] + pass_args, env=dict(os.environ))
-            if result != 0:
-                print("ERROR: ninja failed with one or more errors.")
-        return result
+                print("")
+                if result != 0:
+                    print("ERROR: cmake failed with one or more errors.")
+                    return result
+                result = subprocess.call([
+                        "ninja",
+                        f"-Cbuild/build_{args['config']}",
+                    ] + pass_args, env=dict(os.environ))
+                if result != 0:
+                    print("ERROR: ninja failed with one or more errors.")
+            return result
+        finally:
+            revert_patches()
 
 
 class BuildCommand(BaseBuildCommand):
