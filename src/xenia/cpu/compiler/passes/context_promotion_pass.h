@@ -22,6 +22,8 @@
 #pragma warning(disable : 4267)
 #include <llvm/ADT/BitVector.h>
 #pragma warning(pop)
+#elif defined(__clang__) && defined(__APPLE__)
+#include "llvm/ADT/BitVector.h"
 #else
 #include <llvm/ADT/BitVector.h>
 #endif  // XE_COMPILER_MSVC
