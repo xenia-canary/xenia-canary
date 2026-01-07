@@ -1615,12 +1615,27 @@ void Value::ByteSwap() {
   }
 }
 void Value::DenormalFlush() {
-  for (int i = 0; i < 4; ++i) {
-    uint32_t current_element = constant.v128.u32[i];
-    if ((current_element & 0x7f800000) == 0) {
-      current_element = current_element & 0x80000000;
-    }
-    constant.v128.u32[i] = current_element;
+  switch (type) {
+    case VEC128_TYPE:
+      for (int i = 0; i < 4; ++i) {
+        uint32_t current_element = constant.v128.u32[i];
+        if ((current_element & 0x7f800000) == 0) {
+          current_element = current_element & 0x80000000;
+        }
+        constant.v128.u32[i] = current_element;
+      }
+      break;
+    // Deal with do-nothing cases (macOS exclusive)
+    case INT8_TYPE:
+    case INT16_TYPE:
+    case INT32_TYPE:
+    case INT64_TYPE:
+    case FLOAT32_TYPE:
+    case FLOAT64_TYPE:
+      break;
+    default:
+      assert_unhandled_case(type);
+      break;
   }
 }
 
@@ -1638,8 +1653,17 @@ void Value::CountLeadingZeros(const Value* other) {
     case INT64_TYPE:
       constant.i8 = xe::lzcnt(other->constant.i64);
       break;
+    // Deal with do-nothing cases (macOS exclusive)
+    case FLOAT32_TYPE:
+    case FLOAT64_TYPE:
+    case VEC128_TYPE:
+      assert_unhandled_case(other->type);
+      constant.i8 = 0;
+      break;
     default:
-      assert_unhandled_case(type);
+      // macOS needs you to also handle MAX_TYPENAME
+      assert_unhandled_case(other->type);
+      constant.i8 = 0;
       break;
   }
 }
