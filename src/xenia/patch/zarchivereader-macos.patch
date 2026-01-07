@@ -1,0 +1,14 @@
+--- a/third_party/zarchive/src/zarchivereader.cpp
++++ b/third_party/zarchive/src/zarchivereader.cpp
+@@ -3,7 +3,11 @@
+ 
+ #include <fstream>
+ 
++#if defined (__APPLE__)
++#include "zstd.h"
++#else
+ #include <zstd.h>
++#endif
+ #include <cassert>
+ 
+ static uint64_t _ifstream_getFileSize(std::ifstream& file)
