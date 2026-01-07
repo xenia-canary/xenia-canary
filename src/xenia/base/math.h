@@ -664,7 +664,13 @@ static constexpr uint32_t PregenerateUint32Div(uint32_t _denom,
   extra.info.add_ = magu.a;
   extra.info.shift_ = p - 32;
   out_extra = extra.value_;
+#if defined(__clang__) && defined(__APPLE__)
+  // All Clang compilers (including macOS) should handle this explicitly
+  return static_cast<uint32_t>(static_cast<uint64_t>(q2 + 1));
+#else
+  // Original code for MSVC, GCC, etc.
   return static_cast<uint64_t>(q2 + 1);
+#endif
 }
 
 static constexpr uint32_t ApplyUint32Div(uint32_t num, uint32_t mul,
