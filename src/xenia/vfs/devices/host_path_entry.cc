@@ -110,7 +110,11 @@ bool HostPathEntry::DeleteEntryInternal(Entry* entry) {
     }
 
     if (std::filesystem::exists(full_path)) {
+#ifdef __APPLE__
+      std::filesystem::remove(full_path, ec);
+#else
       const auto result = std::filesystem::remove(full_path, ec);
+#endif
       if (ec) {
         XELOGE("{}: Cannot remove file entry. File: {} Error: {}", __func__,
                full_path, ec.message());
