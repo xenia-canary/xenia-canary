@@ -540,7 +540,11 @@ void ImGuiDrawer::SetPresenter(Presenter* new_presenter) {
     if (!dialogs_.empty()) {
       presenter_->RemoveUIDrawerFromUIThread(this);
     }
+#ifdef __APPLE__
+    (void)GetIO();
+#else
     ImGuiIO& io = GetIO();
+#endif
   }
   presenter_ = new_presenter;
   if (presenter_) {
