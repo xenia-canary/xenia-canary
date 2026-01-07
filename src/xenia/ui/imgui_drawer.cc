@@ -33,6 +33,8 @@
 
 #if XE_PLATFORM_LINUX && !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
+#elif defined(__APPLE__)
+#include <fontconfig/fontconfig.h>
 #endif
 
 #if XE_PLATFORM_LINUX && !defined(__APPLE__)
