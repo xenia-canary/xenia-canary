@@ -59,8 +59,8 @@ uint8_t* XStaticUntypedEnumerator::AppendItem() {
   return const_cast<uint8_t*>(&buffer_.data()[offset]);
 }
 
-uint32_t XStaticUntypedEnumerator::WriteItems(uint32_t buffer_ptr,
-                                              uint8_t* buffer_data,
+uint32_t XStaticUntypedEnumerator::WriteItems(uint8_t* buffer_data,
+                                              uint32_t buffer_size,
                                               uint32_t* written_count) {
   size_t count = std::min(item_count_ - current_item_, items_per_enumerate());
   if (!count) {
@@ -80,8 +80,8 @@ uint32_t XStaticUntypedEnumerator::WriteItems(uint32_t buffer_ptr,
   return X_ERROR_SUCCESS;
 }
 
-uint32_t XAchievementEnumerator::WriteItems(uint32_t buffer_ptr,
-                                            uint8_t* buffer_data,
+uint32_t XAchievementEnumerator::WriteItems(uint8_t* buffer_data,
+                                            uint32_t buffer_size,
                                             uint32_t* written_count) {
   size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
   if (!count) {
@@ -94,10 +94,9 @@ uint32_t XAchievementEnumerator::WriteItems(uint32_t buffer_ptr,
   size_t string_offset =
       items_per_enumerate() * sizeof(xam::X_ACHIEVEMENT_DETAILS);
   auto string_buffer =
-      StringBuffer{buffer_ptr + static_cast<uint32_t>(string_offset),
-                   &buffer_data[string_offset],
+      StringBuffer{&buffer_data[string_offset],
                    count * xam::X_ACHIEVEMENT_DETAILS::kStringBufferSize};
-  for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
+  for (size_t i = 0; i < count; ++i, ++current_item_) {
     const auto& item = items_[current_item_];
     details[i].id = item.id;
     details[i].label_ptr =
@@ -120,7 +119,8 @@ uint32_t XAchievementEnumerator::WriteItems(uint32_t buffer_ptr,
   return X_ERROR_SUCCESS;
 }
 
-uint32_t XTitleEnumerator::WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
+uint32_t XTitleEnumerator::WriteItems(uint8_t* buffer_data,
+                                      uint32_t buffer_size,
                                       uint32_t* written_count) {
   size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
   if (!count) {
@@ -130,7 +130,7 @@ uint32_t XTitleEnumerator::WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
   size_t size = count * item_size();
   auto details = reinterpret_cast<XTITLE_PLAYED*>(buffer_data);
 
-  for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
+  for (size_t i = 0; i < count; ++i, ++current_item_) {
     const auto& item = items_[current_item_];
     details[i].base.title_id = item.id;
     details[i].base.achievements_count = item.achievements_count;
@@ -164,8 +164,8 @@ uint32_t XTitleEnumerator::WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
   return X_ERROR_SUCCESS;
 }
 
-uint32_t XUserStatsEnumerator::WriteItems(uint32_t buffer_ptr,
-                                          uint8_t* buffer_data,
+uint32_t XUserStatsEnumerator::WriteItems(uint8_t* buffer_data,
+                                          uint32_t buffer_size,
                                           uint32_t* written_count) {
   size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
   if (!count) {
@@ -177,11 +177,11 @@ uint32_t XUserStatsEnumerator::WriteItems(uint32_t buffer_ptr,
   return X_ERROR_SUCCESS;
 }
 
-uint32_t XMPCreateUserPlaylistEnumerator::WriteItems(uint32_t buffer_ptr,
-                                                     uint8_t* buffer_data,
+uint32_t XMPCreateUserPlaylistEnumerator::WriteItems(uint8_t* buffer_data,
+                                                     uint32_t buffer_size,
                                                      uint32_t* written_count) {
   // Fixed 545408C0 freezing at main menu.
-  std::memset(buffer_data, 0, extra_size());
+  std::memset(buffer_data, 0, buffer_size);
 
   size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
   if (!count) {
@@ -191,10 +191,7 @@ uint32_t XMPCreateUserPlaylistEnumerator::WriteItems(uint32_t buffer_ptr,
   xam::XMP_USER_PLAYLIST_INFO* results =
       reinterpret_cast<xam::XMP_USER_PLAYLIST_INFO*>(buffer_data);
 
-  for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
-    const auto& item = items_[current_item_];
-    results[i] = item;
-  }
+  std::copy_n(items_.begin() + current_item_, count, results);
 
   if (written_count) {
     *written_count = static_cast<uint32_t>(count);

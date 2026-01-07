@@ -30,15 +30,15 @@ uint32_t xeXamEnumerate(uint32_t handle, uint32_t flags, lpvoid_t buffer_ptr,
     return X_ERROR_INVALID_HANDLE;
   }
 
-  auto run = [e, buffer_ptr, overlapped_ptr](uint32_t& extended_error,
-                                             uint32_t& length) -> X_RESULT {
+  auto run = [e, buffer_ptr, buffer_size, overlapped_ptr](
+                 uint32_t& extended_error, uint32_t& length) -> X_RESULT {
     X_RESULT result;
     uint32_t item_count = 0;
     if (!buffer_ptr) {
       result = X_ERROR_INVALID_PARAMETER;
     } else {
-      result = e->WriteItems(buffer_ptr.guest_address(),
-                             buffer_ptr.as<uint8_t*>(), &item_count);
+      result =
+          e->WriteItems(buffer_ptr.as<uint8_t*>(), buffer_size, &item_count);
     }
     extended_error = X_HRESULT_FROM_WIN32(result);
     length = item_count;

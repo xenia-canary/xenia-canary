@@ -133,7 +133,7 @@ static_assert_size(XMP_GET_PLAYBACK_CONTROLLER, 0xC);
 struct XMP_CREATE_USER_PLAYLIST_ENUMERATOR {
   xe::be<uint32_t> xmp_client;
   xe::be<uint32_t> flags;
-  xe::be<uint32_t> unk_ptr;
+  xe::be<uint32_t> object_ptr;
 };
 static_assert_size(XMP_CREATE_USER_PLAYLIST_ENUMERATOR, 0xC);
 

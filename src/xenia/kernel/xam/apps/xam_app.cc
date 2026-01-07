@@ -69,7 +69,8 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
           reinterpret_cast<uint8_t*>(&cross_title_data);
 
       uint32_t item_count = 0;
-      X_RESULT result = e->WriteItems(0, cross_title_data_ptr, &item_count);
+      X_RESULT result = e->WriteItems(cross_title_data_ptr,
+                                      data_ptr->buffer_size, &item_count);
 
       XCONTENT_DATA_INTERNAL* content_data_ptr =
           memory_->TranslateVirtual<XCONTENT_DATA_INTERNAL*>(

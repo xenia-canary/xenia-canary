@@ -403,7 +403,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
 
       XELOGD("XMPCreateUserPlaylistEnumerator({:08X}, {:08X}, {:08X})",
              uint32_t(args->xmp_client), uint32_t(args->flags),
-             uint32_t(args->unk_ptr));
+             uint32_t(args->object_ptr));
       return X_E_SUCCESS;
     }
     case 0x00070029: {
