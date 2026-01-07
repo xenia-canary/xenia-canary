@@ -58,7 +58,12 @@ class Fence {
                 "Too many threads?");
 
     // keep local copy to minimize loads
+#ifdef __APPLE__
+    auto signal_state = signal_state_ + 1;
+    signal_state_ = signal_state;
+#else
     auto signal_state = ++signal_state_;
+#endif
     for (; !(signal_state & SIGMASK_); signal_state = signal_state_) {
       cond_.wait(lock);
     }
