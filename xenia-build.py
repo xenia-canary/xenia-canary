@@ -581,11 +581,12 @@ def get_build_bin_path(args):
 
 
 def apply_patches():
-    """Applies patches from src/xenia/patch/*.patch.
+    """Applies patches from src/xenia/patch/*.patch and src/xenia/kernel/*.patch.
     """
     print("Applying patches...")
     patches = sorted(
-        glob(os.path.join("src", "xenia", "patch", "*.patch")),
+        glob(os.path.join("src", "xenia", "patch", "*.patch")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.patch")),
         reverse=True
     )
     if not patches:
@@ -605,11 +606,12 @@ def apply_patches():
 
 
 def revert_patches():
-    """Reverts patches from src/xenia/patch/*.patch.
+    """Reverts patches from src/xenia/patch/*.patch and src/xenia/kernel/*.patch.
     """
     print("Reverting patches...")
     patches = sorted(
-        glob(os.path.join("src", "xenia", "patch", "*.patch")),
+        glob(os.path.join("src", "xenia", "patch", "*.patch")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.patch")),
         reverse=True
     )
     if not patches:
