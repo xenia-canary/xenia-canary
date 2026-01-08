@@ -137,6 +137,8 @@ filter("platforms:Mac")
     "lz4",
     "pthread",
     "rt",
+    "gtk-3",
+    "gdk-3",
   })
 
 filter({"platforms:Mac", "kind:*App"})
