@@ -370,6 +370,13 @@ void TraceViewer::DrawPacketDisassemblerUI() {
                   ImGui::Text("%.16" PRIX64, action.set_bin_select.value);
                   break;
                 }
+#ifdef __APPLE__
+                case PacketAction::Type::kSetBinMaskLo:
+                case PacketAction::Type::kSetBinMaskHi:
+                case PacketAction::Type::kSetBinSelectLo:
+                case PacketAction::Type::kSetBinSelectHi:
+                  break;
+#endif
               }
             }
             ImGui::TreePop();
@@ -409,6 +416,10 @@ void TraceViewer::DrawPacketDisassemblerUI() {
             ImGui::BulletText("<swap>");
             break;
           }
+#ifdef __APPLE__
+          default:
+            break;
+#endif
         }
         break;
       }
@@ -424,6 +435,10 @@ void TraceViewer::DrawPacketDisassemblerUI() {
         // ImGui::BulletText("GammaRamp");
         break;
       }
+#ifdef __APPLE__
+      default:
+        break;
+#endif
     }
   }
   ImGui::EndChild();
