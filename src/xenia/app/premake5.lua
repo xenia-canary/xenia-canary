@@ -131,6 +131,23 @@ project("xenia-app")
     xcodebuildsettings({
       INFOPLIST_FILE = "../../src/xenia/app/Info.plist",
     })
+    includedirs({
+      "/usr/local/include",
+      "/opt/homebrew/include",
+      "/opt/homebrew/include/gtk-3.0",
+      "/opt/homebrew/include/glib-2.0",
+      "/opt/homebrew/lib/glib-2.0/include",
+      "/opt/homebrew/include/pango-1.0",
+      "/opt/homebrew/include/cairo",
+      "/opt/homebrew/include/gdk-pixbuf-2.0",
+      "/opt/homebrew/include/atk-1.0",
+      "/opt/homebrew/include/harfbuzz",
+    })
+    links({
+      "fontconfig",
+      "gtk",
+      "gdk"
+    })
 
   filter("platforms:Windows")
     -- Only create the .user file if it doesn't already exist.
