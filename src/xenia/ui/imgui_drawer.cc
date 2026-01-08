@@ -34,7 +34,7 @@
 #if XE_PLATFORM_LINUX && !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
 #elif defined(__APPLE__)
-#include <fontconfig/fontconfig.h>
+#include "fontconfig/fontconfig.h"
 #endif
 
 #if XE_PLATFORM_LINUX && !defined(__APPLE__)
@@ -435,7 +435,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   return true;
 #endif
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
   // On Linux, find and merge CJK font using fontconfig
   FcConfig* config = FcInitLoadConfigAndFonts();
   if (!config) {
