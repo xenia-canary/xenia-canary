@@ -9,6 +9,11 @@
 
 #include "src/xenia/kernel/xsocket.h"
 
+#ifdef __APPLE__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#endif
+
 #include <cstring>
 
 #include "xenia/base/logging.h"
@@ -32,6 +37,9 @@
 #include <unistd.h>
 #endif
 
+#ifdef __APPLE__
+#pragma clang diagnostic pop
+#endif
 namespace xe {
 namespace kernel {
 
