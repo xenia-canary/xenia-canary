@@ -34,3 +34,12 @@ project("xenia-ui")
       "X11-xcb",
       "fontconfig"
     })
+
+  filter("system:macosx")
+    includedirs({
+      "/usr/local/include",
+      "/opt/homebrew/include"
+    })
+    links({
+      "fontconfig"
+    })
