@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/apps/xgi_app.h"
+#include "xenia/kernel/xsession.h"
 
 #include "xenia/base/logging.h"
 
@@ -182,21 +183,23 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       uint32_t session_info_ptr = xe::load_and_swap<uint32_t>(buffer + 0x14);
       uint32_t nonce_ptr = xe::load_and_swap<uint32_t>(buffer + 0x18);
 
+      XELOGD(
+          "XGISessionCreateImpl({:08X}, {:08X}, {}, {}, {:08X}, {:08X}, "
+          "{:08X})",
+          session_ptr, flags, num_slots_public, num_slots_private, user_xuid,
+          session_info_ptr, nonce_ptr);
+
       // 584107FB expects offline session creation using flags 0 to succeed
       // while offline.
       // 58410889 expects stats session creation failure while offline.
       //
       // Allow offline session creation, but do not allow Xbox Live featured
       // session creation.
-      if (flags) {
+
+      if (IsXboxLiveSession(static_cast<SessionFlags>(flags))) {
         return 0x80155209;  // X_ONLINE_E_SESSION_NOT_LOGGED_ON
       }
 
-      XELOGD(
-          "XGISessionCreateImpl({:08X}, {:08X}, {}, {}, {:08X}, {:08X}, "
-          "{:08X})",
-          session_ptr, flags, num_slots_public, num_slots_private, user_xuid,
-          session_info_ptr, nonce_ptr);
       return X_E_SUCCESS;
     }
     case 0x000B0011: {
