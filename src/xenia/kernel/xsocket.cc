@@ -87,7 +87,11 @@ X_STATUS XSocket::Close() {
 #if XE_PLATFORM_WIN32
   int ret = closesocket(native_handle_);
 #elif XE_PLATFORM_LINUX
+#ifdef __APPLE__
+  int ret = close(static_cast<int>(native_handle_));
+#else
   int ret = close(native_handle_);
+#endif
 #endif
 
   if (ret != 0) {
@@ -99,9 +103,15 @@ X_STATUS XSocket::Close() {
 
 X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
                             uint32_t* optlen) {
+#ifdef __APPLE__
+  int ret = getsockopt(static_cast<int>(native_handle_), level, optname,
+                       static_cast<char*>(optval_ptr),
+                       reinterpret_cast<socklen_t*>(optlen));
+#else
   int ret =
       getsockopt(native_handle_, level, optname, static_cast<char*>(optval_ptr),
                  reinterpret_cast<socklen_t*>(optlen));
+#endif
   if (ret < 0) {
     // TODO: WSAGetLastError()
     return X_STATUS_UNSUCCESSFUL;
