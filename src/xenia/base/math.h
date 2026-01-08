@@ -272,6 +272,41 @@ inline uint8_t tzcnt(uint64_t v) {
   return v == 0 ? 64 : static_cast<uint8_t>(__builtin_ctzll(v));
 }
 #endif
+
+#ifdef __APPLE__
+inline uint8_t lzcnt(int8_t v) {
+  uint8_t uv = static_cast<uint8_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int16_t v) {
+  uint16_t uv = static_cast<uint16_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int32_t v) {
+  uint32_t uv = static_cast<uint32_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int64_t v) {
+  uint64_t uv = static_cast<uint64_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t tzcnt(int8_t v) {
+  uint8_t uv = static_cast<uint8_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int16_t v) {
+  uint16_t uv = static_cast<uint16_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int32_t v) {
+  uint32_t uv = static_cast<uint32_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int64_t v) {
+  uint64_t uv = static_cast<uint64_t>(v);
+  return ::xe::tzcnt(uv);
+}
+#else
 inline uint8_t lzcnt(int8_t v) { return lzcnt(static_cast<uint8_t>(v)); }
 inline uint8_t lzcnt(int16_t v) { return lzcnt(static_cast<uint16_t>(v)); }
 inline uint8_t lzcnt(int32_t v) { return lzcnt(static_cast<uint32_t>(v)); }
@@ -280,6 +315,7 @@ inline uint8_t tzcnt(int8_t v) { return tzcnt(static_cast<uint8_t>(v)); }
 inline uint8_t tzcnt(int16_t v) { return tzcnt(static_cast<uint16_t>(v)); }
 inline uint8_t tzcnt(int32_t v) { return tzcnt(static_cast<uint32_t>(v)); }
 inline uint8_t tzcnt(int64_t v) { return tzcnt(static_cast<uint64_t>(v)); }
+#endif
 
 // BitScanForward (bsf).
 // Search the value from least significant bit (LSB) to the most significant bit
