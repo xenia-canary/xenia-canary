@@ -41,5 +41,6 @@ project("xenia-ui")
       "/opt/homebrew/include"
     })
     links({
-      "fontconfig"
+      "fontconfig",
+      "gtk"
     })
