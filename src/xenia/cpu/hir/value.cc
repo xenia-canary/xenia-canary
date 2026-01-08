@@ -920,7 +920,7 @@ void Value::Insert(Value* index, Value* part, TypeName type) {
       me->u64[index->constant.u8] = part->constant.u64;
       break;
     case VEC128_TYPE:
-      me->v = part->constant.v128.v;
+      *me = part->constant.v128;
       break;
     case MAX_TYPENAME:
       break;
