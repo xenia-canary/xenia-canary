@@ -4,7 +4,7 @@
  
  #include <fstream>
  
-+#if defined (__APPLE__)
++#if defined(__APPLE__)
 +#include "zstd.h"
 +#else
  #include <zstd.h>
@@ -12,3 +12,16 @@
  #include <cassert>
  
  static uint64_t _ifstream_getFileSize(std::ifstream& file)
+@@ -235,7 +239,11 @@ uint64_t ZArchiveReader::ReadFromFile(ZArchiveNodeHandle nodeHandle, uint64_t of
+ 	{
+ 		uint64_t blockIdx = rawReadOffset / _ZARCHIVE::COMPRESSED_BLOCK_SIZE;
+ 		uint32_t blockOffset = (uint32_t)(rawReadOffset % _ZARCHIVE::COMPRESSED_BLOCK_SIZE);
++	#if defined(__APPLE__)
++		uint32_t stepSize = std::min<uint32_t>(static_cast<uint32_t>(remainingBytes), _ZARCHIVE::COMPRESSED_BLOCK_SIZE - blockOffset);
++	#else
+ 		uint32_t stepSize = std::min<uint32_t>(remainingBytes, _ZARCHIVE::COMPRESSED_BLOCK_SIZE - blockOffset);
++		#endif
+ 		CacheBlock* block = GetCachedBlock(blockIdx);
+ 		if (!block)
+ 			return 0;
+
