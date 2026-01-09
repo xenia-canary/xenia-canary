@@ -159,9 +159,15 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
       native_optname = supported_tcp_options.at(optname);
     }
   }
-
+#ifdef __APPLE__
+  int ret =
+      static_cast<int>(setsockopt(native_handle_, native_level, native_optname,
+                                  static_cast<char*>(optval_ptr), optlen));
+#else
   int ret = setsockopt(native_handle_, native_level, native_optname,
                        static_cast<char*>(optval_ptr), optlen);
+#endif
+
   if (ret < 0) {
     // TODO: WSAGetLastError()
     XELOGE("XSocket::SetOption: failed with error {:08X}", GetLastWSAError());
