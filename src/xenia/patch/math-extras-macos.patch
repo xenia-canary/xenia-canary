@@ -1,20 +1,6 @@
-diff --git a/third_party/llvm/include/llvm/Support/MathExtras.h b/third_party/llvm/include/llvm/Support/MathExtras.h
-index 8b447cb94..d87cbb1e3 100644
 --- a/third_party/llvm/include/llvm/Support/MathExtras.h
 +++ b/third_party/llvm/include/llvm/Support/MathExtras.h
-@@ -14,6 +14,11 @@
- #ifndef LLVM_SUPPORT_MATHEXTRAS_H
- #define LLVM_SUPPORT_MATHEXTRAS_H
- 
-+#ifdef __APPLE__
-+#pragma clang diagnostic push
-+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
-+#endif
-+
- #include "llvm/Support/Compiler.h"
- #ifdef IGNORED_LLVM_XENIA
- #include "llvm/Support/SwapByteOrder.h"
-@@ -30,6 +35,10 @@
+@@ -30,6 +30,10 @@
  #include <android/api-level.h>
  #endif
  
@@ -25,3 +11,46 @@ index 8b447cb94..d87cbb1e3 100644
  namespace llvm {
  /// \brief The behavior an operation has on an input of 0.
  enum ZeroBehavior {
+@@ -470,26 +474,42 @@ inline double Log2(double Value) {
+ /// -1 if the value is zero. (32 bit edition.)
+ /// Ex. Log2_32(32) == 5, Log2_32(1) == 0, Log2_32(0) == -1, Log2_32(6) == 2
+ inline unsigned Log2_32(uint32_t Value) {
++#ifdef __APPLE__
++  return static_cast<unsigned>(31 - countLeadingZeros(Value));
++#else
+   return 31 - countLeadingZeros(Value);
++#endif
+ }
+ 
+ /// Log2_64 - This function returns the floor log base 2 of the specified value,
+ /// -1 if the value is zero. (64 bit edition.)
+ inline unsigned Log2_64(uint64_t Value) {
++#ifdef __APPLE__
++  return static_cast<unsigned>(63 - countLeadingZeros(Value));
++#else
+   return 63 - countLeadingZeros(Value);
++#endif
+ }
+ 
+ /// Log2_32_Ceil - This function returns the ceil log base 2 of the specified
+ /// value, 32 if the value is zero. (32 bit edition).
+ /// Ex. Log2_32_Ceil(32) == 5, Log2_32_Ceil(1) == 0, Log2_32_Ceil(6) == 3
+ inline unsigned Log2_32_Ceil(uint32_t Value) {
++#ifdef __APPLE__
++  return static_cast<unsigned>(32 - countLeadingZeros(Value - 1));
++#else
+   return 32 - countLeadingZeros(Value - 1);
++#endif
+ }
+ 
+ /// Log2_64_Ceil - This function returns the ceil log base 2 of the specified
+ /// value, 64 if the value is zero. (64 bit edition.)
+ inline unsigned Log2_64_Ceil(uint64_t Value) {
++#ifdef __APPLE__
++  return static_cast<unsigned>(64 - countLeadingZeros(Value - 1));
++#else
+   return 64 - countLeadingZeros(Value - 1);
++#endif
+ }
+ 
+ /// GreatestCommonDivisor64 - Return the greatest common divisor of the two
