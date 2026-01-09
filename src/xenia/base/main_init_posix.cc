@@ -6,9 +6,15 @@
 * Released under the BSD license - see LICENSE in the root for more details. *
 ******************************************************************************
 */
+#ifdef __APPLE__
+#include "gdk/gdk.h"
+#include "gtk/gtk.h"
+#include "xbyak/xbyak/xbyak_util.h"
+#else
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 #include <xbyak/xbyak/xbyak_util.h>
+#endif
 
 #include "xenia/ui/window_gtk.h"
 
