@@ -7,6 +7,12 @@
  ******************************************************************************
  */
 
+#ifdef __APPLE__
+#ifndef _LIBCPP_HAS_QUICK_EXIT
+#define _LIBCPP_HAS_QUICK_EXIT
+#endif
+#endif
+
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -546,7 +552,11 @@ void EmulatorApp::OnDestroy() {
 
   // TODO(DrChat): Remove this code and do a proper exit.
   XELOGI("Cheap-skate exit!");
+#ifdef __APPLE__
+  std::exit(EXIT_SUCCESS);
+#else
   std::quick_exit(EXIT_SUCCESS);
+#endif
 }
 
 void EmulatorApp::EmulatorThread() {
