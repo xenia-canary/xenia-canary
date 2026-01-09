@@ -581,13 +581,16 @@ def get_build_bin_path(args):
 
 
 def apply_patches():
-    """Applies patches from src/xenia/patch/*.patch and src/xenia/kernel/*.patch.
+    """Applies patches from src/xenia/patch/ and src/xenia/kernel/.
+    Supports both *.patch files and *.sh scripts.
     """
     print("Applying patches...")
     patches = sorted(
         glob(os.path.join("src", "xenia", "patch", "*.patch")) +
-        glob(os.path.join("src", "xenia", "kernel", "*.patch")),
-        reverse=True
+        glob(os.path.join("src", "xenia", "patch", "*.sh")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.patch")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.sh")),
+        reverse=False
     )
     if not patches:
         print("No patches found.")
@@ -595,23 +598,29 @@ def apply_patches():
 
     for patch in patches:
         print(f"- applying {os.path.basename(patch)}...")
-        shell_call([
-            "patch",
-            "-p1",
-            "--binary",
-            "-N",
-            "-r", "-",
-            "-i", patch,
-            ], throw_on_error=False)
+        if patch.endswith(".sh"):
+            shell_call(["sh", patch], throw_on_error=False)
+        else:
+            shell_call([
+                "patch",
+                "-p1",
+                "--binary",
+                "-N",
+                "-r", "-",
+                "-i", patch,
+                ], throw_on_error=False)
 
 
 def revert_patches():
-    """Reverts patches from src/xenia/patch/*.patch and src/xenia/kernel/*.patch.
+    """Reverts patches from src/xenia/patch/ and src/xenia/kernel/.
+    Supports both *.patch files and *.sh scripts.
     """
     print("Reverting patches...")
     patches = sorted(
         glob(os.path.join("src", "xenia", "patch", "*.patch")) +
-        glob(os.path.join("src", "xenia", "kernel", "*.patch")),
+        glob(os.path.join("src", "xenia", "patch", "*.sh")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.patch")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.sh")),
         reverse=True
     )
     if not patches:
@@ -620,15 +629,20 @@ def revert_patches():
 
     for patch in patches:
         print(f"- reverting {os.path.basename(patch)}...")
-        shell_call([
-            "patch",
-            "-p1",
-            "--binary",
-            "-R",
-            "-f",
-            "-r", "-",
-            "-i", patch,
-            ], throw_on_error=False)
+        if patch.endswith(".sh"):
+            revert_script = patch.replace(".sh", ".revert.sh")
+            if os.path.exists(revert_script):
+                shell_call(["sh", revert_script], throw_on_error=False)
+        else:
+            shell_call([
+                "patch",
+                "-p1",
+                "--binary",
+                "-R",
+                "-f",
+                "-r", "-",
+                "-i", patch,
+                ], throw_on_error=False)
 
 
 def create_clion_workspace():
