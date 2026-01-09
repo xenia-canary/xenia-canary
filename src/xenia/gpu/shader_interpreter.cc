@@ -647,9 +647,18 @@ void ShaderInterpreter::ExecuteAluInstruction(ucode::AluInstruction instr) {
     } break;
     case 2: {
       scalar_operand_component_count = 2;
+#ifdef __APPLE__
+      uint32_t scalar_src_absolute_mask =
+          ~(uint32_t(instr.abs_constants()) << 31);
+      (void)scalar_src_absolute_mask;
+      uint32_t scalar_src_negate_bit = uint32_t(instr.src_negate(3)) << 31;
+      (void)scalar_src_negate_bit;
+#else
       uint32_t scalar_src_absolute_mask =
           ~(uint32_t(instr.abs_constants()) << 31);
       uint32_t scalar_src_negate_bit = uint32_t(instr.src_negate(3)) << 31;
+#endif
+
       uint32_t scalar_src_swizzle = instr.src_swizzle(3);
       // c#.w.
       scalar_operands[0] =
@@ -906,9 +915,17 @@ void ShaderInterpreter::ExecuteAluInstruction(ucode::AluInstruction instr) {
     if (export_sink_) {
       float export_value[4];
       uint32_t export_constant_1_mask = instr.GetConstant1WriteMask();
+#ifdef __APPLE__
       uint32_t export_mask =
           vector_result_write_mask | scalar_result_write_mask |
           instr.GetConstant0WriteMask() | export_constant_1_mask;
+      (void)export_mask;
+#else
+      uint32_t export_mask =
+          vector_result_write_mask | scalar_result_write_mask |
+          instr.GetConstant0WriteMask() | export_constant_1_mask;
+#endif
+
       for (uint32_t i = 0; i < 4; ++i) {
         uint32_t export_component_bit = UINT32_C(1) << i;
         float export_component = 0.0f;
@@ -1191,7 +1208,12 @@ void ShaderInterpreter::ExecuteVertexFetchInstruction(
           if (!(packed_components & (UINT32_C(1) << i))) {
             continue;
           }
+#ifdef __APPLE__
           uint32_t packed_width = packed_widths[i];
+          (void)packed_width;
+#else
+          uint32_t packed_width = packed_widths[i];
+#endif
           result[i] = float(packed_dwords[i >> 1] &
                             ((UINT32_C(1) << packed_widths[i]) - 1));
         }
