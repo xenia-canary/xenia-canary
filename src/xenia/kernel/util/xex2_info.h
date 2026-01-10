@@ -81,6 +81,33 @@ enum xex2_image_flags : uint32_t {
   XEX_IMAGE_REVOCATION_CHECK_REQUIRED = 0x80000000,
 };
 
+inline const std::unordered_map<xex2_image_flags, std::string>
+    xex2_image_flags_map = {
+        {XEX_IMAGE_MANUFACTURING_UTILITY, "XEX_IMAGE_MANUFACTURING_UTILITY"},
+        {XEX_IMAGE_MANUFACTURING_SUPPORT_TOOLS,
+         "XEX_IMAGE_MANUFACTURING_SUPPORT_TOOLS"},
+        {XEX_IMAGE_XGD2_MEDIA_ONLY, "XEX_IMAGE_XGD2_MEDIA_ONLY"},
+        {XEX_IMAGE_CARDEA_KEY, "XEX_IMAGE_CARDEA_KEY"},
+        {XEX_IMAGE_XEIKA_KEY, "XEX_IMAGE_XEIKA_KEY"},
+        {XEX_IMAGE_USERMODE_TITLE, "XEX_IMAGE_USERMODE_TITLE"},
+        {XEX_IMAGE_USERMODE_SYSTEM, "XEX_IMAGE_USERMODE_SYSTEM"},
+        {XEX_IMAGE_ORANGE0, "XEX_IMAGE_ORANGE0"},
+        {XEX_IMAGE_ORANGE1, "XEX_IMAGE_ORANGE1"},
+        {XEX_IMAGE_ORANGE2, "XEX_IMAGE_ORANGE2"},
+        {XEX_IMAGE_IPTV_SIGNUP_APPLICATION,
+         "XEX_IMAGE_IPTV_SIGNUP_APPLICATION"},
+        {XEX_IMAGE_IPTV_TITLE_APPLICATION, "XEX_IMAGE_IPTV_TITLE_APPLICATION"},
+        {XEX_IMAGE_KEYVAULT_PRIVILEGES_REQUIRED,
+         "XEX_IMAGE_KEYVAULT_PRIVILEGES_REQUIRED"},
+        {XEX_IMAGE_ONLINE_ACTIVATION_REQUIRED,
+         "XEX_IMAGE_ONLINE_ACTIVATION_REQUIRED"},
+        {XEX_IMAGE_PAGE_SIZE_4KB, "XEX_IMAGE_PAGE_SIZE_4KB"},
+        {XEX_IMAGE_REGION_FREE, "XEX_IMAGE_REGION_FREE"},
+        {XEX_IMAGE_REVOCATION_CHECK_OPTIONAL,
+         "XEX_IMAGE_REVOCATION_CHECK_OPTIONAL"},
+        {XEX_IMAGE_REVOCATION_CHECK_REQUIRED,
+         "XEX_IMAGE_REVOCATION_CHECK_REQUIRED"}};
+
 enum xex2_media_flags : uint32_t {
   XEX_MEDIA_HARDDISK = 0x00000001,
   XEX_MEDIA_DVD_X2 = 0x00000002,
@@ -123,6 +150,17 @@ enum xex2_module_flags : uint32_t {
   XEX_MODULE_USER_MODE = 0x00000080,
 };
 
+inline const std::unordered_map<xex2_module_flags, std::string>
+    xex2_module_flags_map = {
+        {XEX_MODULE_TITLE, "XEX_MODULE_TITLE"},
+        {XEX_MODULE_EXPORTS_TO_TITLE, "XEX_MODULE_EXPORTS_TO_TITLE"},
+        {XEX_MODULE_SYSTEM_DEBUGGER, "XEX_MODULE_SYSTEM_DEBUGGER"},
+        {XEX_MODULE_DLL_MODULE, "XEX_MODULE_DLL_MODULE"},
+        {XEX_MODULE_MODULE_PATCH, "XEX_MODULE_MODULE_PATCH"},
+        {XEX_MODULE_PATCH_FULL, "XEX_MODULE_PATCH_FULL"},
+        {XEX_MODULE_PATCH_DELTA, "XEX_MODULE_PATCH_DELTA"},
+        {XEX_MODULE_USER_MODE, "XEX_MODULE_USER_MODE"}};
+
 enum xex2_system_flags : uint32_t {
   XEX_SYSTEM_NO_FORCED_REBOOT = 0x00000001,
   XEX_SYSTEM_FOREGROUND_TASKS = 0x00000002,
@@ -156,132 +194,15 @@ enum xex2_system_flags : uint32_t {
   XEX_SYSTEM_ALLOW_AVATAR_GET_METADATA_BY_XUID = 0x20000000,
   XEX_SYSTEM_ALLOW_CONTROLLER_SWAPPING = 0x40000000,
   XEX_SYSTEM_DASH_EXTENSIBILITY_MODULE = 0x80000000,
-  // TODO(benvanik): figure out how stored.
-  /*XEX_SYSTEM_ALLOW_NETWORK_READ_CANCEL            = 0x0,
-  XEX_SYSTEM_UNINTERRUPTABLE_READS                = 0x0,
-  XEX_SYSTEM_REQUIRE_FULL_EXPERIENCE              = 0x0,
-  XEX_SYSTEM_GAME_VOICE_REQUIRED_UI               = 0x0,
-  XEX_SYSTEM_CAMERA_ANGLE                         = 0x0,
-  XEX_SYSTEM_SKELETAL_TRACKING_REQUIRED           = 0x0,
-  XEX_SYSTEM_SKELETAL_TRACKING_SUPPORTED          = 0x0,*/
 };
 
-// ESRB (Entertainment Software Rating Board)
-enum xex2_rating_esrb_value : uint32_t {
-  XEX_RATING_ESRB_eC = 0x00,
-  XEX_RATING_ESRB_E = 0x02,
-  XEX_RATING_ESRB_E10 = 0x04,
-  XEX_RATING_ESRB_T = 0x06,
-  XEX_RATING_ESRB_M = 0x08,
-  XEX_RATING_ESRB_AO = 0x0E,
-  XEX_RATING_ESRB_UNRATED = 0xFF,
-};
-// PEGI (Pan European Game Information)
-enum xex2_rating_pegi_value : uint32_t {
-  XEX_RATING_PEGI_3_PLUS = 0,
-  XEX_RATING_PEGI_7_PLUS = 4,
-  XEX_RATING_PEGI_12_PLUS = 9,
-  XEX_RATING_PEGI_16_PLUS = 13,
-  XEX_RATING_PEGI_18_PLUS = 14,
-  XEX_RATING_PEGI_UNRATED = 0xFF,
-};
-// PEGI (Pan European Game Information) - Finland
-enum xex2_rating_pegi_fi_value : uint32_t {
-  XEX_RATING_PEGI_FI_3_PLUS = 0,
-  XEX_RATING_PEGI_FI_7_PLUS = 4,
-  XEX_RATING_PEGI_FI_11_PLUS = 8,
-  XEX_RATING_PEGI_FI_15_PLUS = 12,
-  XEX_RATING_PEGI_FI_18_PLUS = 14,
-  XEX_RATING_PEGI_FI_UNRATED = 0xFF,
-};
-// PEGI (Pan European Game Information) - Portugal
-enum xex2_rating_pegi_pt_value : uint32_t {
-  XEX_RATING_PEGI_PT_4_PLUS = 1,
-  XEX_RATING_PEGI_PT_6_PLUS = 3,
-  XEX_RATING_PEGI_PT_12_PLUS = 9,
-  XEX_RATING_PEGI_PT_16_PLUS = 13,
-  XEX_RATING_PEGI_PT_18_PLUS = 14,
-  XEX_RATING_PEGI_PT_UNRATED = 0xFF,
-};
-// BBFC (British Board of Film Classification) - UK/Ireland
-enum xex2_rating_bbfc_value : uint32_t {
-  XEX_RATING_BBFC_UNIVERSAL = 1,
-  XEX_RATING_BBFC_PG = 5,
-  XEX_RATING_BBFC_3_PLUS = 0,
-  XEX_RATING_BBFC_7_PLUS = 4,
-  XEX_RATING_BBFC_12_PLUS = 9,
-  XEX_RATING_BBFC_15_PLUS = 12,
-  XEX_RATING_BBFC_16_PLUS = 13,
-  XEX_RATING_BBFC_18_PLUS = 14,
-  XEX_RATING_BBFC_UNRATED = 0xFF,
-};
-// CERO (Computer Entertainment Rating Organization)
-enum xex2_rating_cero_value : uint32_t {
-  XEX_RATING_CERO_A = 0,
-  XEX_RATING_CERO_B = 2,
-  XEX_RATING_CERO_C = 4,
-  XEX_RATING_CERO_D = 6,
-  XEX_RATING_CERO_Z = 8,
-  XEX_RATING_CERO_UNRATED = 0xFF,
-};
-// USK (Unterhaltungssoftware SelbstKontrolle)
-enum xex2_rating_usk_value : uint32_t {
-  XEX_RATING_USK_ALL = 0,
-  XEX_RATING_USK_6_PLUS = 2,
-  XEX_RATING_USK_12_PLUS = 4,
-  XEX_RATING_USK_16_PLUS = 6,
-  XEX_RATING_USK_18_PLUS = 8,
-  XEX_RATING_USK_UNRATED = 0xFF,
-};
-// OFLC (Office of Film and Literature Classification) - Australia
-enum xex2_rating_oflc_au_value : uint32_t {
-  XEX_RATING_OFLC_AU_G = 0,
-  XEX_RATING_OFLC_AU_PG = 2,
-  XEX_RATING_OFLC_AU_M = 4,
-  XEX_RATING_OFLC_AU_MA15_PLUS = 6,
-  XEX_RATING_OFLC_AU_UNRATED = 0xFF,
-};
-// OFLC (Office of Film and Literature Classification) - New Zealand
-enum xex2_rating_oflc_nz_value : uint32_t {
-  XEX_RATING_OFLC_NZ_G = 0,
-  XEX_RATING_OFLC_NZ_PG = 2,
-  XEX_RATING_OFLC_NZ_M = 4,
-  XEX_RATING_OFLC_NZ_MA15_PLUS = 6,
-  XEX_RATING_OFLC_NZ_UNRATED = 0xFF,
-};
-// KMRB (Korea Media Rating Board)
-enum xex2_rating_kmrb_value : uint32_t {
-  XEX_RATING_KMRB_ALL = 0,
-  XEX_RATING_KMRB_12_PLUS = 2,
-  XEX_RATING_KMRB_15_PLUS = 4,
-  XEX_RATING_KMRB_18_PLUS = 6,
-  XEX_RATING_KMRB_UNRATED = 0xFF,
-};
-// Brazil
-enum xex2_rating_brazil_value : uint32_t {
-  XEX_RATING_BRAZIL_ALL = 0,
-  XEX_RATING_BRAZIL_12_PLUS = 2,
-  XEX_RATING_BRAZIL_14_PLUS = 4,
-  XEX_RATING_BRAZIL_16_PLUS = 5,
-  XEX_RATING_BRAZIL_18_PLUS = 8,
-  XEX_RATING_BRAZIL_UNRATED = 0xFF,
-};
-// FPB (Film and Publication Board)
-enum xex2_rating_fpb_value : uint32_t {
-  XEX_RATING_FPB_ALL = 0,
-  XEX_RATING_FPB_PG = 6,
-  XEX_RATING_FPB_10_PLUS = 7,
-  XEX_RATING_FPB_13_PLUS = 10,
-  XEX_RATING_FPB_16_PLUS = 13,
-  XEX_RATING_FPB_18_PLUS = 14,
-  XEX_RATING_FPB_UNRATED = 0xFF,
-};
-
+// https://github.com/emoose/xbox-reversing/blob/5f85b9ec8c771577532ca1cfa20c691e9033f2c2/templates/xbox-360/XEX2FlagsAndEnums.bt#L9
 enum xex2_header_keys : uint32_t {
   XEX_HEADER_RESOURCE_INFO = 0x000002FF,
   XEX_HEADER_FILE_FORMAT_INFO = 0x000003FF,
   XEX_HEADER_DELTA_PATCH_DESCRIPTOR = 0x000005FF,
   XEX_HEADER_BASE_REFERENCE = 0x00000405,
+  XEX_HEADER_DISC_PROFILE_ID = 0x00004304,
   XEX_HEADER_BOUNDING_PATH = 0x000080FF,
   XEX_HEADER_DEVICE_ID = 0x00008105,
   XEX_HEADER_ORIGINAL_BASE_ADDRESS = 0x00010001,
@@ -298,7 +219,9 @@ enum xex2_header_keys : uint32_t {
   XEX_HEADER_DEFAULT_FILESYSTEM_CACHE_SIZE = 0x00020301,
   XEX_HEADER_DEFAULT_HEAP_SIZE = 0x00020401,
   XEX_HEADER_PAGE_HEAP_SIZE_AND_FLAGS = 0x00028002,
-  XEX_HEADER_SYSTEM_FLAGS = 0x00030000,
+  XEX_HEADER_SYSTEM_FLAGS = 0x00030000,     // Privileges
+  XEX_HEADER_SYSTEM_FLAGS_32 = 0x00030100,  // Privileges_32
+  XEX_HEADER_SYSTEM_FLAGS_64 = 0x00030200,  // Privileges_64
   XEX_HEADER_EXECUTION_INFO = 0x00040006,
   XEX_HEADER_TITLE_WORKSPACE_SIZE = 0x00040201,
   XEX_HEADER_GAME_RATINGS = 0x00040310,
@@ -310,24 +233,226 @@ enum xex2_header_keys : uint32_t {
   XEX_HEADER_EXPORTS_BY_NAME = 0x00E10402,
 };
 
-enum xex2_encryption_type : uint16_t {
-  XEX_ENCRYPTION_NONE = 0,
-  XEX_ENCRYPTION_NORMAL = 1,
+// ESRB (Entertainment Software Rating Board)
+enum xex2_rating_esrb_value : uint8_t {
+  XEX_RATING_ESRB_eC = 0x00,
+  XEX_RATING_ESRB_E = 0x02,
+  XEX_RATING_ESRB_E10 = 0x04,
+  XEX_RATING_ESRB_T = 0x06,
+  XEX_RATING_ESRB_M = 0x08,
+  XEX_RATING_ESRB_AO = 0x0E,
+  XEX_RATING_ESRB_UNRATED = 0xFF,
 };
 
-enum xex2_compression_type : uint16_t {
-  XEX_COMPRESSION_NONE = 0,
-  XEX_COMPRESSION_BASIC = 1,
-  XEX_COMPRESSION_NORMAL = 2,
-  XEX_COMPRESSION_DELTA = 3,
+inline const std::unordered_map<xex2_rating_esrb_value, std::string>
+    xex2_rating_esrb_value_map = {{XEX_RATING_ESRB_eC, "Early Childhood"},
+                                  {XEX_RATING_ESRB_E, "Everyone"},
+                                  {XEX_RATING_ESRB_E10, "Everyone 10+"},
+                                  {XEX_RATING_ESRB_T, "Teen"},
+                                  {XEX_RATING_ESRB_M, "Mature 17+"},
+                                  {XEX_RATING_ESRB_AO, "Adults Only 18+"},
+                                  {XEX_RATING_ESRB_UNRATED, "Unrated"}};
+
+// PEGI (Pan European Game Information)
+enum xex2_rating_pegi_value : uint8_t {
+  XEX_RATING_PEGI_3_PLUS = 0x00,
+  XEX_RATING_PEGI_7_PLUS = 0x04,
+  XEX_RATING_PEGI_12_PLUS = 0x09,
+  XEX_RATING_PEGI_16_PLUS = 0x0D,
+  XEX_RATING_PEGI_18_PLUS = 0x0E,
+  XEX_RATING_PEGI_UNRATED = 0xFF,
 };
 
-enum xex2_approval_type : uint32_t {
-  XEX_APPROVAL_UNAPPROVED = 0,
-  XEX_APPROVAL_POSSIBLE = 1,
-  XEX_APPROVAL_APPROVED = 2,
-  XEX_APPROVAL_EXPIRED = 3,
+inline const std::unordered_map<xex2_rating_pegi_value, std::string>
+    xex2_rating_pegi_value_map = {
+        {XEX_RATING_PEGI_3_PLUS, "3+"},   {XEX_RATING_PEGI_7_PLUS, "7+"},
+        {XEX_RATING_PEGI_12_PLUS, "12+"}, {XEX_RATING_PEGI_16_PLUS, "16+"},
+        {XEX_RATING_PEGI_18_PLUS, "18+"}, {XEX_RATING_PEGI_UNRATED, "Unrated"}};
+
+// PEGI (Pan European Game Information) - Finland
+enum xex2_rating_pegi_fi_value : uint8_t {
+  XEX_RATING_PEGI_FI_3_PLUS = 0x00,
+  XEX_RATING_PEGI_FI_7_PLUS = 0x04,
+  XEX_RATING_PEGI_FI_11_PLUS = 0x08,
+  XEX_RATING_PEGI_FI_15_PLUS = 0x0C,
+  XEX_RATING_PEGI_FI_18_PLUS = 0x0E,
+  XEX_RATING_PEGI_FI_UNRATED = 0xFF,
 };
+
+inline const std::unordered_map<xex2_rating_pegi_fi_value, std::string>
+    xex2_rating_pegi_fi_value_map = {{XEX_RATING_PEGI_FI_3_PLUS, "3+"},
+                                     {XEX_RATING_PEGI_FI_7_PLUS, "7+"},
+                                     {XEX_RATING_PEGI_FI_11_PLUS, "11+"},
+                                     {XEX_RATING_PEGI_FI_15_PLUS, "15+"},
+                                     {XEX_RATING_PEGI_FI_18_PLUS, "18+"},
+                                     {XEX_RATING_PEGI_FI_UNRATED, "Unrated"}};
+
+// PEGI (Pan European Game Information) - Portugal
+enum xex2_rating_pegi_pt_value : uint8_t {
+  XEX_RATING_PEGI_PT_4_PLUS = 0x01,
+  XEX_RATING_PEGI_PT_6_PLUS = 0x03,
+  XEX_RATING_PEGI_PT_12_PLUS = 0x09,
+  XEX_RATING_PEGI_PT_16_PLUS = 0x0D,
+  XEX_RATING_PEGI_PT_18_PLUS = 0x0E,
+  XEX_RATING_PEGI_PT_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_pegi_pt_value, std::string>
+    xex2_rating_pegi_pt_value_map = {{XEX_RATING_PEGI_PT_4_PLUS, "4+"},
+                                     {XEX_RATING_PEGI_PT_6_PLUS, "6+"},
+                                     {XEX_RATING_PEGI_PT_12_PLUS, "12+"},
+                                     {XEX_RATING_PEGI_PT_16_PLUS, "16+"},
+                                     {XEX_RATING_PEGI_PT_18_PLUS, "18+"},
+                                     {XEX_RATING_PEGI_PT_UNRATED, "Unrated"}};
+
+// BBFC (British Board of Film Classification) - UK/Ireland
+enum xex2_rating_bbfc_value : uint8_t {
+  XEX_RATING_BBFC_3_PLUS = 0x00,
+  XEX_RATING_BBFC_UNIVERSAL = 0x01,
+  XEX_RATING_BBFC_PG = 0x05,
+  XEX_RATING_BBFC_7_PLUS = 0x04,
+  XEX_RATING_BBFC_12_PLUS = 0x09,
+  XEX_RATING_BBFC_15_PLUS = 0x0C,
+  XEX_RATING_BBFC_16_PLUS = 0x0D,
+  XEX_RATING_BBFC_18_PLUS = 0x0E,
+  XEX_RATING_BBFC_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_bbfc_value, std::string>
+    xex2_rating_bbfc_value_map = {{XEX_RATING_BBFC_UNIVERSAL, "Universal"},
+                                  {XEX_RATING_BBFC_PG, "Parental Guidance"},
+                                  {XEX_RATING_BBFC_3_PLUS, "3+"},
+                                  {XEX_RATING_BBFC_7_PLUS, "7+"},
+                                  {XEX_RATING_BBFC_12_PLUS, "12+"},
+                                  {XEX_RATING_BBFC_15_PLUS, "15+"},
+                                  {XEX_RATING_BBFC_16_PLUS, "16+"},
+                                  {XEX_RATING_BBFC_18_PLUS, "18+"},
+                                  {XEX_RATING_BBFC_UNRATED, "Unrated"}};
+
+// CERO (Computer Entertainment Rating Organization)
+enum xex2_rating_cero_value : uint8_t {
+  XEX_RATING_CERO_A = 0x00,
+  XEX_RATING_CERO_B = 0x02,
+  XEX_RATING_CERO_C = 0x04,
+  XEX_RATING_CERO_D = 0x06,
+  XEX_RATING_CERO_Z = 0x08,
+  XEX_RATING_CERO_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_cero_value, std::string>
+    xex2_rating_cero_value_map = {{XEX_RATING_CERO_A, "All Ages"},
+                                  {XEX_RATING_CERO_B, "Ages 12 and up"},
+                                  {XEX_RATING_CERO_C, "Ages 15 and up"},
+                                  {XEX_RATING_CERO_D, "Ages 17 and up"},
+                                  {XEX_RATING_CERO_Z, "Ages 18 and up only"},
+                                  {XEX_RATING_CERO_UNRATED, "Unrated"}};
+
+// USK (Unterhaltungssoftware SelbstKontrolle)
+enum xex2_rating_usk_value : uint8_t {
+  XEX_RATING_USK_ALL = 0x00,
+  XEX_RATING_USK_6_PLUS = 0x02,
+  XEX_RATING_USK_12_PLUS = 0x04,
+  XEX_RATING_USK_16_PLUS = 0x06,
+  XEX_RATING_USK_18_PLUS = 0x08,
+  XEX_RATING_USK_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_usk_value, std::string>
+    xex2_rating_usk_value_map = {
+        {XEX_RATING_USK_ALL, "Approved without age restriction"},
+        {XEX_RATING_USK_6_PLUS, "Approved for children aged 6 and above"},
+        {XEX_RATING_USK_12_PLUS, "Approved for children aged 12 and above"},
+        {XEX_RATING_USK_16_PLUS, "Approved for children aged 16 and above"},
+        {XEX_RATING_USK_18_PLUS, "Not approved for young persons"},
+        {XEX_RATING_USK_UNRATED, "Unrated"}};
+
+// OFLC (Office of Film and Literature Classification) - Australia
+enum xex2_rating_oflc_au_value : uint8_t {
+  XEX_RATING_OFLC_AU_G = 0x00,
+  XEX_RATING_OFLC_AU_PG = 0x02,
+  XEX_RATING_OFLC_AU_M = 0x04,
+  XEX_RATING_OFLC_AU_MA15_PLUS = 0x06,
+  XEX_RATING_OFLC_AU_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_oflc_au_value, std::string>
+    xex2_rating_oflc_au_value_map = {
+        {XEX_RATING_OFLC_AU_G, "General"},
+        {XEX_RATING_OFLC_AU_PG, "Parental Guidance"},
+        {XEX_RATING_OFLC_AU_M, "Mature"},
+        {XEX_RATING_OFLC_AU_MA15_PLUS, "Mature Accompanied"},
+        {XEX_RATING_OFLC_AU_UNRATED, "Unrated"}};
+
+// OFLC (Office of Film and Literature Classification) - New Zealand
+enum xex2_rating_oflc_nz_value : uint8_t {
+  XEX_RATING_OFLC_NZ_G = 0x00,
+  XEX_RATING_OFLC_NZ_PG = 0x02,
+  XEX_RATING_OFLC_NZ_M = 0x04,          // 0x09
+  XEX_RATING_OFLC_NZ_MA15_PLUS = 0x06,  // 0x09
+  XEX_RATING_OFLC_NZ_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_oflc_nz_value, std::string>
+    xex2_rating_oflc_nz_value_map = {
+        {XEX_RATING_OFLC_NZ_G, "General"},
+        {XEX_RATING_OFLC_NZ_PG, "Parental Guidance"},
+        {XEX_RATING_OFLC_NZ_M, "Mature"},
+        {XEX_RATING_OFLC_NZ_MA15_PLUS, "R15"},
+        {XEX_RATING_OFLC_NZ_UNRATED, "Unrated"}};
+
+// KMRB (Korea Media Rating Board)
+enum xex2_rating_kmrb_value : uint8_t {
+  XEX_RATING_KMRB_ALL = 0x00,
+  XEX_RATING_KMRB_12_PLUS = 0x02,
+  XEX_RATING_KMRB_15_PLUS = 0x04,
+  XEX_RATING_KMRB_18_PLUS = 0x06,
+  XEX_RATING_KMRB_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_kmrb_value, std::string>
+    xex2_rating_kmrb_value_map = {{XEX_RATING_KMRB_ALL, "All"},
+                                  {XEX_RATING_KMRB_12_PLUS, "12+"},
+                                  {XEX_RATING_KMRB_15_PLUS, "15+"},
+                                  {XEX_RATING_KMRB_18_PLUS, "18+"},
+                                  {XEX_RATING_KMRB_UNRATED, "Unrated"}};
+
+// Brazil
+enum xex2_rating_brazil_value : uint8_t {
+  XEX_RATING_BRAZIL_ALL = 0x00,
+  XEX_RATING_BRAZIL_12_PLUS = 0x02,
+  XEX_RATING_BRAZIL_14_PLUS = 0x04,  // 0x40
+  XEX_RATING_BRAZIL_16_PLUS = 0x05,
+  XEX_RATING_BRAZIL_18_PLUS = 0x08,  // 0x60
+  XEX_RATING_BRAZIL_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_brazil_value, std::string>
+    xex2_rating_brazil_value_map = {{XEX_RATING_BRAZIL_ALL, "All"},
+                                    {XEX_RATING_BRAZIL_12_PLUS, "12+"},
+                                    {XEX_RATING_BRAZIL_14_PLUS, "14+"},
+                                    {XEX_RATING_BRAZIL_16_PLUS, "16+"},
+                                    {XEX_RATING_BRAZIL_18_PLUS, "18+"},
+                                    {XEX_RATING_BRAZIL_UNRATED, "Unrated"}};
+
+// FPB (Film and Publication Board)
+enum xex2_rating_fpb_value : uint8_t {
+  XEX_RATING_FPB_ALL = 0x00,
+  XEX_RATING_FPB_PG = 0x06,
+  XEX_RATING_FPB_10_PLUS = 0x07,
+  XEX_RATING_FPB_13_PLUS = 0x0A,
+  XEX_RATING_FPB_16_PLUS = 0x0D,
+  XEX_RATING_FPB_18_PLUS = 0x0E,
+  XEX_RATING_FPB_UNRATED = 0xFF,
+};
+
+inline const std::unordered_map<xex2_rating_fpb_value, std::string>
+    xex2_rating_fpb_value_map = {{XEX_RATING_FPB_ALL, "ALL"},
+                                 {XEX_RATING_FPB_PG, "Parental Guidance"},
+                                 {XEX_RATING_FPB_10_PLUS, "10+"},
+                                 {XEX_RATING_FPB_13_PLUS, "13+"},
+                                 {XEX_RATING_FPB_16_PLUS, "16+"},
+                                 {XEX_RATING_FPB_18_PLUS, "18+"},
+                                 {XEX_RATING_FPB_UNRATED, "Unrated"}};
 
 struct xex2_game_ratings_t {
   xe::be<xex2_rating_esrb_value> esrb;
@@ -342,7 +467,31 @@ struct xex2_game_ratings_t {
   xe::be<xex2_rating_kmrb_value> kmrb;
   xe::be<xex2_rating_brazil_value> brazil;
   xe::be<xex2_rating_fpb_value> fpb;
+  uint8_t unkn[52];
 };
+static_assert_size(xex2_game_ratings_t, 0x40);
+
+enum xex2_encryption_type : uint16_t {
+  XEX_ENCRYPTION_NONE = 0,
+  XEX_ENCRYPTION_NORMAL = 1,
+};
+
+inline const std::unordered_map<xex2_encryption_type, std::string>
+    xex2_encryption_type_map = {{XEX_ENCRYPTION_NONE, "None"},
+                                {XEX_ENCRYPTION_NORMAL, "Normal"}};
+
+enum xex2_compression_type : uint16_t {
+  XEX_COMPRESSION_NONE = 0,
+  XEX_COMPRESSION_BASIC = 1,
+  XEX_COMPRESSION_NORMAL = 2,
+  XEX_COMPRESSION_DELTA = 3,
+};
+
+inline const std::unordered_map<xex2_compression_type, std::string>
+    xex2_compression_type_map = {{XEX_COMPRESSION_NONE, "None"},
+                                 {XEX_COMPRESSION_BASIC, "Basic"},
+                                 {XEX_COMPRESSION_NORMAL, "Normal"},
+                                 {XEX_COMPRESSION_DELTA, "Delta"}};
 
 struct xex2_file_basic_compression_block {
   xe::be<uint32_t> data_size;
@@ -387,6 +536,12 @@ struct xex2_opt_lan_key {
   uint8_t key[0x10];
 };
 
+struct xex2_opt_ms_logo {
+  xe::be<uint32_t> section_size;
+  xe::be<uint32_t> logo_size;
+  xe::be<uint32_t> logo;  // uint8_t*
+};
+
 struct xex2_opt_bound_path {
   xe::be<uint32_t> size;
   char path[1];
@@ -399,13 +554,25 @@ struct xex2_opt_checksum_timedatestamp {
 };  // size 8
 static_assert_size(xex2_opt_checksum_timedatestamp, 0x8);
 
+struct xex2_opt_call_cap_imports {
+  xe::be<uint32_t> start_func_thunk_addr;
+  xe::be<uint32_t> end_func_thunk_addr;
+};
+
+enum xex2_approval_type : uint8_t {
+  XEX_APPROVAL_UNAPPROVED = 0,
+  XEX_APPROVAL_POSSIBLE = 1,
+  XEX_APPROVAL_APPROVED = 2,
+  XEX_APPROVAL_EXPIRED = 3,
+};
+
 struct xex2_opt_static_library {
-  char name[8];                    // 0x0
-  xe::be<uint16_t> version_major;  // 0x8
-  xe::be<uint16_t> version_minor;  // 0xA
-  xe::be<uint16_t> version_build;  // 0xC
-  uint8_t approval_type;           // 0xE
-  uint8_t version_qfe;             // 0xF
+  char name[8];                      // 0x0
+  xe::be<uint16_t> version_major;    // 0x8
+  xe::be<uint16_t> version_minor;    // 0xA
+  xe::be<uint16_t> version_build;    // 0xC
+  xex2_approval_type approval_type;  // 0xE
+  uint8_t version_qfe;               // 0xF
 };
 static_assert_size(xex2_opt_static_library, 0x10);
 
@@ -432,6 +599,34 @@ struct xex2_opt_tls_info {
   xe::be<uint32_t> raw_data_size;     // 0xC
 };
 static_assert_size(xex2_opt_tls_info, 0x10);
+
+enum xex2_system_flags_32 : uint32_t {
+  XEX_SYSTEM_ALLOW_NETWORK_READ_CANCEL = 0x00000001,
+  XEX_SYSTEM_UNINTERRUPTABLE_READS = 0x00000002,
+  XEX_SYSTEM_REQUIRE_FULL_EXPERIENCE = 0x00000004,
+  XEX_SYSTEM_GAME_VOICE_REQUIRED_UI = 0x00000008,
+  XEX_SYSTEM_TITLE_SET_PRESENCE_STRING = 0x00000010,
+  XEX_SYSTEM_CAMERA_ANGLE_CONTROL = 0x00000020,
+  XEX_SYSTEM_SKELETAL_TRACKING_REQUIRED = 0x00000040,
+  XEX_SYSTEM_SKELETAL_TRACKING_SUPPORTED = 0x00000080
+};
+
+inline const std::unordered_map<uint32_t, std::string>
+    xex2_system_flags_32_map = {
+        {XEX_SYSTEM_ALLOW_NETWORK_READ_CANCEL,
+         "XEX_SYSTEM_ALLOW_NETWORK_READ_CANCEL"},
+        {XEX_SYSTEM_UNINTERRUPTABLE_READS, "XEX_SYSTEM_UNINTERRUPTABLE_READS"},
+        {XEX_SYSTEM_REQUIRE_FULL_EXPERIENCE,
+         "XEX_SYSTEM_REQUIRE_FULL_EXPERIENCE"},
+        {XEX_SYSTEM_GAME_VOICE_REQUIRED_UI,
+         "XEX_SYSTEM_GAME_VOICE_REQUIRED_UI"},
+        {XEX_SYSTEM_TITLE_SET_PRESENCE_STRING,
+         "XEX_SYSTEM_TITLE_SET_PRESENCE_STRING"},
+        {XEX_SYSTEM_CAMERA_ANGLE_CONTROL, "XEX_SYSTEM_CAMERA_ANGLE_CONTROL"},
+        {XEX_SYSTEM_SKELETAL_TRACKING_REQUIRED,
+         "XEX_SYSTEM_SKELETAL_TRACKING_REQUIRED"},
+        {XEX_SYSTEM_SKELETAL_TRACKING_SUPPORTED,
+         "XEX_SYSTEM_SKELETAL_TRACKING_SUPPORTED"}};
 
 struct xex2_resource {
   char name[8];              // 0x0
@@ -581,7 +776,7 @@ struct xex2_security_info {
   xe::be<uint32_t> image_size;               // 0x4
   char rsa_signature[0x100];                 // 0x8
   xe::be<uint32_t> unk_108;                  // 0x108 unk length
-  xe::be<uint32_t> image_flags;              // 0x10C
+  xe::be<xex2_image_flags> image_flags;      // 0x10C
   xe::be<uint32_t> load_address;             // 0x110
   char section_digest[0x14];                 // 0x114
   xe::be<uint32_t> import_table_count;       // 0x128

@@ -425,12 +425,22 @@ void UserModule::Dump() {
   sb.AppendFormat("Module Hash: {:016X}\n", hash_.value_or(UINT64_MAX));
 
   sb.AppendFormat("    Module Flags: {:08X}\n", (uint32_t)header->module_flags);
+  for (const auto& entry : xex2_module_flags_map) {
+    if (header->module_flags & entry.first) {
+      sb.AppendFormat("      {}\n", entry.second);
+    }
+  }
 
   // Security header
   auto security_info = xex_module()->xex_security_info();
   sb.Append("Security Header:\n");
   sb.AppendFormat("     Image Flags: {:08X}\n",
                   (uint32_t)security_info->image_flags);
+  for (const auto& entry : xex2_image_flags_map) {
+    if (security_info->image_flags & entry.first) {
+      sb.AppendFormat("       {}\n", entry.second);
+    }
+  }
   sb.AppendFormat("    Load Address: {:08X}\n",
                   (uint32_t)security_info->load_address);
   sb.AppendFormat("      Image Size: {:08X}\n",
@@ -469,16 +479,131 @@ void UserModule::Dump() {
         }
       } break;
       case XEX_HEADER_FILE_FORMAT_INFO: {
-        sb.Append("  XEX_HEADER_FILE_FORMAT_INFO (TODO):\n");
+        sb.Append("  XEX_HEADER_FILE_FORMAT_INFO:\n");
+        auto opt_file_format_info =
+            reinterpret_cast<const xex2_opt_file_format_info*>(opt_header_ptr);
+
+        sb.AppendFormat("           Info Size: {}\n",
+                        static_cast<uint32_t>(opt_file_format_info->info_size));
+        const std::string encryption =
+            xex2_encryption_type_map.at(opt_file_format_info->encryption_type);
+        sb.AppendFormat("     Encryption Type: {}\n", encryption);
+        const std::string compression = xex2_compression_type_map.at(
+            opt_file_format_info->compression_type);
+        sb.AppendFormat("    Compression Type: {}\n", compression);
+        if (opt_file_format_info->compression_type == 1) {
+          sb.AppendFormat(
+              "          Data Size: {}\n",
+              static_cast<uint32_t>(
+                  opt_file_format_info->compression_info.basic.blocks[0]
+                      .data_size));
+          sb.AppendFormat(
+              "          Zero Size: {}\n",
+              static_cast<uint32_t>(
+                  opt_file_format_info->compression_info.basic.blocks[0]
+                      .zero_size));
+        } else if (opt_file_format_info->compression_type == 2) {
+          sb.AppendFormat(
+              "         Window Size: {}\n",
+              static_cast<uint32_t>(
+                  opt_file_format_info->compression_info.normal.window_size));
+          sb.AppendFormat(
+              "          Block Size: {}\n",
+              static_cast<uint32_t>(opt_file_format_info->compression_info
+                                        .normal.first_block.block_size));
+          sb.Append("          Block Hash:");
+          for (int l = 0; l < 0x20; l++) {
+            sb.AppendFormat(" {:02X}", opt_file_format_info->compression_info
+                                           .normal.first_block.block_hash[l]);
+          }
+          sb.Append("\n");
+        } else {
+          sb.AppendFormat("          Compression Info: Not Implemented\n");
+        }
       } break;
       case XEX_HEADER_DELTA_PATCH_DESCRIPTOR: {
-        sb.Append("  XEX_HEADER_DELTA_PATCH_DESCRIPTOR (TODO):\n");
+        sb.Append("  XEX_HEADER_DELTA_PATCH_DESCRIPTOR:\n");
+        auto opt_delta_patch_descriptor =
+            reinterpret_cast<const xex2_opt_delta_patch_descriptor*>(
+                opt_header_ptr);
+
+        sb.AppendFormat(
+            "          Size: {}\n",
+            static_cast<uint32_t>(opt_delta_patch_descriptor->size));
+        sb.AppendFormat("          Target Version: {}\n",
+                        static_cast<uint32_t>(
+                            opt_delta_patch_descriptor->target_version_value));
+        sb.AppendFormat("          Source Version: {}\n",
+                        static_cast<uint32_t>(
+                            opt_delta_patch_descriptor->source_version_value));
+        sb.Append("          Digest Source:");
+        for (int l = 0; l < 0x14; l++) {
+          sb.AppendFormat(" {:02X}",
+                          opt_delta_patch_descriptor->digest_source[l]);
+        }
+        sb.Append("\n          Image Key Source:");
+        for (int l = 0; l < 0x14; l++) {
+          sb.AppendFormat(" {:02X}",
+                          opt_delta_patch_descriptor->image_key_source[l]);
+        }
+        sb.AppendFormat(
+            "\n          Size Of Target Header: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->size_of_target_headers));
+        sb.AppendFormat(
+            "          Delta Header Source Offset: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_headers_source_offset));
+        sb.AppendFormat(
+            "          Delta Header Source Size: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_headers_source_size));
+        sb.AppendFormat(
+            "          Delta Header Target Offset: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_headers_target_offset));
+        sb.AppendFormat(
+            "          Delta Image Source Offset: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_image_source_offset));
+        sb.AppendFormat(
+            "          Delta Imge Source Size: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_image_source_size));
+        sb.AppendFormat(
+            "          Delta Image Target Offset: {}\n",
+            static_cast<uint32_t>(
+                opt_delta_patch_descriptor->delta_image_target_offset));
+        sb.AppendFormat(
+            "          Old Address: {}\n",
+            static_cast<uint32_t>(opt_delta_patch_descriptor->info.old_addr));
+        sb.AppendFormat(
+            "          New Address: {}\n",
+            static_cast<uint32_t>(opt_delta_patch_descriptor->info.new_addr));
+        sb.AppendFormat("          Uncompressed Lens: {}\n",
+                        static_cast<uint16_t>(
+                            opt_delta_patch_descriptor->info.uncompressed_len));
+        sb.AppendFormat("          Compressed Lens: {}\n",
+                        static_cast<uint16_t>(
+                            opt_delta_patch_descriptor->info.compressed_len));
+        sb.AppendFormat(
+            "          Patch Data: {}\n",
+            static_cast<char>(opt_delta_patch_descriptor->info.patch_data[0]));
+      } break;
+      case XEX_HEADER_BASE_REFERENCE: {
+        sb.Append("  XEX_HEADER_BASE_REFERENCE (TODO):\n");
+      } break;
+      case XEX_HEADER_DISC_PROFILE_ID: {  // 4D530919, 4156091D
+        sb.Append("  XEX_HEADER_DISC_PROFILE_ID (TODO):\n");
       } break;
       case XEX_HEADER_BOUNDING_PATH: {
         auto opt_bound_path =
             reinterpret_cast<const xex2_opt_bound_path*>(opt_header_ptr);
         sb.AppendFormat("  XEX_HEADER_BOUNDING_PATH: {}\n",
                         opt_bound_path->path);
+      } break;
+      case XEX_HEADER_DEVICE_ID: {
+        sb.Append("  XEX_HEADER_DEVICE_ID (TODO):\n");
       } break;
       case XEX_HEADER_ORIGINAL_BASE_ADDRESS: {
         sb.AppendFormat("  XEX_HEADER_ORIGINAL_BASE_ADDRESS: {:08X}\n",
@@ -572,6 +697,20 @@ void UserModule::Dump() {
             static_cast<uint32_t>(opt_checksum_timedatestamp->timedatestamp),
             asctime(timeinfo));
       } break;
+      case XEX_HEADER_ENABLED_FOR_CALLCAP: {
+        sb.Append("  XEX_HEADER_ENABLED_FOR_CALLCAP:\n");
+        auto opt_call_cap_imports =
+            reinterpret_cast<const xex2_opt_call_cap_imports*>(opt_header_ptr);
+        sb.AppendFormat(
+            "          Starting Function Thunk Address: {:08X}\n",
+            static_cast<uint32_t>(opt_call_cap_imports->start_func_thunk_addr));
+        sb.AppendFormat(
+            "          Ending Function Thunk Address: {:08X}\n",
+            static_cast<uint32_t>(opt_call_cap_imports->end_func_thunk_addr));
+      } break;
+      case XEX_HEADER_ENABLED_FOR_FASTCAP: {
+        sb.Append("  XEX_HEADER_ENABLED_FOR_FASTCAP (TODO):\n");
+      } break;
       case XEX_HEADER_ORIGINAL_PE_NAME: {
         auto opt_pe_name =
             reinterpret_cast<const xex2_opt_original_pe_name*>(opt_header_ptr);
@@ -632,6 +771,18 @@ void UserModule::Dump() {
           }
         }
       } break;
+      case XEX_HEADER_SYSTEM_FLAGS_32: {
+        sb.AppendFormat("  XEX_HEADER_SYSTEM_FLAGS_32: {:08X}\n",
+                        static_cast<uint32_t>(opt_header.value));
+        for (const auto& entry : xex2_system_flags_32_map) {
+          if (opt_header.value & entry.first) {
+            sb.AppendFormat("    {}\n", entry.second);
+          }
+        }
+      } break;
+      case XEX_HEADER_SYSTEM_FLAGS_64: {
+        sb.Append("  XEX_HEADER_SYSTEM_FLAGS_64 (TODO):\n");
+      } break;
       case XEX_HEADER_EXECUTION_INFO: {
         sb.Append("  XEX_HEADER_EXECUTION_INFO:\n");
         auto opt_exec_info =
@@ -651,7 +802,98 @@ void UserModule::Dump() {
                         uint32_t(opt_header.value));
       } break;
       case XEX_HEADER_GAME_RATINGS: {
-        sb.Append("  XEX_HEADER_GAME_RATINGS (TODO):\n");
+        sb.Append("  XEX_HEADER_GAME_RATINGS:\n");
+        auto opt_game_ratings =
+            reinterpret_cast<const xex2_game_ratings_t*>(opt_header_ptr);
+        if (xex2_rating_esrb_value_map.contains(opt_game_ratings->esrb)) {
+          sb.AppendFormat("          ESRB: {}\n", xex2_rating_esrb_value_map.at(
+                                                      opt_game_ratings->esrb));
+        } else {
+          sb.AppendFormat("          Unk ESRB: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->esrb));
+        }
+        if (xex2_rating_pegi_value_map.contains(opt_game_ratings->pegi)) {
+          sb.AppendFormat("          PEGI: {}\n", xex2_rating_pegi_value_map.at(
+                                                      opt_game_ratings->pegi));
+        } else {
+          sb.AppendFormat("          Unk PEGI: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->pegi));
+        }
+        if (xex2_rating_pegi_fi_value_map.contains(opt_game_ratings->pegifi)) {
+          sb.AppendFormat(
+              "          PEGI-FI: {}\n",
+              xex2_rating_pegi_fi_value_map.at(opt_game_ratings->pegifi));
+        } else {
+          sb.AppendFormat("          Unk PEGI - FI: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->pegifi));
+        }
+        if (xex2_rating_pegi_pt_value_map.contains(opt_game_ratings->pegipt)) {
+          sb.AppendFormat(
+              "          PEGI - PT: {}\n",
+              xex2_rating_pegi_pt_value_map.at(opt_game_ratings->pegipt));
+        } else {
+          sb.AppendFormat("          Unk PEGI-PT: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->pegipt));
+        }
+        if (xex2_rating_bbfc_value_map.contains(opt_game_ratings->bbfc)) {
+          sb.AppendFormat("          BBFC: {}\n", xex2_rating_bbfc_value_map.at(
+                                                      opt_game_ratings->bbfc));
+        } else {
+          sb.AppendFormat("          Unk BBFC: {:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->bbfc));
+        }
+        if (xex2_rating_cero_value_map.contains(opt_game_ratings->cero)) {
+          sb.AppendFormat("          CERO: {}\n", xex2_rating_cero_value_map.at(
+                                                      opt_game_ratings->cero));
+        } else {
+          sb.AppendFormat("          Unk CERO: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->cero));
+        }
+        if (xex2_rating_usk_value_map.contains(opt_game_ratings->usk)) {
+          sb.AppendFormat("          USK: {}\n",
+                          xex2_rating_usk_value_map.at(opt_game_ratings->usk));
+        } else {
+          sb.AppendFormat("          Unk USK: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->usk));
+        }
+        if (xex2_rating_oflc_au_value_map.contains(opt_game_ratings->oflcau)) {
+          sb.AppendFormat(
+              "          OFLC - AU: {}\n",
+              xex2_rating_oflc_au_value_map.at(opt_game_ratings->oflcau));
+        } else {
+          sb.AppendFormat("          Unk OFLC - AU: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->oflcau));
+        }
+        if (xex2_rating_oflc_nz_value_map.contains(opt_game_ratings->oflcnz)) {
+          sb.AppendFormat(
+              "          OFLC - NZ: {}\n",
+              xex2_rating_oflc_nz_value_map.at(opt_game_ratings->oflcnz));
+        } else {
+          sb.AppendFormat("          Unk OFLC - NZ: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->oflcau));
+        }
+        if (xex2_rating_kmrb_value_map.contains(opt_game_ratings->kmrb)) {
+          sb.AppendFormat("          KMRB: {}\n", xex2_rating_kmrb_value_map.at(
+                                                      opt_game_ratings->kmrb));
+        } else {
+          sb.AppendFormat("          Unk KMRB: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->kmrb));
+        }
+        if (xex2_rating_brazil_value_map.contains(opt_game_ratings->brazil)) {
+          sb.AppendFormat(
+              "          Brazil: {}\n",
+              xex2_rating_brazil_value_map.at(opt_game_ratings->brazil));
+        } else {
+          sb.AppendFormat("          Unk Brazil: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->brazil));
+        }
+        if (xex2_rating_fpb_value_map.contains(opt_game_ratings->fpb)) {
+          sb.AppendFormat("          FPB: {}\n",
+                          xex2_rating_fpb_value_map.at(opt_game_ratings->fpb));
+        } else {
+          sb.AppendFormat("          Unk FPB: 0x{:02x}\n",
+                          static_cast<uint8_t>(opt_game_ratings->fpb));
+        }
       } break;
       case XEX_HEADER_LAN_KEY: {
         sb.Append("  XEX_HEADER_LAN_KEY:");
@@ -664,9 +906,16 @@ void UserModule::Dump() {
         sb.Append("\n");
       } break;
       case XEX_HEADER_XBOX360_LOGO: {
-        sb.Append("  XEX_HEADER_XBOX360_LOGO (TODO):\n");
+        sb.Append("  XEX_HEADER_XBOX360_LOGO:\n");
+        auto opt_ms_logo =
+            reinterpret_cast<const xex2_opt_ms_logo*>(opt_header_ptr);
+
+        sb.AppendFormat("          Section Size: {}\n",
+                        static_cast<uint32_t>(opt_ms_logo->section_size));
+        sb.AppendFormat("          Logo Size: {}\n",
+                        static_cast<uint32_t>(opt_ms_logo->logo_size));
       } break;
-      case XEX_HEADER_MULTIDISC_MEDIA_IDS: {
+      case XEX_HEADER_MULTIDISC_MEDIA_IDS: {  // 4D5307DF
         sb.Append("  XEX_HEADER_MULTIDISC_MEDIA_IDS (TODO):\n");
       } break;
       case XEX_HEADER_ALTERNATE_TITLE_IDS: {

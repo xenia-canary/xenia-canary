@@ -309,12 +309,13 @@ uint32_t GetQueryVolumeInfoMinimumLength(uint32_t info_class) {
       return sizeof(X_FILE_FS_VOLUME_INFORMATION);
     case XFileFsSizeInformation:
       return sizeof(X_FILE_FS_SIZE_INFORMATION);
+    case XFileFsDeviceInformation:
+      return sizeof(X_FILE_FS_DEVICE_INFORMATION);
     case XFileFsAttributeInformation:
       return sizeof(X_FILE_FS_ATTRIBUTE_INFORMATION);
     // TODO(gibbed): structures to get the size of.
-    case XFileFsDeviceInformation:
-      return 8;
     default:
+      XELOGW("Unimplemented Info Class: 0x{:08x}", info_class);
       return 0;
   }
 }
@@ -384,7 +385,8 @@ dword_result_t NtQueryVolumeInformationFile_entry(
       auto info = info_ptr.as<X_FILE_FS_DEVICE_INFORMATION*>();
       auto file_device = file->device();
       XELOGW("Stub XFileFsDeviceInformation!");
-      info->device_type = FILE_DEVICE_UNKNOWN;  // 415608D8 checks for 0x46;
+      info->device_type =
+          FILE_DEVICE_UNKNOWN;  // 415608D8 checks for FILE_DEVICE_EHSTOR;
       info->characteristics = 0;
       out_length = sizeof(X_FILE_FS_DEVICE_INFORMATION);
       break;
