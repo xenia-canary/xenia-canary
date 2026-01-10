@@ -34,6 +34,7 @@ namespace config {
 std::string config_name = "xenia-canary.config.toml";
 std::filesystem::path config_folder;
 std::filesystem::path config_path;
+std::filesystem::path custom_config;
 std::string game_config_suffix = ".config.toml";
 
 bool sortCvar(cvar::IConfigVar* a, cvar::IConfigVar* b) {
@@ -255,9 +256,12 @@ void SaveConfig() {
   // save the config file
   xe::filesystem::CreateParentFolder(config_path);
 
-  auto handle = xe::filesystem::OpenFile(config_path, "wb");
+  const std::filesystem::path used_config_path =
+      !custom_config.empty() ? custom_config : config_path;
+
+  auto handle = xe::filesystem::OpenFile(used_config_path, "wb");
   if (!handle) {
-    XELOGE("Failed to open '{}' for writing.", config_path);
+    XELOGE("Failed to open '{}' for writing.", used_config_path);
   } else {
     fwrite(sb.buffer(), 1, sb.length(), handle);
     fclose(handle);
@@ -299,6 +303,8 @@ void LoadGameConfig(const std::string_view title_id) {
       game_config_folder / (std::string(title_id) + game_config_suffix);
   if (std::filesystem::exists(game_config_path)) {
     ReadGameConfig(game_config_path);
+    custom_config = game_config_path;
+    SaveConfig();
   }
 }
 
