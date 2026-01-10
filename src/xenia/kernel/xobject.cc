@@ -152,6 +152,16 @@ object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,
       return XSymbolicLink::Restore(kernel_state, stream);
     case Type::Thread:
       return XThread::Restore(kernel_state, stream);
+#ifdef __APPLE__
+    case kDevice: {
+      auto device = reinterpret_cast<const vfs::Device*>(this);
+      if (device->name() == "\\Device\\Harddisk0\\Partition0") {
+        store(kernel_state, stream);
+        return object_ref<XObject>();
+      }
+      return object_ref<XObject>();
+    }
+#endif
     case Type::Timer:
       break;
     case Type::Undefined:
