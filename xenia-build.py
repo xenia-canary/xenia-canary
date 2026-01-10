@@ -582,14 +582,20 @@ def get_build_bin_path(args):
 
 def apply_patches():
     """Applies patches from src/xenia/patch/ and src/xenia/kernel/.
-    Supports both *.patch files and *.sh scripts.
+    Supports *.patch files, *.sh scripts, *.xcconfig files, and *.lua files.
     """
     print("Applying patches...")
     patches = sorted(
         glob(os.path.join("src", "xenia", "patch", "*.patch")) +
         glob(os.path.join("src", "xenia", "patch", "*.sh")) +
+        glob(os.path.join("src", "xenia", "patch", "*.xcconfig")) +
+        glob(os.path.join("src", "xenia", "patch", ".xcconfig")) +
+        glob(os.path.join("src", "xenia", "patch", "*.lua")) +
         glob(os.path.join("src", "xenia", "kernel", "*.patch")) +
-        glob(os.path.join("src", "xenia", "kernel", "*.sh")),
+        glob(os.path.join("src", "xenia", "kernel", "*.sh")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.xcconfig")) +
+        glob(os.path.join("src", "xenia", "kernel", ".xcconfig")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.lua")),
         reverse=False
     )
     if not patches:
@@ -599,7 +605,19 @@ def apply_patches():
     for patch in patches:
         print(f"- applying {os.path.basename(patch)}...")
         if patch.endswith(".sh"):
+            # Ensure script is executable
+            os.chmod(patch, os.stat(patch).st_mode | stat.S_IEXEC)
             shell_call(["sh", patch], throw_on_error=False)
+        elif patch.endswith(".xcconfig") or os.path.basename(patch) == ".xcconfig":
+            import shutil
+            shutil.copy(patch, os.path.basename(patch))
+        elif patch.endswith(".lua"):
+            # handle lua files and copy to build directory
+            import shutil
+            target_dir = "build"
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+            shutil.copy(patch, os.path.join(target_dir, os.path.basename(patch)))
         else:
             shell_call([
                 "patch",
@@ -613,14 +631,20 @@ def apply_patches():
 
 def revert_patches():
     """Reverts patches from src/xenia/patch/ and src/xenia/kernel/.
-    Supports both *.patch files and *.sh scripts.
+    Supports *.patch files, *.sh scripts, *.xcconfig files, and *.lua files.
     """
     print("Reverting patches...")
     patches = sorted(
         glob(os.path.join("src", "xenia", "patch", "*.patch")) +
         glob(os.path.join("src", "xenia", "patch", "*.sh")) +
+        glob(os.path.join("src", "xenia", "patch", "*.xcconfig")) +
+        glob(os.path.join("src", "xenia", "patch", ".xcconfig")) +
+        glob(os.path.join("src", "xenia", "patch", "*.lua")) +
         glob(os.path.join("src", "xenia", "kernel", "*.patch")) +
-        glob(os.path.join("src", "xenia", "kernel", "*.sh")),
+        glob(os.path.join("src", "xenia", "kernel", "*.sh")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.xcconfig")) +
+        glob(os.path.join("src", "xenia", "kernel", ".xcconfig")) +
+        glob(os.path.join("src", "xenia", "kernel", "*.lua")),
         reverse=True
     )
     if not patches:
@@ -633,6 +657,14 @@ def revert_patches():
             revert_script = patch.replace(".sh", ".revert.sh")
             if os.path.exists(revert_script):
                 shell_call(["sh", revert_script], throw_on_error=False)
+        elif patch.endswith(".xcconfig") or os.path.basename(patch) == ".xcconfig":
+            target = os.path.basename(patch)
+            if os.path.exists(target):
+                os.remove(target)
+        elif patch.endswith(".lua"):
+            target = os.path.join("build", os.path.basename(patch))
+            if os.path.exists(target):
+                os.remove(target)
         else:
             shell_call([
                 "patch",
@@ -643,7 +675,6 @@ def revert_patches():
                 "-r", "-",
                 "-i", patch,
                 ], throw_on_error=False)
-
 
 def create_clion_workspace():
     """Creates some basic workspace information inside the .idea directory for first start.
