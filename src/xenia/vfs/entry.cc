@@ -135,19 +135,19 @@ void Entry::Touch() {
 }
 
 void Entry::Rename(const std::filesystem::path file_path) {
-  std::vector<std::string_view> splitted_path =
-      xe::utf8::split_path(xe::path_to_utf8(file_path));
+  // Store the string to ensure string_views from split_path remain valid
+  const std::string path_str = xe::path_to_utf8(file_path);
+  std::vector<std::string_view> path_parts = xe::utf8::split_path(path_str);
 
-  splitted_path.erase(splitted_path.begin());
+  // Remove the root (e.g., "cache:")
+  path_parts.erase(path_parts.begin());
 
-  const std::string guest_path_without_root =
-      xe::utf8::join_guest_paths(splitted_path);
+  RenameEntryInternal(path_parts);
 
-  RenameEntryInternal(guest_path_without_root);
-
-  absolute_path_ = xe::utf8::join_guest_paths(device_->mount_path(),
-                                              guest_path_without_root);
-  path_ = guest_path_without_root;
+  const std::string guest_path = xe::utf8::join_guest_paths(path_parts);
+  absolute_path_ =
+      xe::utf8::join_guest_paths(device_->mount_path(), guest_path);
+  path_ = guest_path;
   name_ = xe::path_to_utf8(file_path.filename());
 }
 

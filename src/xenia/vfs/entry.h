@@ -141,7 +141,8 @@ class Entry {
     return nullptr;
   }
   virtual bool DeleteEntryInternal(Entry* entry) = 0;
-  virtual void RenameEntryInternal(const std::filesystem::path file_path) {}
+  virtual void RenameEntryInternal(
+      const std::vector<std::string_view>& path_parts) {}
 
   xe::global_critical_region global_critical_region_;
   Device* device_;
