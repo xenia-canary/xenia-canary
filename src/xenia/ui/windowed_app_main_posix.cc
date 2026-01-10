@@ -7,7 +7,11 @@
  ******************************************************************************
  */
 
+#ifdef __APPLE__
+#include "gtk/gtk.h"
+#else
 #include <gtk/gtk.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 
