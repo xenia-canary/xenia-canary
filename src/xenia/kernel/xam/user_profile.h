@@ -77,8 +77,13 @@ enum class XTileType {
 inline const std::map<XTileType, std::string> kTileFileNames = {
     {XTileType::kGamerTile, "tile_64.png"},
     {XTileType::kGamerTileSmall, "tile_32.png"},
-    {XTileType::kPersonalGamerTile, "tile_64.png"},
-    {XTileType::kPersonalGamerTileSmall, "tile_32.png"},
+    {XTileType::kLocalGamerTile, "tile_64.png"},
+    {XTileType::kLocalGamerTileSmall, "tile_32.png"},
+    {XTileType::kAwardedGamerTile, "64_{:08x}{:08x}{:08x}.png"},
+    {XTileType::kAwardedGamerTileSmall, "32_{:08x}{:08x}{:08x}.png"},
+    {XTileType::kGamerTileByImageId, "{:d}_{:08x}{:08x}{:08x}.png"},
+    {XTileType::kPersonalGamerTile, "pp_64.png"},
+    {XTileType::kPersonalGamerTileSmall, "pp_32.png"},
     {XTileType::kAvatarGamerTile, "avtr_64.png"},
     {XTileType::kAvatarGamerTileSmall, "avtr_32.png"},
 };

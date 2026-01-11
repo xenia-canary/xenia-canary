@@ -373,6 +373,11 @@ struct X_STATS_DETAILS {
 };
 static_assert_size(X_STATS_DETAILS, 8 + kStatsMaxAmount * 2);
 
+enum LoaderLaunchFlags : uint32_t {
+  GetSystemVersion = 0x00000040,  // XamUpdateGetCurrentSystemVersion
+  GetVersionFromExecutionId = 0x00010000,
+};
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

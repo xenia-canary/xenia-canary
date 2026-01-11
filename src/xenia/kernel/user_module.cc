@@ -764,20 +764,29 @@ void UserModule::Dump() {
       case XEX_HEADER_SYSTEM_FLAGS: {
         sb.AppendFormat("  XEX_HEADER_SYSTEM_FLAGS: {:08X}\n",
                         static_cast<uint32_t>(opt_header.value));
-
+        uint32_t unused_flag = opt_header.value;
         for (const auto& entry : xex2_system_flags_map) {
           if (opt_header.value & entry.first) {
             sb.AppendFormat("    {}\n", entry.second);
+            unused_flag &= ~entry.first;
           }
+        }
+        if (unused_flag) {
+          sb.AppendFormat("    Unk flag: {:08X}\n", unused_flag);
         }
       } break;
       case XEX_HEADER_SYSTEM_FLAGS_32: {
         sb.AppendFormat("  XEX_HEADER_SYSTEM_FLAGS_32: {:08X}\n",
                         static_cast<uint32_t>(opt_header.value));
+        uint32_t unused_flag = opt_header.value;
         for (const auto& entry : xex2_system_flags_32_map) {
           if (opt_header.value & entry.first) {
             sb.AppendFormat("    {}\n", entry.second);
+            unused_flag &= ~entry.first;
           }
+        }
+        if (unused_flag) {
+          sb.AppendFormat("    Unk flag: {:08X}\n", unused_flag);
         }
       } break;
       case XEX_HEADER_SYSTEM_FLAGS_64: {
