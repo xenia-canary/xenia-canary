@@ -15,6 +15,7 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/profiling.h"
@@ -26,6 +27,12 @@
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/d3d12/d3d12_upload_buffer_pool.h"
 #include "xenia/ui/d3d12/d3d12_util.h"
+
+DEFINE_int32(d3d12_3d_to_2d_texture_mode, 0,
+             "Handle shaders that sample 3D textures as 2D by creating a 2D "
+             "view of slice 0. 0 = disabled (default), 1 = GPU copy, "
+             "2 = CPU re-upload from guest memory.",
+             "D3D12");
 
 namespace xe {
 namespace gpu {
@@ -616,7 +623,6 @@ void D3D12TextureCache::WriteActiveTextureBindfulSRV(
               xenos::DataDimension::k2DOrStacked, false, binding->host_swizzle);
         } else {
           descriptor_index = d3d12_binding.descriptor_index;
-          texture = binding->texture;
         }
       }
     }
@@ -1836,9 +1842,16 @@ void D3D12TextureCache::UpdateTextureBindingsImpl(
 
 ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     D3D12_RESOURCE_STATES end_state) {
+  int32_t mode = cvars::d3d12_3d_to_2d_texture_mode;
+
+  // Mode 0: Feature disabled.
+  if (mode == 0) {
+    return nullptr;
+  }
+
   auto& d3d12_cache = static_cast<D3D12TextureCache&>(texture_cache());
 
-  // 1. If cached, transition and return.
+  // If cached, transition and return.
   if (texture_3d_as_2d_) {
     d3d12_cache.command_processor_.PushTransitionBarrier(
         texture_3d_as_2d_->resource(),
@@ -1846,14 +1859,12 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     return texture_3d_as_2d_->resource();
   }
 
-  // 2. Prepare the Key for loading.
-  // keep the dimension as k3D.
-  TextureKey key_load = key();
-  key_load.depth_or_array_size_minus_1 = 0;  // Force Depth 1 (Slice 0)
-  key_load.mip_max_level = 0;                // Force 1 Mip (Base level only)
+  const ui::d3d12::D3D12Provider& provider =
+      d3d12_cache.command_processor_.GetD3D12Provider();
+  ID3D12Device* device = provider.GetDevice();
 
-  // 3. Manually create the 2D D3D12 Resource.
-  D3D12_RESOURCE_DESC desc = resource_->GetDesc();
+  D3D12_RESOURCE_DESC source_desc = resource_->GetDesc();
+  D3D12_RESOURCE_DESC desc = source_desc;
   desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   desc.DepthOrArraySize = 1;
   desc.MipLevels = 1;
@@ -1861,13 +1872,8 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
   desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
   desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-  const ui::d3d12::D3D12Provider& provider =
-      d3d12_cache.command_processor_.GetD3D12Provider();
-  ID3D12Device* device = provider.GetDevice();
-
-  Microsoft::WRL::ComPtr<ID3D12Resource> resource_2d;
-  // Start in COPY_DEST as LoadTextureData will write to it.
   D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COPY_DEST;
+  Microsoft::WRL::ComPtr<ID3D12Resource> resource_2d;
 
   if (FAILED(device->CreateCommittedResource(
           &ui::d3d12::util::kHeapPropertiesDefault,
@@ -1877,25 +1883,69 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     return nullptr;
   }
 
-  // 4. Create the Texture wrapper.
-  // This wrapper combines a "3D Key" (for correct shader math)
-  // with a "2D Resource" (for the actual destination storage).
-  std::unique_ptr<D3D12Texture> texture_wrap(new D3D12Texture(
-      d3d12_cache, key_load, resource_2d.Get(), initial_state));
+  if (mode == 1) {
+    // Mode 1: GPU copy - copy slice 0 from the 3D texture to the 2D resource.
+    D3D12_RESOURCE_STATES old_main_state =
+        SetResourceState(D3D12_RESOURCE_STATE_COPY_SOURCE);
+    d3d12_cache.command_processor_.PushTransitionBarrier(
+        resource(), old_main_state, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-  // 5. Trigger the Load.
-  if (!d3d12_cache.LoadTextureData(*texture_wrap)) {
-    XELOGE("D3D12Texture: Failed to untile 3D-as-2D data");
-    return nullptr;
+    auto& command_list =
+        d3d12_cache.command_processor_.GetDeferredCommandList();
+
+    D3D12_TEXTURE_COPY_LOCATION dest_loc = {};
+    dest_loc.pResource = resource_2d.Get();
+    dest_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dest_loc.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+    src_loc.pResource = resource();
+    src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src_loc.SubresourceIndex = 0;
+
+    D3D12_BOX src_box;
+    src_box.left = 0;
+    src_box.top = 0;
+    src_box.front = 0;
+    src_box.right = static_cast<UINT>(source_desc.Width);
+    src_box.bottom = source_desc.Height;
+    src_box.back = 1;  // Only copy 1 depth slice.
+
+    command_list.D3DCopyTextureRegion(&dest_loc, 0, 0, 0, &src_loc, &src_box);
+
+    // Restore source state.
+    d3d12_cache.command_processor_.PushTransitionBarrier(
+        resource(), D3D12_RESOURCE_STATE_COPY_SOURCE, old_main_state);
+    SetResourceState(old_main_state);
+
+    // Create a minimal wrapper for the 2D resource.
+    TextureKey key_2d = key();
+    key_2d.depth_or_array_size_minus_1 = 0;
+    key_2d.mip_max_level = 0;
+    texture_3d_as_2d_.reset(new D3D12Texture(d3d12_cache, key_2d,
+                                             resource_2d.Get(), initial_state));
+  } else {
+    // Mode 2: CPU re-upload - reload texture data from guest memory.
+    TextureKey key_load = key();
+    key_load.depth_or_array_size_minus_1 = 0;
+    key_load.mip_max_level = 0;
+
+    std::unique_ptr<D3D12Texture> texture_wrap(new D3D12Texture(
+        d3d12_cache, key_load, resource_2d.Get(), initial_state));
+
+    if (!d3d12_cache.LoadTextureData(*texture_wrap)) {
+      XELOGE("D3D12Texture: Failed to untile 3D-as-2D data");
+      return nullptr;
+    }
+
+    texture_3d_as_2d_ = std::move(texture_wrap);
   }
 
-  // 6. Transition to requested state.
+  // Transition to requested state.
   d3d12_cache.command_processor_.PushTransitionBarrier(
-      texture_wrap->resource(), texture_wrap->SetResourceState(end_state),
-      end_state);
+      texture_3d_as_2d_->resource(),
+      texture_3d_as_2d_->SetResourceState(end_state), end_state);
 
-  // 7. Cache and return.
-  texture_3d_as_2d_ = std::move(texture_wrap);
   return texture_3d_as_2d_->resource();
 }
 
