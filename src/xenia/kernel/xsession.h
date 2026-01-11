@@ -42,6 +42,33 @@ enum SessionFlags {
   LIVE_FEATURES = PRESENCE | STATS | MATCHMAKING | ARBITRATION
 };
 
+struct XGI_SESSION_CREATE {
+  xe::be<uint32_t> obj_ptr;
+  xe::be<SessionFlags> flags;
+  xe::be<uint32_t> num_slots_public;
+  xe::be<uint32_t> num_slots_private;
+  xe::be<uint32_t> user_index;
+  xe::be<uint32_t> session_info_ptr;
+  xe::be<uint32_t> nonce_ptr;
+};
+static_assert_size(XGI_SESSION_CREATE, 0x1C);
+
+struct XGI_SESSION_STATE {
+  xe::be<uint32_t> obj_ptr;
+  xe::be<uint32_t> flags;
+  xe::be<uint64_t> session_nonce;
+};
+static_assert_size(XGI_SESSION_STATE, 0x10);
+
+struct XGI_SESSION_MANAGE {
+  xe::be<uint32_t> obj_ptr;
+  xe::be<uint32_t> array_count;
+  xe::be<uint32_t> xuid_array_ptr;
+  xe::be<uint32_t> indices_array_ptr;
+  xe::be<uint32_t> private_slots_array_ptr;
+};
+static_assert_size(XGI_SESSION_MANAGE, 0x14);
+
 inline bool IsOfflineSession(const SessionFlags flags) { return !flags; }
 
 inline bool IsXboxLiveSession(const SessionFlags flags) {
