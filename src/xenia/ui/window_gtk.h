@@ -13,9 +13,15 @@
 #include <memory>
 #include <string>
 
+#ifdef __APPLE__
+#include "gdk/gdk.h"
+#include "gtk/gtk.h"
+#include "xcb/xcb.h"
+#else
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 #include <xcb/xcb.h>
+#endif
 
 #include "xenia/base/platform_linux.h"
 #include "xenia/ui/menu_item.h"
