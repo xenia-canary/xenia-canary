@@ -351,7 +351,11 @@ inline bool bit_scan_forward(int64_t v, uint32_t* out_first_set_index) {
 
 template <typename T>
 inline T log2_floor(T v) {
+#ifdef __APPLE__
+  return sizeof(T) * 8 - 1 - lzcnt(static_cast<uint64_t>(v));
+#else
   return sizeof(T) * 8 - 1 - lzcnt(v);
+#endif
 }
 template <typename T>
 inline T log2_ceil(T v) {
