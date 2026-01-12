@@ -430,6 +430,9 @@ void X64Emitter::DebugBreak() {
 uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
   auto thread_state =
       reinterpret_cast<ppc::PPCContext_s*>(raw_context)->thread_state;
+#ifdef __APPLE__
+  (void)thread_state;
+#endif
   uint32_t str_ptr = uint32_t(thread_state->context()->r[3]);
   // uint16_t str_len = uint16_t(thread_state->context()->r[4]);
   auto str = thread_state->memory()->TranslateVirtual<const char*>(str_ptr);
@@ -446,6 +449,9 @@ uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
 uint64_t TrapDebugBreak(void* raw_context, uint64_t address) {
   auto thread_state =
       reinterpret_cast<ppc::PPCContext_s*>(raw_context)->thread_state;
+#ifdef __APPLE__
+  (void)thread_state;
+#endif
   XELOGE("tw/td forced trap hit! This should be a crash!");
   if (cvars::break_on_debugbreak) {
     xe::debugging::Break();
@@ -487,6 +493,9 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
   auto guest_context = reinterpret_cast<ppc::PPCContext_s*>(raw_context);
 
   auto thread_state = guest_context->thread_state;
+#ifdef __APPLE__
+  (void)thread_state;
+#endif
 
   // TODO(benvanik): required?
   assert_not_zero(target_address);
@@ -1529,6 +1538,127 @@ static bool IsFlaggedVectorOp(const Instr* i) {
     case OPCODE_VECTOR_SUB:
     case OPCODE_VECTOR_ADD:
     case OPCODE_SWIZZLE:
+#ifdef __APPLE__
+    case OPCODE_COMMENT:
+    case OPCODE_NOP:
+    case OPCODE_SOURCE_OFFSET:
+    case OPCODE_DEBUG_BREAK:
+    case OPCODE_DEBUG_BREAK_TRUE:
+    case OPCODE_TRAP:
+    case OPCODE_TRAP_TRUE:
+    case OPCODE_CALL:
+    case OPCODE_CALL_TRUE:
+    case OPCODE_CALL_INDIRECT:
+    case OPCODE_CALL_INDIRECT_TRUE:
+    case OPCODE_CALL_EXTERN:
+    case OPCODE_RETURN:
+    case OPCODE_RETURN_TRUE:
+    case OPCODE_SET_RETURN_ADDRESS:
+    case OPCODE_BRANCH:
+    case OPCODE_BRANCH_TRUE:
+    case OPCODE_BRANCH_FALSE:
+    case OPCODE_ASSIGN:
+    case OPCODE_CAST:
+    case OPCODE_ZERO_EXTEND:
+    case OPCODE_SIGN_EXTEND:
+    case OPCODE_TRUNCATE:
+    case OPCODE_CONVERT:
+    case OPCODE_ROUND:
+    case OPCODE_VECTOR_CONVERT_I2F:
+    case OPCODE_VECTOR_CONVERT_F2I:
+    case OPCODE_LOAD_VECTOR_SHL:
+    case OPCODE_LOAD_VECTOR_SHR:
+    case OPCODE_LOAD_CLOCK:
+    case OPCODE_LOAD_LOCAL:
+    case OPCODE_STORE_LOCAL:
+    case OPCODE_LOAD_CONTEXT:
+    case OPCODE_STORE_CONTEXT:
+    case OPCODE_CONTEXT_BARRIER:
+    case OPCODE_LOAD_MMIO:
+    case OPCODE_STORE_MMIO:
+    case OPCODE_LOAD_OFFSET:
+    case OPCODE_STORE_OFFSET:
+    case OPCODE_LOAD:
+    case OPCODE_STORE:
+    case OPCODE_LVL:
+    case OPCODE_LVR:
+    case OPCODE_STVL:
+    case OPCODE_STVR:
+    case OPCODE_MEMSET:
+    case OPCODE_CACHE_CONTROL:
+    case OPCODE_MEMORY_BARRIER:
+    case OPCODE_MAX:
+    case OPCODE_VECTOR_MAX:
+    case OPCODE_MIN:
+    case OPCODE_VECTOR_MIN:
+    case OPCODE_SELECT:
+    case OPCODE_IS_NAN:
+    case OPCODE_COMPARE_EQ:
+    case OPCODE_COMPARE_NE:
+    case OPCODE_COMPARE_SLT:
+    case OPCODE_COMPARE_SLE:
+    case OPCODE_COMPARE_SGT:
+    case OPCODE_COMPARE_SGE:
+    case OPCODE_COMPARE_ULT:
+    case OPCODE_COMPARE_ULE:
+    case OPCODE_COMPARE_UGT:
+    case OPCODE_COMPARE_UGE:
+    case OPCODE_DID_SATURATE:
+    case OPCODE_VECTOR_COMPARE_EQ:
+    case OPCODE_VECTOR_COMPARE_SGT:
+    case OPCODE_VECTOR_COMPARE_SGE:
+    case OPCODE_VECTOR_COMPARE_UGT:
+    case OPCODE_VECTOR_COMPARE_UGE:
+    case OPCODE_ADD:
+    case OPCODE_ADD_CARRY:
+    case OPCODE_SUB:
+    case OPCODE_MUL:
+    case OPCODE_MUL_HI:
+    case OPCODE_DIV:
+    case OPCODE_MUL_ADD:
+    case OPCODE_MUL_SUB:
+    case OPCODE_NEG:
+    case OPCODE_ABS:
+    case OPCODE_SQRT:
+    case OPCODE_RSQRT:
+    case OPCODE_RECIP:
+    case OPCODE_POW2:
+    case OPCODE_LOG2:
+    case OPCODE_DOT_PRODUCT_3:
+    case OPCODE_DOT_PRODUCT_4:
+    case OPCODE_AND:
+    case OPCODE_AND_NOT:
+    case OPCODE_OR:
+    case OPCODE_XOR:
+    case OPCODE_NOT:
+    case OPCODE_SHL:
+    case OPCODE_VECTOR_SHL:
+    case OPCODE_SHR:
+    case OPCODE_VECTOR_SHR:
+    case OPCODE_SHA:
+    case OPCODE_VECTOR_SHA:
+    case OPCODE_ROTATE_LEFT:
+    case OPCODE_VECTOR_AVERAGE:
+    case OPCODE_BYTE_SWAP:
+    case OPCODE_CNTLZ:
+    case OPCODE_INSERT:
+    case OPCODE_EXTRACT:
+    case OPCODE_SPLAT:
+    case OPCODE_PERMUTE:
+    case OPCODE_PACK:
+    case OPCODE_UNPACK:
+    case OPCODE_ATOMIC_EXCHANGE:
+    case OPCODE_ATOMIC_COMPARE_EXCHANGE:
+    case OPCODE_SET_ROUNDING_MODE:
+    case OPCODE_TO_SINGLE:
+    case OPCODE_VECTOR_ROTATE_LEFT:
+    case OPCODE_VECTOR_DENORMFLUSH:
+    case OPCODE_SET_NJM:
+    case OPCODE_DELAY_EXECUTION:
+    case OPCODE_RESERVED_LOAD:
+    case OPCODE_RESERVED_STORE:
+    case __OPCODE_MAX_VALUE:
+#endif
       return true;
   }
   return false;
@@ -1567,6 +1697,118 @@ static bool IsDefiniteIntegerDomainOpcode(hir::Opcode opc) {
     case OPCODE_VECTOR_AVERAGE:  // apparently no float32 type for this
     case OPCODE_EXTRACT:
     case OPCODE_INSERT:  // apparently no f32 type for these two
+#ifdef __APPLE__
+    case OPCODE_COMMENT:
+    case OPCODE_NOP:
+    case OPCODE_SOURCE_OFFSET:
+    case OPCODE_DEBUG_BREAK:
+    case OPCODE_DEBUG_BREAK_TRUE:
+    case OPCODE_TRAP:
+    case OPCODE_TRAP_TRUE:
+    case OPCODE_CALL:
+    case OPCODE_CALL_TRUE:
+    case OPCODE_CALL_INDIRECT:
+    case OPCODE_CALL_INDIRECT_TRUE:
+    case OPCODE_CALL_EXTERN:
+    case OPCODE_RETURN:
+    case OPCODE_RETURN_TRUE:
+    case OPCODE_SET_RETURN_ADDRESS:
+    case OPCODE_BRANCH:
+    case OPCODE_BRANCH_TRUE:
+    case OPCODE_BRANCH_FALSE:
+    case OPCODE_CAST:
+    case OPCODE_ZERO_EXTEND:
+    case OPCODE_SIGN_EXTEND:
+    case OPCODE_TRUNCATE:
+    case OPCODE_CONVERT:
+    case OPCODE_ROUND:
+    case OPCODE_ASSIGN:
+    case OPCODE_VECTOR_CONVERT_I2F:
+    case OPCODE_LOAD_CLOCK:
+    case OPCODE_LOAD_LOCAL:
+    case OPCODE_STORE_LOCAL:
+    case OPCODE_LOAD_CONTEXT:
+    case OPCODE_STORE_CONTEXT:
+    case OPCODE_CONTEXT_BARRIER:
+    case OPCODE_LOAD_MMIO:
+    case OPCODE_STORE_MMIO:
+    case OPCODE_LOAD_OFFSET:
+    case OPCODE_STORE_OFFSET:
+    case OPCODE_LOAD:
+    case OPCODE_STORE:
+    case OPCODE_LVL:
+    case OPCODE_LVR:
+    case OPCODE_STVL:
+    case OPCODE_STVR:
+    case OPCODE_MEMSET:
+    case OPCODE_CACHE_CONTROL:
+    case OPCODE_MEMORY_BARRIER:
+    case OPCODE_MAX:
+    case OPCODE_MIN:
+    case OPCODE_SELECT:
+    case OPCODE_IS_NAN:
+    case OPCODE_COMPARE_EQ:
+    case OPCODE_COMPARE_NE:
+    case OPCODE_COMPARE_SLT:
+    case OPCODE_COMPARE_SLE:
+    case OPCODE_COMPARE_SGT:
+    case OPCODE_COMPARE_SGE:
+    case OPCODE_COMPARE_ULT:
+    case OPCODE_COMPARE_ULE:
+    case OPCODE_COMPARE_UGT:
+    case OPCODE_COMPARE_UGE:
+    case OPCODE_DID_SATURATE:
+    case OPCODE_VECTOR_COMPARE_EQ:
+    case OPCODE_VECTOR_COMPARE_SGT:
+    case OPCODE_VECTOR_COMPARE_SGE:
+    case OPCODE_VECTOR_COMPARE_UGT:
+    case OPCODE_VECTOR_COMPARE_UGE:
+    case OPCODE_ADD:
+    case OPCODE_ADD_CARRY:
+    case OPCODE_VECTOR_ADD:
+    case OPCODE_SUB:
+    case OPCODE_VECTOR_SUB:
+    case OPCODE_MUL_HI:
+    case OPCODE_DIV:
+    case OPCODE_NEG:
+    case OPCODE_MUL:
+    case OPCODE_MUL_ADD:
+    case OPCODE_MUL_SUB:
+    case OPCODE_ABS:
+    case OPCODE_SQRT:
+    case OPCODE_RSQRT:
+    case OPCODE_RECIP:
+    case OPCODE_POW2:
+    case OPCODE_LOG2:
+    case OPCODE_DOT_PRODUCT_3:
+    case OPCODE_DOT_PRODUCT_4:
+    case OPCODE_AND:
+    case OPCODE_AND_NOT:
+    case OPCODE_OR:
+    case OPCODE_XOR:
+    case OPCODE_NOT:
+    case OPCODE_SHL:
+    case OPCODE_SHR:
+    case OPCODE_SHA:
+    case OPCODE_ROTATE_LEFT:
+    case OPCODE_BYTE_SWAP:
+    case OPCODE_CNTLZ:
+    case OPCODE_SPLAT:
+    case OPCODE_PERMUTE:
+    case OPCODE_PACK:
+    case OPCODE_UNPACK:
+    case OPCODE_ATOMIC_EXCHANGE:
+    case OPCODE_ATOMIC_COMPARE_EXCHANGE:
+    case OPCODE_SET_ROUNDING_MODE:
+    case OPCODE_TO_SINGLE:
+    case OPCODE_VECTOR_DENORMFLUSH:
+    case OPCODE_SET_NJM:
+    case OPCODE_DELAY_EXECUTION:
+    case OPCODE_RESERVED_LOAD:
+    case OPCODE_RESERVED_STORE:
+    case OPCODE_SWIZZLE:
+    case __OPCODE_MAX_VALUE:
+#endif
       return true;
   }
   return false;
@@ -1587,6 +1829,117 @@ static bool IsDefiniteFloatingDomainOpcode(hir::Opcode opc) {
     case OPCODE_MUL_SUB:
     case OPCODE_MUL_ADD:
     case OPCODE_ABS:
+#ifdef __APPLE__
+    case OPCODE_COMMENT:
+    case OPCODE_NOP:
+    case OPCODE_SOURCE_OFFSET:
+    case OPCODE_DEBUG_BREAK:
+    case OPCODE_DEBUG_BREAK_TRUE:
+    case OPCODE_TRAP:
+    case OPCODE_TRAP_TRUE:
+    case OPCODE_CALL:
+    case OPCODE_CALL_TRUE:
+    case OPCODE_CALL_INDIRECT:
+    case OPCODE_CALL_INDIRECT_TRUE:
+    case OPCODE_CALL_EXTERN:
+    case OPCODE_RETURN:
+    case OPCODE_RETURN_TRUE:
+    case OPCODE_SET_RETURN_ADDRESS:
+    case OPCODE_BRANCH:
+    case OPCODE_BRANCH_TRUE:
+    case OPCODE_BRANCH_FALSE:
+    case OPCODE_CAST:
+    case OPCODE_ZERO_EXTEND:
+    case OPCODE_SIGN_EXTEND:
+    case OPCODE_TRUNCATE:
+    case OPCODE_CONVERT:
+    case OPCODE_ASSIGN:
+    case OPCODE_VECTOR_CONVERT_F2I:
+    case OPCODE_LOAD_VECTOR_SHL:
+    case OPCODE_LOAD_VECTOR_SHR:
+    case OPCODE_LOAD_CLOCK:
+    case OPCODE_LOAD_LOCAL:
+    case OPCODE_STORE_LOCAL:
+    case OPCODE_LOAD_CONTEXT:
+    case OPCODE_STORE_CONTEXT:
+    case OPCODE_CONTEXT_BARRIER:
+    case OPCODE_LOAD_MMIO:
+    case OPCODE_STORE_MMIO:
+    case OPCODE_LOAD_OFFSET:
+    case OPCODE_STORE_OFFSET:
+    case OPCODE_LOAD:
+    case OPCODE_STORE:
+    case OPCODE_LVL:
+    case OPCODE_LVR:
+    case OPCODE_STVL:
+    case OPCODE_STVR:
+    case OPCODE_MEMSET:
+    case OPCODE_CACHE_CONTROL:
+    case OPCODE_MEMORY_BARRIER:
+    case OPCODE_MAX:
+    case OPCODE_VECTOR_MAX:
+    case OPCODE_MIN:
+    case OPCODE_VECTOR_MIN:
+    case OPCODE_SELECT:
+    case OPCODE_IS_NAN:
+    case OPCODE_COMPARE_EQ:
+    case OPCODE_COMPARE_NE:
+    case OPCODE_COMPARE_SLT:
+    case OPCODE_COMPARE_SLE:
+    case OPCODE_COMPARE_SGT:
+    case OPCODE_COMPARE_SGE:
+    case OPCODE_COMPARE_ULT:
+    case OPCODE_COMPARE_ULE:
+    case OPCODE_COMPARE_UGT:
+    case OPCODE_COMPARE_UGE:
+    case OPCODE_DID_SATURATE:
+    case OPCODE_VECTOR_COMPARE_EQ:
+    case OPCODE_VECTOR_COMPARE_SGT:
+    case OPCODE_VECTOR_COMPARE_SGE:
+    case OPCODE_VECTOR_COMPARE_UGT:
+    case OPCODE_VECTOR_COMPARE_UGE:
+    case OPCODE_ADD:
+    case OPCODE_ADD_CARRY:
+    case OPCODE_VECTOR_ADD:
+    case OPCODE_SUB:
+    case OPCODE_VECTOR_SUB:
+    case OPCODE_MUL_HI:
+    case OPCODE_DIV:
+    case OPCODE_NEG:
+    case OPCODE_RSQRT:
+    case OPCODE_AND:
+    case OPCODE_AND_NOT:
+    case OPCODE_OR:
+    case OPCODE_XOR:
+    case OPCODE_NOT:
+    case OPCODE_SHL:
+    case OPCODE_VECTOR_SHL:
+    case OPCODE_SHR:
+    case OPCODE_VECTOR_SHR:
+    case OPCODE_SHA:
+    case OPCODE_VECTOR_SHA:
+    case OPCODE_ROTATE_LEFT:
+    case OPCODE_VECTOR_ROTATE_LEFT:
+    case OPCODE_VECTOR_AVERAGE:
+    case OPCODE_BYTE_SWAP:
+    case OPCODE_CNTLZ:
+    case OPCODE_INSERT:
+    case OPCODE_EXTRACT:
+    case OPCODE_SPLAT:
+    case OPCODE_PERMUTE:
+    case OPCODE_SWIZZLE:
+    case OPCODE_PACK:
+    case OPCODE_UNPACK:
+    case OPCODE_ATOMIC_EXCHANGE:
+    case OPCODE_ATOMIC_COMPARE_EXCHANGE:
+    case OPCODE_SET_ROUNDING_MODE:
+    case OPCODE_TO_SINGLE:
+    case OPCODE_SET_NJM:
+    case OPCODE_DELAY_EXECUTION:
+    case OPCODE_RESERVED_LOAD:
+    case OPCODE_RESERVED_STORE:
+    case __OPCODE_MAX_VALUE:
+#endif
       return true;
   }
   return false;
