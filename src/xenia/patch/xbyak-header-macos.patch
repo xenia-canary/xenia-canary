@@ -1,0 +1,14 @@
+--- a/third_party/xbyak/xbyak/xbyak.h
++++ b/third_party/xbyak/xbyak/xbyak.h
+@@ -451,7 +451,11 @@ inline int getMacOsVersionPure()
+ 	int err = sysctlbyname("kern.osrelease", buf, &size, NULL, 0);
+ 	if (err != 0) return 0;
+ 	char *endp;
++#ifdef __APPLE__
++	int major = static_cast<int>(strtol(buf, &endp, 10));
++#else
+ 	int major = strtol(buf, &endp, 10);
++#endif
+ 	if (*endp != '.') return 0;
+ 	return major;
+ }
