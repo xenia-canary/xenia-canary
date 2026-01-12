@@ -1,0 +1,21 @@
+--- a/third_party/mspack/system.h
++++ b/third_party/mspack/system.h
+@@ -16,10 +16,18 @@ extern "C" {
+ 
+ /* ensure config.h is read before mspack.h */
+ #ifdef HAVE_CONFIG_H
++#ifdef __APPLE__
++#include "config.h"
++#else
+ # include <config.h>
+ #endif
++#endif
+ 
++#ifdef __APPLE__
++#include "mspack.h"
++#else
+ #include <mspack.h>
++#endif
+ 
+ /* assume <string.h> exists */
+ #include <string.h>
