@@ -1,0 +1,21 @@
+--- a/third_party/mspack/system.c
++++ b/third_party/mspack/system.c
+@@ -8,10 +8,18 @@
+  */
+ 
+ #ifdef HAVE_CONFIG_H
++#ifdef __APPLE__
++# include "config.h"
++#else
+ # include <config.h>
+ #endif
++#endif
+ 
++#ifdef __APPLE__
++#include "system.h"
++#else
+ #include <system.h>
++#endif
+ 
+ #if !LARGEFILE_SUPPORT
+ const char *largefile_msg = "library not compiled to support large files.";
