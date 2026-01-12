@@ -1,0 +1,18 @@
+--- a/third_party/crypto/sha256.cpp
++++ b/third_party/crypto/sha256.cpp
+@@ -9,8 +9,15 @@
+ 
+ // big endian architectures need #define __BYTE_ORDER __BIG_ENDIAN
+ #ifndef _MSC_VER
++#ifdef __APPLE__
++#include <machine/endian.h>
++#define __BYTE_ORDER BYTE_ORDER
++#define __BIG_ENDIAN BIG_ENDIAN
++#define __LITTLE_ENDIAN LITTLE_ENDIAN
++#else
+ #include <endian.h>
+ #endif
++#endif
+ 
+ namespace sha256 {
+ 
