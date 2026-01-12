@@ -1,0 +1,33 @@
+--- a/src/xenia/ui/windowed_app_context_gtk.h
++++ b/src/xenia/ui/windowed_app_context_gtk.h
+@@ -10,7 +10,11 @@
+ #ifndef XENIA_UI_WINDOWED_APP_CONTEXT_GTK_H_
+ #define XENIA_UI_WINDOWED_APP_CONTEXT_GTK_H_
+ 
++#ifdef __APPLE__
++#include "glib.h"
++#else
+ #include <glib.h>
++#endif
+ #include <mutex>
+ 
+ #include "xenia/ui/windowed_app_context.h"
+
+--- a/src/xenia/ui/windowed_app_main_posix.cc
++++ b/src/xenia/ui/windowed_app_main_posix.cc
+@@ -14,10 +14,15 @@
+ #endif
+ #include <cstdio>
+ #include <cstdlib>
++#include <unistd.h>
+ 
+ #include "xenia/base/cvar.h"
+ #include "xenia/base/logging.h"
+ #include "xenia/ui/windowed_app.h"
+ #include "xenia/ui/windowed_app_context_gtk.h"
+ 
++#ifdef __APPLE__
++#define secure_getenv getenv
++#endif
++
+ int main(int argc_pre_gtk, char** argv_pre_gtk) {
