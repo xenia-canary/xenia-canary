@@ -90,8 +90,7 @@ DEFINE_bool(no_discard_stencil_in_transfer_pipelines, false,
             "May improve performance on some GPUs.",
             "GPU");
 
-DEFINE_int32(gpu_3d_to_2d_texture_mode, 2,
-             "Handle shaders that sample 3D textures as 2D by creating a 2D "
-             "copy of slice 0. 0 = disabled, 1 = GPU copy, "
-             "2 = CPU re-upload from guest memory (default).",
-             "GPU");
+DEFINE_bool(gpu_3d_to_2d_texture, true,
+            "Handle shaders that sample 3D textures as 2D by creating a 2D "
+            "texture from slice 0 of the guest memory.",
+            "GPU");

@@ -1101,8 +1101,7 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
   // For scaled resolve textures with mips, we need transfer source to generate
   // mip levels via blit from the base level.
-  // For 3D textures, we need transfer source to support 3D-to-2D conversion.
-  if ((key.scaled_resolve && key.mip_max_level > 0) || is_3d) {
+  if (key.scaled_resolve && key.mip_max_level > 0) {
     image_create_info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
   }
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -1170,7 +1169,11 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   const texture_util::TextureGuestLayout& guest_layout =
       vulkan_texture.guest_layout();
   xenos::DataDimension dimension = texture_key.dimension;
+  // Whether the host image is 3D (determines depth vs array layer layout).
   bool is_3d = dimension == xenos::DataDimension::k3D;
+  // Whether to use 3D tiling when reading from guest memory.
+  // For 3D-as-2D wrappers, the host image is 2D but we need 3D tiling.
+  bool is_3d_tiling = is_3d || vulkan_texture.force_load_3d_tiling();
   uint32_t width = texture_key.GetWidth();
   uint32_t height = texture_key.GetHeight();
   uint32_t depth_or_array_size = texture_key.GetDepthOrArraySize();
@@ -1476,7 +1479,7 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   assert_true(texture_resolution_scale_x <= 7);
   assert_true(texture_resolution_scale_y <= 7);
   load_constants.is_tiled_3d_endian_scale =
-      uint32_t(texture_key.tiled) | (uint32_t(is_3d) << 1) |
+      uint32_t(texture_key.tiled) | (uint32_t(is_3d_tiling) << 1) |
       (uint32_t(texture_key.endianness) << 2) |
       (texture_resolution_scale_x << 4) | (texture_resolution_scale_y << 7);
 
@@ -1911,10 +1914,7 @@ VkImageView VulkanTextureCache::VulkanTexture::GetView(bool is_signed,
 
 VkImageView VulkanTextureCache::VulkanTexture::GetOrCreate3DAs2DImageView(
     bool is_signed, uint32_t host_swizzle) {
-  int32_t mode = cvars::gpu_3d_to_2d_texture_mode;
-
-  // Mode 0: Feature disabled.
-  if (mode == 0) {
+  if (!cvars::gpu_3d_to_2d_texture) {
     return VK_NULL_HANDLE;
   }
 
@@ -1927,10 +1927,6 @@ VkImageView VulkanTextureCache::VulkanTexture::GetOrCreate3DAs2DImageView(
 
   VulkanTextureCache& vulkan_texture_cache =
       static_cast<VulkanTextureCache&>(texture_cache());
-  const ui::vulkan::VulkanDevice* const vulkan_device =
-      vulkan_texture_cache.command_processor_.GetVulkanDevice();
-  const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
-  const VkDevice device = vulkan_device->device();
 
   // Create the 2D texture wrapper if it doesn't exist.
   if (!texture_3d_as_2d_) {
@@ -1970,142 +1966,49 @@ VkImageView VulkanTextureCache::VulkanTexture::GetOrCreate3DAs2DImageView(
     }
 
     // Create a modified key for the 2D wrapper with depth=1 and
-    // mip_max_level=0. Keep dimension as k3D so that in Mode 2, LoadTextureData
-    // uses 3D tiling math to correctly read slice 0 from the 3D-tiled guest
-    // memory.
+    // mip_max_level=0. Keep dimension as k3D so guest layout uses 3D tiling
+    // math to correctly read slice 0 from the 3D-tiled guest memory.
     TextureKey key_2d = key();
     key_2d.depth_or_array_size_minus_1 = 0;
     key_2d.mip_max_level = 0;
 
-    if (mode == 1) {
-      // Mode 1: GPU copy - copy slice 0 from the 3D image to the 2D image.
-      DeferredCommandBuffer& command_buffer =
-          vulkan_texture_cache.command_processor_.deferred_command_buffer();
+    // Create the wrapper first so LoadTextureData can work with it.
+    texture_3d_as_2d_.reset(new VulkanTexture(vulkan_texture_cache, key_2d,
+                                              image_2d, allocation_2d, false));
 
-      // Get the current layout from usage tracking (like D3D12 does).
-      VkPipelineStageFlags src_stage_mask;
-      VkAccessFlags src_access_mask;
-      VkImageLayout src_old_layout;
-      vulkan_texture_cache.GetTextureUsageMasks(
-          usage_, src_stage_mask, src_access_mask, src_old_layout);
-
-      // Transition 2D image to transfer destination.
-      VkImageMemoryBarrier barrier_2d_to_dst = {};
-      barrier_2d_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-      barrier_2d_to_dst.srcAccessMask = 0;
-      barrier_2d_to_dst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier_2d_to_dst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-      barrier_2d_to_dst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-      barrier_2d_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_2d_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_2d_to_dst.image = image_2d;
-      barrier_2d_to_dst.subresourceRange =
-          ui::vulkan::util::InitializeSubresourceRange();
-      command_buffer.CmdVkPipelineBarrier(
-          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-          0, nullptr, 0, nullptr, 1, &barrier_2d_to_dst);
-
-      // Transition 3D image to transfer source.
-      VkImageMemoryBarrier barrier_3d_to_src = {};
-      barrier_3d_to_src.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-      barrier_3d_to_src.srcAccessMask = src_access_mask;
-      barrier_3d_to_src.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-      barrier_3d_to_src.oldLayout = src_old_layout;
-      barrier_3d_to_src.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-      barrier_3d_to_src.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_3d_to_src.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_3d_to_src.image = image_;
-      barrier_3d_to_src.subresourceRange =
-          ui::vulkan::util::InitializeSubresourceRange();
-      command_buffer.CmdVkPipelineBarrier(
-          src_stage_mask, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
-          nullptr, 1, &barrier_3d_to_src);
-
-      // Use vkCmdCopyImage for the slice copy.
-      // This works for all formats including compressed (BC) formats.
-      VkImageCopy copy_region = {};
-      copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-      copy_region.srcSubresource.mipLevel = 0;
-      copy_region.srcSubresource.baseArrayLayer = 0;
-      copy_region.srcSubresource.layerCount = 1;
-      copy_region.srcOffset = {0, 0, 0};
-      copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-      copy_region.dstSubresource.mipLevel = 0;
-      copy_region.dstSubresource.baseArrayLayer = 0;
-      copy_region.dstSubresource.layerCount = 1;
-      copy_region.dstOffset = {0, 0, 0};
-      copy_region.extent.width = key().GetWidth();
-      copy_region.extent.height = key().GetHeight();
-      copy_region.extent.depth = 1;
-      command_buffer.CmdVkCopyImage(
-          image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image_2d,
-          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
-
-      // Transition 3D image back to guest shader sampled state.
-      VkPipelineStageFlags dst_stage_mask;
-      VkAccessFlags dst_access_mask;
-      VkImageLayout new_layout;
-      vulkan_texture_cache.GetTextureUsageMasks(Usage::kGuestShaderSampled,
-                                                dst_stage_mask, dst_access_mask,
-                                                new_layout);
-      barrier_3d_to_src.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-      barrier_3d_to_src.dstAccessMask = dst_access_mask;
-      barrier_3d_to_src.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-      barrier_3d_to_src.newLayout = new_layout;
-      command_buffer.CmdVkPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                          dst_stage_mask, 0, 0, nullptr, 0,
-                                          nullptr, 1, &barrier_3d_to_src);
-      // Update tracking - texture is now in guest shader sampled state.
-      SetUsage(Usage::kGuestShaderSampled);
-
-      // Transition 2D image to shader read.
-      barrier_2d_to_dst.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier_2d_to_dst.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-      barrier_2d_to_dst.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-      barrier_2d_to_dst.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      command_buffer.CmdVkPipelineBarrier(
-          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-          0, 0, nullptr, 0, nullptr, 1, &barrier_2d_to_dst);
-
-      // Create the wrapper after successful GPU copy.
-      texture_3d_as_2d_.reset(new VulkanTexture(
-          vulkan_texture_cache, key_2d, image_2d, allocation_2d, false));
-      texture_3d_as_2d_->SetUsage(Usage::kGuestShaderSampled);
-    } else {
-      // Mode 2: CPU re-upload - reload texture data from guest memory.
-      // Create the wrapper first so LoadTextureData can work with it.
-      texture_3d_as_2d_.reset(new VulkanTexture(
-          vulkan_texture_cache, key_2d, image_2d, allocation_2d, false));
-
-      if (!vulkan_texture_cache.LoadTextureData(*texture_3d_as_2d_)) {
-        XELOGE("VulkanTexture: Failed to untile 3D-as-2D data");
-        texture_3d_as_2d_.reset();
-        return VK_NULL_HANDLE;
-      }
-
-      // LoadTextureData leaves the texture in TRANSFER_DST state.
-      // Transition to shader read state.
-      DeferredCommandBuffer& command_buffer =
-          vulkan_texture_cache.command_processor_.deferred_command_buffer();
-      VkImageMemoryBarrier barrier_to_shader = {};
-      barrier_to_shader.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-      barrier_to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier_to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-      barrier_to_shader.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-      barrier_to_shader.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      barrier_to_shader.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_to_shader.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier_to_shader.image = texture_3d_as_2d_->image();
-      barrier_to_shader.subresourceRange =
-          ui::vulkan::util::InitializeSubresourceRange();
-      command_buffer.CmdVkPipelineBarrier(
-          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-          0, 0, nullptr, 0, nullptr, 1, &barrier_to_shader);
-      texture_3d_as_2d_->SetUsage(Usage::kGuestShaderSampled);
+    if (!vulkan_texture_cache.LoadTextureData(*texture_3d_as_2d_)) {
+      XELOGE("VulkanTexture: Failed to load 3D-as-2D texture data");
+      texture_3d_as_2d_.reset();
+      return VK_NULL_HANDLE;
     }
+
+    // LoadTextureData leaves the texture in TRANSFER_DST state.
+    // Transition to shader read state.
+    DeferredCommandBuffer& command_buffer =
+        vulkan_texture_cache.command_processor_.deferred_command_buffer();
+    VkImageMemoryBarrier barrier_to_shader = {};
+    barrier_to_shader.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier_to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier_to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrier_to_shader.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier_to_shader.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier_to_shader.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier_to_shader.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier_to_shader.image = texture_3d_as_2d_->image();
+    barrier_to_shader.subresourceRange =
+        ui::vulkan::util::InitializeSubresourceRange();
+    command_buffer.CmdVkPipelineBarrier(
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier_to_shader);
+    texture_3d_as_2d_->SetUsage(Usage::kGuestShaderSampled);
   }
 
   // Create the image view.
+  const ui::vulkan::VulkanDevice* const vulkan_device =
+      vulkan_texture_cache.command_processor_.GetVulkanDevice();
+  const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+  const VkDevice device = vulkan_device->device();
+
   const HostFormatPair& host_format_pair =
       vulkan_texture_cache.GetHostFormatPair(key());
   VkFormat format = (is_signed ? host_format_pair.format_signed
@@ -3062,6 +2965,9 @@ void VulkanTextureCache::GetTextureUsageMasks(VulkanTexture::Usage usage,
   layout = VK_IMAGE_LAYOUT_UNDEFINED;
   switch (usage) {
     case VulkanTexture::Usage::kUndefined:
+      // For UNDEFINED layout, use TOP_OF_PIPE as source stage (wait for
+      // nothing) with no access mask (discarding old contents).
+      stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
       break;
     case VulkanTexture::Usage::kTransferDestination:
       stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;

@@ -1408,7 +1408,11 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   const texture_util::TextureGuestLayout& guest_layout =
       d3d12_texture.guest_layout();
   xenos::DataDimension dimension = texture_key.dimension;
+  // Whether the host texture is 3D (determines depth vs array layer layout).
   bool is_3d = dimension == xenos::DataDimension::k3D;
+  // Whether to use 3D tiling when reading from guest memory.
+  // For 3D-as-2D wrappers, the host texture is 2D but we need 3D tiling.
+  bool is_3d_tiling = is_3d || d3d12_texture.force_load_3d_tiling();
   uint32_t width = texture_key.GetWidth();
   uint32_t height = texture_key.GetHeight();
   uint32_t depth_or_array_size = texture_key.GetDepthOrArraySize();
@@ -1597,7 +1601,7 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   assert_true(texture_resolution_scale_x <= 7);
   assert_true(texture_resolution_scale_y <= 7);
   load_constants.is_tiled_3d_endian_scale =
-      uint32_t(texture_key.tiled) | (uint32_t(is_3d) << 1) |
+      uint32_t(texture_key.tiled) | (uint32_t(is_3d_tiling) << 1) |
       (uint32_t(texture_key.endianness) << 2) |
       (texture_resolution_scale_x << 4) | (texture_resolution_scale_y << 7);
 
@@ -1836,10 +1840,7 @@ void D3D12TextureCache::UpdateTextureBindingsImpl(
 
 ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     D3D12_RESOURCE_STATES end_state) {
-  int32_t mode = cvars::gpu_3d_to_2d_texture_mode;
-
-  // Mode 0: Feature disabled.
-  if (mode == 0) {
+  if (!cvars::gpu_3d_to_2d_texture) {
     return nullptr;
   }
 
@@ -1877,64 +1878,20 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     return nullptr;
   }
 
-  if (mode == 1) {
-    // Mode 1: GPU copy - copy slice 0 from the 3D texture to the 2D resource.
-    D3D12_RESOURCE_STATES old_main_state =
-        SetResourceState(D3D12_RESOURCE_STATE_COPY_SOURCE);
-    d3d12_cache.command_processor_.PushTransitionBarrier(
-        resource(), old_main_state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  // Create a modified key for the 2D wrapper with depth=1 and mip_max_level=0.
+  // Keep dimension as k3D so guest layout uses 3D tiling math to correctly
+  // read slice 0 from the 3D-tiled guest memory.
+  TextureKey key_2d = key();
+  key_2d.depth_or_array_size_minus_1 = 0;
+  key_2d.mip_max_level = 0;
 
-    auto& command_list =
-        d3d12_cache.command_processor_.GetDeferredCommandList();
+  texture_3d_as_2d_.reset(new D3D12Texture(
+      d3d12_cache, key_2d, resource_2d.Get(), initial_state, false));
 
-    D3D12_TEXTURE_COPY_LOCATION dest_loc = {};
-    dest_loc.pResource = resource_2d.Get();
-    dest_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    dest_loc.SubresourceIndex = 0;
-
-    D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-    src_loc.pResource = resource();
-    src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    src_loc.SubresourceIndex = 0;
-
-    D3D12_BOX src_box;
-    src_box.left = 0;
-    src_box.top = 0;
-    src_box.front = 0;
-    src_box.right = static_cast<UINT>(source_desc.Width);
-    src_box.bottom = source_desc.Height;
-    src_box.back = 1;  // Only copy 1 depth slice.
-
-    command_list.D3DCopyTextureRegion(&dest_loc, 0, 0, 0, &src_loc, &src_box);
-
-    // Restore source state.
-    d3d12_cache.command_processor_.PushTransitionBarrier(
-        resource(), D3D12_RESOURCE_STATE_COPY_SOURCE, old_main_state);
-    SetResourceState(old_main_state);
-
-    // Create a minimal wrapper for the 2D resource.
-    TextureKey key_2d = key();
-    key_2d.depth_or_array_size_minus_1 = 0;
-    key_2d.mip_max_level = 0;
-    texture_3d_as_2d_.reset(new D3D12Texture(
-        d3d12_cache, key_2d, resource_2d.Get(), initial_state, false));
-  } else {
-    // Mode 2: CPU re-upload - reload texture data from guest memory.
-    // Keep dimension as k3D so LoadTextureData uses 3D tiling math to correctly
-    // read slice 0 from the 3D-tiled guest memory.
-    TextureKey key_load = key();
-    key_load.depth_or_array_size_minus_1 = 0;
-    key_load.mip_max_level = 0;
-
-    std::unique_ptr<D3D12Texture> texture_wrap(new D3D12Texture(
-        d3d12_cache, key_load, resource_2d.Get(), initial_state, false));
-
-    if (!d3d12_cache.LoadTextureData(*texture_wrap)) {
-      XELOGE("D3D12Texture: Failed to untile 3D-as-2D data");
-      return nullptr;
-    }
-
-    texture_3d_as_2d_ = std::move(texture_wrap);
+  if (!d3d12_cache.LoadTextureData(*texture_3d_as_2d_)) {
+    XELOGE("D3D12Texture: Failed to load 3D-as-2D texture data");
+    texture_3d_as_2d_.reset();
+    return nullptr;
   }
 
   // Transition to requested state.

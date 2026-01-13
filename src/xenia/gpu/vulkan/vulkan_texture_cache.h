@@ -337,10 +337,8 @@ class VulkanTextureCache final : public TextureCache {
 
     std::unordered_map<ViewKey, VkImageView, ViewKey::Hasher> views_;
 
-    // For 3D textures sampled as 2D - cached 2D copy of slice 0.
-    // This is a wrapper around the 2D image with a modified key (depth=1).
-    // For Mode 1 (GPU copy), the wrapper is created after the copy.
-    // For Mode 2 (CPU re-upload), LoadTextureData is called on the wrapper.
+    // For 3D textures sampled as 2D - cached 2D texture loaded from slice 0.
+    // Uses a modified key (depth=1) with 3D tiling to read from guest memory.
     std::unique_ptr<VulkanTexture> texture_3d_as_2d_;
     VkImageView image_view_3d_as_2d_unsigned_ = VK_NULL_HANDLE;
     VkImageView image_view_3d_as_2d_signed_ = VK_NULL_HANDLE;
