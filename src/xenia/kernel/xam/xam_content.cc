@@ -702,12 +702,42 @@ void XamLoaderGetMediaInfo_entry(lpdword_t media_type, lpdword_t unk2) {
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetMediaInfo, kNone, kStub);
 
-dword_result_t XamContentLaunchImageFromFileInternal_entry(
-    lpstring_t image_location, lpstring_t xex_name, dword_t unk) {
-  const std::string image_path = static_cast<std::string>(image_location);
-  const std::string xex_name_ = static_cast<std::string>(xex_name);
+dword_result_t xeXamContentLaunchImage(dword_t user_index,
+                                       lpstring_t image_location,
+                                       lpvoid_t content_data_ptr,
+                                       dword_t content_data_size,
+                                       lpstring_t xex_path, dword_t flag) {
+  /* Notes:
+      - In code this subfunction is used by all XamContentLaunchImage
+     functions
+      - Due to the current implementation of content data we can't use
+     XCONTENT_DATA_INTERNAL
+      - flags used by XamLoaderLaunchTitleEx
+      - user_index used by xeXamContentOpenFile
+      - if image_location null use xeXamContentOpenFile else use
+     exXamContentCreate
+      - root_name is "XSYSLAUNCH" while XamLoaderLaunchTitleEx uses
+     "XSYSLAUNCH:\\""
+      - title_id is usually written into first 8 characters of filename
+  */
+  vfs::Entry* entry;
+  if (!image_location) {
+    XCONTENT_AGGREGATE_DATA content_data =
+        *content_data_ptr.as<XCONTENT_DATA*>();
+    const uint32_t title_id = xe::string_util::from_string<uint32_t>(
+        content_data.file_name().substr(0, 8), true);
 
-  vfs::Entry* entry = kernel_state()->file_system()->ResolvePath(image_path);
+    // This should be done via content_manager, however as it isn't capable of
+    // such action we need to improvise.
+    const std::string package_path =
+        fmt::format("GAME:/Content/0000000000000000/{:08X}/{:08X}/{}", title_id,
+                    static_cast<uint32_t>(content_data.content_type.get()),
+                    content_data.file_name());
+
+    entry = kernel_state()->file_system()->ResolvePath(package_path);
+  } else {
+    entry = kernel_state()->file_system()->ResolvePath(image_location.value());
+  }
 
   if (!entry) {
     return X_STATUS_NO_SUCH_FILE;
@@ -715,66 +745,10 @@ dword_result_t XamContentLaunchImageFromFileInternal_entry(
 
   const std::filesystem::path host_path =
       kernel_state()->emulator()->content_root() / entry->name();
+
   if (!std::filesystem::exists(host_path)) {
     uint64_t progress = 0;
-
     vfs::VirtualFileSystem::ExtractContentFile(
-        entry, kernel_state()->emulator()->content_root(), progress, true);
-  }
-
-  auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
-
-  auto& loader_data = xam->loader_data();
-  loader_data.host_path = xe::path_to_utf8(host_path);
-  loader_data.launch_path = xex_name_;
-
-  xam->SaveLoaderData();
-
-  auto display_window = kernel_state()->emulator()->display_window();
-  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
-
-  if (display_window && imgui_drawer) {
-    display_window->app_context().CallInUIThreadSynchronous([imgui_drawer]() {
-      xe::ui::ImGuiDialog::ShowMessageBox(
-          imgui_drawer, "Launching new title!",
-          "Launching new title. \nPlease close Xenia and launch it again. Game "
-          "should load automatically.");
-    });
-  }
-
-  kernel_state()->TerminateTitle();
-  return X_ERROR_SUCCESS;
-}
-
-DECLARE_XAM_EXPORT1(XamContentLaunchImageFromFileInternal, kContent, kStub);
-
-dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
-                                                   lpstring_t xex_path) {
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-
-  // title_id is written into first 8 characters of filename
-  const uint32_t title_id = xe::string_util::from_string<uint32_t>(
-      content_data.file_name().substr(0, 8), true);
-
-  // This should be done via content_manager, however as it isn't capable of
-  // such action we need to improvise.
-  const std::string package_path =
-      fmt::format("GAME:/Content/0000000000000000/{:08X}/{:08X}/{}", title_id,
-                  static_cast<uint32_t>(content_data.content_type.get()),
-                  content_data.file_name());
-
-  auto entry = kernel_state()->file_system()->ResolvePath(package_path);
-
-  if (!entry) {
-    return X_STATUS_NO_SUCH_FILE;
-  }
-
-  const std::filesystem::path host_path =
-      kernel_state()->emulator()->content_root() / entry->name();
-
-  if (!std::filesystem::exists(host_path)) {
-    uint64_t progress = 0;
-    kernel_state()->file_system()->ExtractContentFile(
         entry, kernel_state()->emulator()->content_root(), progress, true);
   }
 
@@ -802,7 +776,37 @@ dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
   return X_ERROR_SUCCESS;
 }
 
+dword_result_t XamContentLaunchImageFromFileInternal_entry(
+    lpstring_t image_location, lpstring_t xex_name) {
+  return xeXamContentLaunchImage(XUserIndexNone, image_location, nullptr, NULL,
+                                 xex_name, NULL);
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImageFromFileInternal, kContent, kStub);
+
+dword_result_t XamContentLaunchImage_entry(dword_t user_index,
+                                           lpvoid_t content_data_ptr,
+                                           lpstring_t xex_path) {
+  return xeXamContentLaunchImage(user_index, nullptr, content_data_ptr,
+                                 sizeof(XCONTENT_DATA), xex_path, NULL);
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImage, kContent, kStub);
+
+dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
+                                                   lpstring_t xex_path) {
+  return xeXamContentLaunchImage(XUserIndexNone, nullptr, content_data_ptr,
+                                 sizeof(XCONTENT_DATA_INTERNAL), xex_path,
+                                 NULL);
+}
 DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kStub);
+
+dword_result_t XamContentLaunchImageInternalEx_entry(lpvoid_t content_data_ptr,
+                                                     lpstring_t xex_path,
+                                                     dword_t flags) {
+  return xeXamContentLaunchImage(XUserIndexNone, nullptr, content_data_ptr,
+                                 sizeof(XCONTENT_DATA_INTERNAL), xex_path,
+                                 flags);
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImageInternalEx, kContent, kStub);
 
 void XamContentRegisterChangeCallback_entry(dword_t callback) {
   kernel_state()->xam_state()->SetContentRegisterCallback(callback);
