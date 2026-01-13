@@ -504,7 +504,7 @@ void TextureCache::Texture::LogAction(const char* action) const {
 // performed somehow. The list is maintained by the Texture, not the
 // TextureCache itself (unlike the `textures_` container).
 TextureCache::Texture::Texture(TextureCache& texture_cache,
-                               const TextureKey& key)
+                               const TextureKey& key, bool track_usage)
     : texture_cache_(texture_cache),
       key_(key),
       guest_layout_(key.GetGuestLayout()),
@@ -512,14 +512,17 @@ TextureCache::Texture::Texture(TextureCache& texture_cache,
       mips_resolved_(key.scaled_resolve),
       last_usage_submission_index_(texture_cache.current_submission_index_),
       last_usage_time_(texture_cache.current_submission_time_),
-      used_previous_(texture_cache.texture_used_last_),
-      used_next_(nullptr) {
-  if (texture_cache.texture_used_last_) {
-    texture_cache.texture_used_last_->used_next_ = this;
-  } else {
-    texture_cache.texture_used_first_ = this;
+      used_previous_(track_usage ? texture_cache.texture_used_last_ : nullptr),
+      used_next_(nullptr),
+      in_usage_list_(track_usage) {
+  if (track_usage) {
+    if (texture_cache.texture_used_last_) {
+      texture_cache.texture_used_last_->used_next_ = this;
+    } else {
+      texture_cache.texture_used_first_ = this;
+    }
+    texture_cache.texture_used_last_ = this;
   }
-  texture_cache.texture_used_last_ = this;
 
   // Never try to upload data that doesn't exist.
   base_outdated_ = guest_layout().base.level_data_extent_bytes != 0;
@@ -534,15 +537,18 @@ TextureCache::Texture::~Texture() {
     texture_cache().shared_memory().UnwatchMemoryRange(base_watch_handle_);
   }
 
-  if (used_previous_) {
-    used_previous_->used_next_ = used_next_;
-  } else {
-    texture_cache_.texture_used_first_ = used_next_;
-  }
-  if (used_next_) {
-    used_next_->used_previous_ = used_previous_;
-  } else {
-    texture_cache_.texture_used_last_ = used_previous_;
+  // Only remove from usage list if we were added to it (track_usage=true).
+  if (in_usage_list_) {
+    if (used_previous_) {
+      used_previous_->used_next_ = used_next_;
+    } else {
+      texture_cache_.texture_used_first_ = used_next_;
+    }
+    if (used_next_) {
+      used_next_->used_previous_ = used_previous_;
+    } else {
+      texture_cache_.texture_used_last_ = used_previous_;
+    }
   }
 
   texture_cache_.UpdateTexturesTotalHostMemoryUsage(0, host_memory_usage_);
@@ -568,6 +574,10 @@ void TextureCache::Texture::MakeUpToDateAndWatch(
 }
 
 void TextureCache::Texture::MarkAsUsed() {
+  // Textures not in usage tracking (track_usage=false) should not be linked.
+  if (!in_usage_list_) {
+    return;
+  }
   assert_true(last_usage_submission_index_ <=
               texture_cache_.current_submission_index_);
   // This is called very frequently, don't relink unless needed for caching.

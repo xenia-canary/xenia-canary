@@ -36,6 +36,8 @@ DECLARE_bool(disassemble_pm4);
 
 DECLARE_bool(no_discard_stencil_in_transfer_pipelines);
 
+DECLARE_int32(gpu_3d_to_2d_texture_mode);
+
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1
 
 #endif  // XENIA_GPU_GPU_FLAGS_H_

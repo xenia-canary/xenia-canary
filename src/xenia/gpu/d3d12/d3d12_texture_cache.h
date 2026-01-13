@@ -571,9 +571,11 @@ class D3D12TextureCache final : public TextureCache {
 
     ID3D12Resource* GetOrCreate3DAs2DResource(D3D12_RESOURCE_STATES end_state);
 
+    // track_usage: if false, texture won't participate in LRU cache eviction.
     explicit D3D12Texture(D3D12TextureCache& texture_cache,
                           const TextureKey& key, ID3D12Resource* resource,
-                          D3D12_RESOURCE_STATES resource_state);
+                          D3D12_RESOURCE_STATES resource_state,
+                          bool track_usage = true);
     ~D3D12Texture();
 
     ID3D12Resource* resource() const { return resource_.Get(); }

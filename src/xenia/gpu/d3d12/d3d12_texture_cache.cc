@@ -15,7 +15,6 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
-#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/profiling.h"
@@ -27,12 +26,6 @@
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/d3d12/d3d12_upload_buffer_pool.h"
 #include "xenia/ui/d3d12/d3d12_util.h"
-
-DEFINE_int32(d3d12_3d_to_2d_texture_mode, 0,
-             "Handle shaders that sample 3D textures as 2D by creating a 2D "
-             "view of slice 0. 0 = disabled (default), 1 = GPU copy, "
-             "2 = CPU re-upload from guest memory.",
-             "D3D12");
 
 namespace xe {
 namespace gpu {
@@ -1235,8 +1228,9 @@ ID3D12Resource* D3D12TextureCache::RequestSwapTexture(
 
 D3D12TextureCache::D3D12Texture::D3D12Texture(
     D3D12TextureCache& texture_cache, const TextureKey& key,
-    ID3D12Resource* resource, D3D12_RESOURCE_STATES resource_state)
-    : Texture(texture_cache, key),
+    ID3D12Resource* resource, D3D12_RESOURCE_STATES resource_state,
+    bool track_usage)
+    : Texture(texture_cache, key, track_usage),
       resource_(resource),
       resource_state_(resource_state) {
   ID3D12Device* device =
@@ -1842,7 +1836,7 @@ void D3D12TextureCache::UpdateTextureBindingsImpl(
 
 ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     D3D12_RESOURCE_STATES end_state) {
-  int32_t mode = cvars::d3d12_3d_to_2d_texture_mode;
+  int32_t mode = cvars::gpu_3d_to_2d_texture_mode;
 
   // Mode 0: Feature disabled.
   if (mode == 0) {
@@ -1922,16 +1916,18 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
     TextureKey key_2d = key();
     key_2d.depth_or_array_size_minus_1 = 0;
     key_2d.mip_max_level = 0;
-    texture_3d_as_2d_.reset(new D3D12Texture(d3d12_cache, key_2d,
-                                             resource_2d.Get(), initial_state));
+    texture_3d_as_2d_.reset(new D3D12Texture(
+        d3d12_cache, key_2d, resource_2d.Get(), initial_state, false));
   } else {
     // Mode 2: CPU re-upload - reload texture data from guest memory.
+    // Keep dimension as k3D so LoadTextureData uses 3D tiling math to correctly
+    // read slice 0 from the 3D-tiled guest memory.
     TextureKey key_load = key();
     key_load.depth_or_array_size_minus_1 = 0;
     key_load.mip_max_level = 0;
 
     std::unique_ptr<D3D12Texture> texture_wrap(new D3D12Texture(
-        d3d12_cache, key_load, resource_2d.Get(), initial_state));
+        d3d12_cache, key_load, resource_2d.Get(), initial_state, false));
 
     if (!d3d12_cache.LoadTextureData(*texture_wrap)) {
       XELOGE("D3D12Texture: Failed to untile 3D-as-2D data");
