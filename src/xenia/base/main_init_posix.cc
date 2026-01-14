@@ -32,6 +32,13 @@ class StartupCpuFeatureCheck {
     if (error_message == nullptr) {
       return;
     } else {
+#ifdef __APPLE__
+      if (!gtk_init_check(nullptr, nullptr)) {
+        fprintf(stderr, "ERROR: %s\n", error_message);
+        fprintf(stderr, "Failed to initialize GTK\n");
+        exit(1);
+      }
+#endif
       GtkDialogFlags flags = GTK_DIALOG_DESTROY_WITH_PARENT;
       auto dialog =
           gtk_message_dialog_new(nullptr, flags, GTK_MESSAGE_ERROR,
