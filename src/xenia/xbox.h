@@ -196,11 +196,6 @@ enum : XNotificationID {
   kXNotificationSystemUI = 0x00000009,
   kXNotificationSystemSignInChanged = 0x0000000A,
   kXNotificationSystemStorageDevicesChanged = 0x0000000B,
-  kXNotificationSystemDashContextChanged = 0x8000000C,
-  kXNotificationSystemTrayStateChanged = 0x8000000D,
-  kXNotificationSystemProfileSettingChanged = 0x0000000E,
-  kXNotificationSystemThemeChanged = 0x8000000F,
-  kXNotificationSystemSystemUpdateChanged = 0x80000010,
   kXNotificationSystemMuteListChanged = 0x00000011,
   kXNotificationSystemInputDevicesChanged = 0x00000012,
   kXNotificationSystemXLiveTitleUpdate = 0x00000015,
@@ -212,7 +207,7 @@ enum : XNotificationID {
      XNotifyBroadcast(kXNotificationSystemTrayStateChanged, media_type?)
      - after XamLoaderGetMediaInfoEx(media_type?, title_id?, unk) is used for
      some funcs the third param is used with
-     XNotifyBroadcast(kXNotificationUnkUnknown2, unk)
+     XNotifyBroadcast(kXNotificationSystemUnknown, unk)
   */
   kXNotificationSystemUnknown = 0x80010014,
   kXNotificationSystemPlayerTimerNotice = 0x00030015,
@@ -225,6 +220,11 @@ enum : XNotificationID {
   kXNotificationSystemAudioLatencyChanged = 0x0008001E,
   kXNotificationSystemNUIChatBindingChanged = 0x0008001F,
   kXNotificationSystemInputActivityChanged = 0x00090020,
+  kXNotificationSystemDashContextChanged = 0x8000000C,
+  kXNotificationSystemTrayStateChanged = 0x8000000D,
+  kXNotificationSystemProfileSettingChanged = 0x0000000E,
+  kXNotificationSystemThemeChanged = 0x8000000F,
+  kXNotificationSystemSystemUpdateChanged = 0x80000010,
 
   // XNotification Live
   kXNotificationLiveConnectionChanged = 0x02000001,

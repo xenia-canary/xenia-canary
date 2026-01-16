@@ -354,6 +354,8 @@ dword_result_t XamUserWriteProfileSettings_entry(
   }
 
   auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    bool was_avatar_setting_changed = false;
+    const uint8_t user_index_bit = (1 << user_index) & 0xF;
     // Update and save settings.
     const auto& user_profile =
         kernel_state()->xam_state()->GetUserProfile(user_index);
@@ -367,6 +369,11 @@ dword_result_t XamUserWriteProfileSettings_entry(
 
     for (uint32_t n = 0; n < setting_count; ++n) {
       const UserSetting setting = UserSetting(&settings[n]);
+      if (setting.get_setting_id() ==
+          static_cast<uint32_t>(
+              UserSettingId::XPROFILE_GAMERCARD_AVATAR_INFO_1)) {
+        was_avatar_setting_changed = true;
+      }
 
       if (!setting.is_valid_type()) {
         continue;
@@ -374,6 +381,13 @@ dword_result_t XamUserWriteProfileSettings_entry(
 
       kernel_state()->xam_state()->user_tracker()->UpsertSetting(
           user_profile->xuid(), title_id, &setting);
+    }
+
+    kernel_state()->BroadcastNotification(
+        kXNotificationSystemProfileSettingChanged, user_index_bit);
+    if (was_avatar_setting_changed) {
+      kernel_state()->BroadcastNotification(kXNotificationSystemAvatarChanged,
+                                            user_index_bit);
     }
 
     extended_error = X_HRESULT_FROM_WIN32(X_STATUS_SUCCESS);
