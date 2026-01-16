@@ -12,6 +12,11 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#if XE_PLATFORM_MAC
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <mach/vm_region.h>
+#endif
 #include <cstddef>
 #include <fstream>
 #include <mutex>
@@ -98,7 +103,27 @@ PageAccess ToXeniaProtectFlags(const char* protection) {
   return PageAccess::kNoAccess;
 }
 
-bool IsWritableExecutableMemorySupported() { return true; }
+bool IsWritableExecutableMemorySupported() {
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  static const bool supported = []() {
+    const size_t test_size = page_size();
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef MAP_JIT
+    flags |= MAP_JIT;
+#endif
+    void* test_mapping = mmap(nullptr, test_size,
+                              PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
+    if (test_mapping == MAP_FAILED) {
+      return false;
+    }
+    munmap(test_mapping, test_size);
+    return true;
+  }();
+  return supported;
+#else
+  return true;
+#endif
+}
 
 struct MappedFileRange {
   uintptr_t region_begin;
@@ -114,6 +139,15 @@ void* AllocFixed(void* base_address, size_t length,
   uint32_t prot = ToPosixProtectFlags(access);
   int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  if (access == PageAccess::kExecuteReadWrite ||
+      access == PageAccess::kExecuteReadOnly) {
+#ifdef MAP_JIT
+    flags |= MAP_JIT;
+#endif
+  }
+#endif
+
   if (base_address != nullptr) {
     if (allocation_type == AllocationType::kCommit) {
       if (Protect(base_address, length, access)) {
@@ -121,7 +155,9 @@ void* AllocFixed(void* base_address, size_t length,
       }
       return nullptr;
     }
+#ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#endif
   }
 
   void* result = mmap(base_address, length, prot, flags, -1, 0);
@@ -175,6 +211,49 @@ bool Protect(void* base_address, size_t length, PageAccess access,
 }
 
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
+#if XE_PLATFORM_MAC
+  access_out = PageAccess::kNoAccess;
+
+  mach_vm_address_t address =
+      static_cast<mach_vm_address_t>(reinterpret_cast<uintptr_t>(base_address));
+  mach_vm_size_t region_size = 0;
+  vm_region_basic_info_data_64_t info;
+  mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
+  mach_port_t object_name = MACH_PORT_NULL;
+
+  kern_return_t kr = mach_vm_region(
+      mach_task_self(), &address, &region_size, VM_REGION_BASIC_INFO_64,
+      reinterpret_cast<vm_region_info_t>(&info), &info_count, &object_name);
+
+  if (object_name != MACH_PORT_NULL) {
+    mach_port_deallocate(mach_task_self(), object_name);
+  }
+
+  if (kr != KERN_SUCCESS) {
+    return false;
+  }
+
+  length = static_cast<size_t>(region_size);
+
+  const vm_prot_t prot = info.protection;
+  const bool can_read = (prot & VM_PROT_READ) != 0;
+  const bool can_write = (prot & VM_PROT_WRITE) != 0;
+  const bool can_execute = (prot & VM_PROT_EXECUTE) != 0;
+
+  if (can_write) {
+    access_out =
+        can_execute ? PageAccess::kExecuteReadWrite : PageAccess::kReadWrite;
+  } else if (can_read) {
+    access_out =
+        can_execute ? PageAccess::kExecuteReadOnly : PageAccess::kReadOnly;
+  } else if (can_execute) {
+    access_out = PageAccess::kExecuteReadOnly;
+  } else {
+    access_out = PageAccess::kNoAccess;
+  }
+
+  return true;
+#else
   // No generic POSIX solution exists. The Linux solution should work on all
   // Linux kernel based OS, including Android.
   std::ifstream memory_maps;
@@ -219,6 +298,7 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
 
   memory_maps.close();
   return false;
+#endif
 }
 
 FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
@@ -270,7 +350,11 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
   if (ret < 0) {
     return kFileMappingHandleInvalid;
   }
+#ifdef __APPLE__
+  ftruncate(ret, length);
+#else
   ftruncate64(ret, length);
+#endif
   return ret;
 #endif
 }
@@ -290,7 +374,9 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
 
   int flags = MAP_SHARED;
   if (base_address != nullptr) {
+#ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#endif
   }
 
   void* result = mmap(base_address, length, prot, flags, handle, file_offset);

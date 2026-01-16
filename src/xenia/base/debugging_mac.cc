@@ -11,6 +11,7 @@
 
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <iostream>
 
 namespace xe {
 namespace debugging {
@@ -30,6 +31,10 @@ void Break() {
   // __asm__("int $3");
   __builtin_debugtrap();
 }
+
+namespace internal {
+void DebugPrint(const char* s) { std::clog << s << std::endl; }
+}  // namespace internal
 
 }  // namespace debugging
 }  // namespace xe

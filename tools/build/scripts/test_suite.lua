@@ -12,6 +12,14 @@ newoption({
 })
 
 local function combined_test_suite(test_suite_name, project_root, base_path, config)
+  local console_app_main_suffix = platform_suffix
+  if platform_suffix == "mac" then
+    local mac_console_main =
+        project_root.."/src/xenia/base/console_app_main_mac.cc"
+    if not os.isfile(mac_console_main) then
+      console_app_main_suffix = "posix"
+    end
+  end
   group("tests")
   project(test_suite_name)
     kind("ConsoleApp")
@@ -37,7 +45,7 @@ local function combined_test_suite(test_suite_name, project_root, base_path, con
     })
     files({
       project_root.."/"..build_tools_src.."/test_suite_main.cc",
-      project_root.."/src/xenia/base/console_app_main_"..platform_suffix..".cc",
+      project_root.."/src/xenia/base/console_app_main_"..console_app_main_suffix..".cc",
       base_path.."/**_test.cc",
     })
     filter("toolset:msc")

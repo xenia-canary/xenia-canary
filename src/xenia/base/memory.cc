@@ -34,6 +34,11 @@ using xe::swcache::CacheLine;
 
 static constexpr unsigned NUM_CACHELINES_IN_PAGE = 4096 / sizeof(CacheLine);
 
+using VastCpyDispatch = void (*)(CacheLine* XE_RESTRICT physaddr,
+                                 CacheLine* XE_RESTRICT rdmapping,
+                                 uint32_t written_length);
+
+#if XE_ARCH_AMD64
 #if defined(__clang__)
 XE_FORCEINLINE
 static void mvdir64b(void* to, const void* from) {
@@ -98,9 +103,6 @@ static void XeCopy16384Movdir64M(CacheLine* XE_RESTRICT to,
   }
   XE_MSVC_REORDER_BARRIER();
 }
-using VastCpyDispatch = void (*)(CacheLine* XE_RESTRICT physaddr,
-                                 CacheLine* XE_RESTRICT rdmapping,
-                                 uint32_t written_length);
 static void vastcpy_impl_avx(CacheLine* XE_RESTRICT physaddr,
                              CacheLine* XE_RESTRICT rdmapping,
                              uint32_t written_length) {
@@ -171,6 +173,7 @@ static void vastcpy_impl_movdir64m(CacheLine* XE_RESTRICT physaddr,
     _movdir64b(physaddr + i, rdmapping + i);
   }
 }
+#endif  // XE_ARCH_AMD64
 static void vastcpy_impl_repmovs(CacheLine* XE_RESTRICT physaddr,
                                  CacheLine* XE_RESTRICT rdmapping,
                                  uint32_t written_length) {
@@ -194,6 +197,7 @@ static void first_vastcpy(CacheLine* XE_RESTRICT physaddr,
                           CacheLine* XE_RESTRICT rdmapping,
                           uint32_t written_length) {
   VastCpyDispatch dispatch_to_use = nullptr;
+#if XE_ARCH_AMD64
   if (amd64::GetFeatureFlags() & amd64::kX64EmitMovdir64M) {
     XELOGI("Selecting MOVDIR64M vastcpy.");
     dispatch_to_use = vastcpy_impl_movdir64m;
@@ -204,6 +208,9 @@ static void first_vastcpy(CacheLine* XE_RESTRICT physaddr,
     XELOGI("Selecting generic AVX vastcpy.");
     dispatch_to_use = vastcpy_impl_avx;
   }
+#else
+  dispatch_to_use = vastcpy_impl_repmovs;
+#endif
 
   vastcpy_dispatch =
       dispatch_to_use;  // all future calls will go through our selected path
@@ -476,7 +483,7 @@ void copy_and_swap_16_unaligned(void* dst_ptr, const void* src_ptr,
   auto dst = reinterpret_cast<uint8_t*>(dst_ptr);
   auto src = reinterpret_cast<const uint8_t*>(src_ptr);
 
-  constexpr uint8x16_t tbl_idx =
+  const uint8x16_t tbl_idx =
       vcombine_u8(vcreate_u8(UINT64_C(0x0607040502030001)),
                   vcreate_u8(UINT64_C(0x0E0F0C0D0A0B0809)));
 
@@ -510,7 +517,7 @@ void copy_and_swap_32_unaligned(void* dst_ptr, const void* src_ptr,
   auto dst = reinterpret_cast<uint8_t*>(dst_ptr);
   auto src = reinterpret_cast<const uint8_t*>(src_ptr);
 
-  constexpr uint8x16_t tbl_idx =
+  const uint8x16_t tbl_idx =
       vcombine_u8(vcreate_u8(UINT64_C(0x405060700010203)),
                   vcreate_u8(UINT64_C(0x0C0D0E0F08090A0B)));
 
@@ -542,7 +549,7 @@ void copy_and_swap_64_unaligned(void* dst_ptr, const void* src_ptr,
   auto dst = reinterpret_cast<uint8_t*>(dst_ptr);
   auto src = reinterpret_cast<const uint8_t*>(src_ptr);
 
-  constexpr uint8x16_t tbl_idx =
+  const uint8x16_t tbl_idx =
       vcombine_u8(vcreate_u8(UINT64_C(0x0001020304050607)),
                   vcreate_u8(UINT64_C(0x08090A0B0C0D0E0F)));
 

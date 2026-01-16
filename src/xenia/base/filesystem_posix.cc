@@ -1,3 +1,4 @@
+// filesystem_posix.cc
 /**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
@@ -7,21 +8,33 @@
  ******************************************************************************
  */
 
+#if !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200112L  // Enable POSIX 2001 features
+#endif
+
 #include "xenia/base/assert.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
+#include "xenia/xbox.h"
 
 #include <assert.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <libgen.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <iostream>
+
+#if defined(__APPLE__)
+#include <limits.h>
+#include <mach-o/dyld.h>
+#endif
 
 namespace xe {
 
@@ -42,10 +55,42 @@ std::filesystem::path to_path(const std::u16string_view source) {
 namespace filesystem {
 
 std::filesystem::path GetExecutablePath() {
+#if defined(__APPLE__)
+  char path[PATH_MAX];
+  uint32_t size = sizeof(path);
+  if (_NSGetExecutablePath(path, &size) == 0) {
+    char real_path[PATH_MAX];
+    realpath(path, real_path);
+    return std::string(real_path);
+  } else {
+    // Buffer too small; allocate the required size
+    char* path2 = (char*)malloc(size);
+    if (_NSGetExecutablePath(path2, &size) == 0) {
+      char real_path[PATH_MAX];
+      realpath(path2, real_path);
+      std::string result(real_path);
+      free(path2);
+      return result;
+    } else {
+      // Shouldn't happen
+      free(path2);
+      return std::string();
+    }
+  }
+#elif defined(__linux__)
   char buff[FILENAME_MAX] = "";
-  readlink("/proc/self/exe", buff, FILENAME_MAX);
-  std::string s(buff);
-  return s;
+  ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff) - 1);
+  if (len != -1) {
+    buff[len] = '\0';
+    return std::string(buff);
+  } else {
+    // Error handling
+    return std::string();
+  }
+#else
+  // Other platforms
+  return std::string();
+#endif
 }
 
 std::filesystem::path GetExecutableFolder() {
@@ -53,22 +98,22 @@ std::filesystem::path GetExecutableFolder() {
 }
 
 std::filesystem::path GetUserFolder() {
-  // get preferred data home
+  // Get preferred data home
   char* home = std::getenv("XDG_DATA_HOME");
   if (home) {
     return std::string(home);
   }
 
-  // if XDG_DATA_HOME not set, fallback to HOME directory
+  // If XDG_DATA_HOME not set, fallback to HOME directory
   home = std::getenv("HOME");
 
-  // if HOME not set, fall back to this
+  // If HOME not set, fall back to this
   if (home == NULL) {
     struct passwd pw1;
     struct passwd* pw;
-    char buf[4096];  // could potentionally lower this
+    char buf[4096];  // Could potentially lower this
     getpwuid_r(getuid(), &pw1, buf, sizeof(buf), &pw);
-    assert(&pw1 == pw);  // sanity check
+    assert(&pw1 == pw);  // Sanity check
     home = pw->pw_dir;
   }
 
@@ -80,10 +125,10 @@ FILE* OpenFile(const std::filesystem::path& path, const std::string_view mode) {
 }
 
 bool Seek(FILE* file, int64_t offset, int origin) {
-  return fseeko64(file, off64_t(offset), origin) == 0;
+  return fseeko(file, offset, origin) == 0;
 }
 
-int64_t Tell(FILE* file) { return int64_t(ftello64(file)); }
+int64_t Tell(FILE* file) { return int64_t(ftello(file)); }
 
 bool TruncateStdioFile(FILE* file, uint64_t length) {
   if (fflush(file)) {
@@ -93,7 +138,7 @@ bool TruncateStdioFile(FILE* file, uint64_t length) {
   if (position < 0) {
     return false;
   }
-  if (ftruncate64(fileno(file), off64_t(length))) {
+  if (ftruncate(fileno(file), length)) {
     return false;
   }
   if (uint64_t(position) > length) {
@@ -104,19 +149,13 @@ bool TruncateStdioFile(FILE* file, uint64_t length) {
   return true;
 }
 
-static int removeCallback(const char* fpath, const struct stat* sb,
-                          int typeflag, struct FTW* ftwbuf) {
-  int rv = remove(fpath);
-  return rv;
-}
-
 static uint64_t convertUnixtimeToWinFiletime(time_t unixtime) {
   // Linux uses number of seconds since 1/1/1970, and Windows uses
   // number of nanoseconds since 1/1/1601
-  // so we convert linux time to nanoseconds and then add the number of
+  // So we convert Unix time to nanoseconds and then add the number of
   // nanoseconds from 1601 to 1970
-  // see https://msdn.microsoft.com/en-us/library/ms724228
-  uint64_t filetime = (unixtime * 10000000) + 116444736000000000;
+  // See https://msdn.microsoft.com/en-us/library/ms724228
+  uint64_t filetime = (uint64_t(unixtime) * 10000000) + 116444736000000000ULL;
   return filetime;
 }
 
@@ -140,17 +179,27 @@ class PosixFileHandle : public FileHandle {
   bool Read(size_t file_offset, void* buffer, size_t buffer_length,
             size_t* out_bytes_read) override {
     ssize_t out = pread(handle_, buffer, buffer_length, file_offset);
-    *out_bytes_read = out;
-    return out >= 0 ? true : false;
+    if (out >= 0) {
+      *out_bytes_read = out;
+      return true;
+    } else {
+      *out_bytes_read = 0;
+      return false;
+    }
   }
   bool Write(size_t file_offset, const void* buffer, size_t buffer_length,
              size_t* out_bytes_written) override {
     ssize_t out = pwrite(handle_, buffer, buffer_length, file_offset);
-    *out_bytes_written = out;
-    return out >= 0 ? true : false;
+    if (out >= 0) {
+      *out_bytes_written = out;
+      return true;
+    } else {
+      *out_bytes_written = 0;
+      return false;
+    }
   }
   bool SetLength(size_t length) override {
-    return ftruncate(handle_, length) >= 0 ? true : false;
+    return ftruncate(handle_, length) >= 0;
   }
   void Flush() override { fsync(handle_); }
 
@@ -184,32 +233,44 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
   }
   int handle = open(path.c_str(), open_access);
   if (handle == -1) {
-    // TODO(benvanik): pick correct response.
+    // TODO: Handle error appropriately
     return nullptr;
   }
   return std::make_unique<PosixFileHandle>(path, handle);
 }
 
 std::optional<FileInfo> GetInfo(const std::filesystem::path& path) {
-  FileInfo info{};
   struct stat st;
-  if (stat(path.c_str(), &st) == 0) {
-    if (S_ISDIR(st.st_mode)) {
-      info.type = FileInfo::Type::kDirectory;
-      // On Linux st.st_size can have non-zero size (generally 4096) so make 0
-      info.total_size = 0;
-    } else {
-      info.type = FileInfo::Type::kFile;
-      info.total_size = st.st_size;
-    }
-    info.path = path.parent_path();
-    info.name = path.filename();
-    info.create_timestamp = convertUnixtimeToWinFiletime(st.st_ctime);
-    info.access_timestamp = convertUnixtimeToWinFiletime(st.st_atime);
-    info.write_timestamp = convertUnixtimeToWinFiletime(st.st_mtime);
-    return std::move(info);
+  if (stat(path.c_str(), &st) != 0) {
+    return {};
   }
-  return {};
+
+  FileInfo out_info{};
+  if (S_ISDIR(st.st_mode)) {
+    out_info.type = FileInfo::Type::kDirectory;
+    out_info.total_size = 0;
+  } else {
+    out_info.type = FileInfo::Type::kFile;
+    out_info.total_size = static_cast<size_t>(st.st_size);
+  }
+  out_info.path = path.parent_path();
+  out_info.name = path.filename();
+  out_info.create_timestamp = convertUnixtimeToWinFiletime(st.st_ctime);
+  out_info.access_timestamp = convertUnixtimeToWinFiletime(st.st_atime);
+  out_info.write_timestamp = convertUnixtimeToWinFiletime(st.st_mtime);
+  return std::move(out_info);
+}
+
+bool GetInfo(const std::filesystem::path& path, FileInfo* out_info) {
+  if (!out_info) {
+    return false;
+  }
+  auto info = GetInfo(path);
+  if (!info) {
+    return false;
+  }
+  *out_info = *info;
+  return true;
 }
 
 std::vector<FileInfo> ListFiles(const std::filesystem::path& path) {
@@ -225,30 +286,30 @@ std::vector<FileInfo> ListFiles(const std::filesystem::path& path) {
       continue;
     }
 
-    FileInfo info;
-
-    info.name = ent->d_name;
-    struct stat st;
-    stat((path / info.name).c_str(), &st);
-    info.create_timestamp = convertUnixtimeToWinFiletime(st.st_ctime);
-    info.access_timestamp = convertUnixtimeToWinFiletime(st.st_atime);
-    info.write_timestamp = convertUnixtimeToWinFiletime(st.st_mtime);
-    info.path = path;
-    if (ent->d_type == DT_DIR) {
-      info.type = FileInfo::Type::kDirectory;
-      info.total_size = 0;
-    } else {
-      info.type = FileInfo::Type::kFile;
-      info.total_size = st.st_size;
+    auto info = GetInfo(path / ent->d_name);
+    if (!info) {
+      continue;
     }
-    result.push_back(info);
+    result.push_back(*info);
   }
   closedir(dir);
-  return std::move(result);
+  return result;
 }
 
 bool SetAttributes(const std::filesystem::path& path, uint64_t attributes) {
-  return false;
+  struct stat st;
+  if (stat(path.c_str(), &st) != 0) {
+    return false;
+  }
+
+  mode_t mode = st.st_mode;
+  if (attributes & X_FILE_ATTRIBUTE_READONLY) {
+    mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
+  } else {
+    mode |= S_IWUSR;
+  }
+
+  return chmod(path.c_str(), mode) == 0;
 }
 
 }  // namespace filesystem

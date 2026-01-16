@@ -12,6 +12,7 @@
 #define XBYAK_NO_OP_NAMES
 #include "third_party/xbyak/xbyak/xbyak.h"
 #include "third_party/xbyak/xbyak/xbyak_util.h"
+
 DEFINE_int64(x64_extension_mask, -1LL,
              "Allow the detection and utilization of specific instruction set "
              "features.\n"
@@ -36,7 +37,9 @@ namespace amd64 {
 static uint64_t g_feature_flags = 0U;
 static bool g_did_initialize_feature_flags = false;
 uint64_t GetFeatureFlags() {
-  xenia_assert(g_did_initialize_feature_flags);
+  if (!g_did_initialize_feature_flags) {
+    InitFeatureFlags();
+  }
   return g_feature_flags;
 }
 XE_COLD

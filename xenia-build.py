@@ -13,6 +13,7 @@ from argparse import ArgumentParser
 from glob import glob
 from json import loads as jsonloads
 import os
+import platform
 from shutil import rmtree
 import subprocess
 import sys
@@ -22,6 +23,30 @@ __author__ = "ben.vanik@gmail.com (Ben Vanik)"
 
 
 self_path = os.path.dirname(os.path.abspath(__file__))
+
+
+def normalize_macos_arch(arch):
+    if not arch:
+        return None
+    arch = arch.lower()
+    if arch in ("arm64", "a64"):
+        return "arm64"
+    if arch in ("x86_64", "x64", "x86", "amd64"):
+        return "x86_64"
+    raise ValueError(f"Unsupported macOS arch: {arch}")
+
+
+def is_macos_arm64_host():
+    if sys.platform != "darwin":
+        return False
+    try:
+        sysctl = subprocess.check_output(
+            ["sysctl", "-n", "hw.optional.arm64"], text=True).strip()
+        if sysctl == "1":
+            return True
+    except Exception:
+        pass
+    return platform.machine() == "arm64"
 
 class bcolors:
 #    HEADER = "\033[95m"
@@ -508,7 +533,8 @@ def get_premake_target_os(target_os_override=None):
     return target_os
 
 
-def run_premake(target_os, action, cc=None):
+def run_premake(target_os, action, cc=None, enable_tests=False,
+                extra_premake_args=None):
     """Runs premake on the main project with the given format.
 
     Args:
@@ -529,8 +555,15 @@ def run_premake(target_os, action, cc=None):
 
     if cc:
         args.insert(4, f"--cc={cc}")
+    if enable_tests:
+        args.insert(-1, "--tests")
+    if extra_premake_args:
+        args[-1:-1] = extra_premake_args
 
-    ret = subprocess.call(args)
+    env = dict(os.environ)
+    if sys.platform == "darwin":
+        env["XE_MACOS_ARM64_HOST"] = "1" if is_macos_arm64_host() else "0"
+    ret = subprocess.call(args, env=env)
 
     if ret == 0:
         generate_version_h()
@@ -538,7 +571,8 @@ def run_premake(target_os, action, cc=None):
     return ret
 
 
-def run_platform_premake(target_os_override=None, cc=None, devenv=None):
+def run_platform_premake(target_os_override=None, cc=None, devenv=None,
+                         enable_tests=False, extra_premake_args=None):
     """Runs all gyp configurations.
     """
     target_os = get_premake_target_os(target_os_override)
@@ -558,7 +592,9 @@ def run_platform_premake(target_os_override=None, cc=None, devenv=None):
             devenv = "cmake"
     if not cc:
         cc = get_cc(cc=cc)
-    return run_premake(target_os=target_os, action=devenv, cc=cc)
+    return run_premake(target_os=target_os, action=devenv, cc=cc,
+                       enable_tests=enable_tests,
+                       extra_premake_args=extra_premake_args)
 
 
 def get_build_bin_path(args):
@@ -572,12 +608,17 @@ def get_build_bin_path(args):
       A full path for the bin folder.
     """
     if sys.platform == "darwin":
-        platform = "macosx"
+        arch_override = args.get("arch")
+        if arch_override:
+            platform = "Mac-ARM64" if arch_override == "arm64" else "Mac-x86_64"
+        else:
+            platform = "Mac-ARM64" if is_macos_arm64_host() else "Mac-x86_64"
     elif sys.platform == "win32":
         platform = "windows"
     else:
         platform = "linux"
-    return os.path.join(self_path, "build", "bin", platform.capitalize(), args["config"].capitalize())
+    return os.path.join(self_path, "build", "bin", platform,
+                        args["config"].capitalize())
 
 
 def create_clion_workspace():
@@ -790,7 +831,8 @@ class PremakeCommand(Command):
         # Update premake. If no binary found, it will be built from source.
         print("Running premake...\n")
         ret = run_platform_premake(target_os_override=args["target_os"],
-                                   cc=args["cc"], devenv=args["devenv"])
+                                   cc=args["cc"], devenv=args["devenv"],
+                                   extra_premake_args=pass_args)
         print("Success!" if ret == 0 else "Error!")
 
         return ret
@@ -813,6 +855,9 @@ class BaseBuildCommand(Command):
             "--target", action="append", default=[],
             help="Builds only the given target(s).")
         self.parser.add_argument(
+            "--arch", type=normalize_macos_arch, default=None,
+            help="macOS architecture: arm64 or x86_64 (aliases: a64/x64/x86)")
+        self.parser.add_argument(
             "--force", action="store_true",
             help="Forces a full rebuild.")
         self.parser.add_argument(
@@ -820,9 +865,16 @@ class BaseBuildCommand(Command):
             help="Skips running premake before building.")
 
     def execute(self, args, pass_args, cwd):
+        arch = args.get("arch")
+        premake_args = None
+        if sys.platform == "darwin" and arch == "x86_64":
+            premake_args = ["--mac-x86_64"]
         if not args["no_premake"]:
             print("- running premake...")
-            run_platform_premake(cc=args["cc"])
+            enable_tests = any(
+                target.endswith("-tests") for target in (args["target"] or []))
+            run_platform_premake(cc=args["cc"], enable_tests=enable_tests,
+                                 extra_premake_args=premake_args)
             print("")
 
         print("- building (%s):%s..." % (
@@ -851,15 +903,37 @@ class BaseBuildCommand(Command):
                     ] + ([targets] if targets else []) + pass_args)
         elif sys.platform == "darwin":
             schemes = args["target"] or ["xenia-app"]
-            nested_args = [["-scheme", scheme] for scheme in schemes]
-            scheme_args = [arg for pair in nested_args for arg in pair]
-            result = subprocess.call([
-                "xcodebuild",
-                "-workspace",
-                "build/xenia.xcworkspace",
-                "-configuration",
-                args["config"]
-            ] + scheme_args + pass_args, env=dict(os.environ))
+            result = 0
+            extra_arch_args = []
+            if arch and "-arch" not in pass_args:
+                extra_arch_args = ["-arch", arch]
+            for scheme in schemes:
+                if scheme.endswith("-tests"):
+                    build_args = [
+                        "xcodebuild",
+                        "-project",
+                        f"build/{scheme}.xcodeproj",
+                        "-configuration",
+                        args["config"].capitalize(),
+                        "-scheme",
+                        scheme,
+                    ]
+                else:
+                    build_args = [
+                        "xcodebuild",
+                        "-workspace",
+                        "build/xenia.xcworkspace",
+                        "-configuration",
+                        args["config"].capitalize(),
+                        "-scheme",
+                        scheme,
+                    ]
+                build_result = subprocess.call(build_args + extra_arch_args +
+                                               pass_args,
+                                               env=dict(os.environ))
+                if build_result != 0:
+                    result = build_result
+                    break
         else:
             result = subprocess.call([
                 "cmake",
@@ -1187,35 +1261,67 @@ class TestCommand(BaseBuildCommand):
             ]
         args["target"] = test_targets
 
+        if sys.platform == "darwin" and is_macos_arm64_host():
+            archs_to_test = [args["arch"]] if args["arch"] else [
+                "arm64", "x86_64"
+            ]
+        else:
+            archs_to_test = [args["arch"]] if args["arch"] else [None]
+
         # Build all targets (if desired).
         if not args["no_build"]:
-            result = super(TestCommand, self).execute(args, [], cwd)
-            if result:
-                print("Failed to build, aborting test run.")
-                return result
+            enable_tests = any(
+                target.endswith("-tests") for target in test_targets)
+            for arch in archs_to_test:
+                if sys.platform == "darwin" and is_macos_arm64_host():
+                    premake_args = ["--mac-x86_64"] if arch == "x86_64" else []
+                    run_platform_premake(
+                        cc=args.get("cc"),
+                        enable_tests=enable_tests,
+                        extra_premake_args=premake_args)
+                    print("")
+                    build_args = dict(args)
+                    build_args["arch"] = arch
+                    build_args["no_premake"] = True
+                    result = BaseBuildCommand.execute(self, build_args, [], cwd)
+                else:
+                    build_args = dict(args)
+                    build_args["arch"] = arch
+                    result = BaseBuildCommand.execute(self, build_args, [], cwd)
+                if result:
+                    print("Failed to build, aborting test run.")
+                    return result
 
         # Ensure all targets exist before we run.
-        test_executables = [
-            get_bin(os.path.join(get_build_bin_path(args), test_target))
-            for test_target in test_targets]
-        for i in range(0, len(test_targets)):
-            if test_executables[i] is None:
-                print(f"ERROR: Unable to find {test_targets[i]} - build it.")
-                return 1
+        test_executable_sets = []
+        for arch in archs_to_test:
+            arch_args = dict(args)
+            arch_args["arch"] = arch
+            executables = [
+                get_bin(os.path.join(get_build_bin_path(arch_args), test_target))
+                for test_target in test_targets]
+            for i in range(0, len(test_targets)):
+                if executables[i] is None:
+                    print(f"ERROR: Unable to find {test_targets[i]} - build it.")
+                    return 1
+            test_executable_sets.append((arch, executables))
 
         # Run tests.
         any_failed = False
-        for test_executable in test_executables:
-            print(f"- {test_executable}")
-            result = shell_call([test_executable] + pass_args,
-                                throw_on_error=False)
-            if result:
-                any_failed = True
-                if args["continue"]:
-                    print("ERROR: test failed but continuing due to --continue.")
-                else:
-                    print("ERROR: test failed, aborting, use --continue to keep going.")
-                    return result
+        for arch, test_executables in test_executable_sets:
+            if arch:
+                print(f"\n- arch: {arch}")
+            for test_executable in test_executables:
+                print(f"- {test_executable}")
+                result = shell_call([test_executable] + pass_args,
+                                    throw_on_error=False)
+                if result:
+                    any_failed = True
+                    if args["continue"]:
+                        print("ERROR: test failed but continuing due to --continue.")
+                    else:
+                        print("ERROR: test failed, aborting, use --continue to keep going.")
+                        return result
 
         if any_failed:
             print("ERROR: one or more tests failed.")

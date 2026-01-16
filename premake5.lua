@@ -14,8 +14,16 @@ targetdir(build_bin)
 objdir(build_obj)
 
 -- Define variables for enabling specific submodules
--- Todo: Add changing from xb command
-enableTests = false
+newoption({
+  trigger = "tests",
+  description = "Enable building test targets",
+})
+newoption({
+  trigger = "mac-x86_64",
+  description = "Enable x86_64 platform on macOS ARM64 hosts",
+})
+
+enableTests = _OPTIONS["tests"] ~= nil
 enableMiscSubprojects = false
 
 -- Define an ARCH variable
@@ -24,6 +32,34 @@ if os.istarget("linux") then
   ARCH = os.outputof("uname -p")
 else
   ARCH = "unknown"
+end
+
+function is_macos_arm64_host()
+  local env = os.getenv("XE_MACOS_ARM64_HOST")
+  if env == "1" then
+    return true
+  end
+  if env == "0" then
+    return false
+  end
+  if not os.istarget("macosx") then
+    return false
+  end
+  local sysctl = os.outputof("sysctl -n hw.optional.arm64 2>/dev/null")
+  if sysctl then
+    local sysctl_value = sysctl:match("^(%d+)")
+    if sysctl_value == "1" then
+      return true
+    end
+  end
+  local machine = os.outputof("uname -m")
+  if machine then
+    local machine_value = machine:match("^(%S+)")
+    if machine_value == "arm64" then
+      return true
+    end
+  end
+  return false
 end
 
 includedirs({
@@ -140,6 +176,17 @@ filter("platforms:Linux")
 
 filter({"platforms:Linux", "kind:*App"})
   linkgroups("On")
+
+filter({"system:macosx", "toolset:clang"})
+  buildoptions({
+    "-w",
+  })
+  removefatalwarnings("All")
+filter({"system:macosx", "platforms:Mac-x86_64", "toolset:clang"})
+  buildoptions({
+    "-mavx",
+  })
+filter({})
 
 filter({"language:C++", "toolset:clang or gcc"}) -- "platforms:Linux"
   disablewarnings({
@@ -283,16 +330,36 @@ workspace("xenia")
       architecture("x86_64")
     filter({})
   else
-    architecture("x86_64")
     if os.istarget("linux") then
       platforms({"Linux"})
+      architecture("x86_64")
     elseif os.istarget("macosx") then
-      platforms({"Mac"})
-      xcodebuildsettings({
-        ["ARCHS"] = "x86_64"
-      })
+      local mac_platforms = nil
+      if is_macos_arm64_host() then
+        if _OPTIONS["mac-x86_64"] then
+          mac_platforms = {"Mac-x86_64"}
+        else
+          mac_platforms = {"Mac-ARM64"}
+        end
+      else
+        mac_platforms = {"Mac-x86_64"}
+      end
+      platforms(mac_platforms)
+      filter("platforms:Mac-ARM64")
+        architecture("ARM64")
+        xcodebuildsettings({
+          ["ARCHS"] = "arm64",
+        })
+      filter("platforms:Mac-x86_64")
+        architecture("x86_64")
+        xcodebuildsettings({
+          ["ARCHS"] = "x86_64",
+          ["CLANG_X86_VECTOR_INSTRUCTION_SET"] = "avx",
+        })
+      filter({})
     elseif os.istarget("windows") then
       platforms({"Windows"})
+      architecture("x86_64")
       -- 10.0.15063.0: ID3D12GraphicsCommandList1::SetSamplePositions.
       -- 10.0.19041.0: D3D12_HEAP_FLAG_CREATE_NOT_ZEROED.
       -- 10.0.22000.0: DWMWA_WINDOW_CORNER_PREFERENCE.

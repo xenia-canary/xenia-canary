@@ -91,6 +91,10 @@ node_modules/.bin/
 # Local-only paths
 # ==============================================================================
 
+/AGENTS.md
+/NEXT_STEPS.md
+/docs/plans/
+
 .vagrant
 /attic/
 /content/

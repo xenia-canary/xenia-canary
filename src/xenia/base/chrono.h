@@ -145,8 +145,14 @@ struct clock_time_conversion<::xe::chrono::WinSystemClock,
 
     auto delta = (t - x_now);
     if (!::cvars::clock_no_scaling) {
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+      auto scaled_delta =
+          std::chrono::duration<double>(delta) * xe::Clock::guest_time_scalar();
+      delta = std::chrono::floor<WClock_::duration>(scaled_delta);
+#else
       delta = std::chrono::floor<WClock_::duration>(
           delta * xe::Clock::guest_time_scalar());
+#endif
     }
     return w_now + delta;
   }
@@ -169,8 +175,14 @@ struct clock_time_conversion<::xe::chrono::XSystemClock,
 
     xe::chrono::hundrednanoseconds delta = (t - w_now);
     if (!::cvars::clock_no_scaling) {
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+      auto scaled_delta =
+          std::chrono::duration<double>(delta) / xe::Clock::guest_time_scalar();
+      delta = std::chrono::floor<WClock_::duration>(scaled_delta);
+#else
       delta = std::chrono::floor<WClock_::duration>(
           delta / xe::Clock::guest_time_scalar());
+#endif
     }
     return x_now + delta;
   }
