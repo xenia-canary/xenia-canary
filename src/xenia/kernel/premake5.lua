@@ -6,6 +6,19 @@ project("xenia-kernel")
   uuid("ae185c4a-1c4f-4503-9892-328e549e871a")
   kind("StaticLib")
   language("C++")
+  includedirs({
+    project_root.."/third_party/asio/include",
+  })
+  defines({
+    "ASIO_STANDALONE",
+    "ASIO_NO_DEPRECATED",
+  })
+  filter("platforms:Windows")
+    defines({
+      "_WIN32_WINNT=0x0A00",  -- Windows 10+ for Asio
+      "_WINSOCK_DEPRECATED_NO_WARNINGS",  -- Suppress deprecated Winsock API warnings
+    })
+  filter({})
   links({
     "aes_128",
     "fmt",

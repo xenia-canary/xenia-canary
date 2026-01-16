@@ -81,9 +81,13 @@
 #endif
 
 #if XE_PLATFORM_WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX  // Don't want windows.h including min/max macros.
-#endif            // XE_PLATFORM_WIN32
+#endif
+#endif  // XE_PLATFORM_WIN32
 
 #if XE_PLATFORM_WIN32
 #include <intrin.h>
