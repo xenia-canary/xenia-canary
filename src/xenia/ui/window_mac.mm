@@ -790,6 +790,28 @@ void MacWindow::HandleKeyEvent(void* event, bool is_down) {
 
   if (is_down) {
     OnKeyDown(e, destruction_receiver);
+    if (destruction_receiver.IsWindowDestroyedOrClosed()) {
+      return;
+    }
+    if (!ctrl_pressed && !super_pressed) {
+      NSString* characters = [ns_event characters];
+      if (characters && [characters length] > 0) {
+        const NSUInteger length = [characters length];
+        for (NSUInteger i = 0; i < length; ++i) {
+          const unichar ch = [characters characterAtIndex:i];
+          if (ch < 0x20 || ch == 0x7F ||
+              (ch >= 0xF700 && ch <= 0xF8FF)) {
+            continue;
+          }
+          KeyEvent char_event(this, VirtualKey(ch), 1, false, shift_pressed,
+                              ctrl_pressed, alt_pressed, super_pressed);
+          OnKeyChar(char_event, destruction_receiver);
+          if (destruction_receiver.IsWindowDestroyedOrClosed()) {
+            return;
+          }
+        }
+      }
+    }
   } else {
     OnKeyUp(e, destruction_receiver);
   }
