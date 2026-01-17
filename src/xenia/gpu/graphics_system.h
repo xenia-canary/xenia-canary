@@ -69,6 +69,9 @@ class GraphicsSystem {
   kernel::KernelState* kernel_state() const { return kernel_state_; }
   ui::GraphicsProvider* provider() const { return provider_.get(); }
   ui::Presenter* presenter() const { return presenter_.get(); }
+  // Create a presenter on demand for offscreen capture use cases such as
+  // trace dumps.
+  bool EnsurePresenterForCapture();
 
   virtual X_STATUS Setup(cpu::Processor* processor,
                          kernel::KernelState* kernel_state,

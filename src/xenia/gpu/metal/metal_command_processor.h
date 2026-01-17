@@ -53,6 +53,10 @@ namespace metal {
 class MetalGraphicsSystem;
 
 class MetalCommandProcessor : public CommandProcessor {
+ protected:
+#define OVERRIDING_BASE_CMDPROCESSOR
+#include "../pm4_command_processor_declare.h"
+#undef OVERRIDING_BASE_CMDPROCESSOR
  public:
   explicit MetalCommandProcessor(MetalGraphicsSystem* graphics_system,
                                  kernel::KernelState* kernel_state);
