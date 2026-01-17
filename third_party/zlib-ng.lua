@@ -5,40 +5,45 @@ project("zlib-ng")
   language("C")
 
   defines({
-    "X86_FEATURES",
-    "X86_HAVE_XSAVE_INTRIN",
-    "X86_SSSE3",
-    "X86_SSE42",
     "WITH_GZFILEOP",
   })
-  if os.istarget("windows") then
-    defines({
-      "X86_SSE2",
-      "X86_AVX2",
-      "X86_AVX512",
-      "X86_AVX512VNNI",
-      "X86_PCLMULQDQ_CRC",
-      "X86_VPCLMULQDQ_CRC",
-    })
-  end
 
   files({
     "zlib-ng/*.c",
-    "zlib-ng/arch/x86/*.c",
     "zlib-ng/arch/generic/*.c",
   })
-  if not os.istarget("windows") then
-    removefiles({
-      "zlib-ng/arch/x86/adler32_avx2.c",
-      "zlib-ng/arch/x86/adler32_avx512.c",
-      "zlib-ng/arch/x86/adler32_avx512_vnni.c",
-      "zlib-ng/arch/x86/chunkset_avx2.c",
-      "zlib-ng/arch/x86/compare256_avx2.c",
-      "zlib-ng/arch/x86/crc32_pclmulqdq.c",
-      "zlib-ng/arch/x86/crc32_vpclmulqdq.c",
-      "zlib-ng/arch/x86/slide_hash_avx2.c",
+  filter("architecture:x86_64")
+    defines({
+      "X86_FEATURES",
+      "X86_HAVE_XSAVE_INTRIN",
+      "X86_SSSE3",
+      "X86_SSE42",
     })
-  end
+    files({
+      "zlib-ng/arch/x86/*.c",
+    })
+    if os.istarget("windows") then
+      defines({
+        "X86_SSE2",
+        "X86_AVX2",
+        "X86_AVX512",
+        "X86_AVX512VNNI",
+        "X86_PCLMULQDQ_CRC",
+        "X86_VPCLMULQDQ_CRC",
+      })
+    else
+      removefiles({
+        "zlib-ng/arch/x86/adler32_avx2.c",
+        "zlib-ng/arch/x86/adler32_avx512.c",
+        "zlib-ng/arch/x86/adler32_avx512_vnni.c",
+        "zlib-ng/arch/x86/chunkset_avx2.c",
+        "zlib-ng/arch/x86/compare256_avx2.c",
+        "zlib-ng/arch/x86/crc32_pclmulqdq.c",
+        "zlib-ng/arch/x86/crc32_vpclmulqdq.c",
+        "zlib-ng/arch/x86/slide_hash_avx2.c",
+      })
+    end
+  filter({})
 
   includedirs({
     "zlib-ng",
