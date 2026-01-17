@@ -15,6 +15,9 @@ project("xenia-cpu-backend-a64")
       "xenia-base",
       "xenia-cpu",
     })
+    sysincludedirs({
+      project_root.."/third_party/oaknut/include",
+    })
     defines({
     })
 

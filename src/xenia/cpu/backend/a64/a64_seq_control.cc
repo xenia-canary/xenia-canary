@@ -419,7 +419,7 @@ EMITTER_OPCODE_TABLE(OPCODE_SET_RETURN_ADDRESS, SET_RETURN_ADDRESS);
 // ============================================================================
 struct BRANCH : Sequence<BRANCH, I<OPCODE_BRANCH, VoidOp, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src1.value->name);
+    oaknut::Label* label = e.lookup_label(i.src1.value);
     assert_not_null(label);
     e.B(*label);
   }
@@ -432,7 +432,7 @@ EMITTER_OPCODE_TABLE(OPCODE_BRANCH, BRANCH);
 struct BRANCH_TRUE_I8
     : Sequence<BRANCH_TRUE_I8, I<OPCODE_BRANCH_TRUE, VoidOp, I8Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBNZ(i.src1, *label);
   }
@@ -440,7 +440,7 @@ struct BRANCH_TRUE_I8
 struct BRANCH_TRUE_I16
     : Sequence<BRANCH_TRUE_I16, I<OPCODE_BRANCH_TRUE, VoidOp, I16Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBNZ(i.src1, *label);
   }
@@ -448,7 +448,7 @@ struct BRANCH_TRUE_I16
 struct BRANCH_TRUE_I32
     : Sequence<BRANCH_TRUE_I32, I<OPCODE_BRANCH_TRUE, VoidOp, I32Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBNZ(i.src1, *label);
   }
@@ -456,7 +456,7 @@ struct BRANCH_TRUE_I32
 struct BRANCH_TRUE_I64
     : Sequence<BRANCH_TRUE_I64, I<OPCODE_BRANCH_TRUE, VoidOp, I64Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBNZ(i.src1, *label);
   }
@@ -464,7 +464,7 @@ struct BRANCH_TRUE_I64
 struct BRANCH_TRUE_F32
     : Sequence<BRANCH_TRUE_F32, I<OPCODE_BRANCH_TRUE, VoidOp, F32Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.FCMP(i.src1, 0);
     e.B(Cond::NE, *label);
@@ -473,7 +473,7 @@ struct BRANCH_TRUE_F32
 struct BRANCH_TRUE_F64
     : Sequence<BRANCH_TRUE_F64, I<OPCODE_BRANCH_TRUE, VoidOp, F64Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.FCMP(i.src1, 0);
     e.B(Cond::NE, *label);
@@ -489,7 +489,7 @@ EMITTER_OPCODE_TABLE(OPCODE_BRANCH_TRUE, BRANCH_TRUE_I8, BRANCH_TRUE_I16,
 struct BRANCH_FALSE_I8
     : Sequence<BRANCH_FALSE_I8, I<OPCODE_BRANCH_FALSE, VoidOp, I8Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBZ(i.src1, *label);
   }
@@ -498,7 +498,7 @@ struct BRANCH_FALSE_I16
     : Sequence<BRANCH_FALSE_I16,
                I<OPCODE_BRANCH_FALSE, VoidOp, I16Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBZ(i.src1, *label);
   }
@@ -507,7 +507,7 @@ struct BRANCH_FALSE_I32
     : Sequence<BRANCH_FALSE_I32,
                I<OPCODE_BRANCH_FALSE, VoidOp, I32Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBZ(i.src1, *label);
   }
@@ -516,7 +516,7 @@ struct BRANCH_FALSE_I64
     : Sequence<BRANCH_FALSE_I64,
                I<OPCODE_BRANCH_FALSE, VoidOp, I64Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.CBZ(i.src1, *label);
   }
@@ -525,7 +525,7 @@ struct BRANCH_FALSE_F32
     : Sequence<BRANCH_FALSE_F32,
                I<OPCODE_BRANCH_FALSE, VoidOp, F32Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.FCMP(i.src1, 0);
     e.B(Cond::EQ, *label);
@@ -535,7 +535,7 @@ struct BRANCH_FALSE_F64
     : Sequence<BRANCH_FALSE_F64,
                I<OPCODE_BRANCH_FALSE, VoidOp, F64Op, LabelOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    oaknut::Label* label = e.lookup_label(i.src2.value->name);
+    oaknut::Label* label = e.lookup_label(i.src2.value);
     assert_not_null(label);
     e.FCMP(i.src1, 0);
     e.B(Cond::EQ, *label);

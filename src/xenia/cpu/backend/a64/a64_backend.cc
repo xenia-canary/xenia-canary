@@ -70,15 +70,12 @@ class A64ThunkEmitter : public A64Emitter {
 };
 
 A64Backend::A64Backend() : Backend(), code_cache_(nullptr) {
-  cs_err err = cs_open(CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, &capstone_handle_);
+  cs_err err =
+      cs_open(CS_ARCH_AARCH64, CS_MODE_LITTLE_ENDIAN, &capstone_handle_);
   if (err) {
     printf("Failed on cs_open() with error returned: %u\n", err);
     assert_always("Failed to initialize capstone");
   }
-  //  if (cs_open(CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN, &capstone_handle_) !=
-  //      CS_ERR_OK) {
-  //      assert_always("Failed to initialize capstone");
-  //  }
   cs_option(capstone_handle_, CS_OPT_SYNTAX, CS_OPT_SYNTAX_INTEL);
   cs_option(capstone_handle_, CS_OPT_DETAIL, CS_OPT_ON);
   cs_option(capstone_handle_, CS_OPT_SKIPDATA, CS_OPT_OFF);
@@ -160,7 +157,7 @@ std::unique_ptr<GuestFunction> A64Backend::CreateGuestFunction(
   return std::make_unique<A64Function>(module, address);
 }
 
-uint64_t ReadCapstoneReg(HostThreadContext* context, arm64_reg reg) {
+uint64_t ReadCapstoneReg(HostThreadContext* context, aarch64_reg reg) {
   switch (reg) {
     case ARM64_REG_X0:
       return context->x[0];
@@ -300,37 +297,37 @@ bool TestCapstonePstate(arm64_cc cond, uint32_t pstate) {
   const bool C = !!(pstate & 0x20000000);
   const bool V = !!(pstate & 0x10000000);
   switch (cond) {
-    case ARM64_CC_EQ:
+    case ARM64CC_EQ:
       return (Z == true);
-    case ARM64_CC_NE:
+    case ARM64CC_NE:
       return (Z == false);
-    case ARM64_CC_HS:
+    case ARM64CC_HS:
       return (C == true);
-    case ARM64_CC_LO:
+    case ARM64CC_LO:
       return (C == false);
-    case ARM64_CC_MI:
+    case ARM64CC_MI:
       return (N == true);
-    case ARM64_CC_PL:
+    case ARM64CC_PL:
       return (N == false);
-    case ARM64_CC_VS:
+    case ARM64CC_VS:
       return (V == true);
-    case ARM64_CC_VC:
+    case ARM64CC_VC:
       return (V == false);
-    case ARM64_CC_HI:
+    case ARM64CC_HI:
       return ((C == true) && (Z == false));
-    case ARM64_CC_LS:
+    case ARM64CC_LS:
       return ((C == false) || (Z == true));
-    case ARM64_CC_GE:
+    case ARM64CC_GE:
       return (N == V);
-    case ARM64_CC_LT:
+    case ARM64CC_LT:
       return (N != V);
-    case ARM64_CC_GT:
+    case ARM64CC_GT:
       return ((Z == false) && (N == V));
-    case ARM64_CC_LE:
+    case ARM64CC_LE:
       return ((Z == true) || (N != V));
-    case ARM64_CC_AL:
+    case ARM64CC_AL:
       return true;
-    case ARM64_CC_NV:
+    case ARM64CC_NV:
       return false;
     default:
       assert_unhandled_case(cond);
@@ -348,14 +345,14 @@ uint64_t A64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
   insn.detail = &all_detail;
   cs_disasm_iter(capstone_handle_, &machine_code_ptr,
                  &remaining_machine_code_size, &host_address, &insn);
-  const auto& detail = all_detail.arm64;
+  const auto& detail = all_detail.aarch64;
   switch (insn.id) {
     case ARM64_INS_B:
     case ARM64_INS_BL: {
       assert_true(detail.operands[0].type == ARM64_OP_IMM);
       const int64_t pc_offset = static_cast<int64_t>(detail.operands[0].imm);
       const bool test_passed =
-          TestCapstonePstate(detail.cc, thread_info->host_context.cpsr);
+          TestCapstonePstate(detail.cc, thread_info->host_context.pstate);
       if (test_passed) {
         return current_pc + pc_offset;
       } else {
@@ -451,39 +448,6 @@ bool A64Backend::ExceptionCallbackThunk(Exception* ex, void* data) {
 }
 
 bool A64Backend::ExceptionCallback(Exception* ex) {
-  if (ex->code() == Exception::Code::kAccessViolation) {
-    const uint64_t host_pc = ex->pc();
-    const uint64_t fault_address = ex->fault_address();
-    uint64_t guest_pc = 0;
-    uint32_t host_offset = 0;
-    auto function = code_cache_->LookupFunction(host_pc);
-    if (function && function->machine_code()) {
-      const uint64_t function_pc =
-          reinterpret_cast<uint64_t>(function->machine_code());
-      host_offset = static_cast<uint32_t>(host_pc - function_pc);
-      if (const auto* entry = function->LookupMachineCodeOffset(host_offset)) {
-        guest_pc = entry->guest_address;
-      }
-    }
-#if XE_ARCH_ARM64
-    auto* thread_context = ex->thread_context();
-    XELOGE(
-        "A64 AV: host_pc=0x{:016X} guest_pc=0x{:08X} host_off=0x{:X} "
-        "fault=0x{:016X} op={} x21=0x{:016X} x27=0x{:016X} x28=0x{:016X}",
-        host_pc, guest_pc, host_offset, fault_address,
-        static_cast<int>(ex->access_violation_operation()),
-        thread_context ? thread_context->x[21] : 0,
-        thread_context ? thread_context->x[27] : 0,
-        thread_context ? thread_context->x[28] : 0);
-#else
-    XELOGE(
-        "A64 AV: host_pc=0x{:016X} guest_pc=0x{:08X} host_off=0x{:X} "
-        "fault=0x{:016X} op={}",
-        host_pc, guest_pc, host_offset, fault_address,
-        static_cast<int>(ex->access_violation_operation()));
-#endif
-    return false;
-  }
   if (ex->code() != Exception::Code::kIllegalInstruction) {
     // We only care about illegal instructions. Other things will be handled by
     // other handlers (probably). If nothing else picks it up we'll be called

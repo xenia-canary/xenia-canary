@@ -23,6 +23,11 @@ namespace a64 {
 
 volatile int anchor_memory = 0;
 
+// vec128b stores bytes in reversed 32-bit chunks; use reversed args for 0..15.
+static const vec128_t kStvlShuffle =
+    vec128b(3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12);
+static const vec128_t kStvrSwapMask = vec128b(static_cast<uint8_t>(0x83));
+
 template <typename T>
 XReg ComputeMemoryAddressOffset(A64Emitter& e, const T& guest, const T& offset,
                                 WReg address_register = W3) {
@@ -177,6 +182,132 @@ EMITTER_OPCODE_TABLE(OPCODE_ATOMIC_EXCHANGE, ATOMIC_EXCHANGE_I8,
                      ATOMIC_EXCHANGE_I64);
 
 // ============================================================================
+// OPCODE_LVL/LVR/STVL/STVR
+// ============================================================================
+struct LVL_V128 : Sequence<LVL_V128, I<OPCODE_LVL, V128Op, I64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W4);
+    e.AND(W0, address.toW(), 0xF);
+    e.SUB(X1, address, X0);
+
+    e.LDR(Q2, X1);
+
+    e.MOV(X2, e.GetVConstPtr());
+    e.LDR(Q0, X2, e.GetVConstOffset(VByteSwapMask));
+    e.DUP(Q1.B16(), W0);
+    e.ADD(Q0.B16(), Q0.B16(), Q1.B16());
+    e.TBL(i.dest.reg().B16(), List{Q2.B16()}, Q0.B16());
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_LVL, LVL_V128);
+
+struct LVR_V128 : Sequence<LVR_V128, I<OPCODE_LVR, V128Op, I64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W4);
+    e.AND(W0, address.toW(), 0xF);
+    e.EOR(i.dest.reg().B16(), i.dest.reg().B16(), i.dest.reg().B16());
+
+    oaknut::Label done;
+    e.CBZ(W0, done);
+
+    e.SUB(X1, address, X0);
+    e.LDR(Q2, X1);
+
+    e.MOV(X2, e.GetVConstPtr());
+    e.LDR(Q0, X2, e.GetVConstOffset(VByteSwapMask));
+    e.DUP(Q1.B16(), W0);
+    e.ADD(Q0.B16(), Q0.B16(), Q1.B16());
+
+    e.MOVI(Q1.B16(), 0x10);
+    e.CMHS(Q3.B16(), Q0.B16(), Q1.B16());
+    e.SUB(Q0.B16(), Q0.B16(), Q1.B16());
+    e.MOVI(Q1.B16(), 0x80);
+    e.BSL(Q3.B16(), Q0.B16(), Q1.B16());
+
+    e.TBL(i.dest.reg().B16(), List{Q2.B16()}, Q3.B16());
+    e.l(done);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_LVR, LVR_V128);
+
+struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W4);
+    e.AND(W0, address.toW(), 0xF);
+    e.SUB(X1, address, X0);
+
+    e.LDR(Q2, X1);
+
+    e.MOV(X2, reinterpret_cast<uintptr_t>(&kStvlShuffle));
+    e.LDR(Q0, X2);
+    e.DUP(Q1.B16(), W0);
+    e.SUB(Q0.B16(), Q0.B16(), Q1.B16());
+
+    e.MOV(X2, e.GetVConstPtr());
+    e.LDR(Q1, X2, e.GetVConstOffset(VSwapWordMask));
+    e.EOR(Q0.B16(), Q0.B16(), Q1.B16());
+
+    const QReg shuffled = Q3;
+    if (i.src2.is_constant) {
+      e.LoadConstantV(shuffled, i.src2.constant());
+    } else {
+      e.MOV(shuffled.B16(), i.src2.reg().B16());
+    }
+    e.TBL(shuffled.B16(), List{shuffled.B16()}, Q0.B16());
+
+    e.MOVI(Q1.B16(), 0x80);
+    e.CMHS(Q1.B16(), Q0.B16(), Q1.B16());
+    e.BSL(Q1.B16(), Q2.B16(), shuffled.B16());
+    e.STR(Q1, X1);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_STVL, STVL_V128);
+
+struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W4);
+    e.AND(W0, address.toW(), 0xF);
+
+    oaknut::Label done;
+    e.CBZ(W0, done);
+
+    e.SUB(X1, address, X0);
+    e.LDR(Q2, X1);
+
+    e.MOV(X2, reinterpret_cast<uintptr_t>(&kStvlShuffle));
+    e.LDR(Q0, X2);
+    e.DUP(Q1.B16(), W0);
+    e.SUB(Q0.B16(), Q0.B16(), Q1.B16());
+
+    e.MOV(X2, reinterpret_cast<uintptr_t>(&kStvrSwapMask));
+    e.LDR(Q1, X2);
+    e.EOR(Q0.B16(), Q0.B16(), Q1.B16());
+
+    e.MOVI(Q1.B16(), 0x0F);
+    e.AND(Q1.B16(), Q0.B16(), Q1.B16());
+    e.MOVI(Q3.B16(), 0x80);
+    e.AND(Q3.B16(), Q0.B16(), Q3.B16());
+    e.ORR(Q1.B16(), Q1.B16(), Q3.B16());
+
+    const QReg shuffled = Q3;
+    if (i.src2.is_constant) {
+      e.LoadConstantV(shuffled, i.src2.constant());
+    } else {
+      e.MOV(shuffled.B16(), i.src2.reg().B16());
+    }
+    e.TBL(shuffled.B16(), List{shuffled.B16()}, Q1.B16());
+
+    e.MOVI(Q1.B16(), 0x80);
+    e.CMHS(Q1.B16(), Q0.B16(), Q1.B16());
+    e.BSL(Q1.B16(), Q2.B16(), shuffled.B16());
+    e.STR(Q1, X1);
+
+    e.l(done);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_STVR, STVR_V128);
+
+// ============================================================================
 // OPCODE_ATOMIC_COMPARE_EXCHANGE
 // ============================================================================
 struct ATOMIC_COMPARE_EXCHANGE_I32
@@ -281,6 +412,59 @@ struct ATOMIC_COMPARE_EXCHANGE_I64
 };
 EMITTER_OPCODE_TABLE(OPCODE_ATOMIC_COMPARE_EXCHANGE,
                      ATOMIC_COMPARE_EXCHANGE_I32, ATOMIC_COMPARE_EXCHANGE_I64);
+
+// ============================================================================
+// OPCODE_RESERVED_LOAD / OPCODE_RESERVED_STORE
+// ============================================================================
+struct RESERVED_LOAD_INT32
+    : Sequence<RESERVED_LOAD_INT32, I<OPCODE_RESERVED_LOAD, I32Op, I64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W3);
+    e.LDAXR(i.dest, address);
+  }
+};
+struct RESERVED_LOAD_INT64
+    : Sequence<RESERVED_LOAD_INT64, I<OPCODE_RESERVED_LOAD, I64Op, I64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W3);
+    e.LDAXR(i.dest, address);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_RESERVED_LOAD, RESERVED_LOAD_INT32,
+                     RESERVED_LOAD_INT64);
+
+struct RESERVED_STORE_INT32
+    : Sequence<RESERVED_STORE_INT32,
+               I<OPCODE_RESERVED_STORE, I8Op, I64Op, I32Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W3);
+    const WReg value = i.src2.is_constant ? W4 : i.src2;
+    if (i.src2.is_constant) {
+      e.MOV(value, static_cast<uint32_t>(i.src2.constant()));
+    }
+    e.STLXR(W0, value, address);
+    e.CMP(W0, 0);
+    e.CSET(i.dest, Cond::EQ);
+  }
+};
+
+struct RESERVED_STORE_INT64
+    : Sequence<RESERVED_STORE_INT64,
+               I<OPCODE_RESERVED_STORE, I8Op, I64Op, I64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const XReg address = ComputeMemoryAddress(e, i.src1, W3);
+    const XReg value = i.src2.is_constant ? X4 : i.src2;
+    if (i.src2.is_constant) {
+      e.MOV(value, i.src2.constant());
+    }
+    e.STLXR(W0, value, address);
+    e.CMP(W0, 0);
+    e.CSET(i.dest, Cond::EQ);
+  }
+};
+
+EMITTER_OPCODE_TABLE(OPCODE_RESERVED_STORE, RESERVED_STORE_INT32,
+                     RESERVED_STORE_INT64);
 
 // ============================================================================
 // OPCODE_LOAD_LOCAL

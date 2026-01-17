@@ -115,6 +115,7 @@ enum VConst {
   VQNaN,
   VInt127,
   V2To32,
+  VSingleDenormalMask,
 };
 
 enum A64EmitterFeatureFlags {
@@ -173,6 +174,13 @@ class A64Emitter : public oaknut::VectorCodeGenerator {
   // Gets(and possibly create) an HIR label with the specified name
   oaknut::Label* lookup_label(const char* label_name) {
     return &label_lookup_[label_name];
+  }
+  oaknut::Label* lookup_label(hir::Label* label) {
+    assert_not_null(label);
+    if (label->name) {
+      return &label_lookup_[label->name];
+    }
+    return &label_lookup_[label->GetIdString()];
   }
 
   oaknut::Label& epilog_label() { return *epilog_label_; }

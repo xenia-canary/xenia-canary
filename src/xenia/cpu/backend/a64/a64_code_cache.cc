@@ -9,7 +9,6 @@
 
 #include "xenia/cpu/backend/a64/a64_code_cache.h"
 
-#include <atomic>
 #include <cstdlib>
 #include <cstring>
 
@@ -20,7 +19,6 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
-#include "xenia/base/cvar.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -28,34 +26,12 @@
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/module.h"
 
-DEFINE_bool(a64_indirection_table_log, false,
-            "Log A64 indirection table mapping and updates.", "CPU");
-DEFINE_int32(a64_indirection_table_log_limit, 32,
-             "Maximum number of A64 indirection table log entries.", "CPU");
-
 namespace xe {
 namespace cpu {
 namespace backend {
 namespace a64 {
 
 using namespace xe::literals;
-
-namespace {
-
-bool ShouldLogIndirectionTable() {
-  if (!cvars::a64_indirection_table_log) {
-    return false;
-  }
-  const int32_t limit = cvars::a64_indirection_table_log_limit;
-  if (limit <= 0) {
-    return false;
-  }
-  static std::atomic<int32_t> log_count{0};
-  const int32_t count = log_count.fetch_add(1, std::memory_order_relaxed);
-  return count < limit;
-}
-
-}  // namespace
 
 // Define static constants for linking
 const size_t A64CodeCache::kIndirectionTableSize;
@@ -132,16 +108,17 @@ bool A64CodeCache::Initialize() {
       xe::memory::AllocationType::kReserve,
       xe::memory::PageAccess::kReadWrite));
   if (!indirection_table_base_) {
-    XELOGW("Preferred indirection table base unavailable; falling back");
     indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
         nullptr, kIndirectionTableSize, xe::memory::AllocationType::kReserve,
         xe::memory::PageAccess::kReadWrite));
   }
   if (!indirection_table_base_) {
     XELOGE("Unable to allocate code cache indirection table");
-    XELOGE("Tried preferred range {:X}-{:X} with fallback to OS-chosen",
-           static_cast<uint64_t>(kIndirectionTableBase),
-           kIndirectionTableBase + kIndirectionTableSize);
+    XELOGE(
+        "This is likely because the {:X}-{:X} range is in use by some other "
+        "system DLL",
+        static_cast<uint64_t>(kIndirectionTableBase),
+        kIndirectionTableBase + kIndirectionTableSize);
     return false;
   }
   indirection_table_actual_base_ =
@@ -153,18 +130,8 @@ bool A64CodeCache::Initialize() {
 #endif
 #endif
 
-  if (ShouldLogIndirectionTable()) {
-    XELOGI(
-        "A64 indirection table: guest_base=0x{:08X} table_base=0x{:016X} "
-        "size=0x{:X} entry_bytes={}",
-        static_cast<uint32_t>(kIndirectionTableBase),
-        static_cast<uint64_t>(indirection_table_actual_base_),
-        static_cast<uint32_t>(kIndirectionTableSize),
-        static_cast<uint32_t>(kIndirectionEntrySize));
-  }
-
   // Create mmap file. This allows us to share the code cache with the debugger.
-  file_name_ = fmt::format("xenia_code_cache");
+  file_name_ = fmt::format("xenia_code_cache_{}", Clock::QueryHostTickCount());
   mapping_ = xe::memory::CreateFileMappingHandle(
       file_name_, kGeneratedCodeSize, xe::memory::PageAccess::kExecuteReadWrite,
       false);
@@ -193,9 +160,6 @@ bool A64CodeCache::Initialize() {
             mapping_, reinterpret_cast<void*>(kGeneratedCodeExecuteBase),
             kGeneratedCodeSize, xe::memory::PageAccess::kExecuteReadWrite, 0));
     if (!generated_code_execute_base_) {
-      XELOGW(
-          "Fixed address mapping for generated code failed, trying OS-chosen "
-          "address");
       generated_code_execute_base_ =
           reinterpret_cast<uint8_t*>(xe::memory::MapFileView(
               mapping_, nullptr, kGeneratedCodeSize,
@@ -231,9 +195,6 @@ bool A64CodeCache::Initialize() {
             mapping_, reinterpret_cast<void*>(kGeneratedCodeExecuteBase),
             kGeneratedCodeSize, xe::memory::PageAccess::kExecuteReadOnly, 0));
     if (!generated_code_execute_base_) {
-      XELOGW(
-          "Fixed address mapping for execute code failed, trying OS-chosen "
-          "address");
       generated_code_execute_base_ = reinterpret_cast<uint8_t*>(
           xe::memory::MapFileView(mapping_, nullptr, kGeneratedCodeSize,
                                   xe::memory::PageAccess::kExecuteReadOnly, 0));
@@ -243,9 +204,6 @@ bool A64CodeCache::Initialize() {
             mapping_, reinterpret_cast<void*>(kGeneratedCodeWriteBase),
             kGeneratedCodeSize, xe::memory::PageAccess::kReadWrite, 0));
     if (!generated_code_write_base_) {
-      XELOGW(
-          "Fixed address mapping for write code failed, trying OS-chosen "
-          "address");
       generated_code_write_base_ = reinterpret_cast<uint8_t*>(
           xe::memory::MapFileView(mapping_, nullptr, kGeneratedCodeSize,
                                   xe::memory::PageAccess::kReadWrite, 0));
@@ -309,51 +267,27 @@ void A64CodeCache::AddIndirection64(uint32_t guest_address,
   }
 
   if (guest_address < kIndirectionTableBase) {
-    XELOGE(
-        "A64CodeCache::AddIndirection64: guest_address 0x{:08X} below base "
-        "0x{:08X}",
-        guest_address, static_cast<uint32_t>(kIndirectionTableBase));
     return;
   }
 
   const uint64_t guest_delta = guest_address - kIndirectionTableBase;
-  if (guest_delta & 0x3) {
-    XELOGW(
-        "A64CodeCache::AddIndirection64: guest_address 0x{:08X} not 4-byte "
-        "aligned (delta=0x{:X})",
-        guest_address, guest_delta);
-  }
 
   // Calculate offset from the logical base (0x80000000), not from actual table
   // address.
   const uint64_t guest_offset = (guest_delta >> 2) * kIndirectionEntrySize;
   if (guest_offset + kIndirectionEntrySize > kIndirectionTableSize) {
-    XELOGE(
-        "A64CodeCache::AddIndirection64: guest_address 0x{:08X} offset 0x{:X} "
-        "exceeds table size 0x{:X}",
-        guest_address, guest_offset,
-        static_cast<uint32_t>(kIndirectionTableSize));
     return;
   }
 
   uint64_t* indirection_slot =
       reinterpret_cast<uint64_t*>(indirection_table_base_ + guest_offset);
   *indirection_slot = host_address;
-
-  if (ShouldLogIndirectionTable()) {
-    XELOGI(
-        "A64 indirection add: guest=0x{:08X} delta=0x{:X} offset=0x{:X} "
-        "slot=0x{:016X} host=0x{:016X}",
-        guest_address, guest_delta, guest_offset,
-        reinterpret_cast<uint64_t>(indirection_slot), host_address);
-  }
 }
 #endif
 
 void A64CodeCache::CommitExecutableRange(uint32_t guest_low,
                                          uint32_t guest_high) {
   if (!indirection_table_base_) {
-    XELOGE("CommitExecutableRange: indirection_table_base_ is null!");
     return;
   }
 
@@ -364,10 +298,6 @@ void A64CodeCache::CommitExecutableRange(uint32_t guest_low,
 
   // Calculate offsets from the guest address base, not the table base
   if (guest_low < kGuestAddressBase) {
-    XELOGE(
-        "CommitExecutableRange: guest_low 0x{:08X} is below guest base "
-        "0x{:08X}",
-        guest_low, kGuestAddressBase);
     return;
   }
 
@@ -377,10 +307,6 @@ void A64CodeCache::CommitExecutableRange(uint32_t guest_low,
 
   // Sanity check bounds; the table should fully cover the XEX guest range now.
   if (start_offset + size > kIndirectionTableSize) {
-    XELOGE(
-        "CommitExecutableRange: range [0x{:08X}, 0x{:08X}) exceeds table (size "
-        "0x{:X})",
-        guest_low, guest_high, (unsigned)kIndirectionTableSize);
     return;
   }
 
@@ -390,14 +316,6 @@ void A64CodeCache::CommitExecutableRange(uint32_t guest_low,
   uint32_t entry_count = size / kIndirectionEntrySize;
   for (uint32_t i = 0; i < entry_count; i++) {
     p[i] = indirection_default_value_;
-  }
-
-  if (ShouldLogIndirectionTable()) {
-    XELOGI(
-        "A64 indirection commit: guest=[0x{:08X},0x{:08X}) "
-        "offset=0x{:X} size=0x{:X} entries={} base=0x{:016X}",
-        guest_low, guest_high, start_offset, size, entry_count,
-        static_cast<uint64_t>(indirection_table_actual_base_));
   }
 #else
   // Other platforms: use 32-bit entries
@@ -536,20 +454,10 @@ void A64CodeCache::PlaceGuestCode(uint32_t guest_address, void* machine_code,
 
     // Calculate offset from the logical guest base (0x80000000)
     if (guest_address < kIndirectionTableBase) {
-      XELOGE(
-          "A64CodeCache::PlaceGuestCode: ERROR - guest_address 0x{:08X} is "
-          "below logical base 0x{:08X}!",
-          guest_address, static_cast<uint32_t>(kIndirectionTableBase));
       return;
     }
 
     uintptr_t guest_diff = guest_address - kIndirectionTableBase;
-    if (guest_diff & 0x3) {
-      XELOGW(
-          "A64CodeCache::PlaceGuestCode: guest_address 0x{:08X} not 4-byte "
-          "aligned (delta=0x{:X})",
-          guest_address, guest_diff);
-    }
     uintptr_t guest_offset =
         (guest_diff >> 2) * kIndirectionEntrySize;  // 8-byte entries
     uintptr_t slot_address =
@@ -560,23 +468,10 @@ void A64CodeCache::PlaceGuestCode(uint32_t guest_address, void* machine_code,
     uintptr_t table_end = reinterpret_cast<uintptr_t>(indirection_table_base_) +
                           kIndirectionTableSize;
     if (slot_address >= table_end) {
-      XELOGE(
-          "A64CodeCache::PlaceGuestCode: slot 0x{:016X} beyond table end "
-          "0x{:016X}",
-          slot_address, table_end);
       return;
     }
 
     *indirection_slot = reinterpret_cast<uint64_t>(code_execute_address);
-
-    if (ShouldLogIndirectionTable()) {
-      XELOGI(
-          "A64 indirection place: guest=0x{:08X} diff=0x{:X} offset=0x{:X} "
-          "slot=0x{:016X} host=0x{:016X}",
-          guest_address, guest_diff, guest_offset, slot_address,
-          static_cast<uint64_t>(
-              reinterpret_cast<uintptr_t>(code_execute_address)));
-    }
 #else
     uint32_t* indirection_slot = reinterpret_cast<uint32_t*>(
         indirection_table_base_ + (guest_address - kIndirectionTableBase));

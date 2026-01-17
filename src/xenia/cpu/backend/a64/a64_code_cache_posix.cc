@@ -21,7 +21,6 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
-#include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
 #include "xenia/cpu/function.h"
@@ -137,21 +136,6 @@ void PosixA64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,
 
   // Store in the reserved slot
   unwind_table_[unwind_reservation.table_slot] = unwind_info;
-
-  // Validate address alignment before cache flushing
-  if ((uintptr_t)code_execute_address % 4 != 0) {
-    XELOGW(
-        "PosixA64CodeCache::PlaceCode: WARNING - code address 0x{:016X} is not "
-        "4-byte aligned",
-        (uintptr_t)code_execute_address);
-  }
-
-  if (func_info.code_size.total % 4 != 0) {
-    XELOGW(
-        "PosixA64CodeCache::PlaceCode: WARNING - code size {} is not 4-byte "
-        "aligned",
-        func_info.code_size.total);
-  }
 
   // Flush instruction cache
 #ifdef XE_PLATFORM_MAC

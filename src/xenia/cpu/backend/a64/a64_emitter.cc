@@ -9,18 +9,13 @@
 
 #include "xenia/cpu/backend/a64/a64_emitter.h"
 
-#include <array>
-#include <atomic>
 #include <cstddef>
 
-#include <cctype>
 #include <climits>
 #include <cstring>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/atomic.h"
-#include "xenia/base/byte_order.h"
 #include "xenia/base/debugging.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
@@ -36,7 +31,6 @@
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/function_debug_info.h"
-#include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/symbol.h"
 #include "xenia/cpu/thread_state.h"
@@ -49,15 +43,9 @@ DEFINE_bool(debugprint_trap_log, false,
             "Log debugprint traps to the active debugger", "CPU");
 DEFINE_bool(ignore_undefined_externs, true,
             "Don't exit when an undefined extern is called.", "CPU");
-DEFINE_bool(log_undefined_extern_args, false,
-            "Log PPC args for undefined externs (once per function).", "CPU");
 DEFINE_bool(emit_source_annotations, false,
             "Add extra movs and nops to make disassembly easier to read.",
             "CPU");
-DEFINE_bool(a64_resolve_function_log, false,
-            "Log A64 ResolveFunction failures with module ranges.", "CPU");
-DEFINE_int32(a64_resolve_function_log_limit, 8,
-             "Maximum ResolveFunction failure logs.", "CPU");
 
 namespace xe {
 namespace cpu {
@@ -70,19 +58,6 @@ using namespace xe::literals;
 using namespace oaknut::util;
 
 namespace {
-
-bool ShouldLogResolveFailure() {
-  if (!cvars::a64_resolve_function_log) {
-    return false;
-  }
-  const int32_t limit = cvars::a64_resolve_function_log_limit;
-  if (limit <= 0) {
-    return false;
-  }
-  static std::atomic<int32_t> log_count{0};
-  const int32_t count = log_count.fetch_add(1, std::memory_order_relaxed);
-  return count < limit;
-}
 
 void AdjustStackPointer(A64Emitter& emitter, size_t stack_size, bool add) {
   if (!stack_size) {
@@ -311,7 +286,7 @@ bool A64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
     // Mark block labels.
     auto label = block->label_head;
     while (label) {
-      l(label_lookup_[label->name]);
+      l(*lookup_label(label));
       label = label->next;
     }
 
@@ -324,8 +299,9 @@ bool A64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
         // No sequence found!
         // NOTE: If you encounter this after adding a new instruction, do a full
         // rebuild!
+        XELOGE("Unable to process HIR opcode {}",
+               hir::GetOpcodeName(instr->opcode));
         assert_always();
-        XELOGE("Unable to process HIR opcode {}", instr->opcode->name);
         break;
       }
       instr = new_tail;
@@ -420,313 +396,6 @@ uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
   return 0;
 }
 
-uint64_t TrapLogRegs(void* raw_context, uint64_t address) {
-  static volatile int32_t log_count = 0;
-  if (xe::atomic_inc(&log_count) > 8) {
-    return 0;
-  }
-  auto guest_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  if (!guest_context) {
-    return 0;
-  }
-  auto thread_state = guest_context->thread_state;
-  XELOGI(
-      "TraceOnInstruction 0x{:08X}: r3=0x{:016X} r4=0x{:016X} r11=0x{:016X} "
-      "r30=0x{:016X} r31=0x{:016X} lr=0x{:016X} ctr=0x{:016X}",
-      static_cast<uint32_t>(cvars::break_on_instruction), guest_context->r[3],
-      guest_context->r[4], guest_context->r[11], guest_context->r[30],
-      guest_context->r[31], guest_context->lr, guest_context->ctr);
-  if (thread_state) {
-    auto memory = thread_state->memory();
-    if (memory) {
-      auto page_access_to_string = [](xe::memory::PageAccess access) {
-        switch (access) {
-          case xe::memory::PageAccess::kNoAccess:
-            return "no-access";
-          case xe::memory::PageAccess::kReadOnly:
-            return "read-only";
-          case xe::memory::PageAccess::kReadWrite:
-            return "read-write";
-          case xe::memory::PageAccess::kExecuteReadOnly:
-            return "exec-read";
-          case xe::memory::PageAccess::kExecuteReadWrite:
-            return "exec-read-write";
-        }
-        return "unknown";
-      };
-      auto heap_type_to_string = [](HeapType type) {
-        switch (type) {
-          case HeapType::kGuestVirtual:
-            return "guest-virtual";
-          case HeapType::kGuestXex:
-            return "guest-xex";
-          case HeapType::kGuestPhysical:
-            return "guest-physical";
-          case HeapType::kHostPhysical:
-            return "host-physical";
-        }
-        return "unknown";
-      };
-      auto can_read_guest = [&](uint32_t addr) -> bool {
-        if (!addr) {
-          return false;
-        }
-        auto* heap = memory->LookupHeap(addr);
-        if (!heap) {
-          return false;
-        }
-        return heap->QueryRangeAccess(addr, addr) !=
-               xe::memory::PageAccess::kNoAccess;
-      };
-      auto log_guest_bytes = [&](uint32_t addr, const char* label) {
-        if (!can_read_guest(addr)) {
-          auto* heap = memory->LookupHeap(addr);
-          XELOGI(
-              "TraceOnInstruction {}: addr=0x{:08X} unreadable heap={} "
-              "access={}",
-              label, addr,
-              heap ? heap_type_to_string(heap->heap_type()) : "none",
-              heap ? page_access_to_string(heap->QueryRangeAccess(addr, addr))
-                   : "no-access");
-          return;
-        }
-        const auto* heap = memory->LookupHeap(addr);
-        const uint8_t* host_ptr = nullptr;
-        if (heap && heap->heap_type() == HeapType::kGuestPhysical) {
-          uint32_t physical_address = memory->GetPhysicalAddress(addr);
-          host_ptr = memory->TranslatePhysical(physical_address);
-        } else {
-          host_ptr = memory->TranslateVirtual<const uint8_t*>(addr);
-        }
-        if (!host_ptr) {
-          XELOGI("TraceOnInstruction {}: addr=0x{:08X} null", label, addr);
-          return;
-        }
-        uint8_t bytes[16] = {};
-        std::memcpy(bytes, host_ptr, sizeof(bytes));
-        char ascii[sizeof(bytes) + 1] = {};
-        for (size_t i = 0; i < sizeof(bytes); ++i) {
-          uint8_t ch = bytes[i];
-          ascii[i] = (ch >= 0x20 && ch <= 0x7E) ? static_cast<char>(ch) : '.';
-        }
-        XELOGI(
-            "TraceOnInstruction {}: addr=0x{:08X} {:02X} {:02X} {:02X} "
-            "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-            "{:02X} {:02X} {:02X} {:02X} {:02X} ascii={}",
-            label, addr, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
-            bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
-            bytes[11], bytes[12], bytes[13], bytes[14], bytes[15], ascii);
-      };
-      auto log_guest_string = [&](uint32_t addr, const char* label) {
-        if (!can_read_guest(addr)) {
-          return;
-        }
-        const uint8_t* ptr = memory->TranslateVirtual<const uint8_t*>(addr);
-        if (!ptr) {
-          return;
-        }
-        char buffer[129] = {};
-        size_t len = 0;
-        for (; len < sizeof(buffer) - 1; ++len) {
-          char ch = static_cast<char>(ptr[len]);
-          if (!ch) {
-            break;
-          }
-          if (!std::isprint(static_cast<unsigned char>(ch))) {
-            return;
-          }
-          buffer[len] = ch;
-        }
-        if (len > 0) {
-          XELOGI("TraceOnInstruction {}: {}", label, buffer);
-        }
-      };
-      const uint32_t guest_address = static_cast<uint32_t>(guest_context->r[4]);
-      const auto* heap = memory->LookupHeap(guest_address);
-      if (heap) {
-        const uint8_t* host_ptr = nullptr;
-        if (heap->heap_type() == HeapType::kGuestPhysical) {
-          uint32_t physical_address = memory->GetPhysicalAddress(guest_address);
-          host_ptr = memory->TranslatePhysical(physical_address);
-        } else {
-          host_ptr = memory->TranslateVirtual<const uint8_t*>(guest_address);
-        }
-        if (host_ptr) {
-          uint8_t bytes[16] = {};
-          std::memcpy(bytes, host_ptr, sizeof(bytes));
-          char ascii[sizeof(bytes) + 1] = {};
-          for (size_t i = 0; i < sizeof(bytes); ++i) {
-            uint8_t ch = bytes[i];
-            ascii[i] = (ch >= 0x20 && ch <= 0x7E) ? static_cast<char>(ch) : '.';
-          }
-          XELOGI(
-              "TraceOnInstruction mem[r4]=0x{:08X}: {:02X} {:02X} {:02X} "
-              "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-              "{:02X} {:02X} {:02X} {:02X} {:02X} ascii={}",
-              guest_address, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
-              bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
-              bytes[11], bytes[12], bytes[13], bytes[14], bytes[15], ascii);
-        }
-      }
-
-      auto read_u32 = [&](uint32_t addr, uint32_t* out) -> bool {
-        if (!can_read_guest(addr)) {
-          return false;
-        }
-        const auto* heap = memory->LookupHeap(addr);
-        if (heap->heap_type() == HeapType::kGuestPhysical) {
-          uint32_t physical_address = memory->GetPhysicalAddress(addr);
-          auto ptr =
-              memory->TranslatePhysical<const uint32_t*>(physical_address);
-          if (!ptr) {
-            return false;
-          }
-          *out = xe::load_and_swap<uint32_t>(ptr);
-          return true;
-        }
-        auto ptr = memory->TranslateVirtual<const uint32_t*>(addr);
-        if (!ptr) {
-          return false;
-        }
-        *out = xe::load_and_swap<uint32_t>(ptr);
-        return true;
-      };
-
-      const uint32_t trace_pc =
-          static_cast<uint32_t>(cvars::break_on_instruction);
-      auto log_trace_instr = [&](uint32_t pc, const char* label) {
-        if (!can_read_guest(pc)) {
-          auto* heap = memory->LookupHeap(pc);
-          XELOGI(
-              "TraceOnInstruction {}: pc=0x{:08X} unreadable heap={} "
-              "access={}",
-              label, pc, heap ? heap_type_to_string(heap->heap_type()) : "none",
-              heap ? page_access_to_string(heap->QueryRangeAccess(pc, pc))
-                   : "no-access");
-          return;
-        }
-        uint32_t instr = 0;
-        if (!read_u32(pc, &instr)) {
-          XELOGI("TraceOnInstruction {}: pc=0x{:08X} unreadable", label, pc);
-          return;
-        }
-        xe::StringBuffer disasm;
-        if (cpu::ppc::DisasmPPC(pc, instr, &disasm)) {
-          XELOGI("TraceOnInstruction {}: pc=0x{:08X} instr=0x{:08X} {}", label,
-                 pc, instr, disasm.to_string_view());
-        } else {
-          XELOGI("TraceOnInstruction {}: pc=0x{:08X} instr=0x{:08X}", label, pc,
-                 instr);
-        }
-      };
-      if (trace_pc) {
-        log_trace_instr(trace_pc - 4, "target-4");
-        log_trace_instr(trace_pc, "target");
-        log_trace_instr(trace_pc + 4, "target+4");
-      }
-      if (memory->LookupHeap(trace_pc)) {
-        for (int offset = -4; offset <= 4; ++offset) {
-          uint32_t pc = trace_pc + offset * 4;
-          if (!memory->LookupHeap(pc)) {
-            continue;
-          }
-          uint32_t instr = 0;
-          if (!read_u32(pc, &instr)) {
-            XELOGI("TraceOnInstruction window: pc=0x{:08X} unreadable", pc);
-            continue;
-          }
-          xe::StringBuffer disasm_window;
-          if (cpu::ppc::DisasmPPC(pc, instr, &disasm_window)) {
-            XELOGI("TraceOnInstruction window: pc=0x{:08X} instr=0x{:08X} {}",
-                   pc, instr, disasm_window.to_string_view());
-          } else {
-            XELOGI("TraceOnInstruction window: pc=0x{:08X} instr=0x{:08X}", pc,
-                   instr);
-          }
-        }
-      }
-
-      const uint32_t obj_address = static_cast<uint32_t>(guest_context->r[3]);
-      if (!obj_address) {
-        XELOGI("TraceOnInstruction r3 fields: base=0x00000000");
-      } else {
-        const auto* obj_heap = memory->LookupHeap(obj_address);
-        if (obj_heap) {
-          uint32_t value_4 = 0;
-          uint32_t value_8 = 0;
-          uint32_t value_c = 0;
-          uint32_t value_20 = 0;
-          uint32_t value_470 = 0;
-          bool have_any = false;
-          have_any |= read_u32(obj_address + 0x4, &value_4);
-          have_any |= read_u32(obj_address + 0x8, &value_8);
-          have_any |= read_u32(obj_address + 0xC, &value_c);
-          have_any |= read_u32(obj_address + 0x20, &value_20);
-          have_any |= read_u32(obj_address + 0x470, &value_470);
-          if (have_any) {
-            XELOGI(
-                "TraceOnInstruction r3 fields: base=0x{:08X} +0x4=0x{:08X} "
-                "+0x8=0x{:08X} +0xC=0x{:08X} +0x20=0x{:08X} +0x470=0x{:08X}",
-                obj_address, value_4, value_8, value_c, value_20, value_470);
-            if (value_20) {
-              log_guest_bytes(value_20, "r3+0x20");
-            }
-            if (value_470) {
-              log_guest_bytes(value_470, "r3+0x470");
-            }
-          } else {
-            XELOGI("TraceOnInstruction r3 fields: base=0x{:08X} unmapped",
-                   obj_address);
-          }
-        } else {
-          XELOGI("TraceOnInstruction r3 fields: base=0x{:08X} heap=null",
-                 obj_address);
-        }
-        log_guest_string(obj_address, "r3 string");
-      }
-
-      const uint32_t r31_address = static_cast<uint32_t>(guest_context->r[31]);
-      if (!r31_address) {
-        XELOGI("TraceOnInstruction r31 fields: base=0x00000000");
-      } else {
-        const auto* r31_heap = memory->LookupHeap(r31_address);
-        if (r31_heap) {
-          uint32_t value_4 = 0;
-          uint32_t value_8 = 0;
-          uint32_t value_c = 0;
-          uint32_t value_20 = 0;
-          uint32_t value_470 = 0;
-          bool have_any = false;
-          have_any |= read_u32(r31_address + 0x4, &value_4);
-          have_any |= read_u32(r31_address + 0x8, &value_8);
-          have_any |= read_u32(r31_address + 0xC, &value_c);
-          have_any |= read_u32(r31_address + 0x20, &value_20);
-          have_any |= read_u32(r31_address + 0x470, &value_470);
-          if (have_any) {
-            XELOGI(
-                "TraceOnInstruction r31 fields: base=0x{:08X} +0x4=0x{:08X} "
-                "+0x8=0x{:08X} +0xC=0x{:08X} +0x20=0x{:08X} +0x470=0x{:08X}",
-                r31_address, value_4, value_8, value_c, value_20, value_470);
-            if (value_20) {
-              log_guest_bytes(value_20, "r31+0x20");
-            }
-            if (value_470) {
-              log_guest_bytes(value_470, "r31+0x470");
-            }
-          } else {
-            XELOGI("TraceOnInstruction r31 fields: base=0x{:08X} unmapped",
-                   r31_address);
-          }
-        } else {
-          XELOGI("TraceOnInstruction r31 fields: base=0x{:08X} heap=null",
-                 r31_address);
-        }
-      }
-    }
-  }
-  return 0;
-}
-
 uint64_t TrapDebugBreak(void* raw_context, uint64_t address) {
   [[maybe_unused]] auto thread_state =
       *reinterpret_cast<ThreadState**>(raw_context);
@@ -743,9 +412,6 @@ void A64Emitter::Trap(uint16_t trap_type) {
     case 26:
       // 0x0FE00014 is a 'debug print' where r3 = buffer r4 = length
       CallNative(TrapDebugPrint, 0);
-      break;
-    case 27:
-      CallNative(TrapLogRegs, 0);
       break;
     case 0:
     case 22:
@@ -771,16 +437,16 @@ void A64Emitter::UnimplementedInstr(const hir::Instr* i) {
 
 // This is used by the A64ThunkEmitter's ResolveFunctionThunk.
 uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
-  auto thread_state = *reinterpret_cast<ThreadState**>(raw_context);
-  auto guest_context = thread_state->context();
+  auto guest_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
+  assert_not_null(guest_context);
+  auto thread_state = guest_context->thread_state;
+  assert_not_null(thread_state);
 
-  uint32_t guest_address;
+  assert_not_zero(target_address);
 
-  // Check if this is a 64-bit host address that needs to be mapped back to
-  // guest address
+  uint32_t guest_address = 0;
   if (target_address > 0xFFFFFFFF) {
-    // Precise guard: if target_address is within the PPCContext, this is a bug.
-    auto ctx_ptr = reinterpret_cast<uint64_t>(thread_state->context());
+    auto ctx_ptr = reinterpret_cast<uint64_t>(guest_context);
     if (target_address >= ctx_ptr &&
         target_address < ctx_ptr + sizeof(ppc::PPCContext)) {
       XELOGE(
@@ -793,7 +459,6 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
       return 0;
     }
 
-    // Try to find a function that contains this host address
     auto code_cache = static_cast<A64CodeCache*>(
         thread_state->processor()->backend()->code_cache());
     auto guest_function = code_cache->LookupFunction(target_address);
@@ -801,30 +466,14 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
       guest_address =
           guest_function->MapMachineCodeToGuestAddress(target_address);
     } else {
-      // This might be a guest memory address stored in 64-bit form
-      // Extract the lower 32 bits as the potential guest address
-      uint32_t potential_guest = static_cast<uint32_t>(target_address);
-      guest_address = potential_guest;
+      guest_address = static_cast<uint32_t>(target_address);
     }
   } else {
-    // Normal 32-bit guest address
     guest_address = static_cast<uint32_t>(target_address);
   }
 
-  // Xbox 360 guest addresses can be in these ranges:
-  // 0x00000000-0x3FFFFFFF: v00000000 heap (virtual)
-  // 0x40000000-0x7EFFFFFF: v40000000 heap (virtual)
-  // 0x70000000-0x7F000000: Thread stacks
-  // 0x80000000-0x8FFFFFFF: v80000000 heap (XEX)
-  // 0x90000000-0x9FFFFFFF: v90000000 heap (XEX)
-  // 0xA0000000-0xBFFFFFFF: vA0000000 heap (physical)
-  // 0xC0000000-0xDFFFFFFF: vC0000000 heap (physical)
-  // 0xE0000000-0xFFCFFFFF: vE0000000 heap (physical)
-
-  // Most executable code should be in XEX ranges (0x80000000-0x9FFFFFFF)
-  // but allow other ranges as they may contain valid code
   if (guest_address == 0) {
-    XELOGE("ResolveFunction: guest_address is 0! This should not happen");
+    XELOGE("ResolveFunction: guest_address is 0");
     return 0;
   }
 
@@ -835,74 +484,10 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
         guest_address);
     XELOGE("ResolveFunction: Original target_address was 0x{:016X}",
            target_address);
-    if (ShouldLogResolveFailure()) {
-      const uint32_t lr_guest = static_cast<uint32_t>(guest_context->lr);
-      XELOGI(
-          "ResolveFunction: lr=0x{:016X} ctr=0x{:016X} thread_id={} "
-          "target_is_host={} guest_address=0x{:08X}",
-          guest_context->lr, guest_context->ctr, guest_context->thread_id,
-          target_address > 0xFFFFFFFF, guest_address);
-      auto log_modules_for_address = [&](uint32_t address, const char* label) {
-        bool found = false;
-        for (auto* module : thread_state->processor()->GetModules()) {
-          if (!module) {
-            continue;
-          }
-          if (module->ContainsAddress(address)) {
-            XELOGI("ResolveFunction: {} module '{}' contains 0x{:08X}", label,
-                   module->name(), address);
-            found = true;
-          }
-        }
-        if (!found) {
-          XELOGI("ResolveFunction: {} no module contains 0x{:08X}", label,
-                 address);
-        }
-      };
-      log_modules_for_address(lr_guest, "lr");
-      log_modules_for_address(guest_address, "guest");
-
-      auto lr_functions =
-          thread_state->processor()->FindFunctionsWithAddress(lr_guest);
-      if (lr_functions.empty()) {
-        XELOGI("ResolveFunction: no resolved function covers LR 0x{:08X}",
-               lr_guest);
-      } else {
-        const auto* fn = lr_functions.front();
-        XELOGI("ResolveFunction: LR function {} [0x{:08X},0x{:08X}) name='{}'",
-               lr_functions.size(), fn->address(), fn->end_address(),
-               fn->name());
-      }
-
-      auto* memory = thread_state->memory();
-      if (!memory) {
-        XELOGI("ResolveFunction: no Memory available for guest dump");
-      } else if (!memory->LookupHeap(guest_address)) {
-        XELOGI(
-            "ResolveFunction: guest_address 0x{:08X} not in any heap for dump",
-            guest_address);
-      } else {
-        const uint8_t* data =
-            memory->TranslateVirtual<const uint8_t*>(guest_address);
-        std::array<uint8_t, 16> bytes = {};
-        std::memcpy(bytes.data(), data, bytes.size());
-        XELOGI(
-            "ResolveFunction: guest[0x{:08X}] = {:02X} {:02X} {:02X} {:02X} "
-            "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-            "{:02X} {:02X} {:02X} {:02X}",
-            guest_address, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
-            bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
-            bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
-      }
-    }
-
-    // This can happen if the target address doesn't point to a valid function
-    // Return 0 to indicate failure - the calling code should handle this
     return 0;
   }
 
   auto a64_fn = static_cast<A64Function*>(fn);
-  uint64_t addr = reinterpret_cast<uint64_t>(a64_fn->machine_code());
   if (!a64_fn->machine_code()) {
     XELOGE(
         "ResolveFunction: Function at guest address 0x{:08X} has no machine "
@@ -911,7 +496,7 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
     return 0;
   }
 
-  return addr;
+  return reinterpret_cast<uint64_t>(a64_fn->machine_code());
 }
 
 void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
@@ -952,9 +537,11 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
     }
 #endif
   } else {
-    XELOGE("A64 indirection table missing; ResolveFunction fallback removed");
-    BRK(0xF000);
-    B(epilog_label());
+    // Old-style resolve.
+    // Not too important because indirection table is almost always available.
+    // TODO: Overwrite the call-site with a straight call.
+    CallNative(&ResolveFunction, function->address());
+    MOV(X16, X0);
   }
 
   // Actually jump/call to X16.
@@ -1015,9 +602,14 @@ void A64Emitter::CallIndirect(const hir::Instr* instr,
     }
 #endif
   } else {
-    XELOGE("A64 indirection table missing; ResolveFunction fallback removed");
-    BRK(0xF000);
-    B(epilog_label());
+    // Old-style resolve.
+    // Not too important because indirection table is almost always available.
+    MOV(X0, GetContextReg());
+    MOV(W1, reg.toW());
+
+    MOV(X16, reinterpret_cast<uint64_t>(ResolveFunction));
+    BLR(X16);
+    MOV(X16, X0);
   }
 
   // Actually jump/call to X16.
@@ -1044,19 +636,6 @@ void A64Emitter::CallIndirect(const hir::Instr* instr,
 
 uint64_t UndefinedCallExtern(void* raw_context, uint64_t function_ptr) {
   auto function = reinterpret_cast<Function*>(function_ptr);
-  if (cvars::log_undefined_extern_args &&
-      function->name() == "XeKeysConsolePrivateKeySign") {
-    static std::atomic<bool> logged{false};
-    if (!logged.exchange(true)) {
-      auto* context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-      XELOGI(
-          "Undefined extern {} args: r3={:016X} r4={:016X} r5={:016X} "
-          "r6={:016X} r7={:016X} r8={:016X} r9={:016X} r10={:016X}",
-          function->name(), context->r[3], context->r[4], context->r[5],
-          context->r[6], context->r[7], context->r[8], context->r[9],
-          context->r[10]);
-    }
-  }
   if (!cvars::ignore_undefined_externs) {
     xe::FatalError(fmt::format("undefined extern call to {:08X} {}",
                                function->address(), function->name().c_str()));
@@ -1308,6 +887,7 @@ static const vec128_t v_consts[] = {
     /* VQNaN                */ vec128i(0x7FC00000u),
     /* VInt127              */ vec128i(0x7Fu),
     /* V2To32               */ vec128f(0x1.0p32f),
+    /* VSingleDenormalMask  */ vec128i(0x7F800000u),
 };
 
 // First location to try and place constants.

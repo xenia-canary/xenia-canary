@@ -8,6 +8,7 @@
  */
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 
+#include <arm_neon.h>
 #include <algorithm>
 #include <cstring>
 
@@ -62,6 +63,26 @@ struct VECTOR_CONVERT_F2I
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_CONVERT_F2I, VECTOR_CONVERT_F2I);
+
+// ============================================================================
+// OPCODE_VECTOR_DENORMFLUSH
+// ============================================================================
+struct VECTOR_DENORMFLUSH
+    : Sequence<VECTOR_DENORMFLUSH,
+               I<OPCODE_VECTOR_DENORMFLUSH, V128Op, V128Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // Clear denormals to signed zero, preserving sign bits.
+    e.MOV(X2, e.GetVConstPtr());
+    e.LDR(Q0, X2, e.GetVConstOffset(VSingleDenormalMask));
+    e.AND(Q0.B16(), i.src1.reg().B16(), Q0.B16());
+    e.CMEQ(Q0.S4(), Q0.S4(), 0);
+    e.BIC(Q1.B16(), i.src1.reg().B16(), Q0.B16());
+    e.LDR(Q2, X2, e.GetVConstOffset(VSignMaskF32));
+    e.AND(Q2.B16(), i.src1.reg().B16(), Q2.B16());
+    e.ORR(i.dest.reg().B16(), Q1.B16(), Q2.B16());
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_VECTOR_DENORMFLUSH, VECTOR_DENORMFLUSH);
 
 // ============================================================================
 // OPCODE_LOAD_VECTOR_SHL
@@ -1985,7 +2006,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
       } else if (h == 0xFFFF) {
         b[i] = -131008.0f;  // Special negative sentinel (0xC7FFE000)
       } else {
-        b[i] = half_float::detail::half2float(h);
+        b[i] = half_float::detail::half2float<float>(h);
       }
     }
 
@@ -2105,7 +2126,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
              vld1q_u8(reinterpret_cast<const uint8_t*>(src1)));
 
     for (int i = 0; i < 4; i++) {
-      b[i] = half_float::detail::half2float(a[VEC128_W(4 + i)]);
+      b[i] = half_float::detail::half2float<float>(a[VEC128_W(4 + i)]);
     }
 
     // Store the float array into a uint8x16_t NEON register
@@ -2413,6 +2434,31 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_UNPACK, UNPACK);
+
+namespace {
+thread_local bool a64_njm_enabled = true;
+
+uint64_t SetNJMForwarder(void* raw_context, uint64_t value) {
+  (void)raw_context;
+  a64_njm_enabled = value != 0;
+  return 0;
+}
+}  // namespace
+
+// ============================================================================
+// OPCODE_SET_NJM
+// ============================================================================
+struct SET_NJM_I8 : Sequence<SET_NJM_I8, I<OPCODE_SET_NJM, VoidOp, I8Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    if (i.src1.is_constant) {
+      e.CallNative(SetNJMForwarder, static_cast<uint64_t>(i.src1.constant()));
+      return;
+    }
+    e.UXTB(W1, i.src1);
+    e.CallNativeSafe(reinterpret_cast<void*>(SetNJMForwarder));
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_SET_NJM, SET_NJM_I8);
 
 }  // namespace a64
 }  // namespace backend

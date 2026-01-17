@@ -25,8 +25,6 @@
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 
 #include <algorithm>
-#include <unordered_map>
-
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
@@ -53,7 +51,6 @@ using namespace xe::cpu::hir;
 using xe::cpu::hir::Instr;
 
 typedef bool (*SequenceSelectFn)(A64Emitter&, const Instr*);
-// std::unordered_map<uint32_t, SequenceSelectFn> sequence_table; Removed
 
 // ============================================================================
 // OPCODE_COMMENT
@@ -351,6 +348,22 @@ struct CONVERT_F64_F32
 EMITTER_OPCODE_TABLE(OPCODE_CONVERT, CONVERT_I32_F32, CONVERT_I32_F64,
                      CONVERT_I64_F64, CONVERT_F32_I32, CONVERT_F32_F64,
                      CONVERT_F64_I64, CONVERT_F64_F32);
+
+// ============================================================================
+// OPCODE_TO_SINGLE
+// ============================================================================
+struct TOSINGLE_F64_F64
+    : Sequence<TOSINGLE_F64_F64, I<OPCODE_TO_SINGLE, F64Op, F64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const DReg src = i.src1.is_constant ? D1 : i.src1;
+    if (i.src1.is_constant) {
+      e.LoadConstantV(src.toQ(), i.src1.constant());
+    }
+    e.FCVT(S0, src);
+    e.FCVT(i.dest, S0);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_TO_SINGLE, TOSINGLE_F64_F64);
 
 // ============================================================================
 // OPCODE_ROUND
@@ -723,107 +736,6 @@ struct SELECT_V128_V128
 EMITTER_OPCODE_TABLE(OPCODE_SELECT, SELECT_I8, SELECT_I16, SELECT_I32,
                      SELECT_I64, SELECT_F32, SELECT_F64, SELECT_V128_I8,
                      SELECT_V128_V128);
-
-// ============================================================================
-// OPCODE_IS_TRUE
-// ============================================================================
-struct IS_TRUE_I8 : Sequence<IS_TRUE_I8, I<OPCODE_IS_TRUE, I8Op, I8Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_I16 : Sequence<IS_TRUE_I16, I<OPCODE_IS_TRUE, I8Op, I16Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_I32 : Sequence<IS_TRUE_I32, I<OPCODE_IS_TRUE, I8Op, I32Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_I64 : Sequence<IS_TRUE_I64, I<OPCODE_IS_TRUE, I8Op, I64Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_F32 : Sequence<IS_TRUE_F32, I<OPCODE_IS_TRUE, I8Op, F32Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.FCMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_F64 : Sequence<IS_TRUE_F64, I<OPCODE_IS_TRUE, I8Op, F64Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.FCMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-struct IS_TRUE_V128 : Sequence<IS_TRUE_V128, I<OPCODE_IS_TRUE, I8Op, V128Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.UMAXV(Q0.toS(), i.src1.reg().S4());
-    e.MOV(W0, Q0.Selem()[0]);
-    e.CMP(W0, 0);
-    e.CSET(i.dest, Cond::NE);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_IS_TRUE, IS_TRUE_I8, IS_TRUE_I16, IS_TRUE_I32,
-                     IS_TRUE_I64, IS_TRUE_F32, IS_TRUE_F64, IS_TRUE_V128);
-
-// ============================================================================
-// OPCODE_IS_FALSE
-// ============================================================================
-struct IS_FALSE_I8 : Sequence<IS_FALSE_I8, I<OPCODE_IS_FALSE, I8Op, I8Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_I16 : Sequence<IS_FALSE_I16, I<OPCODE_IS_FALSE, I8Op, I16Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_I32 : Sequence<IS_FALSE_I32, I<OPCODE_IS_FALSE, I8Op, I32Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_I64 : Sequence<IS_FALSE_I64, I<OPCODE_IS_FALSE, I8Op, I64Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.CMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_F32 : Sequence<IS_FALSE_F32, I<OPCODE_IS_FALSE, I8Op, F32Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.FCMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_F64 : Sequence<IS_FALSE_F64, I<OPCODE_IS_FALSE, I8Op, F64Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.FCMP(i.src1.reg(), 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-struct IS_FALSE_V128
-    : Sequence<IS_FALSE_V128, I<OPCODE_IS_FALSE, I8Op, V128Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.UMAXV(Q0.toS(), i.src1.reg().S4());
-    e.MOV(W0, Q0.Selem()[0]);
-    e.CMP(W0, 0);
-    e.CSET(i.dest, Cond::EQ);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_IS_FALSE, IS_FALSE_I8, IS_FALSE_I16, IS_FALSE_I32,
-                     IS_FALSE_I64, IS_FALSE_F32, IS_FALSE_F64, IS_FALSE_V128);
 
 // ============================================================================
 // OPCODE_IS_NAN
@@ -2113,15 +2025,17 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // ============================================================================
 struct DOT_PRODUCT_3_V128
     : Sequence<DOT_PRODUCT_3_V128,
-               I<OPCODE_DOT_PRODUCT_3, F32Op, V128Op, V128Op>> {
+               I<OPCODE_DOT_PRODUCT_3, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // https://msdn.microsoft.com/en-us/library/bb514054(v=vs.90).aspx
     EmitCommutativeBinaryVOp(
-        e, i, [](A64Emitter& e, SReg dest, QReg src1, QReg src2) {
-          e.FMUL(dest.toQ().S4(), src1.S4(), src2.S4());
-          e.MOV(dest.toQ().Selem()[3], WZR);
-          e.FADDP(dest.toQ().S4(), dest.toQ().S4(), dest.toQ().S4());
-          e.FADDP(dest.toS(), dest.toD().S2());
+        e, i, [](A64Emitter& e, QReg dest, QReg src1, QReg src2) {
+          e.FMUL(dest.S4(), src1.S4(), src2.S4());
+          e.MOV(dest.Selem()[3], WZR);
+          e.FADDP(dest.S4(), dest.S4(), dest.S4());
+          e.FADDP(S0, dest.toD().S2());
+          e.FMOV(W0, S0);
+          e.DUP(dest.S4(), W0);
         });
   }
 };
@@ -2132,14 +2046,16 @@ EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
 // ============================================================================
 struct DOT_PRODUCT_4_V128
     : Sequence<DOT_PRODUCT_4_V128,
-               I<OPCODE_DOT_PRODUCT_4, F32Op, V128Op, V128Op>> {
+               I<OPCODE_DOT_PRODUCT_4, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // https://msdn.microsoft.com/en-us/library/bb514054(v=vs.90).aspx
     EmitCommutativeBinaryVOp(
-        e, i, [](A64Emitter& e, SReg dest, QReg src1, QReg src2) {
-          e.FMUL(dest.toQ().S4(), src1.S4(), src2.S4());
-          e.FADDP(dest.toQ().S4(), dest.toQ().S4(), dest.toQ().S4());
-          e.FADDP(dest.toS(), dest.toD().S2());
+        e, i, [](A64Emitter& e, QReg dest, QReg src1, QReg src2) {
+          e.FMUL(dest.S4(), src1.S4(), src2.S4());
+          e.FADDP(dest.S4(), dest.S4(), dest.S4());
+          e.FADDP(S0, dest.toD().S2());
+          e.FMOV(W0, S0);
+          e.DUP(dest.S4(), W0);
         });
   }
 };
@@ -2779,6 +2695,18 @@ struct SET_ROUNDING_MODE_I32
 };
 EMITTER_OPCODE_TABLE(OPCODE_SET_ROUNDING_MODE, SET_ROUNDING_MODE_I32);
 
+static void MaybeYieldForwarder(void* ctx) { xe::threading::MaybeYield(); }
+// ============================================================================
+// OPCODE_DELAY_EXECUTION
+// ============================================================================
+struct DELAY_EXECUTION
+    : Sequence<DELAY_EXECUTION, I<OPCODE_DELAY_EXECUTION, VoidOp>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    e.CallNativeSafe(reinterpret_cast<void*>(MaybeYieldForwarder));
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_DELAY_EXECUTION, DELAY_EXECUTION);
+
 // Include anchors to other sequence sources so they get included in the build.
 extern volatile int anchor_control;
 static int anchor_control_dest = anchor_control;
@@ -2792,15 +2720,14 @@ static int anchor_vector_dest = anchor_vector;
 bool SelectSequence(A64Emitter* e, const hir::Instr* i,
                     const hir::Instr** new_tail) {
   const InstrKey key(i);
-  auto& table = GetSequenceTable();  // Use the singleton accessor
-  auto it = table.find(key);
-  if (it != table.end()) {
+  auto it = GetSequenceTable().find(key);
+  if (it != GetSequenceTable().end()) {
     if (it->second(*e, i)) {
       *new_tail = i->next;
       return true;
     }
   }
-  XELOGE("No sequence match for variant {}", i->opcode->name);
+  XELOGE("No sequence match for variant {}", hir::GetOpcodeName(i->opcode));
   return false;
 }
 
