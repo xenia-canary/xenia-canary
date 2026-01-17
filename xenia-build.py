@@ -14,6 +14,7 @@ from glob import glob
 from json import loads as jsonloads
 import os
 import platform
+import shutil
 from shutil import rmtree
 import subprocess
 import sys
@@ -997,7 +998,8 @@ class BuildShadersCommand(Command):
             """,
             *args, **kwargs)
         self.parser.add_argument(
-            "--target", action="append", choices=["dxbc", "spirv"], default=[],
+            "--target", action="append",
+            choices=["dxbc", "spirv", "metal"], default=[],
             help="Builds only the given target(s).")
 
     def execute(self, args, pass_args, cwd):
@@ -1079,6 +1081,121 @@ class BuildShadersCommand(Command):
                 else:
                     print("ERROR: Direct3D DXBC shader building is supported"
                           " only on Windows")
+                    return 1
+
+        # Metal MSL.
+        if all_targets or "metal" in targets:
+            if sys.platform == "darwin":
+                print("Building Metal MSL shaders...")
+
+                metal = shutil.which("metal") or "metal"
+                metallib = shutil.which("metallib") or "metallib"
+                use_xcrun = False
+                if not has_bin(metal) or not has_bin(metallib):
+                    if has_bin("xcrun"):
+                        use_xcrun = True
+                    else:
+                        print("ERROR: could not find Metal compiler tools")
+                        return 1
+
+                for src_path in src_paths:
+                    src_name = os.path.basename(src_path)
+                    src_is_xesl = src_name.endswith(".xesl")
+                    if (not src_is_xesl or len(src_name) <= 8 or
+                            src_name[-8] != "."):
+                        continue
+                    if "fxaa" in src_name or "ffx_" in src_name:
+                        continue
+                    identifier = src_name[:-5].replace(".", "_")
+                    stage = identifier[-2:]
+                    if stage not in ["cs", "ps", "vs"]:
+                        continue
+
+                    print(f"- {src_path} > metal")
+                    src_dir = os.path.dirname(src_path)
+                    metal_dir_path = os.path.join(src_dir, "bytecode/metal")
+                    os.makedirs(metal_dir_path, exist_ok=True)
+
+                    metal_file_path_base = os.path.join(metal_dir_path,
+                                                        identifier)
+                    air_path = f"{metal_file_path_base}.air"
+                    metallib_path = f"{metal_file_path_base}.metallib"
+
+                    if use_xcrun:
+                        metal_cmd = [
+                            "xcrun", "-sdk", "macosx", "metal",
+                            "-x", "metal",
+                            "-D", "XESL_LANGUAGE_MSL=1",
+                            "-I", src_dir,
+                            "-c",
+                            src_path,
+                            "-o", air_path,
+                            "-frecord-sources",
+                            "-gline-tables-only",
+                        ]
+                    else:
+                        metal_cmd = [
+                            metal,
+                            "-x", "metal",
+                            "-D", "XESL_LANGUAGE_MSL=1",
+                            "-I", src_dir,
+                            "-c",
+                            src_path,
+                            "-o", air_path,
+                            "-frecord-sources",
+                            "-gline-tables-only",
+                        ]
+                    if subprocess.call(metal_cmd) != 0:
+                        print("ERROR: failed to compile a Metal shader")
+                        return 1
+
+                    if use_xcrun:
+                        metallib_cmd = [
+                            "xcrun", "-sdk", "macosx", "metallib",
+                            air_path,
+                            "-o", metallib_path,
+                        ]
+                    else:
+                        metallib_cmd = [
+                            metallib,
+                            air_path,
+                            "-o", metallib_path,
+                        ]
+                    if subprocess.call(metallib_cmd) != 0:
+                        print("ERROR: failed to link a Metal library")
+                        return 1
+
+                    header_path = f"{metal_file_path_base}.h"
+                    with open(header_path, "w") as out_file:
+                        out_file.write(
+                            "// Generated with `xb buildshaders`.\n")
+                        out_file.write(
+                            f"const uint8_t {identifier}_metallib[] = {{")
+                        with open(metallib_path, "rb") as mfile:
+                            index = 0
+                            c = mfile.read(1)
+                            while len(c) != 0:
+                                if index % 16 == 0:
+                                    out_file.write("\n    ")
+                                else:
+                                    out_file.write(" ")
+                                out_file.write(f"0x{c[0]:02X},")
+                                index += 1
+                                c = mfile.read(1)
+                        out_file.write("\n};\n")
+
+                    try:
+                        os.remove(air_path)
+                        os.remove(metallib_path)
+                    except OSError:
+                        pass
+            else:
+                if all_targets:
+                    print("WARNING: Metal shader building is supported only "
+                          "on macOS")
+                else:
+                    print("ERROR: Metal shader building is supported only "
+                          "on macOS")
                     return 1
 
         # Vulkan SPIR-V.
