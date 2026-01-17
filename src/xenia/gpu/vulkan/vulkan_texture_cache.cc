@@ -605,14 +605,37 @@ void VulkanTextureCache::RequestTextures(uint32_t used_texture_mask) {
 
 VkImageView VulkanTextureCache::GetActiveBindingOrNullImageView(
     uint32_t fetch_constant_index, xenos::FetchOpDimension dimension,
-    bool is_signed) const {
+    bool is_signed) {
   VkImageView image_view = VK_NULL_HANDLE;
   const TextureBinding* binding = GetValidTextureBinding(fetch_constant_index);
   if (binding && AreDimensionsCompatible(dimension, binding->key.dimension)) {
-    const VulkanTextureBinding& vulkan_binding =
-        vulkan_texture_bindings_[fetch_constant_index];
-    image_view = is_signed ? vulkan_binding.image_view_signed
-                           : vulkan_binding.image_view_unsigned;
+    // Check for 3D texture sampled as 2D.
+    bool force_special_view =
+        (dimension == xenos::FetchOpDimension::k2D &&
+         binding->key.dimension == xenos::DataDimension::k3D);
+
+    if (force_special_view) {
+      // Get the appropriate texture for signed/unsigned.
+      // Respect swizzled_signs from fetch constant, not just shader request.
+      Texture* texture = nullptr;
+      bool use_signed =
+          is_signed && texture_util::IsAnySignSigned(binding->swizzled_signs);
+      if (use_signed && IsSignedVersionSeparateForFormat(binding->key)) {
+        texture = binding->texture_signed;
+      } else {
+        texture = binding->texture;
+      }
+      if (texture) {
+        image_view =
+            static_cast<VulkanTexture*>(texture)->GetOrCreate3DAs2DImageView(
+                use_signed, binding->host_swizzle);
+      }
+    } else {
+      const VulkanTextureBinding& vulkan_binding =
+          vulkan_texture_bindings_[fetch_constant_index];
+      image_view = is_signed ? vulkan_binding.image_view_signed
+                             : vulkan_binding.image_view_unsigned;
+    }
   }
   if (image_view != VK_NULL_HANDLE) {
     return image_view;
@@ -1079,6 +1102,7 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
   image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_create_info.usage =
       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
   // For scaled resolve textures with mips, we need transfer source to generate
   // mip levels via blit from the base level.
   if (key.scaled_resolve && key.mip_max_level > 0) {
@@ -1149,7 +1173,11 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   const texture_util::TextureGuestLayout& guest_layout =
       vulkan_texture.guest_layout();
   xenos::DataDimension dimension = texture_key.dimension;
+  // Whether the host image is 3D (determines depth vs array layer layout).
   bool is_3d = dimension == xenos::DataDimension::k3D;
+  // Whether to use 3D tiling when reading from guest memory.
+  // For 3D-as-2D wrappers, the host image is 2D but we need 3D tiling.
+  bool is_3d_tiling = is_3d || vulkan_texture.force_load_3d_tiling();
   uint32_t width = texture_key.GetWidth();
   uint32_t height = texture_key.GetHeight();
   uint32_t depth_or_array_size = texture_key.GetDepthOrArraySize();
@@ -1455,7 +1483,7 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   assert_true(texture_resolution_scale_x <= 7);
   assert_true(texture_resolution_scale_y <= 7);
   load_constants.is_tiled_3d_endian_scale =
-      uint32_t(texture_key.tiled) | (uint32_t(is_3d) << 1) |
+      uint32_t(texture_key.tiled) | (uint32_t(is_3d_tiling) << 1) |
       (uint32_t(texture_key.endianness) << 2) |
       (texture_resolution_scale_x << 4) | (texture_resolution_scale_y << 7);
 
@@ -1765,8 +1793,10 @@ void VulkanTextureCache::UpdateTextureBindingsImpl(
 
 VulkanTextureCache::VulkanTexture::VulkanTexture(
     VulkanTextureCache& texture_cache, const TextureKey& key, VkImage image,
-    VmaAllocation allocation)
-    : Texture(texture_cache, key), image_(image), allocation_(allocation) {
+    VmaAllocation allocation, bool track_usage)
+    : Texture(texture_cache, key, track_usage),
+      image_(image),
+      allocation_(allocation) {
   VmaAllocationInfo allocation_info;
   vmaGetAllocationInfo(texture_cache.vma_allocator_, allocation_,
                        &allocation_info);
@@ -1783,6 +1813,15 @@ VulkanTextureCache::VulkanTexture::~VulkanTexture() {
   for (const auto& view_pair : views_) {
     dfn.vkDestroyImageView(device, view_pair.second, nullptr);
   }
+  // Clean up 3D-as-2D image views. The texture_3d_as_2d_ wrapper will clean
+  // itself up via unique_ptr destructor.
+  if (image_view_3d_as_2d_unsigned_ != VK_NULL_HANDLE) {
+    dfn.vkDestroyImageView(device, image_view_3d_as_2d_unsigned_, nullptr);
+  }
+  if (image_view_3d_as_2d_signed_ != VK_NULL_HANDLE) {
+    dfn.vkDestroyImageView(device, image_view_3d_as_2d_signed_, nullptr);
+  }
+  // texture_3d_as_2d_ is a unique_ptr and will destroy its image/allocation.
   vmaDestroyImage(vulkan_texture_cache.vma_allocator_, image_, allocation_);
 }
 
@@ -1875,6 +1914,135 @@ VkImageView VulkanTextureCache::VulkanTexture::GetView(bool is_signed,
   }
   views_.emplace(view_key, view);
   return view;
+}
+
+VkImageView VulkanTextureCache::VulkanTexture::GetOrCreate3DAs2DImageView(
+    bool is_signed, uint32_t host_swizzle) {
+  if (!cvars::gpu_3d_to_2d_texture) {
+    return VK_NULL_HANDLE;
+  }
+
+  // Return cached view if available.
+  VkImageView& cached_view =
+      is_signed ? image_view_3d_as_2d_signed_ : image_view_3d_as_2d_unsigned_;
+  if (cached_view != VK_NULL_HANDLE) {
+    return cached_view;
+  }
+
+  VulkanTextureCache& vulkan_texture_cache =
+      static_cast<VulkanTextureCache&>(texture_cache());
+
+  // Create the 2D texture wrapper if it doesn't exist.
+  if (!texture_3d_as_2d_) {
+    const HostFormatPair& host_format_pair =
+        vulkan_texture_cache.GetHostFormatPair(key());
+    VkFormat format = host_format_pair.format_unsigned.format;
+    if (format == VK_FORMAT_UNDEFINED) {
+      return VK_NULL_HANDLE;
+    }
+
+    VkImageCreateInfo image_create_info = {};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = format;
+    image_create_info.extent.width = key().GetWidth();
+    image_create_info.extent.height = key().GetHeight();
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage =
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    VkImage image_2d;
+    VmaAllocation allocation_2d;
+    if (vmaCreateImage(vulkan_texture_cache.vma_allocator_, &image_create_info,
+                       &allocation_create_info, &image_2d, &allocation_2d,
+                       nullptr) != VK_SUCCESS) {
+      XELOGE("VulkanTexture: Failed to create 3D-as-2D image");
+      return VK_NULL_HANDLE;
+    }
+
+    // Create a modified key for the 2D wrapper with depth=1 and
+    // mip_max_level=0. Keep dimension as k3D so guest layout uses 3D tiling
+    // math to correctly read slice 0 from the 3D-tiled guest memory.
+    TextureKey key_2d = key();
+    key_2d.depth_or_array_size_minus_1 = 0;
+    key_2d.mip_max_level = 0;
+
+    // Create the wrapper first so LoadTextureData can work with it.
+    texture_3d_as_2d_.reset(new VulkanTexture(vulkan_texture_cache, key_2d,
+                                              image_2d, allocation_2d, false));
+
+    if (!vulkan_texture_cache.LoadTextureData(*texture_3d_as_2d_)) {
+      XELOGE("VulkanTexture: Failed to load 3D-as-2D texture data");
+      texture_3d_as_2d_.reset();
+      return VK_NULL_HANDLE;
+    }
+
+    // LoadTextureData leaves the texture in TRANSFER_DST state.
+    // Transition to shader read state.
+    DeferredCommandBuffer& command_buffer =
+        vulkan_texture_cache.command_processor_.deferred_command_buffer();
+    VkImageMemoryBarrier barrier_to_shader = {};
+    barrier_to_shader.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier_to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier_to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrier_to_shader.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier_to_shader.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier_to_shader.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier_to_shader.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier_to_shader.image = texture_3d_as_2d_->image();
+    barrier_to_shader.subresourceRange =
+        ui::vulkan::util::InitializeSubresourceRange();
+    command_buffer.CmdVkPipelineBarrier(
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier_to_shader);
+    texture_3d_as_2d_->SetUsage(Usage::kGuestShaderSampled);
+  }
+
+  // Create the image view.
+  const ui::vulkan::VulkanDevice* const vulkan_device =
+      vulkan_texture_cache.command_processor_.GetVulkanDevice();
+  const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+  const VkDevice device = vulkan_device->device();
+
+  const HostFormatPair& host_format_pair =
+      vulkan_texture_cache.GetHostFormatPair(key());
+  VkFormat format = (is_signed ? host_format_pair.format_signed
+                               : host_format_pair.format_unsigned)
+                        .format;
+  if (format == VK_FORMAT_UNDEFINED) {
+    return VK_NULL_HANDLE;
+  }
+
+  VkImageViewCreateInfo view_create_info = {};
+  view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  view_create_info.image = texture_3d_as_2d_->image();
+  // Use 2D_ARRAY to match shader expectations (Dim = 2D, Arrayed = 1).
+  view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+  view_create_info.format = format;
+  view_create_info.components.r = GetComponentSwizzle(host_swizzle, 0);
+  view_create_info.components.g = GetComponentSwizzle(host_swizzle, 1);
+  view_create_info.components.b = GetComponentSwizzle(host_swizzle, 2);
+  view_create_info.components.a = GetComponentSwizzle(host_swizzle, 3);
+  view_create_info.subresourceRange =
+      ui::vulkan::util::InitializeSubresourceRange();
+  view_create_info.subresourceRange.layerCount = 1;
+
+  if (dfn.vkCreateImageView(device, &view_create_info, nullptr, &cached_view) !=
+      VK_SUCCESS) {
+    XELOGE("VulkanTexture: Failed to create 3D-as-2D image view");
+    return VK_NULL_HANDLE;
+  }
+
+  return cached_view;
 }
 
 VulkanTextureCache::VulkanTextureCache(
@@ -2801,6 +2969,9 @@ void VulkanTextureCache::GetTextureUsageMasks(VulkanTexture::Usage usage,
   layout = VK_IMAGE_LAYOUT_UNDEFINED;
   switch (usage) {
     case VulkanTexture::Usage::kUndefined:
+      // For UNDEFINED layout, use TOP_OF_PIPE as source stage (wait for
+      // nothing) with no access mask (discarding old contents).
+      stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
       break;
     case VulkanTexture::Usage::kTransferDestination:
       stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;

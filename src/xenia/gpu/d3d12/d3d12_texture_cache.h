@@ -551,6 +551,7 @@ class D3D12TextureCache final : public TextureCache {
       struct {
         uint32_t is_signed : 1;
         uint32_t host_swizzle : 12;
+        uint32_t dimension : 2;
       };
 
       SRVDescriptorKey() : key(0) { static_assert_size(*this, sizeof(key)); }
@@ -568,9 +569,13 @@ class D3D12TextureCache final : public TextureCache {
       }
     };
 
+    ID3D12Resource* GetOrCreate3DAs2DResource(D3D12_RESOURCE_STATES end_state);
+
+    // track_usage: if false, texture won't participate in LRU cache eviction.
     explicit D3D12Texture(D3D12TextureCache& texture_cache,
                           const TextureKey& key, ID3D12Resource* resource,
-                          D3D12_RESOURCE_STATES resource_state);
+                          D3D12_RESOURCE_STATES resource_state,
+                          bool track_usage = true);
     ~D3D12Texture();
 
     ID3D12Resource* resource() const { return resource_.Get(); }
@@ -594,6 +599,10 @@ class D3D12TextureCache final : public TextureCache {
    private:
     Microsoft::WRL::ComPtr<ID3D12Resource> resource_;
     D3D12_RESOURCE_STATES resource_state_;
+
+    // Cached 2D view of the first slice, managed as a standalone texture
+    // object.
+    std::unique_ptr<D3D12Texture> texture_3d_as_2d_;
 
     // For bindful - indices in the non-shader-visible descriptor cache for
     // copying to the shader-visible heap (much faster than recreating, which,
@@ -717,7 +726,8 @@ class D3D12TextureCache final : public TextureCache {
       case xenos::FetchOpDimension::k1D:
       case xenos::FetchOpDimension::k2D:
         return resource_dimension == xenos::DataDimension::k1D ||
-               resource_dimension == xenos::DataDimension::k2DOrStacked;
+               resource_dimension == xenos::DataDimension::k2DOrStacked ||
+               resource_dimension == xenos::DataDimension::k3D;
       case xenos::FetchOpDimension::k3DOrStacked:
         return resource_dimension == xenos::DataDimension::k3D;
       case xenos::FetchOpDimension::kCube:
@@ -730,8 +740,9 @@ class D3D12TextureCache final : public TextureCache {
   // Returns the index of an existing of a newly created non-shader-visible
   // cached (for bindful) or a shader-visible global (for bindless) descriptor,
   // or UINT32_MAX if failed to create.
-  uint32_t FindOrCreateTextureDescriptor(D3D12Texture& texture, bool is_signed,
-                                         uint32_t host_swizzle);
+  uint32_t FindOrCreateTextureDescriptor(D3D12Texture& texture,
+                                         xenos::DataDimension dimension,
+                                         bool is_signed, uint32_t host_swizzle);
   void ReleaseTextureDescriptor(uint32_t descriptor_index);
   D3D12_CPU_DESCRIPTOR_HANDLE GetTextureDescriptorCPUHandle(
       uint32_t descriptor_index) const;

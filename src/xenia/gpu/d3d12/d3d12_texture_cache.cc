@@ -582,21 +582,41 @@ void D3D12TextureCache::WriteActiveTextureBindfulSRV(
   const TextureBinding* binding = GetValidTextureBinding(fetch_constant_index);
   if (binding && AreDimensionsCompatible(host_shader_binding.dimension,
                                          binding->key.dimension)) {
+    bool force_special_view =
+        (host_shader_binding.dimension == xenos::FetchOpDimension::k2D &&
+         binding->key.dimension == xenos::DataDimension::k3D);
+
     const D3D12TextureBinding& d3d12_binding =
         d3d12_texture_bindings_[fetch_constant_index];
     if (host_shader_binding.is_signed) {
       // Not supporting signed compressed textures - hopefully DXN and DXT5A are
       // not used as signed.
       if (texture_util::IsAnySignSigned(binding->swizzled_signs)) {
-        descriptor_index = d3d12_binding.descriptor_index_signed;
         texture = IsSignedVersionSeparateForFormat(binding->key)
                       ? binding->texture_signed
                       : binding->texture;
+
+        if (force_special_view && texture) {
+          // Request the 2D view of the 3D texture on demand
+          descriptor_index = FindOrCreateTextureDescriptor(
+              *static_cast<D3D12Texture*>(texture),
+              xenos::DataDimension::k2DOrStacked, true, binding->host_swizzle);
+        } else {
+          descriptor_index = d3d12_binding.descriptor_index_signed;
+        }
       }
     } else {
       if (texture_util::IsAnySignNotSigned(binding->swizzled_signs)) {
-        descriptor_index = d3d12_binding.descriptor_index;
         texture = binding->texture;
+
+        if (force_special_view && texture) {
+          // Request the 2D view of the 3D texture on demand
+          descriptor_index = FindOrCreateTextureDescriptor(
+              *static_cast<D3D12Texture*>(texture),
+              xenos::DataDimension::k2DOrStacked, false, binding->host_swizzle);
+        } else {
+          descriptor_index = d3d12_binding.descriptor_index;
+        }
       }
     }
   }
@@ -646,12 +666,47 @@ uint32_t D3D12TextureCache::GetActiveTextureBindlessSRVIndex(
   const TextureBinding* binding = GetValidTextureBinding(fetch_constant_index);
   if (binding && AreDimensionsCompatible(host_shader_binding.dimension,
                                          binding->key.dimension)) {
+    // 3D Texture on 2D Request
+    bool force_special_view =
+        (host_shader_binding.dimension == xenos::FetchOpDimension::k2D &&
+         binding->key.dimension == xenos::DataDimension::k3D);
+
     const D3D12TextureBinding& d3d12_binding =
         d3d12_texture_bindings_[fetch_constant_index];
-    descriptor_index = host_shader_binding.is_signed
-                           ? d3d12_binding.descriptor_index_signed
-                           : d3d12_binding.descriptor_index;
+
+    // Helper lambda to get standard index
+    uint32_t standard_index = host_shader_binding.is_signed
+                                  ? d3d12_binding.descriptor_index_signed
+                                  : d3d12_binding.descriptor_index;
+
+    if (force_special_view) {
+      // Determine which texture object to use
+      // Respect swizzled_signs from fetch constant, not just shader request
+      Texture* texture = nullptr;
+      bool use_signed = host_shader_binding.is_signed &&
+                        texture_util::IsAnySignSigned(binding->swizzled_signs);
+      if (use_signed) {
+        texture = IsSignedVersionSeparateForFormat(binding->key)
+                      ? binding->texture_signed
+                      : binding->texture;
+        if (texture) {
+          descriptor_index = FindOrCreateTextureDescriptor(
+              *static_cast<D3D12Texture*>(texture),
+              xenos::DataDimension::k2DOrStacked, true, binding->host_swizzle);
+        }
+      } else {
+        texture = binding->texture;
+        if (texture) {
+          descriptor_index = FindOrCreateTextureDescriptor(
+              *static_cast<D3D12Texture*>(texture),
+              xenos::DataDimension::k2DOrStacked, false, binding->host_swizzle);
+        }
+      }
+    } else {
+      descriptor_index = standard_index;
+    }
   }
+
   if (descriptor_index == UINT32_MAX) {
     switch (host_shader_binding.dimension) {
       case xenos::FetchOpDimension::k3DOrStacked:
@@ -1176,8 +1231,9 @@ ID3D12Resource* D3D12TextureCache::RequestSwapTexture(
 
 D3D12TextureCache::D3D12Texture::D3D12Texture(
     D3D12TextureCache& texture_cache, const TextureKey& key,
-    ID3D12Resource* resource, D3D12_RESOURCE_STATES resource_state)
-    : Texture(texture_cache, key),
+    ID3D12Resource* resource, D3D12_RESOURCE_STATES resource_state,
+    bool track_usage)
+    : Texture(texture_cache, key, track_usage),
       resource_(resource),
       resource_state_(resource_state) {
   ID3D12Device* device =
@@ -1355,7 +1411,11 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   const texture_util::TextureGuestLayout& guest_layout =
       d3d12_texture.guest_layout();
   xenos::DataDimension dimension = texture_key.dimension;
+  // Whether the host texture is 3D (determines depth vs array layer layout).
   bool is_3d = dimension == xenos::DataDimension::k3D;
+  // Whether to use 3D tiling when reading from guest memory.
+  // For 3D-as-2D wrappers, the host texture is 2D but we need 3D tiling.
+  bool is_3d_tiling = is_3d || d3d12_texture.force_load_3d_tiling();
   uint32_t width = texture_key.GetWidth();
   uint32_t height = texture_key.GetHeight();
   uint32_t depth_or_array_size = texture_key.GetDepthOrArraySize();
@@ -1544,7 +1604,7 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   assert_true(texture_resolution_scale_x <= 7);
   assert_true(texture_resolution_scale_y <= 7);
   load_constants.is_tiled_3d_endian_scale =
-      uint32_t(texture_key.tiled) | (uint32_t(is_3d) << 1) |
+      uint32_t(texture_key.tiled) | (uint32_t(is_3d_tiling) << 1) |
       (uint32_t(texture_key.endianness) << 2) |
       (texture_resolution_scale_x << 4) | (texture_resolution_scale_y << 7);
 
@@ -1756,36 +1816,103 @@ void D3D12TextureCache::UpdateTextureBindingsImpl(
       if (binding->texture &&
           texture_util::IsAnySignNotSigned(binding->swizzled_signs)) {
         d3d12_binding.descriptor_index = FindOrCreateTextureDescriptor(
-            *static_cast<D3D12Texture*>(binding->texture), false,
-            binding->host_swizzle);
+            *static_cast<D3D12Texture*>(binding->texture),
+            binding->key.dimension, false, binding->host_swizzle);
       }
       if (binding->texture_signed &&
           texture_util::IsAnySignSigned(binding->swizzled_signs)) {
         d3d12_binding.descriptor_index_signed = FindOrCreateTextureDescriptor(
-            *static_cast<D3D12Texture*>(binding->texture_signed), true,
-            binding->host_swizzle);
+            *static_cast<D3D12Texture*>(binding->texture_signed),
+            binding->key.dimension, true, binding->host_swizzle);
       }
     } else {
       D3D12Texture* texture = static_cast<D3D12Texture*>(binding->texture);
       if (texture) {
         if (texture_util::IsAnySignNotSigned(binding->swizzled_signs)) {
           d3d12_binding.descriptor_index = FindOrCreateTextureDescriptor(
-              *texture, false, binding->host_swizzle);
+              *texture, binding->key.dimension, false, binding->host_swizzle);
         }
         if (texture_util::IsAnySignSigned(binding->swizzled_signs)) {
           d3d12_binding.descriptor_index_signed = FindOrCreateTextureDescriptor(
-              *texture, true, binding->host_swizzle);
+              *texture, binding->key.dimension, true, binding->host_swizzle);
         }
       }
     }
   }
 }
 
+ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
+    D3D12_RESOURCE_STATES end_state) {
+  if (!cvars::gpu_3d_to_2d_texture) {
+    return nullptr;
+  }
+
+  auto& d3d12_cache = static_cast<D3D12TextureCache&>(texture_cache());
+
+  // If cached, transition and return.
+  if (texture_3d_as_2d_) {
+    d3d12_cache.command_processor_.PushTransitionBarrier(
+        texture_3d_as_2d_->resource(),
+        texture_3d_as_2d_->SetResourceState(end_state), end_state);
+    return texture_3d_as_2d_->resource();
+  }
+
+  const ui::d3d12::D3D12Provider& provider =
+      d3d12_cache.command_processor_.GetD3D12Provider();
+  ID3D12Device* device = provider.GetDevice();
+
+  D3D12_RESOURCE_DESC source_desc = resource_->GetDesc();
+  D3D12_RESOURCE_DESC desc = source_desc;
+  desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+  desc.DepthOrArraySize = 1;
+  desc.MipLevels = 1;
+  desc.Alignment = 0;
+  desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+  desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+  D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COPY_DEST;
+  Microsoft::WRL::ComPtr<ID3D12Resource> resource_2d;
+
+  if (FAILED(device->CreateCommittedResource(
+          &ui::d3d12::util::kHeapPropertiesDefault,
+          provider.GetHeapFlagCreateNotZeroed(), &desc, initial_state, nullptr,
+          IID_PPV_ARGS(&resource_2d)))) {
+    XELOGE("D3D12Texture: Failed to create 3D-as-2D resource");
+    return nullptr;
+  }
+
+  // Create a modified key for the 2D wrapper with depth=1 and mip_max_level=0.
+  // Keep dimension as k3D so guest layout uses 3D tiling math to correctly
+  // read slice 0 from the 3D-tiled guest memory.
+  TextureKey key_2d = key();
+  key_2d.depth_or_array_size_minus_1 = 0;
+  key_2d.mip_max_level = 0;
+
+  texture_3d_as_2d_.reset(new D3D12Texture(
+      d3d12_cache, key_2d, resource_2d.Get(), initial_state, false));
+
+  if (!d3d12_cache.LoadTextureData(*texture_3d_as_2d_)) {
+    XELOGE("D3D12Texture: Failed to load 3D-as-2D texture data");
+    texture_3d_as_2d_.reset();
+    return nullptr;
+  }
+
+  // Transition to requested state.
+  d3d12_cache.command_processor_.PushTransitionBarrier(
+      texture_3d_as_2d_->resource(),
+      texture_3d_as_2d_->SetResourceState(end_state), end_state);
+
+  return texture_3d_as_2d_->resource();
+}
+
 uint32_t D3D12TextureCache::FindOrCreateTextureDescriptor(
-    D3D12Texture& texture, bool is_signed, uint32_t host_swizzle) {
+    D3D12Texture& texture, xenos::DataDimension dimension, bool is_signed,
+    uint32_t host_swizzle) {
   D3D12Texture::SRVDescriptorKey descriptor_key;
+  descriptor_key.key = 0;
   descriptor_key.is_signed = uint32_t(is_signed);
   descriptor_key.host_swizzle = host_swizzle;
+  descriptor_key.dimension = uint32_t(dimension);
 
   // Try to find an existing descriptor.
   uint32_t existing_descriptor_index =
@@ -1797,7 +1924,7 @@ uint32_t D3D12TextureCache::FindOrCreateTextureDescriptor(
   TextureKey texture_key = texture.key();
 
   // Create a new bindless or cached descriptor if supported.
-  D3D12_SHADER_RESOURCE_VIEW_DESC desc;
+  D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};  // Zero out struct
 
   if (IsSignedVersionSeparateForFormat(texture_key) &&
       texture_key.signed_separate != uint32_t(is_signed)) {
@@ -1819,34 +1946,44 @@ uint32_t D3D12TextureCache::FindOrCreateTextureDescriptor(
   }
 
   uint32_t mip_levels = texture_key.mip_max_level + 1;
-  switch (texture_key.dimension) {
-    case xenos::DataDimension::k1D:
-    case xenos::DataDimension::k2DOrStacked:
-      desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+  ID3D12Resource* resource_for_view = texture.resource();
+
+  if (dimension == xenos::DataDimension::k3D) {
+    desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    desc.Texture3D.MostDetailedMip = 0;
+    desc.Texture3D.MipLevels = mip_levels;
+    desc.Texture3D.ResourceMinLODClamp = 0.0f;
+  } else if (dimension == xenos::DataDimension::kCube) {
+    desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+    desc.TextureCube.MostDetailedMip = 0;
+    desc.TextureCube.MipLevels = mip_levels;
+    desc.TextureCube.ResourceMinLODClamp = 0.0f;
+  } else {
+    desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+    if (texture_key.dimension == xenos::DataDimension::k3D) {
+      resource_for_view = texture.GetOrCreate3DAs2DResource(
+          D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+      if (!resource_for_view) {
+        return UINT32_MAX;
+      }
+
+      // Configure SRV for the new 2D resource
+      desc.Texture2DArray.MostDetailedMip = 0;
+      desc.Texture2DArray.MipLevels = 1;
+      desc.Texture2DArray.FirstArraySlice = 0;
+      desc.Texture2DArray.ArraySize = 1;
+      desc.Texture2DArray.PlaneSlice = 0;
+      desc.Texture2DArray.ResourceMinLODClamp = 0.0f;
+    } else {
+      // Standard behavior
       desc.Texture2DArray.MostDetailedMip = 0;
       desc.Texture2DArray.MipLevels = mip_levels;
       desc.Texture2DArray.FirstArraySlice = 0;
       desc.Texture2DArray.ArraySize = texture_key.GetDepthOrArraySize();
       desc.Texture2DArray.PlaneSlice = 0;
       desc.Texture2DArray.ResourceMinLODClamp = 0.0f;
-      break;
-    case xenos::DataDimension::k3D:
-      desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-      desc.Texture3D.MostDetailedMip = 0;
-      desc.Texture3D.MipLevels = mip_levels;
-      desc.Texture3D.ResourceMinLODClamp = 0.0f;
-      break;
-    case xenos::DataDimension::kCube:
-      desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-      desc.TextureCube.MostDetailedMip = 0;
-      desc.TextureCube.MipLevels = mip_levels;
-      desc.TextureCube.ResourceMinLODClamp = 0.0f;
-      break;
-    default:
-      assert_unhandled_case(texture_key.dimension);
-      return UINT32_MAX;
+    }
   }
-
   desc.Shader4ComponentMapping =
       host_swizzle |
       D3D12_SHADER_COMPONENT_MAPPING_ALWAYS_SET_BIT_AVOIDING_ZEROMEM_MISTAKES;
@@ -1894,7 +2031,7 @@ uint32_t D3D12TextureCache::FindOrCreateTextureDescriptor(
     }
   }
   device->CreateShaderResourceView(
-      texture.resource(), &desc,
+      resource_for_view, &desc,
       GetTextureDescriptorCPUHandle(descriptor_index));
   texture.AddSRVDescriptorIndex(descriptor_key, descriptor_index);
   return descriptor_index;

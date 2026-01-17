@@ -251,6 +251,11 @@ class TextureCache {
       return guest_layout().mips_total_extent_bytes;
     }
 
+    // For 3D-as-2D wrappers: the host texture is 2D but we need 3D tiling
+    // when loading from guest memory.
+    bool force_load_3d_tiling() const { return force_load_3d_tiling_; }
+    void SetForceLoad3DTiling(bool force) { force_load_3d_tiling_ = force; }
+
     uint64_t GetHostMemoryUsage() const { return host_memory_usage_; }
 
     uint64_t last_usage_submission_index() const {
@@ -294,7 +299,11 @@ class TextureCache {
     void LogAction(const char* action) const;
 
    protected:
-    explicit Texture(TextureCache& texture_cache, const TextureKey& key);
+    // track_usage: if false, the texture won't be added to the LRU tracking
+    // list. Use this for wrapper textures that shouldn't participate in cache
+    // eviction (like texture_3d_as_2d_ wrappers).
+    explicit Texture(TextureCache& texture_cache, const TextureKey& key,
+                     bool track_usage = true);
 
     void SetHostMemoryUsage(uint64_t new_host_memory_usage) {
       texture_cache_.UpdateTexturesTotalHostMemoryUsage(new_host_memory_usage,
@@ -315,6 +324,13 @@ class TextureCache {
     uint64_t last_usage_time_;
     Texture* used_previous_;
     Texture* used_next_;
+    // Whether this texture is in the usage tracking list (for LRU eviction).
+    // Set to false via constructor for wrapper textures.
+    bool in_usage_list_;
+
+    // For 3D-as-2D wrappers: use 3D tiling when loading even though the host
+    // texture is 2D.
+    bool force_load_3d_tiling_ = false;
 
     // Whether the most up-to-date base / mips contain pages with data from a
     // resolve operation (rather than from the CPU or memexport), primarily for

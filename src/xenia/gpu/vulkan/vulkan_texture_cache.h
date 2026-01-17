@@ -92,7 +92,7 @@ class VulkanTextureCache final : public TextureCache {
 
   VkImageView GetActiveBindingOrNullImageView(uint32_t fetch_constant_index,
                                               xenos::FetchOpDimension dimension,
-                                              bool is_signed) const;
+                                              bool is_signed);
 
   SamplerParameters GetSamplerParameters(
       const VulkanShader::SamplerBinding& binding) const;
@@ -254,9 +254,10 @@ class VulkanTextureCache final : public TextureCache {
     };
 
     // Takes ownership of the image and its memory.
+    // track_usage: if false, texture won't participate in LRU cache eviction.
     explicit VulkanTexture(VulkanTextureCache& texture_cache,
                            const TextureKey& key, VkImage image,
-                           VmaAllocation allocation);
+                           VmaAllocation allocation, bool track_usage = true);
     ~VulkanTexture();
 
     VkImage image() const { return image_; }
@@ -270,6 +271,10 @@ class VulkanTextureCache final : public TextureCache {
 
     VkImageView GetView(bool is_signed, uint32_t host_swizzle,
                         bool is_array = true);
+
+    // For 3D textures sampled as 2D - creates a 2D copy of slice 0.
+    VkImageView GetOrCreate3DAs2DImageView(bool is_signed,
+                                           uint32_t host_swizzle);
 
    private:
     union ViewKey {
@@ -331,6 +336,12 @@ class VulkanTextureCache final : public TextureCache {
     Usage usage_ = Usage::kUndefined;
 
     std::unordered_map<ViewKey, VkImageView, ViewKey::Hasher> views_;
+
+    // For 3D textures sampled as 2D - cached 2D texture loaded from slice 0.
+    // Uses a modified key (depth=1) with 3D tiling to read from guest memory.
+    std::unique_ptr<VulkanTexture> texture_3d_as_2d_;
+    VkImageView image_view_3d_as_2d_unsigned_ = VK_NULL_HANDLE;
+    VkImageView image_view_3d_as_2d_signed_ = VK_NULL_HANDLE;
   };
 
   struct VulkanTextureBinding {
@@ -359,7 +370,8 @@ class VulkanTextureCache final : public TextureCache {
       case xenos::FetchOpDimension::k1D:
       case xenos::FetchOpDimension::k2D:
         return resource_dimension == xenos::DataDimension::k1D ||
-               resource_dimension == xenos::DataDimension::k2DOrStacked;
+               resource_dimension == xenos::DataDimension::k2DOrStacked ||
+               resource_dimension == xenos::DataDimension::k3D;
       case xenos::FetchOpDimension::k3DOrStacked:
         return resource_dimension == xenos::DataDimension::k3D;
       case xenos::FetchOpDimension::kCube:
