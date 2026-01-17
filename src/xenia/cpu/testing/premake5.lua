@@ -10,12 +10,13 @@ test_suite("xenia-cpu-tests", project_root, ".", {
     "xenia-core",
     "xenia-cpu",
     "xenia-gpu",
-    "xenia-hid-skylander",
 
     -- TODO(benvanik): cut these dependencies?
     "xenia-kernel",
     "xenia-ui", -- needed by xenia-base
     "xenia-patcher",
+    "libavcodec",
+    "libavutil",
   },
   filtered_links = {
     {
@@ -23,6 +24,24 @@ test_suite("xenia-cpu-tests", project_root, ".", {
       links = {
         "xenia-cpu-backend-x64",
       },
-    }
+    },
+    {
+      filter = 'architecture:ARM64',
+      links = {
+        "xenia-cpu-backend-a64",
+      },
+    },
+    {
+      filter = 'platforms:Mac-*',
+      links = {
+        "Cocoa.framework",
+      },
+    },
+    {
+      filter = 'platforms:not Mac-*',
+      links = {
+        "libavformat",
+      },
+    },
   },
 })

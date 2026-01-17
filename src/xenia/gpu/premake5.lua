@@ -15,12 +15,20 @@ project("xenia-gpu")
     "xenia-ui",
     "xxhash",
   })
-  includedirs({
-    project_root.."/third_party/Vulkan-Headers/include",
-  })
   local_platform_files()
+  filter("platforms:not Mac-*")
+    sysincludedirs({
+      project_root.."/third_party/Vulkan-Headers/include",
+    })
+  filter("platforms:Mac-*")
+    removefiles({
+      "spirv_shader*.cc",
+      "spirv_shader_translator*.cc",
+    })
+  filter({})
 
 group("src")
+if not os.istarget("macosx") then
 project("xenia-gpu-shader-compiler")
   uuid("ad76d3e4-4c62-439b-a0f6-f83fcf0e83c5")
   kind("ConsoleApp")
@@ -35,7 +43,7 @@ project("xenia-gpu-shader-compiler")
     "xenia-ui",
     "xenia-ui-vulkan",
   })
-  includedirs({
+  sysincludedirs({
     project_root.."/third_party/Vulkan-Headers/include",
   })
   files({
@@ -53,3 +61,4 @@ project("xenia-gpu-shader-compiler")
         "1>scratch/stdout-shader-compiler.txt",
       })
     end
+end

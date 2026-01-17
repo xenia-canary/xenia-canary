@@ -72,7 +72,11 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
 
   if (proto == Protocol::IPPROTO_VDP) {
     // VDP is a layer on top of UDP.
+#if defined(IPPROTO_UDP)
+    proto = static_cast<Protocol>(IPPROTO_UDP);
+#else
     proto = Protocol::IPPROTO_UDP;
+#endif
   }
 
   native_handle_ = socket(af, type, proto);
@@ -86,7 +90,7 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
 X_STATUS XSocket::Close() {
 #if XE_PLATFORM_WIN32
   int ret = closesocket(native_handle_);
-#elif XE_PLATFORM_LINUX
+#else
   int ret = close(native_handle_);
 #endif
 

@@ -13,6 +13,10 @@
 #include <cmath>
 #include <cstdlib>
 
+#if XE_ARCH_X86_64
+#include <immintrin.h>
+#endif
+
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/math.h"
@@ -412,15 +416,17 @@ void Value::MulHi(Value* other, bool is_unsigned) {
       }
 #else
       if (is_unsigned) {
-        constant.i64 = static_cast<uint64_t>(
-            (static_cast<unsigned __int128>(constant.i64) *
-             static_cast<unsigned __int128>(other->constant.i64)) >>
-            64);
+        uint64_t a = static_cast<uint64_t>(constant.i64);
+        uint64_t b = static_cast<uint64_t>(other->constant.i64);
+        constant.i64 =
+            static_cast<uint64_t>((static_cast<unsigned __int128>(a) *
+                                   static_cast<unsigned __int128>(b)) >>
+                                  64);
       } else {
+        int64_t a = constant.i64;
+        int64_t b = other->constant.i64;
         constant.i64 = static_cast<uint64_t>(
-            (static_cast<__int128>(constant.i64) *
-             static_cast<__int128>(other->constant.i64)) >>
-            64);
+            (static_cast<__int128>(a) * static_cast<__int128>(b)) >> 64);
       }
 #endif  // XE_COMPILER_MSVC
       break;
@@ -867,6 +873,7 @@ void Value::Permute(Value* src1, Value* src2, TypeName type) {
       perm.u8[i * 2] = v * 2;
       perm.u8[i * 2 + 1] = v * 2 + 1;
     }
+#if XE_ARCH_X86_64
     auto lod = [](const vec128_t& v) {
       return _mm_loadu_si128((const __m128i*)&v);
     };
@@ -893,6 +900,38 @@ void Value::Permute(Value* src1, Value* src2, TypeName type) {
     }
 
     sto(constant.v128, _mm_blendv_epi8(xmm1, xmm2, lod(unp_mask)));
+#else
+    auto shuffle_bytes = [](const vec128_t& src,
+                            const vec128_t& control) -> vec128_t {
+      vec128_t out = vec128b(0);
+      for (int i = 0; i < 16; ++i) {
+        uint8_t idx = control.u8[i];
+        out.u8[i] = src.u8[idx & 0x0F];
+      }
+      return out;
+    };
+
+    vec128_t xmm1 = shuffle_bytes(src1->constant.v128, perm);
+    vec128_t xmm2 = shuffle_bytes(src2->constant.v128, perm);
+
+    uint8_t mask = 0;
+    for (int i = 0; i < 8; i++) {
+      if (perm_ctrl.i16[i] == 0) {
+        mask |= 1 << (7 - i);
+      }
+    }
+
+    vec128_t unp_mask = vec128b(0);
+    for (int i = 0; i < 8; i++) {
+      if (mask & (1 << i)) {
+        unp_mask.u16[i] = 0xFFFF;
+      }
+    }
+
+    for (int i = 0; i < 16; ++i) {
+      constant.v128.u8[i] = (unp_mask.u8[i] & 0x80) ? xmm2.u8[i] : xmm1.u8[i];
+    }
+#endif
 
   } else {
     assert_unhandled_case(type);

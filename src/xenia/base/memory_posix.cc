@@ -12,15 +12,22 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <functional>
+#include <string>
 #if XE_PLATFORM_MAC
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <mach/vm_region.h>
 #endif
 #include <cstddef>
+
 #include <fstream>
 #include <mutex>
 #include <sstream>
+#include "xenia/base/logging.h"
 
 #include "xenia/base/math.h"
 #include "xenia/base/platform.h"
@@ -104,7 +111,7 @@ PageAccess ToXeniaProtectFlags(const char* protection) {
 }
 
 bool IsWritableExecutableMemorySupported() {
-#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+#if XE_PLATFORM_MAC
   static const bool supported = []() {
     const size_t test_size = page_size();
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
@@ -139,7 +146,7 @@ void* AllocFixed(void* base_address, size_t length,
   uint32_t prot = ToPosixProtectFlags(access);
   int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
-#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+#if XE_PLATFORM_MAC
   if (access == PageAccess::kExecuteReadWrite ||
       access == PageAccess::kExecuteReadOnly) {
 #ifdef MAP_JIT
@@ -150,10 +157,26 @@ void* AllocFixed(void* base_address, size_t length,
 
   if (base_address != nullptr) {
     if (allocation_type == AllocationType::kCommit) {
+#if XE_PLATFORM_MAC
+      const size_t system_page_size = page_size();
+      uintptr_t start = reinterpret_cast<uintptr_t>(base_address);
+      uintptr_t aligned_start = start & ~(system_page_size - 1);
+      uintptr_t aligned_end = xe::align(start + length, system_page_size);
+      size_t aligned_length =
+          aligned_end > aligned_start ? aligned_end - aligned_start : 0;
+      if (!aligned_length) {
+        return base_address;
+      }
+      return mprotect(reinterpret_cast<void*>(aligned_start), aligned_length,
+                      prot) == 0
+                 ? base_address
+                 : nullptr;
+#else
       if (Protect(base_address, length, access)) {
         return base_address;
       }
       return nullptr;
+#endif
     }
 #ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
@@ -163,6 +186,10 @@ void* AllocFixed(void* base_address, size_t length,
   void* result = mmap(base_address, length, prot, flags, -1, 0);
 
   if (result != MAP_FAILED) {
+    if (base_address && result != base_address) {
+      munmap(result, length);
+      return nullptr;
+    }
     return result;
   }
   return nullptr;
@@ -345,9 +372,21 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
       return kFileMappingHandleInvalid;
   }
   oflag |= O_CREAT;
-  auto full_path = "/" / path;
+  std::string shm_name = path.filename().string();
+#if XE_PLATFORM_MAC
+  constexpr size_t kMacShmNameLimit = 30;
+  if (shm_name.size() > kMacShmNameLimit) {
+    size_t hash = std::hash<std::string>{}(shm_name);
+    char hash_name[32] = {};
+    std::snprintf(hash_name, sizeof(hash_name), "xe_%016zx", hash);
+    shm_name = hash_name;
+  }
+#endif  // XE_PLATFORM_MAC
+  auto full_path = "/" + shm_name;
   int ret = shm_open(full_path.c_str(), oflag, 0777);
   if (ret < 0) {
+    XELOGE("shm_open failed for {}: {} ({})", full_path, errno,
+           std::strerror(errno));
     return kFileMappingHandleInvalid;
   }
 #ifdef __APPLE__
@@ -363,7 +402,17 @@ void CloseFileMappingHandle(FileMappingHandle handle,
                             const std::filesystem::path& path) {
   close(handle);
 #if !XE_PLATFORM_ANDROID
-  auto full_path = "/" / path;
+  std::string shm_name = path.filename().string();
+#if XE_PLATFORM_MAC
+  constexpr size_t kMacShmNameLimit = 30;
+  if (shm_name.size() > kMacShmNameLimit) {
+    size_t hash = std::hash<std::string>{}(shm_name);
+    char hash_name[32] = {};
+    std::snprintf(hash_name, sizeof(hash_name), "xe_%016zx", hash);
+    shm_name = hash_name;
+  }
+#endif  // XE_PLATFORM_MAC
+  auto full_path = "/" + shm_name;
   shm_unlink(full_path.c_str());
 #endif
 }
@@ -394,6 +443,32 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
 
 bool UnmapFileView(FileMappingHandle handle, void* base_address,
                    size_t length) {
+#if XE_PLATFORM_MAC
+  if (munmap(base_address, length) != 0) {
+    return false;
+  }
+  const auto region_begin = reinterpret_cast<uintptr_t>(base_address);
+  const uintptr_t region_end = region_begin + length;
+  std::lock_guard guard(g_mapped_file_ranges_mutex);
+  for (auto it = mapped_file_ranges.begin(); it != mapped_file_ranges.end();
+       ++it) {
+    if (region_begin >= it->region_begin && region_end <= it->region_end) {
+      if (region_begin == it->region_begin && region_end == it->region_end) {
+        mapped_file_ranges.erase(it);
+      } else if (region_begin == it->region_begin) {
+        it->region_begin = region_end;
+      } else if (region_end == it->region_end) {
+        it->region_end = region_begin;
+      } else {
+        MappedFileRange tail{region_end, it->region_end};
+        it->region_end = region_begin;
+        mapped_file_ranges.insert(it + 1, tail);
+      }
+      break;
+    }
+  }
+  return true;
+#else
   std::lock_guard guard(g_mapped_file_ranges_mutex);
   for (auto mapped_range = mapped_file_ranges.begin();
        mapped_range != mapped_file_ranges.end();) {
@@ -409,6 +484,7 @@ bool UnmapFileView(FileMappingHandle handle, void* base_address,
   // TODO: Implement partial file unmapping.
   assert_always("Error: Partial unmapping of files not yet supported.");
   return munmap(base_address, length) == 0;
+#endif
 }
 
 }  // namespace memory

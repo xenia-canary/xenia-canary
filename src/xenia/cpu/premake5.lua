@@ -11,7 +11,7 @@ project("xenia-cpu")
     "mspack",
   })
 
-  includedirs({
+  sysincludedirs({
     project_root.."/third_party/llvm/include",
   })
   local_platform_files()

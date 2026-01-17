@@ -7,21 +7,24 @@ project("xenia-cpu-ppc-tests")
   kind("ConsoleApp")
   language("C++")
   links({
-    "capstone", -- cpu-backend-x64
+    "capstone",
     "fmt",
-    "mspack",
     "imgui",
+    "xenia-ui",
+    "xenia-base",
+    "mspack",
     "xenia-core",
     "xenia-cpu",
     "xenia-gpu",
-    "xenia-base",
     "xenia-kernel",
     "xenia-patcher",
-    "xenia-hid-skylander",
+    "libavcodec",
+    "libavutil",
   })
   files({
     "ppc_testing_main.cc",
     "../../../base/console_app_main_"..platform_suffix..".cc",
+    "../../testing/force_mount_devkit_test.cc",
   })
   files({
     "*.s",
@@ -34,6 +37,10 @@ project("xenia-cpu-ppc-tests")
     links({
       "xenia-cpu-backend-x64",
     })
+  filter("architecture:ARM64")
+    links({
+      "xenia-cpu-backend-a64",
+    })
   filter("platforms:Windows")
     debugdir(project_root)
     debugargs({
@@ -44,6 +51,14 @@ project("xenia-cpu-ppc-tests")
     -- xenia-base needs this
     links({
       "xenia-ui",
+    })
+  filter("platforms:Mac-*")
+    links({
+      "Cocoa.framework",
+    })
+  filter("platforms:not Mac-*")
+    links({
+      "libavformat",
     })
 
 if ARCH == "ppc64" or ARCH == "powerpc64" then

@@ -116,6 +116,14 @@ project("xenia-app")
       "xenia-ui-d3d12",
     })
 
+  filter("platforms:Mac-*")
+    removelinks({
+      "xenia-gpu-vulkan",
+      "xenia-ui-vulkan",
+      "xenia-gpu-vulkan-trace-viewer",
+      "xenia-ui-window-vulkan-demo",
+    })
+
   if enableMiscSubprojects then
     filter({"platforms:Windows", SINGLE_LIBRARY_FILTER})
       links({

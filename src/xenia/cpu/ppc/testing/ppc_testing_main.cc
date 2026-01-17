@@ -23,6 +23,8 @@
 
 #if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#elif XE_ARCH_ARM64
+#include "xenia/cpu/backend/a64/a64_backend.h"
 #endif  // XE_ARCH
 
 #if XE_COMPILER_MSVC
@@ -194,17 +196,26 @@ class TestRunner {
     // Reset memory.
     memory_->Reset();
 
+    // Release prior thread state before resetting the processor/backend.
+    thread_state_.reset();
+
     std::unique_ptr<xe::cpu::backend::Backend> backend;
     if (!backend) {
 #if XE_ARCH_AMD64
       if (cvars::cpu == "x64") {
         backend.reset(new xe::cpu::backend::x64::X64Backend());
       }
+#elif XE_ARCH_ARM64
+      if (cvars::cpu == "a64") {
+        backend.reset(new xe::cpu::backend::a64::A64Backend());
+      }
 #endif  // XE_ARCH
       if (cvars::cpu == "any") {
         if (!backend) {
 #if XE_ARCH_AMD64
           backend.reset(new xe::cpu::backend::x64::X64Backend());
+#elif XE_ARCH_ARM64
+          backend.reset(new xe::cpu::backend::a64::A64Backend());
 #endif  // XE_ARCH
         }
       }
@@ -391,8 +402,11 @@ int filter(unsigned int code) {
 #endif  // XE_COMPILER_MSVC
 
 void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
-                      TestCase& test_case, int& failed_count,
-                      int& passed_count) {
+                      TestCase& test_case, int& failed_count, int& passed_count,
+                      std::vector<std::string>& failed_tests) {
+  std::string test_id = test_suite.name();
+  test_id.append(":");
+  test_id.append(test_case.name);
 #if XE_COMPILER_MSVC
   __try {
 #endif  // XE_COMPILER_MSVC
@@ -400,18 +414,21 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
     if (!runner.Setup(test_suite)) {
       XELOGE("    TEST FAILED SETUP");
       ++failed_count;
+      failed_tests.push_back(test_id + " (setup)");
     }
     if (runner.Run(test_case)) {
       ++passed_count;
     } else {
       XELOGE("    TEST FAILED");
       ++failed_count;
+      failed_tests.push_back(test_id);
     }
 
 #if XE_COMPILER_MSVC
   } __except (filter(GetExceptionCode())) {
     XELOGE("    TEST FAILED (UNSUPPORTED INSTRUCTION)");
     ++failed_count;
+    failed_tests.push_back(test_id + " (unsupported)");
   }
 #endif  // XE_COMPILER_MSVC
 }
@@ -420,6 +437,7 @@ bool RunTests(const std::string_view test_name) {
   int result_code = 1;
   int failed_count = 0;
   int passed_count = 0;
+  std::vector<std::string> failed_tests;
 
 #if XE_ARCH_AMD64
   XELOGI("Instruction feature mask {}.", cvars::x64_extension_mask);
@@ -463,7 +481,7 @@ bool RunTests(const std::string_view test_name) {
     for (auto& test_case : test_suite.test_cases()) {
       XELOGI("  - {}", test_case.name);
       ProtectedRunTest(test_suite, runner, test_case, failed_count,
-                       passed_count);
+                       passed_count, failed_tests);
     }
 
     XELOGI("");
@@ -473,6 +491,12 @@ bool RunTests(const std::string_view test_name) {
   XELOGI("Total tests: {}", failed_count + passed_count);
   XELOGI("Passed: {}", passed_count);
   XELOGI("Failed: {}", failed_count);
+  if (!failed_tests.empty()) {
+    XELOGI("Failed tests:");
+    for (const auto& name : failed_tests) {
+      XELOGI("  {}", name);
+    }
+  }
 
   return failed_count ? false : true;
 }

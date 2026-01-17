@@ -4947,9 +4947,16 @@ void PrintDisasm_xorx(const PPCDecodeData& d, StringBuffer* str) {
   str->AppendFormat("r{}", d.X.RB());
 }
 #define INIT_LIST(...) {__VA_ARGS__}
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
 #define INSTRUCTION(opcode, mnem, form, group, type, desc, reads, writes, fn) \
-    {PPCOpcodeGroup::group, PPCOpcodeFormat::form, opcode, mnem, desc,  fn}
+    {PPCOpcodeGroup::group, PPCOpcodeFormat::form, opcode, mnem, desc,         \
+     INIT_LIST reads, INIT_LIST writes, fn}
+PPCOpcodeDisasmInfo ppc_opcode_disasm_table[] = {
+#else
+#define INSTRUCTION(opcode, mnem, form, group, type, desc, reads, writes, fn) \
+    {PPCOpcodeGroup::group, PPCOpcodeFormat::form, opcode, mnem, desc, fn}
 static constexpr PPCOpcodeDisasmInfo ppc_opcode_disasm_table[] = {
+#endif
   INSTRUCTION(0x7c000014, "addcx"       , kXO     , kI, kGeneral, "Add Carrying"                                                               , (PPCOpcodeField::kRA,PPCOpcodeField::kRB), (PPCOpcodeField::kRD,PPCOpcodeField::kCA,PPCOpcodeField::kOEcond,PPCOpcodeField::kCRcond), PrintDisasm_addcx),
   INSTRUCTION(0x7c000114, "addex"       , kXO     , kI, kGeneral, "Add Extended"                                                               , (PPCOpcodeField::kRA,PPCOpcodeField::kRB,PPCOpcodeField::kCA), (PPCOpcodeField::kRD,PPCOpcodeField::kOEcond,PPCOpcodeField::kCRcond), PrintDisasm_addex),
   INSTRUCTION(0x38000000, "addi"        , kD      , kI, kGeneral, "Add Immediate"                                                              , (PPCOpcodeField::kRA0,PPCOpcodeField::kSIMM), (PPCOpcodeField::kRD), PrintDisasm_addi),
@@ -5414,7 +5421,11 @@ const PPCOpcodeDisasmInfo& GetOpcodeDisasmInfo(PPCOpcode opcode) {
 }
 void RegisterOpcodeDisasm(PPCOpcode opcode, InstrDisasmFn fn) {
   assert_null(ppc_opcode_disasm_table[static_cast<int>(opcode)].disasm);
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  ppc_opcode_disasm_table[static_cast<int>(opcode)].disasm = fn;
+#else
   const_cast<PPCOpcodeDisasmInfo*>( &ppc_opcode_disasm_table[static_cast<int>(opcode)])->disasm = fn;
+#endif
 }
 
 }  // namespace ppc

@@ -85,6 +85,18 @@ Symbol::Status TestModule::DeclareFunction(uint32_t address,
     // Reset() all caching when we leave.
     xe::make_reset_scope(compiler_);
     xe::make_reset_scope(assembler_);
+#if XE_PLATFORM_MAC
+    class BuilderCurrentScope {
+     public:
+      explicit BuilderCurrentScope(HIRBuilder* builder) : builder_(builder) {
+        builder_->MakeCurrent();
+      }
+      ~BuilderCurrentScope() { builder_->RemoveCurrent(); }
+
+     private:
+      HIRBuilder* builder_;
+    } builder_current_scope(builder_.get());
+#endif  // XE_PLATFORM_MAC
 
     if (!generate_(*builder_.get())) {
       function->set_status(Symbol::Status::kFailed);

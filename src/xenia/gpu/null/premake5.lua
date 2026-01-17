@@ -16,4 +16,12 @@ project("xenia-gpu-null")
   includedirs({
     project_root.."/third_party/Vulkan-Headers/include",
   })
+  filter("platforms:Mac-*")
+    removelinks({
+      "xenia-ui-vulkan",
+    })
+    removeincludedirs({
+      project_root.."/third_party/Vulkan-Headers/include",
+    })
+  filter({})
   local_platform_files()

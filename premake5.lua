@@ -186,6 +186,9 @@ filter({"system:macosx", "platforms:Mac-x86_64", "toolset:clang"})
   buildoptions({
     "-mavx",
   })
+  linkoptions({
+    "-Wl,-pagezero_size,0x1000",
+  })
 filter({})
 
 filter({"language:C++", "toolset:clang or gcc"}) -- "platforms:Linux"
@@ -423,14 +426,18 @@ workspace("xenia")
   include("src/xenia/debug/ui")
   include("src/xenia/gpu")
   include("src/xenia/gpu/null")
-  include("src/xenia/gpu/vulkan")
+  if not os.istarget("macosx") then
+    include("src/xenia/gpu/vulkan")
+  end
   include("src/xenia/hid")
   include("src/xenia/hid/nop")
   include("src/xenia/hid/skylander")
   include("src/xenia/kernel")
   include("src/xenia/patcher")
   include("src/xenia/ui")
-  include("src/xenia/ui/vulkan")
+  if not os.istarget("macosx") then
+    include("src/xenia/ui/vulkan")
+  end
   include("src/xenia/vfs")
 
   if not os.istarget("android") then

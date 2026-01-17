@@ -48,7 +48,8 @@ std::string Breakpoint::to_string() const {
     str += " " + functions[0]->name();
     return str;
   } else {
-    return std::string("x64 ") + xe::string_util::to_hex_string(host_address());
+    return std::string("x64 ") + xe::string_util::to_hex_string(
+                                     static_cast<uint64_t>(host_address()));
   }
 }
 

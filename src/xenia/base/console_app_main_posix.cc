@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
   }
 
   // Initialize logging. Needs parsed cvars.
-  // xe::InitializeLogging(entry_info.name);
+  xe::InitializeLogging(entry_info.name);
 
   std::vector<std::string> args;
   for (int n = 0; n < argc; n++) {
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
 
   int result = entry_info.entry_point(args);
 
-  // xe::ShutdownLogging();
+  xe::ShutdownLogging();
 
   return result;
 }

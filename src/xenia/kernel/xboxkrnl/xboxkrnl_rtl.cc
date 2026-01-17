@@ -229,8 +229,14 @@ void RtlInitAnsiString_entry(pointer_t<X_ANSI_STRING> destination,
 DECLARE_XBOXKRNL_EXPORT1(RtlInitAnsiString, kNone, kImplemented);
 // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlupcaseunicodechar
 dword_result_t RtlUpcaseUnicodeChar_entry(dword_t SourceCharacter) {
-  return std::use_facet<std::ctype<char16_t>>(std::locale())
-      .toupper(SourceCharacter);
+#if XE_PLATFORM_MAC
+  char16_t source = static_cast<char16_t>(SourceCharacter.value());
+  wchar_t wide = static_cast<wchar_t>(source);
+  return static_cast<uint16_t>(std::towupper(wide));
+#else
+  return std::use_facet<std::ctype<char16_t> >(std::locale())
+      .toupper(static_cast<char16_t>(SourceCharacter.value()));
+#endif  // XE_PLATFORM_MAC
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlUpcaseUnicodeChar, kNone, kImplemented);
 

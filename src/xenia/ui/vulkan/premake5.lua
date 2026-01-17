@@ -10,7 +10,7 @@ project("xenia-ui-vulkan")
     "xenia-base",
     "xenia-ui",
   })
-  includedirs({
+  sysincludedirs({
     project_root.."/third_party/Vulkan-Headers/include",
   })
   local_platform_files()
@@ -32,7 +32,7 @@ if enableMiscSubprojects then
       "xenia-ui",
       "xenia-ui-vulkan",
     })
-    includedirs({
+    sysincludedirs({
       project_root.."/third_party/Vulkan-Headers/include",
     })
     files({

@@ -14,6 +14,16 @@ project("xenia-ui")
     "*_demo.cc",
     "windowed_app_main_*.cc",
   })
+
+  filter("platforms:Mac-*")
+    files({
+      "file_picker_mac.mm",
+    })
+    removefiles({
+      "renderdoc_api.cc",
+      "renderdoc_api.h",
+    })
+  filter({})
   if os.istarget("android") then
     filter("platforms:Android-*")
       -- Exports JNI functions.
