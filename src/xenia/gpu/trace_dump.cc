@@ -103,6 +103,9 @@ bool TraceDump::Setup() {
     return false;
   }
   graphics_system_ = emulator_->graphics_system();
+  if (!graphics_system_->EnsurePresenterForCapture()) {
+    XELOGE("TraceDump: unable to create presenter for capture");
+  }
   player_ = std::make_unique<TracePlayer>(graphics_system_);
   return true;
 }
@@ -133,6 +136,7 @@ int TraceDump::Run() {
   if (presenter && presenter->CaptureGuestOutput(raw_image)) {
     // Save framebuffer png.
     auto png_path = base_output_path_.replace_extension(".png");
+    XELOGI("TraceDump: writing PNG to {}", png_path);
     auto handle = filesystem::OpenFile(png_path, "wb");
     auto callback = [](void* context, void* data, int size) {
       fwrite(data, 1, size, (FILE*)context);
@@ -143,6 +147,8 @@ int TraceDump::Run() {
                            static_cast<int>(raw_image.stride));
     fclose(handle);
   } else {
+    XELOGE("TraceDump: CaptureGuestOutput failed (presenter={})",
+           presenter ? "yes" : "no");
     result = 1;
   }
 

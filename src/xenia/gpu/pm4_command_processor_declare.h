@@ -9,7 +9,8 @@ virtual uint32_t ExecutePrimaryBuffer(uint32_t start_index, uint32_t end_index)
 virtual bool ExecutePacket() PM4_OVERRIDE;
 
 public:
-void ExecutePacket(uint32_t ptr, uint32_t count);
+// Virtual for trace playback so backend-specific PM4 handling is used.
+virtual void ExecutePacket(uint32_t ptr, uint32_t count) PM4_OVERRIDE;
 
 protected:
 XE_NOINLINE

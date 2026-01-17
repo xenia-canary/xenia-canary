@@ -47,8 +47,11 @@
 #include "xenia/gpu/metal/metal_resource_tracker.h"
 #include "xenia/gpu/metal/metal_shader_cache.h"
 #include "xenia/gpu/metal/metal_shader_converter.h"
+#include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
+#include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/user_module.h"
 using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_quad_hs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_triangle_hs.h"
@@ -80,10 +83,6 @@ using BYTE = uint8_t;
 // kIRArgumentBufferUniformsBindPoint = 5
 // kIRVertexBufferBindPoint = 6
 
-namespace xe {
-namespace gpu {
-namespace metal {
-
 DEFINE_bool(metal_draw_debug_quad, false,
             "Draw a full-screen debug quad instead of guest draws (Metal "
             "backend bring-up).",
@@ -94,7 +93,13 @@ DEFINE_bool(metal_disable_swap_dest_swap, false,
             "Disable forcing RB swap based on resolve dest_swap (debug).",
             "GPU");
 
+namespace xe {
+namespace gpu {
+namespace metal {
+
 namespace {
+
+bool IssueDrawFailAt(int line) { return false; }
 
 void LogMetalErrorDetails(const char* label, NS::Error* error) {
   if (!error) {
@@ -1896,6 +1901,10 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   const RegisterFile& regs = *register_file_;
   LogCacheStatsIfNeeded();
   uint32_t normalized_color_mask = 0;
+  auto Fail = [](const char* reason) {
+    XELOGE("IssueDraw: {}", reason);
+    return IssueDrawFailAt(__LINE__);
+  };
 
   // Check for copy mode
   xenos::EdramMode edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
@@ -1907,7 +1916,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   auto vertex_shader = static_cast<MetalShader*>(active_vertex_shader());
   if (!vertex_shader) {
     XELOGW("IssueDraw: No vertex shader");
-    return false;
+    return IssueDrawFailAt(__LINE__);
   }
   if (!vertex_shader->is_ucode_analyzed()) {
     vertex_shader->AnalyzeUcode(ucode_disasm_buffer_);
@@ -1951,11 +1960,11 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   PrimitiveProcessor::ProcessingResult primitive_processing_result;
   if (!primitive_processor_) {
     XELOGE("IssueDraw: primitive processor is not initialized");
-    return false;
+    return IssueDrawFailAt(__LINE__);
   }
   if (!primitive_processor_->Process(primitive_processing_result)) {
     XELOGE("IssueDraw: primitive processing failed");
-    return false;
+    return IssueDrawFailAt(__LINE__);
   }
   if (!primitive_processing_result.host_draw_vertex_count) {
     return true;
@@ -2021,17 +2030,20 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       XELOGE(
           "MetalCommandProcessor::IssueDraw - RenderTargetCache::Update "
           "failed");
-      return false;
+      return IssueDrawFailAt(__LINE__);
     }
   }
 
   // Begin command buffer if needed (will use cache-provided render targets).
   BeginCommandBuffer();
   EnsureDrawRingCapacity();
+  if (!current_render_encoder_) {
+    return Fail("no render encoder available");
+  }
   if (cvars::metal_draw_debug_quad) {
     if (!debug_pipeline_) {
       if (!CreateDebugPipeline()) {
-        return false;
+        return Fail("debug pipeline creation failed");
       }
     }
     current_render_encoder_->setRenderPipelineState(debug_pipeline_);
@@ -2169,14 +2181,14 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   if (!vertex_translation->is_translated()) {
     if (!shader_translator_->TranslateAnalyzedShader(*vertex_translation)) {
       XELOGE("Failed to translate vertex shader to DXBC");
-      return false;
+      return IssueDrawFailAt(__LINE__);
     }
   }
   if (!use_tessellation_emulation && !vertex_translation->is_valid()) {
     if (!vertex_translation->TranslateToMetal(device_, *dxbc_to_dxil_converter_,
                                               *metal_shader_converter_)) {
       XELOGE("Failed to translate vertex shader to Metal");
-      return false;
+      return IssueDrawFailAt(__LINE__);
     }
   }
 
@@ -2187,14 +2199,14 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     if (!pixel_translation->is_translated()) {
       if (!shader_translator_->TranslateAnalyzedShader(*pixel_translation)) {
         XELOGE("Failed to translate pixel shader to DXBC");
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
     }
     if (!pixel_translation->is_valid()) {
       if (!pixel_translation->TranslateToMetal(
               device_, *dxbc_to_dxil_converter_, *metal_shader_converter_)) {
         XELOGE("Failed to translate pixel shader to Metal");
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
     }
   }
@@ -2220,7 +2232,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
   if (!pipeline) {
     XELOGE("Failed to create pipeline state");
-    return false;
+    return IssueDrawFailAt(__LINE__);
   }
 
   uint32_t used_texture_mask =
@@ -2270,11 +2282,11 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                 "type. "
                 "Use --gpu_allow_invalid_fetch_constants to bypass.",
                 vfetch_index, vfetch.dword_0, vfetch.dword_1);
-            return false;
+            return IssueDrawFailAt(__LINE__);
           default:
             XELOGW("Vertex fetch constant {} ({:08X} {:08X}) is invalid.",
                    vfetch_index, vfetch.dword_0, vfetch.dword_1);
-            return false;
+            return IssueDrawFailAt(__LINE__);
         }
         uint32_t buffer_offset = vfetch.address << 2;
         uint32_t buffer_length = vfetch.size << 2;
@@ -2283,14 +2295,14 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
           XELOGW(
               "Vertex fetch constant {} out of range (offset=0x{:08X} size={})",
               vfetch_index, buffer_offset, buffer_length);
-          return false;
+          return IssueDrawFailAt(__LINE__);
         }
         if (!shared_memory_->RequestRange(buffer_offset, buffer_length)) {
           XELOGE(
               "Failed to request vertex buffer at 0x{:08X} (size {}) in shared "
               "memory",
               buffer_offset, buffer_length);
-          return false;
+          return IssueDrawFailAt(__LINE__);
         }
       }
     }
@@ -2304,7 +2316,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
             "shared "
             "memory",
             base_bytes, memexport_range.size_bytes);
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
     }
 
@@ -2328,7 +2340,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   if (use_tessellation_emulation) {
     if (!tessellator_tables_buffer_) {
       XELOGE("Tessellation emulation requires tessellator tables buffer");
-      return false;
+      return IssueDrawFailAt(__LINE__);
     }
     current_render_encoder_->setObjectBuffer(
         tessellator_tables_buffer_, 0, kIRRuntimeTessellatorTablesBindPoint);
@@ -2925,7 +2937,8 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                                        uint32_t index_count,
                                        MTL::IndexType index_type) -> bool {
     if (!shared_memory_) {
-      return false;
+      XELOGE("IssueDraw: no shared memory for index buffer");
+      return IssueDrawFailAt(__LINE__);
     }
     uint32_t index_stride = (index_type == MTL::IndexTypeUInt16)
                                 ? sizeof(uint16_t)
@@ -2936,10 +2949,17 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       XELOGW(
           "Index buffer range out of bounds (base=0x{:08X} size={} count={})",
           static_cast<uint32_t>(index_base), index_length, index_count);
-      return false;
+      return IssueDrawFailAt(__LINE__);
     }
-    return shared_memory_->RequestRange(static_cast<uint32_t>(index_base),
-                                        static_cast<uint32_t>(index_length));
+    if (!shared_memory_->RequestRange(static_cast<uint32_t>(index_base),
+                                      static_cast<uint32_t>(index_length))) {
+      XELOGE(
+          "IssueDraw: failed to request index buffer range (base=0x{:08X} "
+          "size={} count={})",
+          static_cast<uint32_t>(index_base), index_length, index_count);
+      return IssueDrawFailAt(__LINE__);
+    }
+    return true;
   };
 
   if (use_tessellation_emulation) {
@@ -2968,7 +2988,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
             "Host tessellated primitive type {} returned by the primitive "
             "processor is not supported by the Metal tessellation path",
             uint32_t(primitive_processing_result.host_primitive_type));
-        return false;
+        return IssueDrawFailAt(__LINE__);
     }
 
     const IRRuntimeTessellationPipelineConfig& tess_config =
@@ -2998,7 +3018,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
             XELOGE(
                 "IssueDraw: failed to validate guest index buffer range for "
                 "tessellation");
-            return false;
+            return IssueDrawFailAt(__LINE__);
           }
           break;
         case PrimitiveProcessor::ProcessedIndexBufferType::kHostConverted:
@@ -3018,11 +3038,11 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         default:
           XELOGE("Unsupported index buffer type {} for tessellation",
                  uint32_t(primitive_processing_result.index_buffer_type));
-          return false;
+          return IssueDrawFailAt(__LINE__);
       }
       if (!index_buffer) {
         XELOGE("IssueDraw: index buffer is null for tessellation");
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
       UseRenderEncoderResource(index_buffer, MTL::ResourceUsageRead);
       uint32_t index_stride = (index_type == MTL::IndexTypeUInt16)
@@ -3052,7 +3072,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
             "Host primitive type {} returned by the primitive processor is not "
             "supported by the Metal geometry path",
             uint32_t(primitive_processing_result.host_primitive_type));
-        return false;
+        return IssueDrawFailAt(__LINE__);
     }
 
     IRRuntimeGeometryPipelineConfig geometry_config = {};
@@ -3083,7 +3103,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                   primitive_processing_result.host_draw_vertex_count,
                   index_type)) {
             XELOGE("IssueDraw: failed to validate guest index buffer range");
-            return false;
+            return IssueDrawFailAt(__LINE__);
           }
           break;
         case PrimitiveProcessor::ProcessedIndexBufferType::kHostConverted:
@@ -3103,12 +3123,12 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         default:
           XELOGE("Unsupported index buffer type {}",
                  uint32_t(primitive_processing_result.index_buffer_type));
-          return false;
+          return IssueDrawFailAt(__LINE__);
       }
       if (!index_buffer) {
         XELOGE("IssueDraw: index buffer is null for type {}",
                uint32_t(primitive_processing_result.index_buffer_type));
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
       UseRenderEncoderResource(index_buffer, MTL::ResourceUsageRead);
       uint32_t index_stride = (index_type == MTL::IndexTypeUInt16)
@@ -3147,7 +3167,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
             "Host primitive type {} returned by the primitive processor is not "
             "supported by the Metal command processor",
             uint32_t(primitive_processing_result.host_primitive_type));
-        return false;
+        return IssueDrawFailAt(__LINE__);
     }
 
     // Draw using primitive processor output.
@@ -3173,7 +3193,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                   primitive_processing_result.host_draw_vertex_count,
                   index_type)) {
             XELOGE("IssueDraw: failed to validate guest index buffer range");
-            return false;
+            return IssueDrawFailAt(__LINE__);
           }
           break;
         case PrimitiveProcessor::ProcessedIndexBufferType::kHostConverted:
@@ -3193,12 +3213,12 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         default:
           XELOGE("Unsupported index buffer type {}",
                  uint32_t(primitive_processing_result.index_buffer_type));
-          return false;
+          return IssueDrawFailAt(__LINE__);
       }
       if (!index_buffer) {
         XELOGE("IssueDraw: index buffer is null for type {}",
                uint32_t(primitive_processing_result.index_buffer_type));
-        return false;
+        return IssueDrawFailAt(__LINE__);
       }
       IRRuntimeDrawIndexedPrimitives(
           current_render_encoder_, mtl_primitive,
@@ -3220,7 +3240,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
   return true;
 }
-
 bool MetalCommandProcessor::IssueCopy() {
   // Finish any in-flight rendering so the render target contents are
   // available to the render target cache, similar to D3D12's
@@ -6755,6 +6774,11 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
         heaps_live_mb, textures_live_mb);
   }
 }
+
+#define COMMAND_PROCESSOR MetalCommandProcessor
+
+#include "../pm4_command_processor_implement.h"
+#undef COMMAND_PROCESSOR
 
 }  // namespace metal
 }  // namespace gpu
