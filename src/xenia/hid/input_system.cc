@@ -68,10 +68,12 @@ void InputSystem::UpdateUsedSlot(InputDriver* driver, uint8_t slot,
 
   XELOGI(controller_slot_state_change_message[connected].c_str(), slot);
   connected_slots.flip(slot);
+#if !XE_PLATFORM_MAC
   if (kernel::kernel_state()) {
     kernel::kernel_state()->BroadcastNotification(
         kXNotificationSystemInputDevicesChanged, 0);
   }
+#endif  // !XE_PLATFORM_MAC
 
   if (driver) {
     X_INPUT_CAPABILITIES capabilities = {};

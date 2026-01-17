@@ -24,7 +24,7 @@ newoption({
 })
 
 enableTests = _OPTIONS["tests"] ~= nil
-enableMiscSubprojects = false
+enableMiscSubprojects = os.istarget("macosx")
 
 -- Define an ARCH variable
 -- Only use this to enable architecture-specific functionality.
@@ -380,6 +380,8 @@ workspace("xenia")
   include("third_party/tomlplusplus.lua")
   include("third_party/FFmpeg/premake5.lua")
   include("third_party/fmt.lua")
+  include("third_party/metal-shader-converter.lua")
+  include("third_party/metal-cpp.lua")
   include("third_party/glslang-spirv.lua")
   include("third_party/imgui.lua")
   include("third_party/mspack.lua")
@@ -437,6 +439,9 @@ workspace("xenia")
   include("src/xenia/ui")
   if not os.istarget("macosx") then
     include("src/xenia/ui/vulkan")
+  end
+  if os.istarget("macosx") then
+    include("src/xenia/ui/metal")
   end
   include("src/xenia/vfs")
 

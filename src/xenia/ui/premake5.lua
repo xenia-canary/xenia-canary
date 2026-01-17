@@ -18,6 +18,9 @@ project("xenia-ui")
   filter("platforms:Mac-*")
     files({
       "file_picker_mac.mm",
+      "surface_mac.mm",
+      "window_mac.mm",
+      "windowed_app_context_mac.mm",
     })
     removefiles({
       "renderdoc_api.cc",

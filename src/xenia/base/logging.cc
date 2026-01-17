@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 #include "third_party/disruptorplus/include/disruptorplus/multi_threaded_claim_strategy.hpp"
 #include "third_party/disruptorplus/include/disruptorplus/ring_buffer.hpp"
@@ -427,6 +428,27 @@ class Logger {
   }
 };
 
+namespace {
+
+std::filesystem::path GetDefaultLogFolder() {
+  auto executable_folder = xe::filesystem::GetExecutableFolder();
+#if XE_PLATFORM_MAC
+  // If running from an .app bundle, place logs next to the bundle.
+  // Exe path: <dir>/<App>.app/Contents/MacOS/<executable>
+  if (executable_folder.filename() == "MacOS") {
+    auto contents_dir = executable_folder.parent_path();
+    auto app_dir = contents_dir.parent_path();
+    if (contents_dir.filename() == "Contents" &&
+        app_dir.extension() == ".app") {
+      return app_dir.parent_path();
+    }
+  }
+#endif  // XE_PLATFORM_MAC
+  return executable_folder;
+}
+
+}  // namespace
+
 void InitializeLogging(const std::string_view app_name) {
   auto mem = memory::AlignedAlloc<Logger>(0x10);
   logger_ = new (mem) Logger(app_name);
@@ -442,7 +464,7 @@ void InitializeLogging(const std::string_view app_name) {
   if (cvars::log_file.empty()) {
     // Default to app name.
     auto file_name = fmt::format("{}.log", app_name);
-    auto file_path = xe::filesystem::GetExecutableFolder() / file_name;
+    auto file_path = GetDefaultLogFolder() / file_name;
     log_file = xe::filesystem::OpenFile(file_path, "wt");
   } else {
     xe::filesystem::CreateParentFolder(cvars::log_file);

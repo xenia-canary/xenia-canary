@@ -13,7 +13,9 @@ NOT_SINGLE_LIBRARY_FILTER = table.translate(
 function single_library_windowed_app_kind()
   filter(SINGLE_LIBRARY_FILTER);
     kind("StaticLib");
-    wholelib("On");
+    if type(wholelib) == "function" then
+      wholelib("On");
+    end
   filter(NOT_SINGLE_LIBRARY_FILTER);
     kind("WindowedApp");
   filter({});

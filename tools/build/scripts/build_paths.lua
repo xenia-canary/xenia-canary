@@ -9,6 +9,8 @@ build_tools_src = build_tools .. "/src"
 
 if os.istarget("android") then
   platform_suffix = "android"
+elseif os.istarget("macosx") then
+  platform_suffix = "mac"
 elseif os.istarget("windows") then
   platform_suffix = "win"
 else
