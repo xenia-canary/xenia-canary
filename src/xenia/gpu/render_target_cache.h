@@ -616,6 +616,12 @@ class RenderTargetCache {
   // EDRAM memory are committed with a memory barrier.
   void PixelShaderInterlockFullEdramBarrierPlaced();
 
+  const std::unordered_map<RenderTargetKey, RenderTarget*,
+                           RenderTargetKey::Hasher>&
+  render_targets() const {
+    return render_targets_;
+  }
+
  private:
   const RegisterFile& register_file_;
   uint32_t draw_resolution_scale_x_;

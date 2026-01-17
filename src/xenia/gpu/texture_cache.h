@@ -599,6 +599,11 @@ class TextureCache {
   // implementation to update the internal dependencies of the binding.
   virtual void UpdateTextureBindingsImpl(uint32_t fetch_constant_mask) {}
 
+  size_t GetTextureCount() const { return textures_.size(); }
+  uint64_t GetTexturesTotalHostMemoryUsage() const {
+    return textures_total_host_memory_usage_;
+  }
+
  private:
   void UpdateTexturesTotalHostMemoryUsage(uint64_t add, uint64_t subtract);
 

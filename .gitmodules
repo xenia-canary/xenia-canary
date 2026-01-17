@@ -52,7 +52,10 @@
 	url = https://github.com/xenia-canary/disruptorplus.git
 [submodule "third_party/DirectXShaderCompiler"]
 	path = third_party/DirectXShaderCompiler
-	url = https://github.com/microsoft/DirectXShaderCompiler.git
+	url = https://github.com/wmarti/DirectXShaderCompiler.git
+[submodule "third_party/directx-headers"]
+	path = third_party/directx-headers
+	url = https://github.com/wmarti/directx-headers.git
 [submodule "third_party/premake-cmake"]
 	path = third_party/premake-cmake
 	url = https://github.com/JoelLinn/premake-cmake.git
