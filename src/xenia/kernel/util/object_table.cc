@@ -29,13 +29,19 @@ void ObjectTable::Reset() {
   for (uint32_t n = 0; n < table_capacity_; n++) {
     ObjectTableEntry& entry = table_[n];
     if (entry.object) {
+      entry.handle_ref_count = 0;
+      entry.object->handles().clear();
       entry.object->Release();
+      entry.object = nullptr;
     }
   }
   for (uint32_t n = 0; n < host_table_capacity_; n++) {
     ObjectTableEntry& entry = host_table_[n];
     if (entry.object) {
+      entry.handle_ref_count = 0;
+      entry.object->handles().clear();
       entry.object->Release();
+      entry.object = nullptr;
     }
   }
 

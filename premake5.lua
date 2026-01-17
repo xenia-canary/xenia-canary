@@ -427,6 +427,9 @@ workspace("xenia")
   include("src/xenia/cpu/backend/x64")
   include("src/xenia/debug/ui")
   include("src/xenia/gpu")
+  if os.istarget("macosx") then
+    include("src/xenia/gpu/metal")
+  end
   include("src/xenia/gpu/null")
   if not os.istarget("macosx") then
     include("src/xenia/gpu/vulkan")
