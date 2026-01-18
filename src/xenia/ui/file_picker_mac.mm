@@ -10,6 +10,7 @@
 #include "xenia/ui/file_picker.h"
 
 #import <Cocoa/Cocoa.h>
+#import <dispatch/dispatch.h>
 
 #include <string>
 #include <string_view>
@@ -77,8 +78,20 @@ class MacFilePicker : public FilePicker {
   ~MacFilePicker() override = default;
 
   bool Show(Window* parent_window) override {
-    (void)parent_window;
+    if (![NSThread isMainThread]) {
+      __block bool result = false;
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        result = ShowInternal(parent_window);
+      });
+      return result;
+    }
 
+    return ShowInternal(parent_window);
+  }
+
+ private:
+  bool ShowInternal(Window* parent_window) {
+    (void)parent_window;
     @autoreleasepool {
       set_selected_files({});
 
