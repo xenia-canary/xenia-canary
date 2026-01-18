@@ -19,6 +19,10 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 
+#if XE_PLATFORM_MAC
+#include <pthread.h>
+#endif
+
 DEFINE_bool(ignore_thread_priorities, true,
             "Ignores game-specified thread priorities.", "Kernel");
 DEFINE_bool(ignore_thread_affinities, true,
@@ -33,6 +37,12 @@ DEFINE_int64(main_xthread_stack_size_multiplier_hack, 1,
 
 namespace xe {
 namespace kernel {
+
+#if XE_PLATFORM_MAC
+static void ReleaseHandleOnThreadExit(void* context) {
+  static_cast<XThread*>(context)->ReleaseHandle();
+}
+#endif
 
 const uint32_t XAPC::kSize;
 const uint32_t XAPC::kDummyKernelRoutine;
@@ -481,10 +491,16 @@ X_STATUS XThread::Exit(int exit_code) {
   xe::Profiler::ThreadExit();
 
   running_ = false;
+#if XE_PLATFORM_MAC
+  // Keep the host thread object alive until pthread_exit runs.
+  pthread_cleanup_push(ReleaseHandleOnThreadExit, this);
+  xe::threading::Thread::Exit(exit_code);
+  pthread_cleanup_pop(0);
+#else
   ReleaseHandle();
-
   // NOTE: this does not return!
   xe::threading::Thread::Exit(exit_code);
+#endif
   return X_STATUS_SUCCESS;
 }
 
@@ -501,8 +517,15 @@ X_STATUS XThread::Terminate(int exit_code) {
 
   running_ = false;
   if (XThread::IsInThread(this)) {
+#if XE_PLATFORM_MAC
+    // Keep the host thread object alive until pthread_exit runs.
+    pthread_cleanup_push(ReleaseHandleOnThreadExit, this);
+    xe::threading::Thread::Exit(exit_code);
+    pthread_cleanup_pop(0);
+#else
     ReleaseHandle();
     xe::threading::Thread::Exit(exit_code);
+#endif
   } else {
     thread_->Terminate(exit_code);
     ReleaseHandle();
