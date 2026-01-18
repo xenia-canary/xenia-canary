@@ -181,6 +181,9 @@ filter({"system:macosx", "toolset:clang"})
   buildoptions({
     "-w",
   })
+  xcodebuildsettings({
+    ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
+  })
   removefatalwarnings("All")
 filter({"system:macosx", "platforms:Mac-x86_64", "toolset:clang"})
   buildoptions({
@@ -380,6 +383,7 @@ workspace("xenia")
   include("third_party/tomlplusplus.lua")
   include("third_party/FFmpeg/premake5.lua")
   include("third_party/fmt.lua")
+  include("third_party/dxilconv.lua")
   include("third_party/metal-shader-converter.lua")
   include("third_party/metal-cpp.lua")
   include("third_party/glslang-spirv.lua")

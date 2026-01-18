@@ -135,7 +135,7 @@ cd xenia-canary
 ```
 
 Notes:
-* `./xb setup` will build `dxbc2dxil` for Metal if it is missing.
+* Metal builds will configure and build `dxilconv`/`dxbc2dxil` on demand.
 * If you need to override the deployment target, set `MACOSX_DEPLOYMENT_TARGET`
   in your environment before running `./xb premake`.
 

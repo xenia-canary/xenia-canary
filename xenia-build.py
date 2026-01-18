@@ -753,30 +753,6 @@ class SetupCommand(Command):
 
         print("\n- running premake...")
         ret = run_platform_premake(target_os_override=args["target_os"])
-        if sys.platform == "darwin" and ret == 0:
-            # Build dxbc2dxil on macOS as part of setup.
-            dxbc2dxil_path = os.path.join(
-                self_path,
-                "third_party/DirectXShaderCompiler/build_dxilconv_macos/bin/dxbc2dxil",
-            )
-            if not os.path.exists(dxbc2dxil_path):
-                print("- building dxbc2dxil (native macOS binary)...")
-                build_script = os.path.join(
-                    self_path,
-                    "third_party/DirectXShaderCompiler/build_dxilconv_macos.sh",
-                )
-                if os.path.exists(build_script):
-                    script_dir = os.path.dirname(build_script)
-                    try:
-                        subprocess.check_call(
-                            ["/bin/bash", "build_dxilconv_macos.sh"],
-                            cwd=script_dir,
-                        )
-                    except subprocess.CalledProcessError:
-                        print("ERROR: Failed to build dxbc2dxil!")
-                        return 1
-                else:
-                    print("WARNING: dxbc2dxil build script not found!")
 
         print("\nSuccess!" if ret == 0 else "\nError!")
 
@@ -893,37 +869,6 @@ class BaseBuildCommand(Command):
     def execute(self, args, pass_args, cwd):
         arch = args.get("arch")
         premake_args = None
-        if sys.platform == "darwin":
-            # Ensure dxbc2dxil is built on macOS as it's needed for Metal.
-            dxilconv_dir = "build_dxilconv_macos"
-            dxilconv_env = None
-            if arch == "x86_64":
-                dxilconv_dir = "build_dxilconv_macos_x86_64"
-                dxilconv_env = os.environ.copy()
-                dxilconv_env["DXILCONV_BUILD_DIR"] = dxilconv_dir
-                dxilconv_env["DXILCONV_ARCH"] = "x86_64"
-                dxilconv_env["DXILCONV_TARGET_TRIPLE"] = "x86_64-apple-darwin"
-            dxbc2dxil_path = os.path.join(
-                self_path,
-                "third_party/DirectXShaderCompiler",
-                dxilconv_dir,
-                "bin/dxbc2dxil",
-            )
-            if not os.path.exists(dxbc2dxil_path):
-                print("- building dxbc2dxil (native macOS binary)...")
-                build_script = os.path.join(
-                    self_path,
-                    "third_party/DirectXShaderCompiler/build_dxilconv_macos.sh",
-                )
-                if os.path.exists(build_script):
-                    script_dir = os.path.dirname(build_script)
-                    subprocess.check_call(
-                        ["/bin/bash", "build_dxilconv_macos.sh"],
-                        cwd=script_dir,
-                        env=dxilconv_env,
-                    )
-                else:
-                    print("WARNING: dxbc2dxil build script not found!")
         if sys.platform == "darwin" and arch == "x86_64":
             premake_args = ["--mac-x86_64"]
         if not args["no_premake"]:
