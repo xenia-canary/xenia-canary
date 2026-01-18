@@ -1370,7 +1370,12 @@ void XexInfoCache::Init(XexModule* xexmod) {
   num_codebytes += 3;  // round up to nearest multiple of 4
   num_codebytes &= ~3;
 
-  auto try_open = [this, &infocache_path, num_codebytes]() {
+  const size_t expected_cache_size =
+      sizeof(InfoCacheFlagsHeader) +
+      (sizeof(InfoCacheFlags) * (num_codebytes / 4));
+
+  auto try_open = [this, &infocache_path, num_codebytes,
+                   expected_cache_size]() {
     bool did_exist = true;
 
     if (!std::filesystem::exists(infocache_path)) {
@@ -1378,14 +1383,19 @@ void XexInfoCache::Init(XexModule* xexmod) {
       did_exist = false;
     }
 
+    std::error_code ec;
+    uintmax_t file_size = 0;
+    if (std::filesystem::exists(infocache_path, ec)) {
+      file_size = std::filesystem::file_size(infocache_path, ec);
+    }
+    XELOGI("InfoCache path={} exists={} size={} expected={}",
+           infocache_path.string(), did_exist, file_size, expected_cache_size);
+
     // todo: prepopulate with stuff from pdata, dll exports
 
     this->executable_addr_flags_ = std::move(xe::MappedMemory::Open(
         infocache_path, xe::MappedMemory::Mode::kReadWrite, 0,
-        sizeof(InfoCacheFlagsHeader) +
-            (sizeof(InfoCacheFlags) *
-             (num_codebytes /
-              4))));  // one infocacheflags entry for each PPC instr-sized addr
+        expected_cache_size));  // one infocacheflags entry per PPC instr addr
     return did_exist;
   };
 
