@@ -910,6 +910,7 @@ class PosixThread final : public PosixConditionHandle<Thread> {
 
   void set_name(std::string name) override {
     handle_.WaitStarted();
+    std::lock_guard lock(name_mutex_);
     Thread::set_name(name);
     if (name.length() > 15) {
       name = name.substr(0, 15);
@@ -944,6 +945,9 @@ class PosixThread final : public PosixConditionHandle<Thread> {
   void Terminate(int exit_code) override { handle_.Terminate(exit_code); }
 
   void WaitSuspended() { handle_.WaitSuspended(); }
+
+ private:
+  mutable std::mutex name_mutex_;
 };
 
 thread_local PosixThread* current_thread_ = nullptr;
