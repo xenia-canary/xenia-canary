@@ -76,7 +76,7 @@ void install_signal_handler(SignalType type) {
   action.sa_flags = SA_SIGINFO;
   action.sa_sigaction = signal_handler;
   sigemptyset(&action.sa_mask);
-  if (sigaction(GetSystemSignal(type), &action, nullptr) == -1)
+  if (sigaction(GetSystemSignal(type), &action, nullptr) != -1)
     signal_handler_installed[static_cast<size_t>(type)] = true;
 }
 
