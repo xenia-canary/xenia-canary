@@ -26,11 +26,20 @@ namespace x64 {
 class X64Emitter;
 
 typedef bool (*SequenceSelectFn)(X64Emitter&, const hir::Instr*, uint32_t ikey);
+#if XE_PLATFORM_MAC
+using SequenceTable = std::unordered_map<uint32_t, SequenceSelectFn>;
+SequenceTable& GetSequenceTable();
+#else
 extern std::unordered_map<uint32_t, SequenceSelectFn> sequence_table;
+#endif
 
 template <typename T>
 bool Register() {
+#if XE_PLATFORM_MAC
+  GetSequenceTable().insert({T::head_key(), T::Select});
+#else
   sequence_table.insert({T::head_key(), T::Select});
+#endif
   return true;
 }
 

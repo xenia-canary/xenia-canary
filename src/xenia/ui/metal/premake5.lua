@@ -88,6 +88,7 @@ if enableMiscSubprojects then
       })
       xcodebuildsettings({
         ["INFOPLIST_FILE"] = path.getabsolute("Info.plist"),
+        ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
         ["PRODUCT_BUNDLE_IDENTIFIER"] = "com.xenia.ui-metal-demo",
         ["CODE_SIGN_STYLE"] = "Automatic",
         ["CODE_SIGN_ENTITLEMENTS"] =

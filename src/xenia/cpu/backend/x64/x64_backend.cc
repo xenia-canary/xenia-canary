@@ -10,6 +10,9 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 
 #include <cstddef>
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+#include <sys/sysctl.h>
+#endif
 #include "third_party/capstone/include/capstone/capstone.h"
 #include "third_party/capstone/include/capstone/x86.h"
 
@@ -48,6 +51,18 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace x64 {
+
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+static bool IsRosettaTranslated() {
+  int translated = 0;
+  size_t size = sizeof(translated);
+  if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) !=
+      0) {
+    return false;
+  }
+  return translated == 1;
+}
+#endif
 
 class X64HelperEmitter : public X64Emitter {
  public:
@@ -224,8 +239,17 @@ bool X64Backend::Initialize(Processor* processor) {
 
   Xbyak::util::Cpu cpu;
   if (!cpu.has(Xbyak::util::Cpu::tAVX)) {
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+    if (IsRosettaTranslated()) {
+      XELOGI("CPU does not advertise AVX under Rosetta; assuming AVX support.");
+    } else {
+      XELOGE("This CPU does not support AVX. The emulator will now crash.");
+      return false;
+    }
+#else
     XELOGE("This CPU does not support AVX. The emulator will now crash.");
     return false;
+#endif
   }
 
   // Need movbe to do advanced LOAD/STORE tricks.

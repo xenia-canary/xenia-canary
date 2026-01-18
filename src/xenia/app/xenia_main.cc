@@ -14,7 +14,9 @@
 #include <string>
 #include <thread>
 
+#if !XE_PLATFORM_MAC
 #include "xenia/app/discord/discord_presence.h"
+#endif  // !XE_PLATFORM_MAC
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
@@ -24,7 +26,9 @@
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/config.h"
+#if !XE_ARCH_ARM64
 #include "xenia/debug/ui/debug_window.h"
+#endif  // !XE_ARCH_ARM64
 #include "xenia/emulator.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/ui/file_picker.h"
@@ -45,7 +49,12 @@
 
 // Available graphics systems:
 #include "xenia/gpu/null/null_graphics_system.h"
+#if !XE_PLATFORM_MAC
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
+#endif  // !XE_PLATFORM_MAC
+#if XE_PLATFORM_MAC
+#include "xenia/gpu/metal/metal_graphics_system.h"
+#endif  // XE_PLATFORM_MAC
 #if XE_PLATFORM_WIN32
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #endif  // XE_PLATFORM_WIN32
@@ -61,8 +70,8 @@
 #endif  // XE_PLATFORM_WIN32
 
 DEFINE_string(apu, "any", "Audio system. Use: [any, nop, sdl, xaudio2]", "APU");
-DEFINE_string(gpu, "any", "Graphics system. Use: [any, d3d12, vulkan, null]",
-              "GPU");
+DEFINE_string(gpu, "any",
+              "Graphics system. Use: [any, d3d12, vulkan, metal, null]", "GPU");
 DEFINE_string(hid, "any", "Input system. Use: [any, nop, sdl, winkey, xinput]",
               "HID");
 
@@ -232,6 +241,7 @@ class EmulatorApp final : public xe::ui::WindowedApp {
     }
   };
 
+#if !XE_ARCH_ARM64
   class DebugWindowClosedListener final : public xe::ui::WindowListener {
    public:
     explicit DebugWindowClosedListener(EmulatorApp& emulator_app)
@@ -242,6 +252,7 @@ class EmulatorApp final : public xe::ui::WindowedApp {
    private:
     EmulatorApp& emulator_app_;
   };
+#endif  // !XE_ARCH_ARM64
 
   explicit EmulatorApp(xe::ui::WindowedAppContext& app_context);
 
@@ -254,13 +265,17 @@ class EmulatorApp final : public xe::ui::WindowedApp {
   void EmulatorThread();
   void ShutdownEmulatorThreadFromUIThread();
 
+#if !XE_ARCH_ARM64
   DebugWindowClosedListener debug_window_closed_listener_;
+#endif  // !XE_ARCH_ARM64
 
   std::unique_ptr<Emulator> emulator_;
   std::unique_ptr<EmulatorWindow> emulator_window_;
 
   // Created on demand, used by the emulator.
+#if !XE_ARCH_ARM64
   std::unique_ptr<xe::debug::ui::DebugWindow> debug_window_;
+#endif  // !XE_ARCH_ARM64
 
   // Refreshing the emulator - placed after its dependencies.
   std::atomic<bool> emulator_thread_quit_requested_;
@@ -268,15 +283,21 @@ class EmulatorApp final : public xe::ui::WindowedApp {
   std::thread emulator_thread_;
 };
 
+#if !XE_ARCH_ARM64
 void EmulatorApp::DebugWindowClosedListener::OnClosing(xe::ui::UIEvent& e) {
   EmulatorApp* emulator_app = &emulator_app_;
   emulator_app->emulator_->processor()->set_debug_listener(nullptr);
   emulator_app->debug_window_.reset();
 }
+#endif  // !XE_ARCH_ARM64
 
 EmulatorApp::EmulatorApp(xe::ui::WindowedAppContext& app_context)
-    : xe::ui::WindowedApp(app_context, "xenia", "[Path to .iso/.xex]"),
-      debug_window_closed_listener_(*this) {
+    : xe::ui::WindowedApp(app_context, "xenia", "[Path to .iso/.xex]")
+#if !XE_ARCH_ARM64
+      ,
+      debug_window_closed_listener_(*this)
+#endif  // !XE_ARCH_ARM64
+{
   AddPositionalOption("target");
 }
 
@@ -380,7 +401,11 @@ std::unique_ptr<gpu::GraphicsSystem> EmulatorApp::CreateGraphicsSystem() {
 #if XE_PLATFORM_WIN32
   factory.Add<gpu::d3d12::D3D12GraphicsSystem>("d3d12");
 #endif  // XE_PLATFORM_WIN32
+#if XE_PLATFORM_MAC
+  factory.Add<gpu::metal::MetalGraphicsSystem>("metal");
+#else
   factory.Add<gpu::vulkan::VulkanGraphicsSystem>("vulkan");
+#endif  // XE_PLATFORM_MAC
   std::unique_ptr<gpu::GraphicsSystem> gpu_implementation =
       factory.Create(gpu_implementation_name);
   if (!gpu_implementation) {
@@ -501,10 +526,12 @@ bool EmulatorApp::OnInitialize() {
   cache_root = std::filesystem::absolute(cache_root);
   XELOGI("Host cache root: {}", cache_root);
 
+#if !XE_PLATFORM_MAC
   if (cvars::discord) {
     discord::DiscordPresence::Initialize();
     discord::DiscordPresence::NotPlaying();
   }
+#endif  // !XE_PLATFORM_MAC
 
   // Create the emulator but don't initialize so we can setup the window.
   emulator_ =
@@ -533,9 +560,11 @@ bool EmulatorApp::OnInitialize() {
 void EmulatorApp::OnDestroy() {
   ShutdownEmulatorThreadFromUIThread();
 
+#if !XE_PLATFORM_MAC
   if (cvars::discord) {
     discord::DiscordPresence::Shutdown();
   }
+#endif  // !XE_PLATFORM_MAC
 
   Profiler::Dump();
   // The profiler needs to shut down before the graphics context.
@@ -648,6 +677,7 @@ void EmulatorApp::EmulatorThread() {
   if (cvars::debug) {
     emulator_->processor()->set_debug_listener_request_handler(
         [this](xe::cpu::Processor* processor) {
+#if !XE_ARCH_ARM64
           if (debug_window_) {
             return debug_window_.get();
           }
@@ -659,14 +689,19 @@ void EmulatorApp::EmulatorThread() {
           });
           // If failed to enqueue the UI thread call, this will just be null.
           return debug_window_.get();
+#else
+          return static_cast<xe::cpu::DebugListener*>(nullptr);
+#endif  // !XE_ARCH_ARM64
         });
   }
 
   emulator_->on_launch.AddListener([&](auto title_id, const auto& game_title) {
+#if !XE_PLATFORM_MAC
     if (cvars::discord) {
       discord::DiscordPresence::PlayingTitle(
           game_title.empty() ? "Unknown Title" : std::string(game_title));
     }
+#endif  // !XE_PLATFORM_MAC
     app_context().CallInUIThread([this]() { emulator_window_->UpdateTitle(); });
     emulator_thread_event_->Set();
   });
@@ -683,9 +718,11 @@ void EmulatorApp::EmulatorThread() {
   });
 
   emulator_->on_terminate.AddListener([]() {
+#if !XE_PLATFORM_MAC
     if (cvars::discord) {
       discord::DiscordPresence::NotPlaying();
     }
+#endif  // !XE_PLATFORM_MAC
   });
 
   // Enable emulator input now that the emulator is properly loaded.

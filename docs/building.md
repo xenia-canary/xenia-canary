@@ -111,6 +111,34 @@ sudo apt-get install build-essential mesa-vulkan-drivers valgrind libc++-dev lib
 
 In addition, you will need up to date Vulkan libraries and drivers for your hardware, which most distributions have in their standard repositories nowadays.
 
+### macOS
+
+macOS support is experimental and targets Metal on Apple Silicon and x86_64.
+
+Requirements:
+* macOS 15.0+ (Sequoia) for Rosetta AVX support in x86_64 builds.
+* Xcode 15+ (Command Line Tools installed via `xcode-select --install`).
+* Python 3.10+ in PATH.
+* Homebrew dependencies:
+  * Apple Silicon: `brew install sdl2 lz4`
+  * Intel Mac: `brew install sdl2 lz4` (uses `/usr/local` by default)
+
+Build steps:
+```sh
+git clone https://github.com/xenia-canary/xenia-canary.git
+cd xenia-canary
+./xb setup
+
+# Build (debug by default)
+./xb build --arch=arm64
+./xb build --arch=x86_64
+```
+
+Notes:
+* `./xb setup` will build `dxbc2dxil` for Metal if it is missing.
+* If you need to override the deployment target, set `MACOSX_DEPLOYMENT_TARGET`
+  in your environment before running `./xb premake`.
+
 ## Running
 
 To make life easier you can set the program startup arguments in your IDE to something like `--log_file=stdout /path/to/Default.xex` to log to console rather than a file and start up the emulator right away.

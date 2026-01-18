@@ -21,6 +21,12 @@ namespace conversion {
 
 #if XE_ARCH_AMD64
 
+#if XE_COMPILER_HAS_GNU_EXTENSIONS == 1
+#define XE_TARGET_MOVBE __attribute__((target("movbe")))
+#else
+#define XE_TARGET_MOVBE
+#endif
+
 XE_NOINLINE
 static void _generic_sequential_6_BE_to_interleaved_6_LE(
     float* XE_RESTRICT output, const float* XE_RESTRICT input,
@@ -36,16 +42,16 @@ static void _generic_sequential_6_BE_to_interleaved_6_LE(
   }
 }
 #if XE_COMPILER_CLANG_CL != 1 && !XE_PLATFORM_LINUX
-// load_be_u32 unavailable on clang-cl
+// movbe load intrinsic unavailable on clang-cl
 XE_NOINLINE
-static void _movbe_sequential_6_BE_to_interleaved_6_LE(
+static XE_TARGET_MOVBE void _movbe_sequential_6_BE_to_interleaved_6_LE(
     float* XE_RESTRICT output, const float* XE_RESTRICT input,
     unsigned ch_sample_count) {
   for (unsigned sample = 0; sample < ch_sample_count; sample++) {
     for (unsigned channel = 0; channel < 6; channel++) {
       *reinterpret_cast<unsigned int*>(&output[sample * 6 + channel]) =
-          _load_be_u32(reinterpret_cast<const unsigned int*>(
-              &input[channel * ch_sample_count + sample]));
+          static_cast<unsigned int>(_loadbe_i32(reinterpret_cast<const void*>(
+              &input[channel * ch_sample_count + sample])));
     }
   }
 }
@@ -65,6 +71,7 @@ inline static void sequential_6_BE_to_interleaved_6_LE(
   _generic_sequential_6_BE_to_interleaved_6_LE(output, input, ch_sample_count);
 }
 #endif
+#undef XE_TARGET_MOVBE
 
 inline void sequential_6_BE_to_interleaved_2_LE(float* output,
                                                 const float* input,

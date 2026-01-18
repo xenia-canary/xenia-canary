@@ -9,6 +9,10 @@
 
 #include "xenia/cpu/backend/x64/x64_emitter.h"
 
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+#include <sys/sysctl.h>
+#endif
+
 #include <stddef.h>
 
 #include <climits>
@@ -72,6 +76,18 @@ using xe::cpu::hir::HIRBuilder;
 using xe::cpu::hir::Instr;
 using namespace xe::literals;
 
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+static bool IsRosettaTranslated() {
+  int translated = 0;
+  size_t size = sizeof(translated);
+  if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) !=
+      0) {
+    return false;
+  }
+  return translated == 1;
+}
+#endif
+
 static constexpr size_t kMaxCodeSize = 1_MiB;
 
 // static const size_t kStashOffsetHigh = 32 + 32;
@@ -93,10 +109,21 @@ X64Emitter::X64Emitter(X64Backend* backend, XbyakAllocator* allocator)
       code_cache_(backend->code_cache()),
       allocator_(allocator) {
   if (!cpu_.has(Xbyak::util::Cpu::tAVX)) {
+#if XE_PLATFORM_MAC && XE_ARCH_AMD64
+    if (IsRosettaTranslated()) {
+      // Keep the log in backend initialization to avoid duplicate warnings.
+    } else {
+      xe::FatalError(
+          "Your CPU does not support AVX, which is required by Xenia. See the "
+          "FAQ for system requirements at https://xenia.jp");
+      return;
+    }
+#else
     xe::FatalError(
         "Your CPU does not support AVX, which is required by Xenia. See the "
         "FAQ for system requirements at https://xenia.jp");
     return;
+#endif
   }
 
   feature_flags_ = amd64::GetFeatureFlags();
