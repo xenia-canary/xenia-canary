@@ -121,6 +121,9 @@ bool IsWritableExecutableMemorySupported() {
     void* test_mapping = mmap(nullptr, test_size,
                               PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
     if (test_mapping == MAP_FAILED) {
+      const int err = errno;
+      XELOGE("MAP_JIT test failed size=0x{:X} err={} ({})", test_size, err,
+             std::strerror(err));
       return false;
     }
     munmap(test_mapping, test_size);
@@ -234,7 +237,14 @@ bool Protect(void* base_address, size_t length, PageAccess access,
   }
 
   uint32_t prot = ToPosixProtectFlags(access);
-  return mprotect(base_address, length, prot) == 0;
+  if (mprotect(base_address, length, prot) != 0) {
+    const int err = errno;
+    XELOGE("mprotect failed addr=0x{:X} len=0x{:X} prot=0x{:X} err={} ({})",
+           reinterpret_cast<uintptr_t>(base_address), length, prot, err,
+           std::strerror(err));
+    return false;
+  }
+  return true;
 }
 
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
@@ -390,9 +400,19 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
     return kFileMappingHandleInvalid;
   }
 #ifdef __APPLE__
-  ftruncate(ret, length);
+  if (ftruncate(ret, length) != 0) {
+    int err = errno;
+    close(ret);
+    errno = err;
+    return kFileMappingHandleInvalid;
+  }
 #else
-  ftruncate64(ret, length);
+  if (ftruncate64(ret, length) != 0) {
+    int err = errno;
+    close(ret);
+    errno = err;
+    return kFileMappingHandleInvalid;
+  }
 #endif
   return ret;
 #endif

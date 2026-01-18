@@ -13,9 +13,12 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
 #include <memory>
 
 #include "xenia/base/filesystem.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 
 namespace xe {
@@ -46,28 +49,64 @@ class PosixMappedMemory : public MappedMemory {
         break;
     }
 
+    uint64_t file_size = 0;
+#ifdef __APPLE__
+    struct stat file_stat;
+    if (fstat(file_descriptor, &file_stat)) {
+      close(file_descriptor);
+      return nullptr;
+    }
+    file_size = uint64_t(file_stat.st_size);
+#else
+    struct stat64 file_stat;
+    if (fstat64(file_descriptor, &file_stat)) {
+      close(file_descriptor);
+      return nullptr;
+    }
+    file_size = uint64_t(file_stat.st_size);
+#endif
+
     size_t map_length = length;
     if (!length) {
+      map_length = size_t(file_size);
+    }
+
+    uint64_t required_size = uint64_t(offset) + map_length;
+    if (required_size < uint64_t(offset)) {
+      close(file_descriptor);
+      return nullptr;
+    }
+
+    if (required_size > file_size) {
+      if (mode == Mode::kReadWrite) {
 #ifdef __APPLE__
-      struct stat file_stat;
-      if (fstat(file_descriptor, &file_stat)) {
-        close(file_descriptor);
-        return nullptr;
-      }
-      map_length = size_t(file_stat.st_size);
+        if (ftruncate(file_descriptor, off_t(required_size))) {
+          close(file_descriptor);
+          return nullptr;
+        }
 #else
-      struct stat64 file_stat;
-      if (fstat64(file_descriptor, &file_stat)) {
+        if (ftruncate64(file_descriptor, off64_t(required_size))) {
+          close(file_descriptor);
+          return nullptr;
+        }
+#endif
+      } else {
         close(file_descriptor);
         return nullptr;
       }
-      map_length = size_t(file_stat.st_size);
-#endif
+    }
+
+    if (!map_length) {
+      close(file_descriptor);
+      return nullptr;
     }
 
     void* data =
         mmap(0, map_length, protection, MAP_SHARED, file_descriptor, offset);
-    if (!data) {
+    if (data == MAP_FAILED) {
+      const int err = errno;
+      XELOGE("MappedMemory mmap failed len=0x{:X} off=0x{:X} err={} ({})",
+             map_length, offset, err, std::strerror(err));
       close(file_descriptor);
       return nullptr;
     }
