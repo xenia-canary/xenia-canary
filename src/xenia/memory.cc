@@ -844,7 +844,8 @@ void BaseHeap::Dispose() {
        ++page_number) {
     auto& page_entry = page_table_[page_number];
     if (page_entry.state) {
-      xe::memory::DeallocFixed(TranslateRelative(page_number * page_size_), 0,
+      xe::memory::DeallocFixed(TranslateRelative(page_number * page_size_),
+                               page_entry.region_page_count * page_size_,
                                xe::memory::DeallocationType::kRelease);
       page_number += page_entry.region_page_count;
     }
@@ -1431,8 +1432,15 @@ bool BaseHeap::Protect(uint32_t address, uint32_t size, uint32_t protect,
       *old_protect = FromPageAccess(old_protect_access);
     }
   } else {
+#if XE_PLATFORM_MAC
+    XELOGW("BaseHeap::Protect: unaligned to host page size; skipping mprotect");
+    if (old_protect) {
+      *old_protect = page_table_[start_page_number].current_protect;
+    }
+#else
     XELOGW("BaseHeap::Protect: ignoring request as not 4k page aligned");
     return false;
+#endif
   }
 
   // Perform table change.
