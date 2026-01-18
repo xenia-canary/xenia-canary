@@ -8,6 +8,7 @@ project("xenia-apu")
   language("C++")
   links({
     "libavcodec",
+    "libavformat",
     "libavutil",
     "xenia-base",
   })
@@ -15,15 +16,3 @@ project("xenia-apu")
     project_root.."/third_party/FFmpeg",
   })
   local_platform_files()
-  filter("platforms:not Mac-*")
-    links({
-      "libavformat",
-    })
-  filter("platforms:Mac-*")
-    removefiles({
-      "audio_media_player.cc",
-    })
-    files({
-      "audio_media_player_mac.cc",
-    })
-  filter({})
