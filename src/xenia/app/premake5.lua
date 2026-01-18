@@ -10,6 +10,12 @@ local dxilconv_libdir_x86_64 =
 local dxilconv_libdir = dxilconv_libdir_arm64
 local lz4_libdir = "/opt/homebrew/opt/lz4/lib"
 local sdl2_libdir = "/opt/homebrew/opt/sdl2/lib"
+local info_plist_path =
+    path.getabsolute(path.join(project_root, "src/xenia/app/Info.plist"))
+local entitlements_path =
+    path.getabsolute(path.join(project_root, "xenia.entitlements"))
+local icon_path =
+    path.getabsolute(path.join(project_root, "assets/icon/xenia.icns"))
 
 group("src")
 project("xenia-app")
@@ -170,16 +176,17 @@ project("xenia-app")
     local app_contents = "${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Contents"
     local app_frameworks = app_contents .. "/Frameworks"
     local app_executable = app_contents .. "/MacOS/xenia"
-    local entitlements_path =
-        path.getabsolute(project_root .. "/xenia.entitlements")
     if os.istarget("macosx") then
-      if want_x86 and os.isdir(dxilconv_libdir_x86_64) then
+      if want_x86 then
         dxilconv_libdir = dxilconv_libdir_x86_64
-      elseif want_arm and os.isdir(dxilconv_libdir_arm64) then
+      elseif want_arm then
         dxilconv_libdir = dxilconv_libdir_arm64
       end
       if want_x86 and not os.isdir(dxilconv_libdir_x86_64) then
         error("dxilconv x86_64 libdir not found; build dxilconv for x86_64.")
+      end
+      if want_arm and not os.isdir(dxilconv_libdir_arm64) then
+        error("dxilconv arm64 libdir not found; build dxilconv for arm64.")
       end
       local lz4_candidates = {
         "/opt/homebrew/opt/lz4/lib",
@@ -236,6 +243,9 @@ project("xenia-app")
       metal_converter_libdir,
       dxilconv_libdir,
       "/usr/local/lib",
+    })
+    linkoptions({
+      path.join(dxilconv_libdir, "libdxilconv.dylib"),
     })
     runpathdirs({
       "@executable_path/../Frameworks",
@@ -305,18 +315,18 @@ project("xenia-app")
     })
   filter("platforms:Mac-*")
     files({
-      "Info.plist",
-      project_root.."/xenia.entitlements",
-      project_root.."/assets/icon/xenia.icns",
+      info_plist_path,
+      entitlements_path,
+      icon_path,
     })
     filter({"platforms:Mac-*", "files:**.icns"})
       buildaction("Resources")
     filter("platforms:Mac-*")
     buildoptions({
-      "-DINFOPLIST_FILE=" .. path.getabsolute("Info.plist"),
+      "-DINFOPLIST_FILE=" .. info_plist_path,
     })
     xcodebuildsettings({
-      ["INFOPLIST_FILE"] = path.getabsolute("Info.plist"),
+      ["INFOPLIST_FILE"] = info_plist_path,
       ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
       ["PRODUCT_NAME"] = "Xenia-Canary",
       ["EXECUTABLE_NAME"] = "xenia",

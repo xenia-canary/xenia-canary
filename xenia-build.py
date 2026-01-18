@@ -753,30 +753,6 @@ class SetupCommand(Command):
 
         print("\n- running premake...")
         ret = run_platform_premake(target_os_override=args["target_os"])
-        if sys.platform == "darwin" and ret == 0:
-            # Build dxbc2dxil on macOS as part of setup.
-            dxbc2dxil_path = os.path.join(
-                self_path,
-                "third_party/DirectXShaderCompiler/build_dxilconv_macos/bin/dxbc2dxil",
-            )
-            if not os.path.exists(dxbc2dxil_path):
-                print("- building dxbc2dxil (native macOS binary)...")
-                build_script = os.path.join(
-                    self_path,
-                    "third_party/DirectXShaderCompiler/build_dxilconv_macos.sh",
-                )
-                if os.path.exists(build_script):
-                    script_dir = os.path.dirname(build_script)
-                    try:
-                        subprocess.check_call(
-                            ["/bin/bash", "build_dxilconv_macos.sh"],
-                            cwd=script_dir,
-                        )
-                    except subprocess.CalledProcessError:
-                        print("ERROR: Failed to build dxbc2dxil!")
-                        return 1
-                else:
-                    print("WARNING: dxbc2dxil build script not found!")
 
         print("\nSuccess!" if ret == 0 else "\nError!")
 
