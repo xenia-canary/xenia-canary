@@ -1904,6 +1904,13 @@ XE_NOINLINE void PhysicalHeap::EnableAccessCallbacksInner(
 #endif
 
     uint32_t guest_page_number = SystemPagenumToGuestPagenum(i);
+    if (guest_page_number >= page_table_.size()) {
+      XELOGE(
+          "Access callback page OOB: system_page={} guest_page={} "
+          "offset=0x{:X}",
+          i, guest_page_number, host_address_offset());
+      assert_always();
+    }
     xe::memory::PageAccess current_page_access =
         ToPageAccess(page_table_ptr[guest_page_number].current_protect);
     bool protect_system_page = false;
