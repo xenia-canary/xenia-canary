@@ -179,15 +179,21 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   // Zero memory, if needed.
   if (address && !(alloc_type & X_MEM_NOZERO)) {
     if (alloc_type & X_MEM_COMMIT) {
+      bool made_writable = true;
       if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, adjusted_size,
-                      kMemoryProtectRead | kMemoryProtectWrite);
+        made_writable = heap->Protect(address, adjusted_size,
+                                      kMemoryProtectRead | kMemoryProtectWrite);
+        if (!made_writable) {
+          XELOGE("NtAllocateVirtualMemory: temp RW protect failed");
+        }
       }
-      if (!was_commited) {
+      if (made_writable && !was_commited) {
         kernel_memory()->Zero(address, adjusted_size);
       }
-      if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, adjusted_size, protect);
+      if (!(protect & kMemoryProtectWrite) && made_writable) {
+        if (!heap->Protect(address, adjusted_size, protect)) {
+          XELOGE("NtAllocateVirtualMemory: restore protect failed");
+        }
       }
     }
   }
