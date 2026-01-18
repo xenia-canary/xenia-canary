@@ -341,8 +341,11 @@ struct CONVERT_F64_I64
 struct CONVERT_F64_F32
     : Sequence<CONVERT_F64_F32, I<OPCODE_CONVERT, F64Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // e.vcvtss2sd(i.dest, i.src1);
-    e.FCVT(i.dest.reg().toD(), i.src1.reg().toS());
+    const SReg src = i.src1.is_constant ? S0 : i.src1;
+    if (i.src1.is_constant) {
+      e.LoadConstantV(src.toQ(), i.src1.constant());
+    }
+    e.FCVT(i.dest.reg().toD(), src.toS());
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_CONVERT, CONVERT_I32_F32, CONVERT_I32_F64,
