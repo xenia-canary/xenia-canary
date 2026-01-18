@@ -895,9 +895,19 @@ class BaseBuildCommand(Command):
         premake_args = None
         if sys.platform == "darwin":
             # Ensure dxbc2dxil is built on macOS as it's needed for Metal.
+            dxilconv_dir = "build_dxilconv_macos"
+            dxilconv_env = None
+            if arch == "x86_64":
+                dxilconv_dir = "build_dxilconv_macos_x86_64"
+                dxilconv_env = os.environ.copy()
+                dxilconv_env["DXILCONV_BUILD_DIR"] = dxilconv_dir
+                dxilconv_env["DXILCONV_ARCH"] = "x86_64"
+                dxilconv_env["DXILCONV_TARGET_TRIPLE"] = "x86_64-apple-darwin"
             dxbc2dxil_path = os.path.join(
                 self_path,
-                "third_party/DirectXShaderCompiler/build_dxilconv_macos/bin/dxbc2dxil",
+                "third_party/DirectXShaderCompiler",
+                dxilconv_dir,
+                "bin/dxbc2dxil",
             )
             if not os.path.exists(dxbc2dxil_path):
                 print("- building dxbc2dxil (native macOS binary)...")
@@ -910,6 +920,7 @@ class BaseBuildCommand(Command):
                     subprocess.check_call(
                         ["/bin/bash", "build_dxilconv_macos.sh"],
                         cwd=script_dir,
+                        env=dxilconv_env,
                     )
                 else:
                     print("WARNING: dxbc2dxil build script not found!")

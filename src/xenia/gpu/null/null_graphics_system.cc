@@ -10,7 +10,11 @@
 #include "xenia/gpu/null/null_graphics_system.h"
 
 #include "xenia/gpu/null//null_command_processor.h"
+#if XE_PLATFORM_MAC
+#include "xenia/ui/metal/metal_provider.h"
+#else
 #include "xenia/ui/vulkan/vulkan_provider.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -25,9 +29,13 @@ X_STATUS NullGraphicsSystem::Setup(cpu::Processor* processor,
                                    kernel::KernelState* kernel_state,
                                    ui::WindowedAppContext* app_context,
                                    bool with_presentation) {
-  // This is a null graphics system, but we still setup vulkan because UI needs
-  // it through us :|
+  // This is a null graphics system, but we still setup a provider because UI
+  // needs it through us.
+#if XE_PLATFORM_MAC
+  provider_ = xe::ui::metal::MetalProvider::Create();
+#else
   provider_ = xe::ui::vulkan::VulkanProvider::Create(false, with_presentation);
+#endif
   return GraphicsSystem::Setup(processor, kernel_state, app_context,
                                with_presentation);
 }

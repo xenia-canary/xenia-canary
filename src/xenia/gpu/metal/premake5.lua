@@ -2,7 +2,11 @@
 local project_root = "../../../.."
 local metal_converter_libdir = path.join(project_root, "third_party/metal-shader-converter/lib")
 local dxilconv_root = path.join(project_root, "third_party/DirectXShaderCompiler")
-local dxilconv_libdir = path.join(dxilconv_root, "build_dxilconv_macos/lib")
+local dxilconv_libdir_arm64 = path.join(dxilconv_root, "build_dxilconv_macos/lib")
+local dxilconv_libdir_x86_64 =
+    path.join(dxilconv_root, "build_dxilconv_macos_x86_64/lib")
+local sdl2_libdir_arm64 = "/opt/homebrew/opt/sdl2/lib"
+local sdl2_libdir_x86_64 = "/usr/local/opt/sdl2/lib"
 local dxilconv_includes = {
   path.join(dxilconv_root, "include"),
   path.join(dxilconv_root, "projects/dxilconv/include"),
@@ -71,13 +75,11 @@ project("xenia-gpu-metal")
 
     defines { "METAL_SHADER_CONVERTER_AVAILABLE" }
 
-    libdirs     { metal_converter_libdir, dxilconv_libdir, "/usr/local/lib" }
+    libdirs     { metal_converter_libdir }
     runpathdirs {
       "@executable_path/../Frameworks",
       "@loader_path/../Frameworks",
       metal_converter_libdir,
-      dxilconv_libdir,
-      "/usr/local/lib",
     }
     linkoptions({
       "-Wl,-rpath,@executable_path/../Frameworks",
@@ -91,6 +93,17 @@ project("xenia-gpu-metal")
       "metalirconverter",
       "dxilconv",
       "LLVMDxcSupport",
+    }
+  filter {"system:macosx", "architecture:arm64"}
+    libdirs     { dxilconv_libdir_arm64, sdl2_libdir_arm64 }
+    runpathdirs { dxilconv_libdir_arm64, sdl2_libdir_arm64 }
+  filter {"system:macosx", "architecture:x86_64"}
+    libdirs     { dxilconv_libdir_x86_64, sdl2_libdir_x86_64 }
+    runpathdirs { dxilconv_libdir_x86_64, sdl2_libdir_x86_64 }
+    removelinks { "LLVMDxcSupport" }
+    linkoptions {
+      path.getabsolute(path.join(dxilconv_libdir_x86_64,
+                                 "libLLVMDxcSupport.a")),
     }
   filter "not system:macosx"
     removefiles "**"
@@ -156,8 +169,8 @@ project("xenia-gpu-metal-trace-viewer")
     links { "xenia-cpu-backend-a64" }
 
   filter "system:macosx"
-    libdirs     { metal_converter_libdir, dxilconv_libdir, "/usr/local/lib" }
-    runpathdirs { metal_converter_libdir, dxilconv_libdir, "/usr/local/lib" }
+    libdirs     { metal_converter_libdir }
+    runpathdirs { metal_converter_libdir }
     includedirs {
       dxilconv_includes[1],
       dxilconv_includes[2],
@@ -179,27 +192,43 @@ project("xenia-gpu-metal-trace-viewer")
       "dxilconv",
       "LLVMDxcSupport",
     }
-    local metal_irconverter_dylib =
-        path.getabsolute(path.join(metal_converter_libdir,
-                                   "libmetalirconverter.dylib"))
-    local dxilconv_dylib =
-        path.getabsolute(path.join(dxilconv_libdir, "libdxilconv.dylib"))
-    postbuildcommands({
-      'mkdir -p "${TARGET_BUILD_DIR}/xenia-gpu-metal-trace-viewer.app/Contents/Frameworks"',
-      'cp -f "' .. metal_irconverter_dylib ..
-          '" "${TARGET_BUILD_DIR}/xenia-gpu-metal-trace-viewer.app/Contents/Frameworks/"',
-      'cp -f "' .. dxilconv_dylib ..
-          '" "${TARGET_BUILD_DIR}/xenia-gpu-metal-trace-viewer.app/Contents/Frameworks/"'
-    })
     xcodebuildsettings({
       ["GENERATE_INFOPLIST_FILE"] = "YES",
+      ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
       ["PRODUCT_BUNDLE_IDENTIFIER"] = "com.xenia.gpu-metal-trace-viewer",
       ["CODE_SIGN_STYLE"] = "Automatic",
       ["LD_RUNPATH_SEARCH_PATHS"] =
           "@executable_path/../Frameworks @loader_path/../Frameworks "
           .. "@loader_path/../../../../third_party/metal-shader-converter/lib "
+          .. "/opt/homebrew/opt/sdl2/lib /usr/local/opt/sdl2/lib",
+    })
+  filter {"system:macosx", "architecture:arm64"}
+    libdirs     { dxilconv_libdir_arm64 }
+    runpathdirs { dxilconv_libdir_arm64 }
+    xcodebuildsettings({
+      ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
+      ["LD_RUNPATH_SEARCH_PATHS"] =
+          "@executable_path/../Frameworks @loader_path/../Frameworks "
+          .. "@loader_path/../../../../third_party/metal-shader-converter/lib "
           .. "@loader_path/../../../../third_party/DirectXShaderCompiler/build_dxilconv_macos/lib "
-          .. "/usr/local/lib",
+          .. "/opt/homebrew/opt/sdl2/lib",
+    })
+  filter {"system:macosx", "architecture:x86_64"}
+    libdirs     { dxilconv_libdir_x86_64 }
+    runpathdirs { dxilconv_libdir_x86_64 }
+    removelinks { "SDL2", "LLVMDxcSupport" }
+    linkoptions {
+      path.getabsolute(path.join(dxilconv_libdir_x86_64,
+                                 "libLLVMDxcSupport.a")),
+      path.getabsolute("/usr/local/opt/sdl2/lib/libSDL2-2.0.0.dylib"),
+    }
+    xcodebuildsettings({
+      ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
+      ["LD_RUNPATH_SEARCH_PATHS"] =
+          "@executable_path/../Frameworks @loader_path/../Frameworks "
+          .. "@loader_path/../../../../third_party/metal-shader-converter/lib "
+          .. "@loader_path/../../../../third_party/DirectXShaderCompiler/build_dxilconv_macos_x86_64/lib "
+          .. "/usr/local/opt/sdl2/lib",
     })
   filter {}
 
@@ -261,8 +290,8 @@ project("xenia-gpu-metal-trace-dump")
     links { "xenia-cpu-backend-a64" }
 
   filter "system:macosx"
-    libdirs     { metal_converter_libdir, dxilconv_libdir, "/usr/local/lib" }
-    runpathdirs { metal_converter_libdir, dxilconv_libdir, "/usr/local/lib" }
+    libdirs     { metal_converter_libdir }
+    runpathdirs { metal_converter_libdir }
     includedirs {
       dxilconv_includes[1],
       dxilconv_includes[2],
@@ -282,6 +311,20 @@ project("xenia-gpu-metal-trace-dump")
       "metalirconverter",
       "dxilconv",
       "LLVMDxcSupport",
+    }
+    xcodebuildsettings({
+      ["MACOSX_DEPLOYMENT_TARGET"] = "15.0",
+    })
+  filter {"system:macosx", "architecture:arm64"}
+    libdirs     { dxilconv_libdir_arm64, sdl2_libdir_arm64 }
+    runpathdirs { dxilconv_libdir_arm64, sdl2_libdir_arm64 }
+  filter {"system:macosx", "architecture:x86_64"}
+    libdirs     { dxilconv_libdir_x86_64, sdl2_libdir_x86_64 }
+    runpathdirs { dxilconv_libdir_x86_64, sdl2_libdir_x86_64 }
+    removelinks { "LLVMDxcSupport" }
+    linkoptions {
+      path.getabsolute(path.join(dxilconv_libdir_x86_64,
+                                 "libLLVMDxcSupport.a")),
     }
   filter "not system:macosx"
     removefiles "**"

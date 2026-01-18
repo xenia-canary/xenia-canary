@@ -30,6 +30,7 @@
 #include "xenia/base/platform.h"
 #include "xenia/base/string.h"
 #include "xenia/base/system.h"
+#include "xenia/cpu/backend/a64/a64_backend.h"
 #include "xenia/cpu/backend/code_cache.h"
 #include "xenia/cpu/backend/null_backend.h"
 #include "xenia/cpu/cpu_flags.h"
@@ -233,10 +234,18 @@ X_STATUS Emulator::Setup(
     backend.reset(new xe::cpu::backend::x64::X64Backend());
   }
 #endif  // XE_ARCH
+#if XE_ARCH_ARM64
+  if (cvars::cpu == "a64") {
+    backend.reset(new xe::cpu::backend::a64::A64Backend());
+  }
+#endif  // XE_ARCH
   if (cvars::cpu == "any") {
     if (!backend) {
 #if XE_ARCH_AMD64
       backend.reset(new xe::cpu::backend::x64::X64Backend());
+#endif  // XE_ARCH
+#if XE_ARCH_ARM64
+      backend.reset(new xe::cpu::backend::a64::A64Backend());
 #endif  // XE_ARCH
     }
   }
