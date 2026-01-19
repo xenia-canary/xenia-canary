@@ -36,10 +36,14 @@ project("xenia-ui")
     })
 
   filter("system:macosx")
-    includedirs({
-      "/usr/local/include",
-      "/opt/homebrew/include",
-    })
-    links({
-      "fontconfig"
+    pkg_config.all("gtk+-3.0")
+    pkg_config.all("glib-2.0")
+    pkg_config.all("x11")
+    pkg_config.all("xcb")
+    pkg_config.all("x11-xcb")
+    pkg_config.all("fontconfig")
+    -- Yes this is likely where you can add some Assembly flags to deal with macOS's architecture
+    linkoptions ({
+       "-Wl",
+       "-stack_size,0x4000000" 
     })
