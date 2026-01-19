@@ -129,11 +129,7 @@ project("xenia-app")
       "Info.plist",
     })
     xcodebuildsettings({
-      INFOPLIST_FILE = "../../src/xenia/app/Info.plist",
-    })
-    includedirs({
-      "/usr/local/include",
-      "/opt/homebrew/include",
+      INFOPLIST_FILE = "../src/xenia/app/Info.plist",
     })
     links({
       "fontconfig"
