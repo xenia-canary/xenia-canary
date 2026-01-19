@@ -1157,6 +1157,7 @@ class BuildShadersCommand(Command):
                         metal_cmd = [
                             "xcrun", "-sdk", "macosx", "metal",
                             "-x", "metal",
+                            "-std=metal3.0",
                             "-D", "XESL_LANGUAGE_MSL=1",
                             "-I", src_dir,
                             "-c",
@@ -1169,6 +1170,7 @@ class BuildShadersCommand(Command):
                         metal_cmd = [
                             metal,
                             "-x", "metal",
+                            "-std=metal3.0",
                             "-D", "XESL_LANGUAGE_MSL=1",
                             "-I", src_dir,
                             "-c",
