@@ -206,7 +206,7 @@ void* MetalShaderConverter::CreateXbox360RootSignature(
     const char* json =
         IRVersionedRootSignatureDescriptorCopyJSONString(&versionedDesc);
     if (json) {
-      XELOGI(
+      XELOGD(
           "MetalShaderConverter: root signature (stage={}, visibility={}, "
           "force_all_visibility={}): {}",
           stage_name(stage), static_cast<int>(visibility), force_all_visibility,

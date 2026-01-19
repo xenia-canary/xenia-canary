@@ -41,8 +41,6 @@
 
 DEFINE_bool(metal_presenter_wait_for_copy, false,
             "Wait for Metal guest output copy completion (debug).", "GPU");
-DEFINE_bool(metal_presenter_log_mailbox, false, "Log Metal guest output mailbox indices (debug).",
-            "GPU");
 DEFINE_bool(metal_presenter_probe_copy, false,
             "Read back 1x1 pixel after Metal guest output copy (debug).", "GPU");
 DEFINE_bool(metal_presenter_force_10bpc, false, "Force RGB10A2 guest output for presenter (debug).",
@@ -167,15 +165,6 @@ Surface::TypeFlags MetalPresenter::GetSupportedSurfaceTypes() const {
 bool MetalPresenter::CaptureGuestOutput(RawImage& image_out) {
   XELOGI("Metal CaptureGuestOutput: Called");
 
-  auto log_mailbox = [&](const char* label, uint32_t mailbox_index) {
-    if (!::cvars::metal_presenter_log_mailbox) {
-      return;
-    }
-    uint32_t last_produced = last_guest_output_mailbox_index_.load(std::memory_order_relaxed);
-    XELOGI("Metal CaptureGuestOutput: {} mailbox index {} (last produced {})", label, mailbox_index,
-           last_produced);
-  };
-
   // Get the latest guest output
   uint32_t guest_output_mailbox_index;
   {
@@ -185,7 +174,6 @@ bool MetalPresenter::CaptureGuestOutput(RawImage& image_out) {
     std::unique_lock<std::mutex> guest_output_consumer_lock(
         ConsumeGuestOutput(guest_output_mailbox_index, nullptr, nullptr));
   }
-  log_mailbox("consumed", guest_output_mailbox_index);
 
   if (guest_output_mailbox_index == UINT32_MAX) {
     XELOGW("Metal CaptureGuestOutput: No guest output available, trying auto-refresh");
@@ -202,7 +190,6 @@ bool MetalPresenter::CaptureGuestOutput(RawImage& image_out) {
     // Try to get guest output again after refresh
     std::unique_lock<std::mutex> guest_output_consumer_lock2(
         ConsumeGuestOutput(guest_output_mailbox_index, nullptr, nullptr));
-    log_mailbox("auto-refresh", guest_output_mailbox_index);
 
     if (guest_output_mailbox_index == UINT32_MAX) {
       XELOGW("Metal CaptureGuestOutput: Auto-refresh failed, generating test image");
@@ -831,9 +818,6 @@ void MetalPresenter::DisconnectPaintingFromSurfaceFromUIThreadImpl() {
 bool MetalPresenter::RefreshGuestOutputImpl(
     uint32_t mailbox_index, uint32_t frontbuffer_width, uint32_t frontbuffer_height,
     std::function<bool(GuestOutputRefreshContext& context)> refresher, bool& is_8bpc_out_ref) {
-  XELOGI("Metal RefreshGuestOutputImpl: Creating guest output {}x{} at mailbox index {}",
-         frontbuffer_width, frontbuffer_height, mailbox_index);
-
   // Validate mailbox index
   if (mailbox_index >= kGuestOutputMailboxSize) {
     XELOGE("Metal RefreshGuestOutputImpl: Invalid mailbox index {}", mailbox_index);
@@ -886,12 +870,7 @@ bool MetalPresenter::RefreshGuestOutputImpl(
 
   guest_output_textures_[mailbox_index] = guest_output_texture;
   last_guest_output_mailbox_index_.store(mailbox_index, std::memory_order_relaxed);
-  if (::cvars::metal_presenter_log_mailbox) {
-    XELOGI("Metal RefreshGuestOutputImpl: produced mailbox index {} ({}x{})", mailbox_index,
-           frontbuffer_width, frontbuffer_height);
-  }
 
-  XELOGI("Metal RefreshGuestOutputImpl: Successfully refreshed guest output texture");
   return true;
 }
 
