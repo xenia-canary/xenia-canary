@@ -41,6 +41,11 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 #endif
+#ifdef __APPLE__
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+#endif
 
 #include "third_party/Vulkan-Headers/include/vulkan/vulkan.h"
 
