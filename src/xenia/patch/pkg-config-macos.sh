@@ -46,11 +46,17 @@ new_lflags = """function pkg_config.lflags(lib)
     if string.startswith(lib, \"gtk\") then
       links({ \"gtk-3\", \"gdk-3\" })
     elseif string.startswith(lib, \"glib\") then
-      links({ \"glib-2.0\", \"gobject-2.0\", \"gio-2.0\" })
+      links({ \"glib-2.0\", \"gobject-2.0\", \"gio-2.0\", \"gmodule-2.0\" })
     elseif string.startswith(lib, \"pango\") then
-      links({ \"pango-1.0\", \"pangocairo-1.0\" })
+      links({ \"pango-1.0\", \"pangocairo-1.0\", \"pangoft2-1.0\" })
     elseif string.startswith(lib, \"cairo\") then
       links({ \"cairo\" })
+    elseif string.startswith(lib, \"atk\") then
+      links({ \"atk-1.0\" })
+    elseif string.startswith(lib, \"harfbuzz\") then
+      links({ \"harfbuzz\" })
+    elseif string.startswith(lib, \"gdk-pixbuf\") then
+      links({ \"gdk-pixbuf-2.0\" })
     end
     return
   end
