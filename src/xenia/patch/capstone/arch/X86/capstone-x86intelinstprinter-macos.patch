@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/X86/X86IntelInstPrinter.c
++++ b/third_party/capstone/arch/X86/X86IntelInstPrinter.c
+@@ -25,7 +25,11 @@
+ #if !defined(CAPSTONE_HAS_OSXKERNEL)
+ #include <ctype.h>
+ #endif
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #if defined(CAPSTONE_HAS_OSXKERNEL)
+ #include <Availability.h>
