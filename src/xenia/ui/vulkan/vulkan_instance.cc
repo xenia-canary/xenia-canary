@@ -49,18 +49,26 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   Functions& ifn = vulkan_instance->functions_;
 
   bool functions_loaded = true;
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
 #if XE_PLATFORM_ANDROID
   const char* const loader_library_name = "libvulkan.so";
+#elif XE_PLATFORM_MAC
+  const char* const loader_library_name = "libvulkan.1.dylib";
 #else
   const char* const loader_library_name = "libvulkan.so.1";
 #endif
   // http://developer.download.nvidia.com/mobile/shield/assets/Vulkan/UsingtheVulkanAPI.pdf
+  fprintf(stderr, "[vulkan_instance] Loading loader: %s\n",
+          loader_library_name);
   vulkan_instance->loader_ = dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
   if (!vulkan_instance->loader_) {
+    fprintf(stderr, "[vulkan_instance] Failed to load %s: %s\n",
+            loader_library_name, dlerror());
     XELOGE("Failed to load {}", loader_library_name);
     return nullptr;
   }
+  fprintf(stderr, "[vulkan_instance] Loader loaded successfully at %p\n",
+          vulkan_instance->loader_);
 #define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
   functions_loaded &=                                                    \
       (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
@@ -157,6 +165,12 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     requested_extensions.emplace(
         "VK_KHR_win32_surface",
         &vulkan_instance->extensions_.ext_KHR_win32_surface);
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    // #217.
+    requested_extensions.emplace(
+        "VK_EXT_metal_surface",
+        &vulkan_instance->extensions_.ext_EXT_metal_surface);
 #endif
   }
 
@@ -444,6 +458,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   if (vulkan_instance->extensions_.ext_KHR_surface) {
 #include "xenia/ui/vulkan/functions/instance_khr_surface.inc"
   }
+#ifdef VK_USE_PLATFORM_METAL_EXT
+  if (vulkan_instance->extensions_.ext_EXT_metal_surface) {
+#include "xenia/ui/vulkan/functions/instance_ext_metal_surface.inc"
+  }
+#endif
   if (vulkan_instance->extensions_.ext_EXT_debug_utils) {
 #include "xenia/ui/vulkan/functions/instance_ext_debug_utils.inc"
   }
@@ -540,7 +559,7 @@ VulkanInstance::~VulkanInstance() {
     functions_.vkDestroyInstance(instance_, nullptr);
   }
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   if (loader_) {
     dlclose(loader_);
   }
