@@ -1,0 +1,14 @@
+--- a/third_party/FFmpeg/libavutil/slicethread.c
++++ b/third_party/FFmpeg/libavutil/slicethread.c
+@@ -144,7 +144,11 @@ int avpriv_slicethread_create(AVSliceThread **pctx, void *priv,
+         pthread_mutex_lock(&w->mutex);
+         w->done = 0;
+ 
++#ifdef __APPLE__
++        if ((ret = pthread_create(&w->thread, NULL, thread_worker, w))) {
++#else
+         if (ret = pthread_create(&w->thread, NULL, thread_worker, w)) {
++#endif
+             ctx->nb_threads = main_func ? i : i + 1;
+             pthread_mutex_unlock(&w->mutex);
+             pthread_cond_destroy(&w->cond);
