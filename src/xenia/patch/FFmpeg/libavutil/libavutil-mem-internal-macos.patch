@@ -1,0 +1,19 @@
+--- a/third_party/FFmpeg/libavutil/mem_internal.h
++++ b/third_party/FFmpeg/libavutil/mem_internal.h
+@@ -151,7 +151,16 @@ static inline int ff_fast_malloc(void *ptr, unsigned int *size, size_t min_size,
+     memcpy(ptr, &val, sizeof(val));
+     if (!val)
+         min_size = 0;
++#ifdef __APPLE__
++    // On macOS, size_t is 64-bit, so we need to handle potential truncation
++    if (min_size > UINT_MAX) {
++        *size = UINT_MAX;
++    } else {
++        *size = (unsigned int)min_size;
++    }
++#else
+     *size = min_size;
++#endif
+     return 1;
+ }
+ #endif /* AVUTIL_MEM_INTERNAL_H */
