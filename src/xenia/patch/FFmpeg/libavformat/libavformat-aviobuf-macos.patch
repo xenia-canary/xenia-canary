@@ -1,0 +1,84 @@
+--- a/third_party/FFmpeg/libavformat/aviobuf.c
++++ b/third_party/FFmpeg/libavformat/aviobuf.c
+@@ -42,13 +42,16 @@
+  */
+ #define SHORT_SEEK_THRESHOLD 32768
+ 
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wswitch"
++
+ static void *ff_avio_child_next(void *obj, void *prev)
+ {
+     AVIOContext *s = obj;
+     return prev ? NULL : s->opaque;
+ }
+ 
+-#if FF_API_CHILD_CLASS_NEXT
++#if FF_API_CHILD_CLASS_NEXT && !defined(__APPLE__)
+ static const AVClass *ff_avio_child_class_next(const AVClass *prev)
+ {
+     return prev ? NULL : &ffurl_context_class;
+@@ -76,7 +79,7 @@ const AVClass ff_avio_class = {
+     .version    = LIBAVUTIL_VERSION_INT,
+     .option     = ff_avio_options,
+     .child_next = ff_avio_child_next,
+-#if FF_API_CHILD_CLASS_NEXT
++#if FF_API_CHILD_CLASS_NEXT && !defined (__APPLE__)
+     .child_class_next = ff_avio_child_class_next,
+ #endif
+     .child_class_iterate = child_class_iterate,
+@@ -401,7 +404,11 @@ int avio_put_str(AVIOContext *s, const char *str)
+ 
+ static inline int put_str16(AVIOContext *s, const char *str, const int be)
+ {
++#ifdef __APPLE__
++    const char *q = str;
++#else
+     const uint8_t *q = str;
++#endif
+     int ret = 0;
+     int err = 0;
+ 
+@@ -1210,7 +1217,11 @@ int avio_printf(AVIOContext *s, const char *fmt, ...)
+         s->error = AVERROR(ENOMEM);
+         return AVERROR(ENOMEM);
+     }
++#ifdef __APPLE__
++    avio_write(s, (const unsigned char *)bp.str, bp.len);
++#else
+     avio_write(s, bp.str, bp.len);
++#endif
+     av_bprint_finalize(&bp, NULL);
+     return bp.len;
+ }
+@@ -1252,7 +1263,11 @@ int avio_read_to_bprint(AVIOContext *h, AVBPrint *pb, size_t max_size)
+     int ret;
+     char buf[1024];
+     while (max_size) {
++#ifdef __APPLE__
++        ret = avio_read(h, (unsigned char *)buf, FFMIN(max_size, sizeof(buf)));
++#else
+         ret = avio_read(h, buf, FFMIN(max_size, sizeof(buf)));
++#endif
+         if (ret == AVERROR_EOF)
+             return 0;
+         if (ret <= 0)
+@@ -1435,7 +1450,11 @@ int avio_close_dyn_buf(AVIOContext *s, uint8_t **pbuffer)
+ 
+     /* don't attempt to pad fixed-size packet buffers */
+     if (!s->max_packet_size) {
++#ifdef __APPLE__
++        avio_write(s, (const unsigned char *)padbuf, sizeof(padbuf));
++#else
+         avio_write(s, padbuf, sizeof(padbuf));
++#endif
+         padding = AV_INPUT_BUFFER_PADDING_SIZE;
+     }
+ 
+@@ -1498,3 +1517,5 @@ int ffio_close_null_buf(AVIOContext *s)
+ 
+     return size;
+ }
++
++#pragma clang diagnostic pop
+\ No newline at end of file
