@@ -1,0 +1,21 @@
+--- a/third_party/FFmpeg/libavutil/sha.c
++++ b/third_party/FFmpeg/libavutil/sha.c
+@@ -347,9 +347,18 @@ void av_sha_final(AVSHA* ctx, uint8_t *digest)
+     int i;
+     uint64_t finalcount = av_be2ne64(ctx->count << 3);
+ 
++#ifdef __APPLE__
++    const uint8_t pad_start = 0x80;
++    const uint8_t pad_zero = 0x00;
++    av_sha_update(ctx, &pad_start, 1);
++    while ((ctx->count & 63) != 56)
++        av_sha_update(ctx, &pad_zero, 1);
++#else
+     av_sha_update(ctx, "\200", 1);
+     while ((ctx->count & 63) != 56)
+         av_sha_update(ctx, "", 1);
++#endif
++
+     av_sha_update(ctx, (uint8_t *)&finalcount, 8); /* Should cause a transform() */
+     for (i = 0; i < ctx->digest_len; i++)
+         AV_WB32(digest + i*4, ctx->state[i]);
