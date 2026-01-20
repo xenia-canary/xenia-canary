@@ -50,6 +50,8 @@ def update_pbxproj(filepath, patched_dir):
         '/opt/homebrew/include/pango-1.0': f'{patched_dir}/pango-1.0',
         '/opt/homebrew/include/cairo': f'{patched_dir}/cairo',
         '/opt/homebrew/include/atk-1.0': f'{patched_dir}/atk-1.0',
+        '/opt/homebrew/include/gdk-pixbuf-2.0': f'{patched_dir}/gdk-pixbuf-2.0',
+        '/opt/homebrew/include/harfbuzz': f'{patched_dir}/harfbuzz',
     }
     
     modified = False
@@ -78,6 +80,11 @@ find "$PROJECT_ROOT/build" -name "*.xcconfig" -type f 2>/dev/null | while read x
         s|/opt/homebrew/include/gtk-3.0|$PATCHED_DIR/gtk-3.0|g;
         s|/opt/homebrew/include/glib-2.0|$PATCHED_DIR/glib-2.0|g;
         s|/opt/homebrew/lib/glib-2.0/include|$PATCHED_DIR/glib-2.0/include|g;
+        s|/opt/homebrew/include/pango-1.0|$PATCHED_DIR/pango-1.0|g;
+        s|/opt/homebrew/include/cairo|$PATCHED_DIR/cairo|g;
+        s|/opt/homebrew/include/atk-1.0|$PATCHED_DIR/atk-1.0|g;
+        s|/opt/homebrew/include/gdk-pixbuf-2.0|$PATCHED_DIR/gdk-pixbuf-2.0|g;
+        s|/opt/homebrew/include/harfbuzz|$PATCHED_DIR/harfbuzz|g;
     " "$xcconfig" || true
 done
 
