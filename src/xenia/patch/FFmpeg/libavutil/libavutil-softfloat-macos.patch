@@ -1,0 +1,34 @@
+--- a/third_party/FFmpeg/libavutil/softfloat.h
++++ b/third_party/FFmpeg/libavutil/softfloat.h
+@@ -102,7 +102,11 @@ static inline av_const SoftFloat av_normalize1_sf(SoftFloat a){
+ static inline av_const SoftFloat av_mul_sf(SoftFloat a, SoftFloat b){
+     a.exp += b.exp;
+     av_assert2((int32_t)((a.mant * (int64_t)b.mant) >> ONE_BITS) == (a.mant * (int64_t)b.mant) >> ONE_BITS);
++#ifdef __APPLE__
++    a.mant = (int32_t)((a.mant * (int64_t)b.mant) >> ONE_BITS);
++#else
+     a.mant = (a.mant * (int64_t)b.mant) >> ONE_BITS;
++#endif
+     a = av_normalize1_sf((SoftFloat){a.mant, a.exp - 1});
+     if (!a.mant || a.exp < MIN_EXP)
+         return FLOAT_0;
+@@ -117,11 +121,19 @@ static inline av_const SoftFloat av_div_sf(SoftFloat a, SoftFloat b){
+     int64_t temp = (int64_t)a.mant * (1<<(ONE_BITS+1));
+     temp /= b.mant;
+     a.exp -= b.exp;
++#ifdef __APPLE__
++    a.mant = (int32_t)temp;
++#else
+     a.mant = temp;
++#endif
+     while (a.mant != temp) {
+         temp /= 2;
+         a.exp--;
++#ifdef __APPLE__
++        a.mant = (int32_t)temp;
++#else
+         a.mant = temp;
++#endif
+     }
+     a = av_normalize1_sf(a);
+     if (!a.mant || a.exp < MIN_EXP)
