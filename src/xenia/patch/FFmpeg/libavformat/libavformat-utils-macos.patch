@@ -1,0 +1,499 @@
+--- a/third_party/FFmpeg/libavformat/utils.c
++++ b/third_party/FFmpeg/libavformat/utils.c
+@@ -196,6 +196,16 @@ FF_ENABLE_DEPRECATION_WARNINGS
+     case AVMEDIA_TYPE_SUBTITLE:
+         if (s->subtitle_codec) return s->subtitle_codec;
+         break;
++    case AVMEDIA_TYPE_UNKNOWN:
++        break;
++    case AVMEDIA_TYPE_DATA:
++        break;
++    case AVMEDIA_TYPE_ATTACHMENT:
++        break;
++    case AVMEDIA_TYPE_NB:
++        break;
++    default:
++        break;
+     }
+ 
+     return avcodec_find_decoder(codec_id);
+@@ -260,7 +270,11 @@ int ffio_limit(AVIOContext *s, int size)
+             av_log(NULL, remaining ? AV_LOG_ERROR : AV_LOG_DEBUG,
+                    "Truncating packet of size %d to %"PRId64"\n",
+                    size, remaining + !remaining);
++#ifdef __APPLE__
++            size = (int)(remaining + !remaining);
++#else
+             size = remaining + !remaining;
++#endif
+         }
+     }
+     return size;
+@@ -689,6 +703,12 @@ static void force_codec_ids(AVFormatContext *s, AVStream *st)
+         if (s->data_codec_id)
+             st->codecpar->codec_id = s->data_codec_id;
+         break;
++    case AVMEDIA_TYPE_UNKNOWN:
++        break;
++    case AVMEDIA_TYPE_ATTACHMENT:
++        break;
++    case AVMEDIA_TYPE_NB:
++        break;
+     }
+ }
+ 
+@@ -758,8 +778,13 @@ static int update_wrap_reference(AVFormatContext *s, AVStream *st, int stream_in
+     // reference time stamp should be 60 s before first time stamp
+     pts_wrap_reference = ref - av_rescale(60, st->time_base.den, st->time_base.num);
+     // if first time stamp is not more than 1/8 and 60s before the wrap point, subtract rather than add wrap offset
++#ifdef __APPLE__
++    pts_wrap_behavior = (ref < (1LL << st->pts_wrap_bits) - (1LL << (st->pts_wrap_bits-3))) ||
++        (ref < (1LL << st->pts_wrap_bits) - av_rescale(60, st->time_base.den, st->time_base.num)) ?
++#else
+     pts_wrap_behavior = (ref < (1LL << st->pts_wrap_bits) - (1LL << st->pts_wrap_bits-3)) ||
+         (ref < (1LL << st->pts_wrap_bits) - av_rescale(60, st->time_base.den, st->time_base.num)) ?
++#endif
+         AV_PTS_WRAP_ADD_OFFSET : AV_PTS_WRAP_SUB_OFFSET;
+ 
+     first_program = av_find_program_from_stream(s, NULL, stream_index);
+@@ -932,6 +957,8 @@ static int determinable_frame_size(AVCodecContext *avctx)
+     case AV_CODEC_ID_MP3:
+     case AV_CODEC_ID_CODEC2:
+         return 1;
++    default:
++        return 0;
+     }
+ 
+     return 0;
+@@ -1295,7 +1322,11 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
+             pkt->dts = AV_NOPTS_VALUE;
+     }
+ 
++#ifdef __APPLE__
++    duration = av_mul_q((AVRational) {(int)pkt->duration, 1}, st->time_base);
++#else
+     duration = av_mul_q((AVRational) {pkt->duration, 1}, st->time_base);
++#endif
+     if (pkt->duration <= 0) {
+         ff_compute_frame_duration(s, &num, &den, st, pc, pkt);
+         if (den && num) {
+@@ -1348,8 +1379,13 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
+ 
+             /* This is tricky: the dts must be incremented by the duration
+              * of the frame we are displaying, i.e. the last I- or P-frame. */
++#ifdef __APPLE__
++            if (st->last_IP_duration == 0 && (uint64_t)pkt->duration <= INT32_MAX)
++                st->last_IP_duration = (int)pkt->duration;
++#else
+             if (st->last_IP_duration == 0 && (uint64_t)pkt->duration <= INT32_MAX)
+                 st->last_IP_duration = pkt->duration;
++#endif
+             if (pkt->dts != AV_NOPTS_VALUE)
+                 st->cur_dts = av_sat_add64(pkt->dts, st->last_IP_duration);
+             if (pkt->dts != AV_NOPTS_VALUE &&
+@@ -1360,8 +1396,13 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
+                 next_pts != AV_NOPTS_VALUE)
+                 pkt->pts = next_dts;
+ 
++#ifdef __APPLE__
++            if ((uint64_t)pkt->duration <= INT32_MAX)
++                st->last_IP_duration = (int)pkt->duration;
++#else
+             if ((uint64_t)pkt->duration <= INT32_MAX)
+                 st->last_IP_duration = pkt->duration;
++#endif
+             st->last_IP_pts      = pkt->pts;
+             /* Cannot compute PTS if not present (we can compute it only
+              * by knowing the future. */
+@@ -1669,14 +1710,27 @@ FF_ENABLE_DEPRECATION_WARNINGS
+         if (st->internal->first_discard_sample && pkt->pts != AV_NOPTS_VALUE) {
+             int64_t pts = pkt->pts - (is_relative(pkt->pts) ? RELATIVE_TS_BASE : 0);
+             int64_t sample = ts_to_samples(st, pts);
++#ifdef __APPLE__
++            int duration = (int)ts_to_samples(st, pkt->duration);
++#else
+             int duration = ts_to_samples(st, pkt->duration);
++#endif
+             int64_t end_sample = sample + duration;
+             if (duration > 0 && end_sample >= st->internal->first_discard_sample &&
+                 sample < st->internal->last_discard_sample)
++#ifdef __APPLE__
++                discard_padding = FFMIN((int)(end_sample - st->internal->first_discard_sample), duration);
++#else
+                 discard_padding = FFMIN(end_sample - st->internal->first_discard_sample, duration);
++#endif
+         }
++#ifdef __APPLE__
++        if (st->internal->start_skip_samples && (pkt->pts == 0 || pkt->pts == RELATIVE_TS_BASE))
++            st->internal->skip_samples = (int)st->internal->start_skip_samples;
++#else
+         if (st->internal->start_skip_samples && (pkt->pts == 0 || pkt->pts == RELATIVE_TS_BASE))
+             st->internal->skip_samples = st->internal->start_skip_samples;
++#endif
+         if (st->internal->skip_samples || discard_padding) {
+             uint8_t *p = av_packet_new_side_data(pkt, AV_PKT_DATA_SKIP_SAMPLES, 10);
+             if (p) {
+@@ -2112,16 +2166,28 @@ void ff_configure_buffers_for_index(AVFormatContext *s, int64_t time_tolerance)
+         av_log(s, AV_LOG_VERBOSE, "Reconfiguring buffers to size %"PRId64"\n", pos_delta);
+ 
+         /* realloc the buffer and the original data will be retained */
++#ifdef __APPLE__
++        if (ffio_realloc_buf(s->pb, (int)pos_delta)) {
++#else
+         if (ffio_realloc_buf(s->pb, pos_delta)) {
++#endif
+             av_log(s, AV_LOG_ERROR, "Realloc buffer fail.\n");
+             return;
+         }
+ 
++#ifdef __APPLE__
++        s->pb->short_seek_threshold = FFMAX(s->pb->short_seek_threshold, (int)(pos_delta/2));
++#else
+         s->pb->short_seek_threshold = FFMAX(s->pb->short_seek_threshold, pos_delta/2);
++#endif
+     }
+ 
+     if (skip < (1<<23)) {
++#ifdef __APPLE__
++        s->pb->short_seek_threshold = FFMAX(s->pb->short_seek_threshold, (int)skip);
++#else
+         s->pb->short_seek_threshold = FFMAX(s->pb->short_seek_threshold, skip);
++#endif
+     }
+ }
+ 
+@@ -2199,8 +2265,13 @@ int ff_seek_frame_binary(AVFormatContext *s, int stream_index,
+         return -1;
+ 
+     /* do the seek */
++#ifdef __APPLE__
++    if ((ret = avio_seek(s->pb, pos, SEEK_SET)) < 0)
++        return (int)ret;
++#else
+     if ((ret = avio_seek(s->pb, pos, SEEK_SET)) < 0)
+         return ret;
++#endif
+ 
+     ff_read_frame_flush(s);
+     ff_update_cur_dts(s, st, ts);
+@@ -2395,12 +2466,22 @@ static int seek_frame_generic(AVFormatContext *s, int stream_index,
+         if (st->nb_index_entries) {
+             av_assert0(st->index_entries);
+             ie = &st->index_entries[st->nb_index_entries - 1];
++#ifdef __APPLE__
++            if ((ret = avio_seek(s->pb, ie->pos, SEEK_SET)) < 0)
++                return (int)ret;
++#else
+             if ((ret = avio_seek(s->pb, ie->pos, SEEK_SET)) < 0)
+                 return ret;
++#endif
+             ff_update_cur_dts(s, st, ie->timestamp);
+         } else {
++#ifdef __APPLE__
++            if ((ret = avio_seek(s->pb, s->internal->data_offset, SEEK_SET)) < 0)
++                return (int)ret;
++#else
+             if ((ret = avio_seek(s->pb, s->internal->data_offset, SEEK_SET)) < 0)
+                 return ret;
++#endif
+         }
+         av_packet_unref(pkt);
+         for (;;) {
+@@ -2433,8 +2514,13 @@ static int seek_frame_generic(AVFormatContext *s, int stream_index,
+         if (s->iformat->read_seek(s, stream_index, timestamp, flags) >= 0)
+             return 0;
+     ie = &st->index_entries[index];
++#ifdef __APPLE__
++    if ((ret = avio_seek(s->pb, ie->pos, SEEK_SET)) < 0)
++        return (int)ret;
++#else
+     if ((ret = avio_seek(s->pb, ie->pos, SEEK_SET)) < 0)
+         return ret;
++#endif
+     ff_update_cur_dts(s, st, ie->timestamp);
+ 
+     return 0;
+@@ -2860,6 +2946,18 @@ static void estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset)
+                     case AVMEDIA_TYPE_AUDIO:
+                         if (st->duration == AV_NOPTS_VALUE)
+                             is_end = 0;
++                    case AVMEDIA_TYPE_UNKNOWN:
++                        break;
++                    case AVMEDIA_TYPE_DATA:
++                        break;
++                    case AVMEDIA_TYPE_ATTACHMENT:
++                        break;
++                    case AVMEDIA_TYPE_SUBTITLE:
++                        break;
++                    case AVMEDIA_TYPE_NB:
++                        break;
++                    default:
++                        break;
+                 }
+             }
+         }
+@@ -2880,6 +2978,16 @@ static void estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset)
+                     av_log(ic, AV_LOG_WARNING, "stream %d : no PTS found at end of file, duration not set\n", i);
+                 } else
+                     av_log(ic, AV_LOG_WARNING, "stream %d : no TS found at start of file, duration not set\n", i);
++            case AVMEDIA_TYPE_UNKNOWN:
++                break;
++            case AVMEDIA_TYPE_DATA:
++                break;
++            case AVMEDIA_TYPE_ATTACHMENT:
++                break;
++            case AVMEDIA_TYPE_NB:
++                break;
++            default:
++                break;
+             }
+         }
+     }
+@@ -3006,6 +3114,14 @@ static int has_codec_parameters(AVStream *st, const char **errmsg_ptr)
+         break;
+     case AVMEDIA_TYPE_DATA:
+         if (avctx->codec_id == AV_CODEC_ID_NONE) return 1;
++    case AVMEDIA_TYPE_UNKNOWN:
++        break;
++    case AVMEDIA_TYPE_ATTACHMENT:
++        break;
++    case AVMEDIA_TYPE_NB:
++        break;
++    default:
++        break;
+     }
+ 
+     return 1;
+@@ -3754,9 +3870,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
+             if (st->disposition & AV_DISPOSITION_ATTACHED_PIC)
+                 fps_analyze_framecount = 0;
+             /* variable fps and no guess at the real fps */
++#ifdef __APPLE__
++            count = (ic->iformat->flags & AVFMT_NOTIMESTAMPS) ?
++                       (int)(st->internal->info->codec_info_duration_fields/2) :
++                       (int)st->internal->info->duration_count;
++#else
+             count = (ic->iformat->flags & AVFMT_NOTIMESTAMPS) ?
+                        st->internal->info->codec_info_duration_fields/2 :
+                        st->internal->info->duration_count;
++#endif
+             if (!(st->r_frame_rate.num && st->avg_frame_rate.num) &&
+                 st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                 if (count < fps_analyze_framecount)
+@@ -4093,6 +4215,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
+             case AV_AUDIO_SERVICE_TYPE_KARAOKE:
+                 st->disposition = AV_DISPOSITION_KARAOKE;
+                 break;
++            case AV_AUDIO_SERVICE_TYPE_MAIN:
++                st->disposition = AV_DISPOSITION_DEFAULT;
++                break;
++            case AV_AUDIO_SERVICE_TYPE_DIALOGUE:
++                break;
++            case AV_AUDIO_SERVICE_TYPE_EMERGENCY:
++                break;
++            default:
++                break;
+             }
+         }
+     }
+@@ -4615,7 +4746,11 @@ AVProgram *av_new_program(AVFormatContext *ac, int id)
+         program = av_mallocz(sizeof(AVProgram));
+         if (!program)
+             return NULL;
++#ifdef __APPLE__
++        ret = av_dynarray_add_nofree(&ac->programs, (int *)&ac->nb_programs, program);
++#else
+         ret = av_dynarray_add_nofree(&ac->programs, &ac->nb_programs, program);
++#endif        
+         if (ret < 0) {
+             av_free(program);
+             return NULL;
+@@ -4659,7 +4794,11 @@ AVChapter *avpriv_new_chapter(AVFormatContext *s, int64_t id, AVRational time_ba
+         chapter = av_mallocz(sizeof(AVChapter));
+         if (!chapter)
+             return NULL;
++#ifdef __APPLE__
++        ret = av_dynarray_add_nofree(&s->chapters, (int *)&s->nb_chapters, chapter);
++#else
+         ret = av_dynarray_add_nofree(&s->chapters, &s->nb_chapters, chapter);
++#endif
+         if (ret < 0) {
+             av_free(chapter);
+             return NULL;
+@@ -4763,7 +4902,11 @@ int av_get_frame_filename2(char *buf, int buf_size, const char *path, int number
+                 if (number < 0)
+                     nd += 1;
+                 snprintf(buf1, sizeof(buf1), "%0*d", nd, number);
++#ifdef __APPLE__
++                len = (int)strlen(buf1);
++#else
+                 len = strlen(buf1);
++#endif
+                 if ((q - buf + len) > buf_size - 1)
+                     goto fail;
+                 memcpy(q, buf1, len);
+@@ -4990,7 +5133,11 @@ void ff_parse_key_value(const char *str, ff_parse_key_val_cb callback_get_buf,
+         if (!(ptr = strchr(key, '=')))
+             break;
+         ptr++;
++#ifdef __APPLE__
++        key_len = (int)(ptr - key);
++#else
+         key_len = ptr - key;
++#endif
+ 
+         callback_get_buf(context, key, key_len, &dest, &dest_len);
+         dest_end = dest + dest_len - 1;
+@@ -5149,7 +5296,11 @@ AVRational av_guess_frame_rate(AVFormatContext *format, AVStream *st, AVFrame *f
+ 
+     if (st->internal->avctx->ticks_per_frame > 1) {
+         if (   codec_fr.num > 0 && codec_fr.den > 0 &&
++#ifdef __APPLE__
++            (fr.num == 0 || (av_q2d(codec_fr) < av_q2d(fr)*0.7 && fabs(1.0 - av_q2d(av_div_q(avg_fr, fr))) > 0.1)))
++#else
+             (fr.num == 0 || av_q2d(codec_fr) < av_q2d(fr)*0.7 && fabs(1.0 - av_q2d(av_div_q(avg_fr, fr))) > 0.1))
++#endif
+             fr = codec_fr;
+     }
+ 
+@@ -5208,7 +5359,11 @@ FF_DISABLE_DEPRECATION_WARNINGS
+             int found = 0;
+             char *endptr;
+             spec += 2;
++#ifdef __APPLE__
++            prog_id = (int)strtol(spec, &endptr, 0);
++#else
+             prog_id = strtol(spec, &endptr, 0);
++#endif
+             /* Disallow empty id and make sure that if we are not at the end, then another specifier must follow. */
+             if (spec == endptr || (*endptr && *endptr++ != ':'))
+                 return AVERROR(EINVAL);
+@@ -5236,7 +5391,11 @@ FF_DISABLE_DEPRECATION_WARNINGS
+             int stream_id;
+             char *endptr;
+             spec += 1 + (*spec == 'i');
++#ifdef __APPLE__
++            stream_id = (int)strtol(spec, &endptr, 0);
++#else
+             stream_id = strtol(spec, &endptr, 0);
++#endif
+             if (spec == endptr || *endptr)                /* Disallow empty id and make sure we are at the end. */
+                 return AVERROR(EINVAL);
+             return match && (stream_id == st->id);
+@@ -5335,7 +5494,11 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
+     if (!indexptr)
+         return ret;
+ 
++#ifdef __APPLE__
++    index = (int)strtol(indexptr, &endptr, 0);
++#else
+     index = strtol(indexptr, &endptr, 0);
++#endif
+     if (*endptr) {                  /* We can't have anything after the requested index. */
+         ret = AVERROR(EINVAL);
+         goto error;
+@@ -5527,7 +5690,11 @@ int av_stream_add_side_data(AVStream *st, enum AVPacketSideDataType type,
+         if (sd->type == type) {
+             av_freep(&sd->data);
+             sd->data = data;
++#ifdef __APPLE__
++            sd->size = (int)size;
++#else
+             sd->size = size;
++#endif
+             return 0;
+         }
+     }
+@@ -5546,7 +5713,11 @@ int av_stream_add_side_data(AVStream *st, enum AVPacketSideDataType type,
+     sd = &st->side_data[st->nb_side_data - 1];
+     sd->type = type;
+     sd->data = data;
++#ifdef __APPLE__
++    sd->size = (int)size;
++#else
+     sd->size = size;
++#endif
+ 
+     return 0;
+ }
+@@ -5761,7 +5932,11 @@ int ff_bprint_to_codecpar_extradata(AVCodecParameters *par, struct AVBPrint *buf
+         return AVERROR(ENOMEM);
+     }
+ 
++#ifdef __APPLE__
++    par->extradata = (uint8_t *)str;
++#else
+     par->extradata = str;
++#endif
+     /* Note: the string is NUL terminated (so extradata can be read as a
+      * string), but the ending character is not accounted in the size (in
+      * binary formats you are likely not supposed to mux that character). When
+@@ -5797,20 +5972,43 @@ FF_ENABLE_DEPRECATION_WARNINGS
+      */
+     if (!strcmp(ofmt->name, "avi")) {
+ #if FF_API_R_FRAME_RATE
++#ifdef __APPLE__
++        if (((copy_tb == AVFMT_TBCF_AUTO && ist->r_frame_rate.num
++            && av_q2d(ist->r_frame_rate) >= av_q2d(ist->avg_frame_rate)
++            && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(ist->time_base)
++            && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(dec_ctx->time_base)
++            && (av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx->time_base) < 1.0/500)))
++            || copy_tb == AVFMT_TBCF_R_FRAMERATE) {
++#else
+         if (copy_tb == AVFMT_TBCF_AUTO && ist->r_frame_rate.num
+             && av_q2d(ist->r_frame_rate) >= av_q2d(ist->avg_frame_rate)
+             && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(ist->time_base)
+             && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(dec_ctx->time_base)
+-            && av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx->time_base) < 1.0/500
++#ifdef __APPLE__
++            && (av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx->time_base) < 1.0/500)
++#else
++            && (av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx->time_base) < 1.0/500)
++#endif
+             || copy_tb == AVFMT_TBCF_R_FRAMERATE) {
++#endif
+             enc_ctx->time_base.num = ist->r_frame_rate.den;
+             enc_ctx->time_base.den = 2*ist->r_frame_rate.num;
+             enc_ctx->ticks_per_frame = 2;
+         } else
+ #endif
++#ifdef __APPLE__
++            if ((copy_tb == AVFMT_TBCF_AUTO && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > 2*av_q2d(ist->time_base)
++            && (av_q2d(ist->time_base) < 1.0/500))
++                   || copy_tb == AVFMT_TBCF_DECODER) {
++#else
+             if (copy_tb == AVFMT_TBCF_AUTO && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > 2*av_q2d(ist->time_base)
+-                   && av_q2d(ist->time_base) < 1.0/500
++#ifdef __APPLE__
++            && (av_q2d(ist->time_base) < 1.0/500)
++#else
++            && (av_q2d(ist->time_base) < 1.0/500)
++#endif
+                    || copy_tb == AVFMT_TBCF_DECODER) {
++#endif
+             enc_ctx->time_base = dec_ctx->time_base;
+             enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
+             enc_ctx->time_base.den *= 2;
+@@ -5818,10 +6016,21 @@ FF_ENABLE_DEPRECATION_WARNINGS
+         }
+     } else if (!(ofmt->flags & AVFMT_VARIABLE_FPS)
+                && !av_match_name(ofmt->name, "mov,mp4,3gp,3g2,psp,ipod,ismv,f4v")) {
++#ifdef __APPLE__
++        if ((copy_tb == AVFMT_TBCF_AUTO && dec_ctx->time_base.den
++            && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > av_q2d(ist->time_base)
++            && (av_q2d(ist->time_base) < 1.0/500))
++            || copy_tb == AVFMT_TBCF_DECODER) {
++#else
+         if (copy_tb == AVFMT_TBCF_AUTO && dec_ctx->time_base.den
+             && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > av_q2d(ist->time_base)
+-            && av_q2d(ist->time_base) < 1.0/500
++#ifdef __APPLE__
++            && (av_q2d(ist->time_base) < 1.0/500)
++#else
++            && (av_q2d(ist->time_base) < 1.0/500)
++#endif
+             || copy_tb == AVFMT_TBCF_DECODER) {
++#endif
+             enc_ctx->time_base = dec_ctx->time_base;
+             enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
+         }
