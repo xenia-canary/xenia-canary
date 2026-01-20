@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cs_priv.h
++++ b/third_party/capstone/cs_priv.h
+@@ -7,7 +7,11 @@
+ #ifdef CAPSTONE_DEBUG
+ #include <assert.h>
+ #endif
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "MCInst.h"
+ #include "SStream.h"
