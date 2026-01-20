@@ -1,0 +1,26 @@
+--- a/third_party/FFmpeg/libavutil/pixdesc.c
++++ b/third_party/FFmpeg/libavutil/pixdesc.c
+@@ -2739,7 +2739,11 @@ static int get_pix_fmt_depth(int *min, int *max, enum AVPixelFormat pix_fmt)
+ 
+ static int get_pix_fmt_score(enum AVPixelFormat dst_pix_fmt,
+                               enum AVPixelFormat src_pix_fmt,
++#ifdef __APPLE__
++                              int *lossp, unsigned consider)
++#else
+                               unsigned *lossp, unsigned consider)
++#endif
+ {
+     const AVPixFmtDescriptor *src_desc = av_pix_fmt_desc_get(src_pix_fmt);
+     const AVPixFmtDescriptor *dst_desc = av_pix_fmt_desc_get(dst_pix_fmt);
+@@ -2865,7 +2869,11 @@ enum AVPixelFormat av_find_best_pix_fmt_of_2(enum AVPixelFormat dst_pix_fmt1, en
+                                              enum AVPixelFormat src_pix_fmt, int has_alpha, int *loss_ptr)
+ {
+     enum AVPixelFormat dst_pix_fmt;
++#ifdef __APPLE__
+     int loss1, loss2, loss_mask;
++#else
++    unsigned loss1, loss2, loss_mask;
++#endif
+     const AVPixFmtDescriptor *desc1 = av_pix_fmt_desc_get(dst_pix_fmt1);
+     const AVPixFmtDescriptor *desc2 = av_pix_fmt_desc_get(dst_pix_fmt2);
+     int score1, score2;
