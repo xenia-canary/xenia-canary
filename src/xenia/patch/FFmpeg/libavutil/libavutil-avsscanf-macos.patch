@@ -1,0 +1,16 @@
+--- a/third_party/FFmpeg/libavutil/avsscanf.c
++++ b/third_party/FFmpeg/libavutil/avsscanf.c
+@@ -97,7 +97,12 @@ static int ffshgetc(FFFILE *f)
+ {
+     int c;
+     ptrdiff_t cnt = shcnt(f);
+-    if (f->shlim && cnt >= f->shlim || (c=ffuflow(f)) < 0) {
++#ifdef __APPLE__
++        if ((f->shlim && cnt >= f->shlim) || (c=ffuflow(f)) < 0)
++#else
++        if (f->shlim && cnt >= f->shlim || (c=ffuflow(f)) < 0)
++#endif
++{
+         f->shcnt = f->buf - f->rpos + cnt;
+         f->shend = 0;
+         return EOF;
