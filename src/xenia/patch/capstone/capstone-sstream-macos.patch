@@ -1,0 +1,27 @@
+--- a/third_party/capstone/SStream.c
++++ b/third_party/capstone/SStream.c
+@@ -12,7 +12,11 @@
+ #endif
+ #include <string.h>
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "SStream.h"
+ #include "cs_priv.h"
+@@ -67,7 +71,11 @@ void SStream_replc_str(SStream *ss, char chr, const char *rstr) {
+ 	}
+ 	memmove(found + repl_len, found + 1, post_len);
+ 	memcpy(found, rstr, repl_len);
+-	ss->index = strlen(ss->buffer);
++#ifdef __APPLE__
++    ss->index = (int)strlen(ss->buffer);
++#else
++    ss->index = strlen(ss->buffer);
++#endif
+ }
+ 
+ /// Removes the space characters '\t' and ' ' from the beginning of the stream buffer.
