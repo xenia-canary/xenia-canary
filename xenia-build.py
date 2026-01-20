@@ -607,7 +607,7 @@ def apply_patches():
         if patch.endswith(".sh"):
             # Ensure script is executable
             os.chmod(patch, os.stat(patch).st_mode | stat.S_IEXEC)
-            shell_call(["sh", patch], throw_on_error=False)
+            shell_call(["bash", patch], throw_on_error=False)
         elif patch.endswith(".xcconfig") or os.path.basename(patch) == ".xcconfig":
             import shutil
             shutil.copy(patch, os.path.basename(patch))
@@ -656,7 +656,7 @@ def revert_patches():
         if patch.endswith(".sh"):
             revert_script = patch.replace(".sh", ".revert.sh")
             if os.path.exists(revert_script):
-                shell_call(["sh", revert_script], throw_on_error=False)
+                shell_call(["bash", revert_script], throw_on_error=False)
         elif patch.endswith(".xcconfig") or os.path.basename(patch) == ".xcconfig":
             target = os.path.basename(patch)
             if os.path.exists(target):
