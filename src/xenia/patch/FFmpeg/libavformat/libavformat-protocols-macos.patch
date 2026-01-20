@@ -1,0 +1,14 @@
+--- a/third_party/FFmpeg/libavformat/protocols.c
++++ b/third_party/FFmpeg/libavformat/protocols.c
+@@ -115,7 +115,11 @@ const char *avio_enum_protocols(void **opaque, int output)
+ {
+     const URLProtocol **p = *opaque;
+ 
++#ifdef __APPLE__
++    p = p ? p + 1 : (const URLProtocol **)url_protocols;
++#else
+     p = p ? p + 1 : url_protocols;
++#endif
+     *opaque = p;
+     if (!*p) {
+         *opaque = NULL;
