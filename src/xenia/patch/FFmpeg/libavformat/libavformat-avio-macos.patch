@@ -1,0 +1,28 @@
+--- a/third_party/FFmpeg/libavformat/avio.c
++++ b/third_party/FFmpeg/libavformat/avio.c
+@@ -67,7 +67,7 @@ const AVClass ffurl_context_class = {
+     .option           = options,
+     .version          = LIBAVUTIL_VERSION_INT,
+     .child_next       = urlcontext_child_next,
+-#if FF_API_CHILD_CLASS_NEXT
++#if FF_API_CHILD_CLASS_NEXT && !defined(__APPLE__)
+     .child_class_next = ff_urlcontext_child_class_next,
+ #endif
+     .child_class_iterate = ff_urlcontext_child_class_iterate,
+@@ -257,10 +257,15 @@ static const struct URLProtocol *url_find_protocol(const char *filename)
+     char proto_str[128], proto_nested[128], *ptr;
+     size_t proto_len = strspn(filename, URL_SCHEME_CHARS);
+     int i;
+-
++#ifdef __APPLE__
++        if ((filename[proto_len] != ':' &&
++         (strncmp(filename, "subfile,", 8) || !strchr(filename + proto_len + 1, ':'))) ||
++        is_dos_path(filename))
++#else
+     if (filename[proto_len] != ':' &&
+         (strncmp(filename, "subfile,", 8) || !strchr(filename + proto_len + 1, ':')) ||
+         is_dos_path(filename))
++#endif
+         strcpy(proto_str, "file");
+     else
+         av_strlcpy(proto_str, filename,
