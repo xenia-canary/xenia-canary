@@ -1,0 +1,13 @@
+--- a/third_party/FFmpeg/libavutil/base64.c
++++ b/third_party/FFmpeg/libavutil/base64.c
+@@ -81,7 +81,11 @@ int av_base64_decode(uint8_t *out, const char *in_str, int out_size)
+     uint8_t *dst = out;
+     uint8_t *end;
+     // no sign extension
++#ifdef __APPLE__
++    const uint8_t *in = (const uint8_t *)in_str;
++#else
+     const uint8_t *in = in_str;
++#endif
+     unsigned bits = 0xff;
+     unsigned v;
