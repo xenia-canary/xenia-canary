@@ -1,0 +1,31 @@
+--- a/third_party/FFmpeg/libavcodec/dct32_template.c
++++ b/third_party/FFmpeg/libavcodec/dct32_template.c
+@@ -122,16 +122,27 @@
+ 
+ #define ADD(a, b) val##a += val##b
+ 
++/* DCT32 without 1/sqrt(2) coef zero scaling. */
+ /* DCT32 without 1/sqrt(2) coef zero scaling. */
+ void dct32(INTFLOAT *out, const INTFLOAT *tab_arg)
+ {
++#ifdef __APPLE__
++    const INTFLOAT *tab = tab_arg;
++    INTFLOAT tmp0, tmp1;
++    
++    INTFLOAT val0 , val1 , val2 , val3 , val4 , val5 , val6 , val7 ,
++             val8 , val9 , val10, val11, val12, val13, val14, val15,
++             val16, val17, val18, val19, val20, val21, val22, val23,
++             val24, val25, val26, val27, val28, val29, val30, val31;
++#else
+     const SUINTFLOAT *tab = tab_arg;
+     SUINTFLOAT tmp0, tmp1;
+-
++    
+     SUINTFLOAT val0 , val1 , val2 , val3 , val4 , val5 , val6 , val7 ,
+              val8 , val9 , val10, val11, val12, val13, val14, val15,
+              val16, val17, val18, val19, val20, val21, val22, val23,
+              val24, val25, val26, val27, val28, val29, val30, val31;
++#endif
+ 
+     /* pass 1 */
+     BF0( 0, 31, COS0_0 , 1);
