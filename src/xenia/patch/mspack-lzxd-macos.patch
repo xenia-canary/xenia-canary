@@ -1,0 +1,52 @@
+--- a/third_party/mspack/lzxd.c
++++ b/third_party/mspack/lzxd.c
+@@ -12,8 +12,13 @@
+ 
+ /* LZX decompression implementation */
+ 
++#ifdef __APPLE__
++#include "system.h"
++#include "lzx.h"
++#else
+ #include <system.h>
+ #include <lzx.h>
++#endif
+ 
+ extern void xenia_log(const char*, ...);
+ 
+@@ -94,7 +99,11 @@ extern void xenia_log(const char*, ...);
+     READ_IF_NEEDED; b1 = *i_ptr++;      \
+     INJECT_BITS((b1 << 8) | b0, 16);    \
+ } while (0)
++#ifdef __APPLE__
++#include "readbits.h"
++#else
+ #include <readbits.h>
++#endif
+ 
+ /* import huffman-reading macros and code */
+ #define TABLEBITS(tbl)      LZX_##tbl##_TABLEBITS
+@@ -102,7 +111,11 @@ extern void xenia_log(const char*, ...);
+ #define HUFF_TABLE(tbl,idx) lzx->tbl##_table[idx]
+ #define HUFF_LEN(tbl,idx)   lzx->tbl##_len[idx]
+ #define HUFF_ERROR          return lzx->error = MSPACK_ERR_DECRUNCH
++#ifdef __APPLE__
++#include "readhuff.h"
++#else
+ #include <readhuff.h>
++#endif
+ 
+ /* BUILD_TABLE(tbl) builds a huffman lookup table from code lengths */
+ #define BUILD_TABLE(tbl)                                                \
+@@ -475,7 +488,11 @@ int lzxd_decompress(struct lzxd_stream *lzx, off_t out_bytes) {
+      * has been filled in. */
+     frame_size = LZX_FRAME_SIZE;
+     if (lzx->length && (lzx->length - lzx->offset) < (off_t)frame_size) {
++    #ifdef __APPLE__
++      frame_size = (unsigned int)(lzx->length - lzx->offset);
++    #else
+       frame_size = lzx->length - lzx->offset;
++    #endif
+     }
+ 
+     /* decode until one more frame is available */
