@@ -1,0 +1,57 @@
+--- a/third_party/FFmpeg/libavcodec/put_bits.h
++++ b/third_party/FFmpeg/libavcodec/put_bits.h
+@@ -75,7 +75,11 @@ static inline void init_put_bits(PutBitContext *s, uint8_t *buffer,
+  */
+ static inline int put_bits_count(PutBitContext *s)
+ {
++#ifdef __APPLE__
++    return (int)((s->buf_ptr - s->buf) * 8 + BUF_BITS - s->bit_left);
++#else
+     return (s->buf_ptr - s->buf) * 8 + BUF_BITS - s->bit_left;
++#endif
+ }
+ 
+ /**
+@@ -101,7 +105,11 @@ static inline void rebase_put_bits(PutBitContext *s, uint8_t *buffer,
+  */
+ static inline int put_bits_left(PutBitContext* s)
+ {
++#ifdef __APPLE__
++    return (int)((s->buf_end - s->buf_ptr) * 8 - BUF_BITS + s->bit_left);
++#else
+     return (s->buf_end - s->buf_ptr) * 8 - BUF_BITS + s->bit_left;
++#endif
+ }
+ 
+ /**
+@@ -283,8 +291,12 @@ static void av_unused put_bits32(PutBitContext *s, uint32_t value)
+         av_assert2(0);
+     }
+     bit_buf     = (uint64_t)value >> bit_left;
++#else
++#ifdef __APPLE__
++    bit_buf     = (BitBuf)((uint64_t)bit_buf << bit_left);
+ #else
+     bit_buf     = (uint64_t)bit_buf << bit_left;
++#endif
+     bit_buf    |= (BitBuf)value >> (BUF_BITS - bit_left);
+     if (s->buf_end - s->buf_ptr >= sizeof(BitBuf)) {
+         AV_WBBUF(s->buf_ptr, bit_buf);
+@@ -308,9 +320,17 @@ static inline void put_bits64(PutBitContext *s, int n, uint64_t value)
+     av_assert2((n == 64) || (n < 64 && value < (UINT64_C(1) << n)));
+ 
+     if (n < 32)
++#ifdef __APPLE__
++        put_bits(s, n, (BitBuf)value);
++#else
+         put_bits(s, n, value);
++#endif
+     else if (n == 32)
++#ifdef __APPLE__
++        put_bits32(s, (uint32_t)value);
++#else
+         put_bits32(s, value);
++#endif
+     else if (n < 64) {
+         uint32_t lo = value & 0xffffffff;
+         uint32_t hi = value >> 32;
