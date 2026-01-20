@@ -1,0 +1,21 @@
+--- a/third_party/FFmpeg/libavutil/sha512.c
++++ b/third_party/FFmpeg/libavutil/sha512.c
+@@ -275,9 +275,18 @@ void av_sha512_final(AVSHA512* ctx, uint8_t *digest)
+     uint64_t i = 0;
+     uint64_t finalcount = av_be2ne64(ctx->count << 3);
+ 
++#ifdef __APPLE__
++    const uint8_t pad_start = 0x80;
++    const uint8_t pad_zero = 0x00;
++    av_sha512_update(ctx, &pad_start, 1);
++    while ((ctx->count & 127) != 112)
++        av_sha512_update(ctx, &pad_zero, 1);
++#else
+     av_sha512_update(ctx, "\200", 1);
+     while ((ctx->count & 127) != 112)
+         av_sha512_update(ctx, "", 1);
++#endif
++
+     av_sha512_update(ctx, (uint8_t *)&i, 8);
+     av_sha512_update(ctx, (uint8_t *)&finalcount, 8); /* Should cause a transform() */
+     for (i = 0; i < ctx->digest_len; i++)
