@@ -1,0 +1,34 @@
+--- a/third_party/FFmpeg/libavcodec/mpegaudiodec_template.c
++++ b/third_party/FFmpeg/libavcodec/mpegaudiodec_template.c
+@@ -1166,19 +1166,31 @@ static void compute_imdct(MPADecodeContext *s, GranuleDef *g,
+             *out_ptr = buf[4*i];
+             out_ptr += SBLIMIT;
+         }
++#ifdef __APPLE__
++        imdct12(out2, (SUINTFLOAT *)(ptr + 0));
++#else
+         imdct12(out2, ptr + 0);
++#endif
+         for (i = 0; i < 6; i++) {
+             *out_ptr     = MULH3(out2[i    ], win[i    ], 1) + buf[4*(i + 6*1)];
+             buf[4*(i + 6*2)] = MULH3(out2[i + 6], win[i + 6], 1);
+             out_ptr += SBLIMIT;
+         }
++#ifdef __APPLE__
++        imdct12(out2, (SUINTFLOAT *)(ptr + 1));
++#else
+         imdct12(out2, ptr + 1);
++#endif
+         for (i = 0; i < 6; i++) {
+             *out_ptr     = MULH3(out2[i    ], win[i    ], 1) + buf[4*(i + 6*2)];
+             buf[4*(i + 6*0)] = MULH3(out2[i + 6], win[i + 6], 1);
+             out_ptr += SBLIMIT;
+         }
++#ifdef __APPLE__
++        imdct12(out2, (SUINTFLOAT *)(ptr + 2));
++#else
+         imdct12(out2, ptr + 2);
++#endif
+         for (i = 0; i < 6; i++) {
+             buf[4*(i + 6*0)] = MULH3(out2[i    ], win[i    ], 1) + buf[4*(i + 6*0)];
+             buf[4*(i + 6*1)] = MULH3(out2[i + 6], win[i + 6], 1);
