@@ -1,0 +1,17 @@
+--- a/third_party/FFmpeg/libavformat/riffdec.c
++++ b/third_party/FFmpeg/libavformat/riffdec.c
+@@ -284,8 +284,12 @@ int ff_read_riff_info(AVFormatContext *s, int64_t size)
+         // Work around VC++ 2015 Update 1 code-gen bug:
+         // https://connect.microsoft.com/VisualStudio/feedback/details/2291638
+         key[4] = 0;
+-
+-        if (avio_read(pb, value, chunk_size) != chunk_size) {
++#ifdef __APPLE__
++        if (avio_read(pb, (unsigned char *)value, chunk_size) != chunk_size)
++#else
++        if (avio_read(pb, value, chunk_size) != chunk_size) 
++#endif
++        {
+             av_log(s, AV_LOG_WARNING,
+                    "premature end of file while reading INFO tag\n");
+         }
