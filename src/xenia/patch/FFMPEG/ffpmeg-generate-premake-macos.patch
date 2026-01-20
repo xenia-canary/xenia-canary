@@ -1,0 +1,60 @@
+--- a/third_party/FFmpeg/generate_premake.py
++++ b/third_party/FFmpeg/generate_premake.py
+@@ -32,18 +32,21 @@ templates['libavformat'] =  template_header.format('libavformat', 'CEF2E128-AA08
+ """
+ 
+ class Config():
+-    def __init__(self, os, arch, config_h, premake_filters):
++    def __init__(self, os, arch, config_h, platform_filter, arch_filter):
+         self.os = os
+         self.arch = arch
+         self.config_h = config_h
+-        self.premake_filters = premake_filters
++        self.platform_filter = platform_filter
++        self.arch_filter = arch_filter
+         self.key_values = []
+ 
+ supported_configs = [
+-    Config('windows', 'x86_64' , 'config_windows_x86_64.h' , 'platforms:Windows'),
+-    Config('linux'  , 'x86_64' , 'config_linux_x86_64.h'   , 'platforms:Linux'),
+-    Config('android', 'x86_64' , 'config_android_x86_64.h' , 'platforms:Android-x86_64'),
+-    Config('android', 'aarch64', 'config_android_aarch64.h', 'platforms:Android-ARM64'),
++    Config('windows', 'x86_64' , 'config_windows_x86_64.h' , 'platforms:Windows', 'architecture:x86_64'),
++    Config('linux'  , 'x86_64' , 'config_linux_x86_64.h'   , 'platforms:Linux', 'architecture:x86_64'),
++    Config('android', 'x86_64' , 'config_android_x86_64.h' , 'platforms:Android-x86_64', 'architecture:x86_64'),
++    Config('android', 'aarch64', 'config_android_aarch64.h', 'platforms:Android-ARM64', 'architecture:ARM64'),
++    Config('mac'    , 'aarch64', 'config_mac_arm64.h'      , 'platforms:Mac', 'architecture:ARM64'),
++    Config('mac'    , 'x86_64' , 'config_mac_x86_64.h'     , 'platforms:Mac', 'architecture:x86_64'),
+ ]
+ 
+ def are_list_items_identical(list_a, list_b):
+@@ -214,13 +217,14 @@ def premake_files(files, libname):
+     s += '  })\n'
+     return s
+ 
+-def premake_filter(filters = None):
++def premake_filter(configs = None):
+     f = '  filter({'
+-    if filters and len(filters):
+-        f += '"'
+-        # Concatenate sorted (for consistency) filters
+-        f += ' or '.join(sorted(filters))
+-        f += '"'
++    if configs and len(configs):
++        p_filters = set([c.platform_filter for c in configs])
++        a_filters = set([c.arch_filter for c in configs])
++        
++        f += '"' + ' or '.join(sorted(p_filters)) + '"'
++        f += ', "' + ' or '.join(sorted(a_filters)) + '"'
+     f += '})\n'
+     return f
+ 
+@@ -304,7 +308,7 @@ def generate_premake(configs, libname):
+                     for config_set in config_sets:
+                         if not are_list_items_identical(config_set, configs): # no filter for common files
+                             filter_used = True
+-                            premake.write(premake_filter([config.premake_filters for config in config_set]))
++                            premake.write(premake_filter(config_set))
+                         premake.write(premake_files([filename for filename, file_configs in files.items() if are_list_items_identical(config_set, file_configs)], libname))
+                     if filter_used:
+                         premake.write(premake_filter())
