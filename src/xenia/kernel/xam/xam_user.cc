@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <ranges>
+
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -593,20 +595,26 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
       kernel_state()->achievement_manager()->GetTitleAchievements(
           requester_xuid, title_id_);
 
-  if (!user_title_achievements.empty()) {
-    for (const auto& entry : user_title_achievements) {
-      auto unlock_time = X_FILETIME();
-      if (entry.IsUnlocked() && entry.unlock_time.is_valid()) {
-        unlock_time = entry.unlock_time;
-      }
+  const auto requested_achievements = user_title_achievements |
+                                      std::views::drop(offset) |
+                                      std::views::take(count);
 
-      auto item = AchievementDetails(
-          entry.achievement_id, entry.achievement_name.c_str(),
-          entry.unlocked_description.c_str(), entry.locked_description.c_str(),
-          entry.image_id, entry.gamerscore, unlock_time, entry.flags);
+  if (requested_achievements.empty()) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
 
-      e->AppendItem(item);
+  for (const auto& entry : requested_achievements) {
+    auto unlock_time = X_FILETIME();
+    if (entry.IsUnlocked() && entry.unlock_time.is_valid()) {
+      unlock_time = entry.unlock_time;
     }
+
+    auto item = AchievementDetails(
+        entry.achievement_id, entry.achievement_name.c_str(),
+        entry.unlocked_description.c_str(), entry.locked_description.c_str(),
+        entry.image_id, entry.gamerscore, unlock_time, entry.flags);
+
+    e->AppendItem(item);
   }
 
   *handle_ptr = e->handle();
