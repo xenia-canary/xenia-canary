@@ -1,0 +1,164 @@
+--- a/third_party/FFmpeg/libavformat/id3v2.c
++++ b/third_party/FFmpeg/libavformat/id3v2.c
+@@ -207,7 +207,11 @@ static int check_tag(AVIOContext *s, int offset, unsigned int len)
+ 
+     if (len > 4 ||
+         avio_seek(s, offset, SEEK_SET) < 0 ||
++        #ifdef __APPLE__
++        avio_read(s, (unsigned char *)tag, len) < (int)len)
++#else
+         avio_read(s, tag, len) < (int)len)
++#endif
+         return -1;
+     else if (!AV_RB32(tag) || is_tag(tag, len))
+         return 1;
+@@ -335,13 +339,25 @@ static void read_ttag(AVFormatContext *s, AVIOContext *pb, int taglen,
+     }
+ 
+     if (!(strcmp(key, "TCON") && strcmp(key, "TCO"))                         &&
++#ifdef __APPLE__
++        (sscanf((const char *)dst, "(%d)", &genre) == 1 || sscanf((const char *)dst, "%d", &genre) == 1) &&
++#else
+         (sscanf(dst, "(%d)", &genre) == 1 || sscanf(dst, "%d", &genre) == 1) &&
++#endif
+         genre <= ID3v1_GENRE_MAX) {
+         av_freep(&dst);
++#ifdef __APPLE__
++        dst = (uint8_t *)av_strdup(ff_id3v1_genre_str[genre]);
++#else
+         dst = av_strdup(ff_id3v1_genre_str[genre]);
++#endif
+     } else if (!(strcmp(key, "TXXX") && strcmp(key, "TXX"))) {
+         /* dst now contains the key, need to get value */
++#ifdef __APPLE__
++        key = (const char *)dst;
++#else
+         key = dst;
++#endif
+         if (decode_str(s, pb, encoding, &dst, &taglen) < 0) {
+             av_log(s, AV_LOG_ERROR, "Error reading frame %s, skipped\n", key);
+             av_freep(&key);
+@@ -352,7 +368,11 @@ static void read_ttag(AVFormatContext *s, AVIOContext *pb, int taglen,
+         av_freep(&dst);
+ 
+     if (dst)
++#ifdef __APPLE__
++        av_dict_set(metadata, key, (const char *)dst, dict_flags);
++#else
+         av_dict_set(metadata, key, dst, dict_flags);
++#endif
+ }
+ 
+ static void read_uslt(AVFormatContext *s, AVIOContext *pb, int taglen,
+@@ -391,8 +411,13 @@ static void read_uslt(AVFormatContext *s, AVIOContext *pb, int taglen,
+         goto error;
+     }
+ 
++#ifdef __APPLE__
++    av_dict_set(metadata, key, (const char *)text,
++                AV_DICT_DONT_STRDUP_KEY | AV_DICT_DONT_STRDUP_VAL);
++#else
+     av_dict_set(metadata, key, text,
+                 AV_DICT_DONT_STRDUP_KEY | AV_DICT_DONT_STRDUP_VAL);
++#endif
+ 
+     ok = 1;
+ error:
+@@ -610,7 +635,11 @@ static void read_apic(AVFormatContext *s, AVIOContext *pb, int taglen,
+             goto fail;
+         taglen -= ret;
+     } else {
++#ifdef __APPLE__
++        if (avio_read(pb, (unsigned char *)mimetype, 3) < 0)
++#else
+         if (avio_read(pb, mimetype, 3) < 0)
++#endif
+             goto fail;
+ 
+         mimetype[3] = 0;
+@@ -659,7 +688,11 @@ static void read_apic(AVFormatContext *s, AVIOContext *pb, int taglen,
+ 
+     // The description must be unique, and some ID3v2 tag writers add spaces
+     // to write several APIC entries with the same description.
++#ifdef __APPLE__
++    rstrip_spaces((char *)apic->description);
++#else
+     rstrip_spaces(apic->description);
++#endif
+ 
+     return;
+ 
+@@ -702,7 +735,11 @@ static void read_chapter(AVFormatContext *s, AVIOContext *pb, int len, const cha
+ 
+     len -= 16;
+     while (len > 10) {
++#ifdef __APPLE__
++        if (avio_read(pb, (unsigned char *)tag, 4) < 4)
++#else
+         if (avio_read(pb, tag, 4) < 4)
++#endif
+             goto fail;
+         tag[4] = 0;
+         taglen = avio_rb32(pb);
+@@ -881,7 +918,11 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
+         unsigned long av_unused dlen;
+ 
+         if (isv34) {
+-            if (avio_read(pb, tag, 4) < 4)
++    #ifdef __APPLE__
++        if (avio_read(pb, (unsigned char *)tag, 4) < 4)
++#else
++        if (avio_read(pb, tag, 4) < 4)
++#endif
+                 break;
+             tag[4] = 0;
+             if (version == 3) {
+@@ -909,8 +950,13 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
+             tflags  = avio_rb16(pb);
+             tunsync = tflags & ID3v2_FLAG_UNSYNCH;
+         } else {
++#ifdef __APPLE__
++            if (avio_read(pb, (unsigned char *)tag, 3) < 3)
++                break;
++#else
+             if (avio_read(pb, tag, 3) < 3)
+                 break;
++#endif
+             tag[3] = 0;
+             tlen   = avio_rb24(pb);
+         }
+@@ -962,7 +1008,11 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
+             pbx = pb;
+ 
+             if (unsync || tunsync || tcomp) {
++#ifdef __APPLE__
++                av_fast_malloc(&buffer, (unsigned int *)&buffer_size, tlen);
++#else
+                 av_fast_malloc(&buffer, &buffer_size, tlen);
++#endif
+                 if (!buffer) {
+                     av_log(s, AV_LOG_ERROR, "Failed to alloc %d bytes\n", tlen);
+                     goto seek;
+@@ -1158,7 +1208,11 @@ int ff_id3v2_parse_apic(AVFormatContext *s, ID3v2ExtraMeta *extra_meta)
+             st->codecpar->codec_id = AV_CODEC_ID_PNG;
+ 
+         if (apic->description[0])
++#ifdef __APPLE__
++            av_dict_set(&st->metadata, "title", (const char *)apic->description, 0);
++#else
+             av_dict_set(&st->metadata, "title", apic->description, 0);
++#endif
+ 
+         av_dict_set(&st->metadata, "comment", apic->type, 0);
+ 
+@@ -1213,7 +1267,11 @@ int ff_id3v2_parse_chapters(AVFormatContext *s, ID3v2ExtraMeta *extra_meta)
+         AVChapter *chapter;
+ 
+         chap = chapters[i];
++#ifdef __APPLE__
++        chapter = avpriv_new_chapter(s, i, time_base, chap->start, chap->end, (const char *)chap->element_id);
++#else
+         chapter = avpriv_new_chapter(s, i, time_base, chap->start, chap->end, chap->element_id);
++#endif
+         if (!chapter)
+             continue;
