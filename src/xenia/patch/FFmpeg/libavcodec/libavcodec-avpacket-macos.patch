@@ -1,0 +1,112 @@
+--- a/third_party/FFmpeg/libavcodec/avpacket.c
++++ b/third_party/FFmpeg/libavcodec/avpacket.c
+@@ -142,7 +142,11 @@ int av_grow_packet(AVPacket *pkt, int grow_by)
+ 
+         if (new_size + data_offset > pkt->buf->size ||
+             !av_buffer_is_writable(pkt->buf)) {
++#ifdef __APPLE__
++            int ret = av_buffer_realloc(&pkt->buf, (int)(new_size + data_offset));
++#else
+             int ret = av_buffer_realloc(&pkt->buf, new_size + data_offset);
++#endif
+             if (ret < 0) {
+                 pkt->data = old_data;
+                 return ret;
+@@ -318,7 +322,11 @@ int av_packet_add_side_data(AVPacket *pkt, enum AVPacketSideDataType type,
+         if (sd->type == type) {
+             av_free(sd->data);
+             sd->data = data;
++#ifdef __APPLE__
++            sd->size = (int)size;
++#else
+             sd->size = size;
++#endif
+             return 0;
+         }
+     }
+@@ -332,7 +340,11 @@ int av_packet_add_side_data(AVPacket *pkt, enum AVPacketSideDataType type,
+ 
+     pkt->side_data = tmp;
+     pkt->side_data[elems].data = data;
++#ifdef __APPLE__
++    pkt->side_data[elems].size = (int)size;
++#else
+     pkt->side_data[elems].size = size;
++#endif
+     pkt->side_data[elems].type = type;
+     pkt->side_data_elems++;
+ 
+@@ -416,6 +428,7 @@ const char *av_packet_side_data_name(enum AVPacketSideDataType type)
+     case AV_PKT_DATA_ICC_PROFILE:                return "ICC Profile";
+     case AV_PKT_DATA_DOVI_CONF:                  return "DOVI configuration record";
+     case AV_PKT_DATA_S12M_TIMECODE:              return "SMPTE ST 12-1:2014 timecode";
++    case AV_PKT_DATA_NB:                         return "Number of packet of data types";
+     }
+     return NULL;
+ }
+@@ -436,12 +449,20 @@ int av_packet_merge_side_data(AVPacket *pkt){
+         }
+         if (size > INT_MAX)
+             return AVERROR(EINVAL);
++#ifdef __APPLE__
++        buf = av_buffer_alloc((int)size);
++#else
+         buf = av_buffer_alloc(size);
++#endif
+         if (!buf)
+             return AVERROR(ENOMEM);
+         pkt->buf = buf;
+         pkt->data = p = buf->data;
++#ifdef __APPLE__
++        pkt->size = (int)(size - AV_INPUT_BUFFER_PADDING_SIZE);
++#else
+         pkt->size = size - AV_INPUT_BUFFER_PADDING_SIZE;
++#endif
+         bytestream_put_buffer(&p, old.data, old.size);
+         for (i=old.side_data_elems-1; i>=0; i--) {
+             bytestream_put_buffer(&p, old.side_data[i].data, old.side_data[i].size);
+@@ -544,7 +565,11 @@ uint8_t *av_packet_pack_dictionary(AVDictionary *dict, size_t *size)
+         data = av_malloc(total_length);
+         if (!data)
+             return NULL;
++#ifdef __APPLE__
++        *size = (int)total_length;
++#else
+         *size = total_length;
++#endif
+     }
+ 
+     return data;
+@@ -566,16 +591,32 @@ int av_packet_unpack_dictionary(const uint8_t *data, size_t size,
+     if (size && end[-1])
+         return AVERROR_INVALIDDATA;
+     while (data < end) {
++#ifdef __APPLE__
++        /* Cast to const char* to avoid pointer-sign warning on macOS */
++        const uint8_t *key = data;
++        const uint8_t *val = data + strlen((const char *)key) + 1;
++#else
+         const uint8_t *key = data;
+         const uint8_t *val = data + strlen(key) + 1;
++#endif
+ 
+         if (val >= end || !*key)
+             return AVERROR_INVALIDDATA;
+ 
++#ifdef __APPLE__
++        /* Cast to const char* to avoid pointer-sign warning on macOS */
++        ret = av_dict_set(dict, (const char *)key, (const char *)val, 0);
++#else
+         ret = av_dict_set(dict, key, val, 0);
++#endif
+         if (ret < 0)
+             return ret;
++#ifdef __APPLE__
++        /* Cast to const char* to avoid pointer-sign warning on macOS */
++        data = val + strlen((const char *)val) + 1;
++#else
+         data = val + strlen(val) + 1;
++#endif
+     }
+ 
+     return 0;
