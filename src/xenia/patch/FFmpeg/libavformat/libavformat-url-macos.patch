@@ -1,0 +1,21 @@
+--- a/third_party/FFmpeg/libavformat/url.c
++++ b/third_party/FFmpeg/libavformat/url.c
+@@ -151,10 +151,18 @@ int ff_url_decompose(URLComponents *uc, const char *url, const char *end)
+ 
+ static int is_fq_dos_path(const char *path)
+ {
++#ifdef __APPLE__
++    /* Use explicit parentheses to avoid -Wlogical-op-parentheses warning on macOS */
++    if (((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) &&
++         path[1] == ':' &&
++        (path[2] == '/' || path[2] == '\\'))
++        return 1;
++#else
+     if ((path[0] >= 'a' && path[0] <= 'z' || path[0] >= 'A' && path[0] <= 'Z') &&
+          path[1] == ':' &&
+         (path[2] == '/' || path[2] == '\\'))
+         return 1;
++#endif
+     if ((path[0] == '/' || path[0] == '\\') &&
+         (path[1] == '/' || path[1] == '\\'))
+         return 1;
