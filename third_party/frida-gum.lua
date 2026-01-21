@@ -1,0 +1,29 @@
+group("third_party")
+project("frida-gum")
+  uuid("e8f96d88-f149-48fd-870e-41f578a0c022")
+  kind("StaticLib")
+  language("C")
+
+  includedirs({
+    ".",
+    "gum",
+    "libs",
+  })
+  files({
+    "gum/gum.c",
+    "gum/gumapiresolver.c",
+    "gum/gumbacktracer.c",
+    "gum/gumcloak.c",
+    "gum/gumcodeallocator.c",
+    "gum/gumcodesegment.c",
+    "gum/guminterceptor.c",
+    "gum/gummemory.c",
+    "gum/gummodule.c",
+    "gum/gumprocess.c",
+  })
+
+  filter("platforms:Mac")
+    files({
+      "gum/backend-macosx/*.c",
+      "gum/backend-macosx/*.m",
+    })
