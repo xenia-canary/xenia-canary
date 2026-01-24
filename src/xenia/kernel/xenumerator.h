@@ -40,11 +40,57 @@ struct X_KENUMERATOR {
 };
 static_assert_size(X_KENUMERATOR, 0x18);
 
+// This is the out_object_ptr of XamGetPrivateEnumStructureFromHandle
+struct X_ENUMERATOR_GENERIC_ALLOC : X_KENUMERATOR {
+  xe::be<uint32_t> private_enum_struct;  // size of private_enum_size_
+};
+
+struct XGI_USER_ENUM_STRUCT {
+  xe::be<uint32_t> title_id;
+  xe::be<uint32_t> unk1;
+  xe::be<uint64_t> xuid;
+  xe::be<uint32_t> user_index_enum;
+  xe::be<uint32_t> struct_flags;
+  xe::be<uint32_t> offset;
+  xe::be<uint32_t> xuid_used;
+  xe::be<uint32_t> unk2;
+  xe::be<uint32_t> unk3;
+};
+static_assert_size(XGI_USER_ENUM_STRUCT, 0x28);
+
+struct XGI_USER_ENUM_ALLOC : X_KENUMERATOR, XGI_USER_ENUM_STRUCT {};
+static_assert_size(XGI_USER_ENUM_ALLOC,
+                   sizeof(XGI_USER_ENUM_STRUCT) + sizeof(X_KENUMERATOR));
+
+struct X_ENUMERATOR_DEVICE_STRUCT {
+  xe::be<uint32_t> xcontent_flags;  // XContentFlag
+  xe::be<uint16_t> unk1;
+  xe::be<uint16_t> unk2;  // some value store at address
+};
+static_assert_size(X_ENUMERATOR_DEVICE_STRUCT, 0x8);
+
+struct X_ENUMERATOR_ALLOC_DEVICE_ENUM : X_KENUMERATOR,
+                                        X_ENUMERATOR_DEVICE_STRUCT {};
+static_assert_size(X_ENUMERATOR_ALLOC_DEVICE_ENUM,
+                   sizeof(X_ENUMERATOR_DEVICE_STRUCT) + sizeof(X_KENUMERATOR));
+struct X_ENUMERATOR_PROFILE_STRUCT {
+  xe::be<uint32_t> device_id;
+  xe::be<uint32_t> handle_ptr;  // use by XamEnumerate
+  xe::be<uint32_t> unk1;
+  uint8_t cs[0x1c];  // xe::be<X_RTL_CRITICAL_SECTION>
+};
+static_assert_size(X_ENUMERATOR_PROFILE_STRUCT, 0x28);
+
+struct X_ENUMERATOR_ALLOC_PROFILE_ENUM : X_KENUMERATOR,
+                                         X_ENUMERATOR_PROFILE_STRUCT {};
+static_assert_size(X_ENUMERATOR_ALLOC_PROFILE_ENUM,
+                   sizeof(X_ENUMERATOR_PROFILE_STRUCT) + sizeof(X_KENUMERATOR));
+
 struct X_ENUMERATE_PARAM {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> flags;
   xe::be<uint32_t> private_enum_structure_ptr;
-  xe::be<uint32_t> buffer_ptr;  // XCONTENT_DATA_INTERNAL
+  xe::be<uint32_t> buffer_ptr;  // Data to return (Ex. XCONTENT_DATA_INTERNAL)
   xe::be<uint32_t> buffer_size;
   xe::be<uint32_t> items_requested;
   xe::be<uint32_t> items_returned_ptr;
@@ -71,15 +117,15 @@ class XEnumerator : public XObject {
 
   X_STATUS Initialize(uint32_t user_index, uint32_t app_id,
                       uint32_t open_message, uint32_t close_message,
-                      uint32_t flags);
+                      uint32_t flags, uint32_t extra_size);
 
   template <typename T>
   X_STATUS Initialize(uint32_t user_index, uint32_t app_id,
                       uint32_t open_message, uint32_t close_message,
-                      uint32_t flags, T** extra) {
+                      uint32_t flags, uint32_t extra_size, T** extra) {
     void* dummy;
     auto result = Initialize(user_index, app_id, open_message, close_message,
-                             flags, static_cast<uint32_t>(sizeof(T)), &dummy);
+                             flags, extra_size, &dummy);
     if (extra) {
       *extra = XFAILED(result) ? nullptr : static_cast<T*>(dummy);
     }
@@ -91,12 +137,12 @@ class XEnumerator : public XObject {
 
   size_t item_size() const { return item_size_; }
   size_t items_per_enumerate() const { return items_per_enumerate_; }
-  size_t extra_size() const { return extra_size_; }
+  size_t private_enum_size() const { return private_enum_size_; }
 
  private:
   size_t items_per_enumerate_;
   size_t item_size_;
-  size_t extra_size_;
+  size_t private_enum_size_;
 };
 
 class XStaticUntypedEnumerator : public XEnumerator {

@@ -596,7 +596,8 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
 
   auto e = object_ref<XAchievementEnumerator>(
       new XAchievementEnumerator(kernel_state(), count, offset, flags));
-  auto result = e->Initialize(user_index, 0xFB, 0xB000A, 0xB000B, 0);
+  auto result =
+      e->Initialize(user_index, 0xFB, 0xB000A, 0xB000B, 0, 0x28, nullptr);
   if (XFAILED(result)) {
     return result;
   }
@@ -631,6 +632,14 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
 
     e->AppendItem(item);
   }
+
+  auto object = kernel_state()->memory()->TranslateVirtual(e->guest_object());
+
+  XGI_USER_ENUM_ALLOC* args = reinterpret_cast<XGI_USER_ENUM_ALLOC*>(object);
+  args->title_id = title_id.value();
+  args->xuid = xuid.value();
+  args->user_index_enum = user_index.value();
+  args->struct_flags = flags.value();
 
   *handle_ptr = e->handle();
   return X_ERROR_SUCCESS;
@@ -675,6 +684,13 @@ dword_result_t XamUserCreateTitlesPlayedEnumerator_entry(
   for (const auto& title : user_titles) {
     e->AppendItem(title);
   }
+
+  auto object = kernel_state()->memory()->TranslateVirtual(e->guest_object());
+
+  XGI_USER_ENUM_ALLOC* args = reinterpret_cast<XGI_USER_ENUM_ALLOC*>(object);
+  args->title_id = title_id.value();
+  args->xuid = xuid.value();
+  args->user_index_enum = user_index.value();
 
   *handle_ptr = e->handle();
   return X_ERROR_SUCCESS;
@@ -1102,7 +1118,7 @@ DECLARE_XAM_EXPORT1(XamUserIsParentalControlled, kUserProfiles, kImplemented);
 
 dword_result_t XamUserCreateStatsEnumerator_entry(
     dword_t title_id, dword_t user_index, dword_t count, dword_t flags,
-    dword_t size, pointer_t<X_STATS_DETAILS> stats_ptr,
+    dword_t num_stats_specs, pointer_t<X_STATS_DETAILS> stats_ptr,
     lpdword_t buffer_size_ptr, lpdword_t handle_ptr) {
   if (!count || !buffer_size_ptr || !handle_ptr || !stats_ptr) {
     return X_ERROR_INVALID_PARAMETER;
@@ -1116,7 +1132,7 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  if (!size) {
+  if (!num_stats_specs) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -1126,7 +1142,8 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
 
   auto e = object_ref<XUserStatsEnumerator>(
       new XUserStatsEnumerator(kernel_state(), 0));
-  const X_STATUS result = e->Initialize(user_index, 0xFB, 0xB0023, 0xB0024, 0);
+  const X_STATUS result = e->Initialize(user_index, 0xFB, 0xB0023, 0xB0024, 0,
+                                        num_stats_specs * 0x8C + 0x20, nullptr);
   if (XFAILED(result)) {
     return result;
   }

@@ -156,9 +156,19 @@ static_assert_size(XMP_GET_PLAYBACK_CONTROLLER, 0xC);
 struct XMP_CREATE_USER_PLAYLIST_ENUMERATOR {
   xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> flags;
-  xe::be<uint32_t> object_ptr;
+  xe::be<uint32_t> private_enum_structure_ptr;  // XMP_USER_PLAYLIST_ENUMERATOR
 };
 static_assert_size(XMP_CREATE_USER_PLAYLIST_ENUMERATOR, 0xC);
+
+struct XMP_USER_PLAYLIST_ENUMERATOR {
+  xe::be<uint32_t> unk1;  // 0x00 sz:0x4
+  xe::be<uint32_t> unk2;  // 0x04 sz:0x4
+  xe::be<uint32_t> unk3;  // 0x08 sz:0x4
+  uint8_t unk_data[0x1594];
+  xe::be<uint32_t> unk4;   // 0x15a0 sz:0x4
+  xe::be<uint32_t> flags;  // 0x15a4 sz:0x4
+};
+static_assert_size(XMP_USER_PLAYLIST_ENUMERATOR, 0x15a8);
 
 struct XMP_GET_PLAYBACK_BEHAVIOR {
   xe::be<apu::XMP_CLIENT> xmp_client;

@@ -92,7 +92,8 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
   auto e = make_object<XStaticEnumerator<XCONTENT_CROSS_TITLE_DATA>>(
       kernel_state(), 1);
   X_KENUMERATOR_CONTENT_AGGREGATE* extra;
-  auto result = e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, &extra);
+  auto result =
+      e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, 0x248, &extra);
   if (XFAILED(result)) {
     return result;
   }
