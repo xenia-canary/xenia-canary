@@ -103,13 +103,29 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
   auto e = object_ref<ContentEnumerator>(
       new ContentEnumerator(kernel_state(), 1, data_size));
   X_KENUMERATOR_CONTENT_AGGREGATE* extra;
-  auto result = e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, &extra);
+  auto result =
+      e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, 0x248, &extra);
   if (XFAILED(result)) {
     return result;
   }
 
   extra->magic = kXObjSignature;
   extra->handle = e->handle();
+
+  auto object = kernel_state()->memory()->TranslateVirtual(e->guest_object());
+
+  X_CONTENT_ENUM_ALLOC* args = reinterpret_cast<X_CONTENT_ENUM_ALLOC*>(object);
+  args->xuid = xuid.value();
+  args->device_id = device_id.value();
+  args->content_type = content_type.value();
+  args->unk1 = 0xffffffff;
+  args->unk2 = 0xffffffff;
+  args->unk3 = 0xffffffff;
+  args->unk4 = 0xffffffff;
+  args->title_id = title_id.value();
+  std::memset(&args->content_data, 0, sizeof(XCONTENT_DATA_INTERNAL));
+  args->struct_flags = args->struct_flags & 0x3fffffff | 0x40000000;
+  // RtlInitializeCriticalSection(&args->crit_sec)
 
   if (!device_info || device_info->device_type == DeviceType::HDD) {
     // Fetch any alternate title IDs defined in the XEX header
