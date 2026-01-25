@@ -527,11 +527,6 @@ void XThread::Execute() {
   // Let the kernel know we are starting.
   kernel_state()->OnThreadExecute(this);
 
-  // All threads get a mandatory sleep. This is to deal with some buggy
-  // games that are assuming the 360 is so slow to create threads that they
-  // have time to initialize shared structures AFTER CreateThread (RR).
-  xe::threading::Sleep(std::chrono::milliseconds(10));
-
   // Dispatch any APCs that were queued before the thread was created first.
   DeliverAPCs();
 
