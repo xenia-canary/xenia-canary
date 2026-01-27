@@ -139,12 +139,13 @@ class XStaticEnumerator : public XStaticUntypedEnumerator {
 class XAchievementEnumerator : public XEnumerator {
  public:
   XAchievementEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
-                         uint32_t flags)
+                         size_t enumeration_offset, uint32_t flags)
       : XEnumerator(
             kernel_state, items_per_enumerate,
             sizeof(xam::X_ACHIEVEMENT_DETAILS) +
                 (!!(flags & 7) ? xam::X_ACHIEVEMENT_DETAILS::kStringBufferSize
                                : 0)),
+        current_item_(enumeration_offset),
         flags_(flags) {}
 
   void AppendItem(xam::AchievementDetails item) {

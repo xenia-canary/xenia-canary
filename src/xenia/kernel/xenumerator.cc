@@ -83,13 +83,12 @@ uint32_t XStaticUntypedEnumerator::WriteItems(uint8_t* buffer_data,
 uint32_t XAchievementEnumerator::WriteItems(uint8_t* buffer_data,
                                             uint32_t buffer_size,
                                             uint32_t* written_count) {
-  size_t count = std::min(items_.size() - current_item_, items_per_enumerate());
-  if (!count) {
+  if (items_.size() - current_item_ <= 0) {
     return X_ERROR_NO_MORE_FILES;
   }
 
-  size_t size = count * item_size();
-
+  const size_t count =
+      std::min(items_.size() - current_item_, items_per_enumerate());
   auto details = reinterpret_cast<xam::X_ACHIEVEMENT_DETAILS*>(buffer_data);
   size_t string_offset =
       items_per_enumerate() * sizeof(xam::X_ACHIEVEMENT_DETAILS);
