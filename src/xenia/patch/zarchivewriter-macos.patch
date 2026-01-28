@@ -1,0 +1,11 @@
+--- a/third_party/zarchive/src/zarchivewriter.cpp
++++ b/third_party/zarchive/src/zarchivewriter.cpp
+@@ -5,7 +5,7 @@
+ #include <string_view>
+ #include <queue>
+ 
+-#include <zstd.h>
++#include "zstd.h"
+ 
+ #include "sha_256.h"
+ 

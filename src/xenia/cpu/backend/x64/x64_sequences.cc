@@ -71,7 +71,14 @@ using namespace xe::cpu::hir;
 using xe::cpu::hir::Instr;
 
 typedef bool (*SequenceSelectFn)(X64Emitter&, const Instr*, InstrKeyValue ikey);
+#ifdef __APPLE__
+std::unordered_map<uint32_t, SequenceSelectFn>& GetSequenceTable() {
+  static std::unordered_map<uint32_t, SequenceSelectFn> sequence_table;
+  return sequence_table;
+}
+#else
 std::unordered_map<uint32_t, SequenceSelectFn> sequence_table;
+#endif
 
 // ============================================================================
 // OPCODE_COMMENT
@@ -3270,8 +3277,14 @@ bool SelectSequence(X64Emitter* e, const Instr* i, const Instr** new_tail) {
   } else {
     const InstrKey key(i);
 
+#ifdef __APPLE__
+    auto& table = GetSequenceTable();
+    auto it = table.find(key);
+    if (it != table.end()) {
+#else
     auto it = sequence_table.find(key);
     if (it != sequence_table.end()) {
+#endif
       if (it->second(*e, i, InstrKey(i))) {
         *new_tail = i->next;
         return true;

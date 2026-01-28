@@ -31,11 +31,13 @@
 #include <ShlObj_core.h>
 #endif
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
+#elif defined(__APPLE__)
+#include "fontconfig/fontconfig.h"
 #endif
 
-#ifdef XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
 #include <gtk/gtk.h>
 #endif
 
@@ -142,7 +144,7 @@ void ImGuiDrawer::RemoveNotification(ImGuiNotification* dialog) {
   DetachIfLastWindowRemoved();
 }
 
-#ifdef XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
 static void SetClipboardText(void* user_data, const char* text) {
   GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
   gtk_clipboard_set_text(clipboard, text, -1);
@@ -169,7 +171,7 @@ void ImGuiDrawer::Initialize() {
   InitializeFonts(font_size);
   InitializeFonts(title_font_size);
 
-#ifdef XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
   io.SetClipboardTextFn = SetClipboardText;
   io.GetClipboardTextFn = GetClipboardText;
 #endif
@@ -433,7 +435,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   return true;
 #endif
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX && !defined(__APPLE__)
   // On Linux, find and merge CJK font using fontconfig
   FcConfig* config = FcInitLoadConfigAndFonts();
   if (!config) {
@@ -540,7 +542,11 @@ void ImGuiDrawer::SetPresenter(Presenter* new_presenter) {
     if (!dialogs_.empty()) {
       presenter_->RemoveUIDrawerFromUIThread(this);
     }
+#ifdef __APPLE__
+    (void)GetIO();
+#else
     ImGuiIO& io = GetIO();
+#endif
   }
   presenter_ = new_presenter;
   if (presenter_) {

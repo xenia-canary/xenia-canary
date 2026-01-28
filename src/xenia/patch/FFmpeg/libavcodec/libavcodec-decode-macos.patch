@@ -1,0 +1,156 @@
+--- a/third_party/FFmpeg/libavcodec/decode.c
++++ b/third_party/FFmpeg/libavcodec/decode.c
+@@ -98,7 +98,11 @@ static int apply_param_change(AVCodecContext *avctx, const AVPacket *avpkt)
+             ret = AVERROR_INVALIDDATA;
+             goto fail2;
+         }
++#ifdef __APPLE__
++        avctx->channels = (int)val;
++#else
+         avctx->channels = val;
++#endif
+         size -= 4;
+     }
+     if (flags & AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT) {
+@@ -116,7 +120,11 @@ static int apply_param_change(AVCodecContext *avctx, const AVPacket *avpkt)
+             ret = AVERROR_INVALIDDATA;
+             goto fail2;
+         }
++        #ifdef __APPLE__
++        avctx->sample_rate = (int)val;
++#else
+         avctx->sample_rate = val;
++#endif
+         size -= 4;
+     }
+     if (flags & AV_SIDE_DATA_PARAM_CHANGE_DIMENSIONS) {
+@@ -683,6 +691,8 @@ int attribute_align_arg avcodec_receive_frame(AVCodecContext *avctx, AVFrame *fr
+                 avci->initial_channels       = frame->channels;
+                 avci->initial_channel_layout = frame->channel_layout;
+                 break;
++            default:
++                break;
+             }
+         }
+ 
+@@ -700,6 +710,8 @@ int attribute_align_arg avcodec_receive_frame(AVCodecContext *avctx, AVFrame *fr
+                            avci->initial_channels       != frame->channels ||
+                            avci->initial_channel_layout != frame->channel_layout;
+                 break;
++            default:
++                break;
+             }
+ 
+             if (changed) {
+@@ -837,7 +849,11 @@ finish:
+         if (avctx->codec->bsfs)
+             ret = pkt->size;
+         else
++#ifdef __APPLE__
++            ret = FFMIN((int)avci->compat_decode_consumed, pkt->size);
++#else
+             ret = FFMIN(avci->compat_decode_consumed, pkt->size);
++#endif
+     }
+     avci->compat_decode_consumed = 0;
+     avci->compat_decode_partial_size = (ret >= 0) ? pkt->size - ret : 0;
+@@ -942,7 +958,12 @@ static int utf8_check(const uint8_t *str)
+               1 << (5 * (byte - str) - 4);
+         if (codepoint < min || codepoint >= 0x110000 ||
+             codepoint == 0xFFFE /* BOM */ ||
+-            codepoint >= 0xD800 && codepoint <= 0xDFFF /* surrogates */)
++#ifdef __APPLE__
++            (codepoint >= 0xD800 && codepoint <= 0xDFFF) /* surrogates */
++#else
++            codepoint >= 0xD800 && codepoint <= 0xDFFF /* surrogates */
++#endif
++        )
+             return 0;
+         str = byte;
+     }
+@@ -996,9 +1017,17 @@ static int convert_sub_to_old_ass_form(AVSubtitle *sub, const AVPacket *pkt, AVR
+         dialog++;
+ 
+         /* rescale timing to ASS time base (ms) */
++#ifdef __APPLE__
++        ts_start = (int)av_rescale_q(pkt->pts, tb, av_make_q(1, 100));
++#else
+         ts_start = av_rescale_q(pkt->pts, tb, av_make_q(1, 100));
++#endif
+         if (pkt->duration != -1)
++#ifdef __APPLE__
++            ts_duration = (int)av_rescale_q(pkt->duration, tb, av_make_q(1, 100));
++#else
+             ts_duration = av_rescale_q(pkt->duration, tb, av_make_q(1, 100));
++#endif
+         sub->end_display_time = FFMAX(sub->end_display_time, 10 * ts_duration);
+ 
+         /* construct ASS (standalone file form with timestamps) string */
+@@ -1071,8 +1100,13 @@ int avcodec_decode_subtitle2(AVCodecContext *avctx, AVSubtitle *sub,
+         if (sub->num_rects && !sub->end_display_time && avpkt->duration &&
+             avctx->pkt_timebase.num) {
+             AVRational ms = { 1, 1000 };
++#ifdef __APPLE__
++            sub->end_display_time = (uint32_t)av_rescale_q(avpkt->duration,
++                                                 avctx->pkt_timebase, ms);
++#else
+             sub->end_display_time = av_rescale_q(avpkt->duration,
+                                                  avctx->pkt_timebase, ms);
++#endif
+         }
+ 
+         if (avctx->codec_descriptor->props & AV_CODEC_PROP_BITMAP_SUB)
+@@ -1082,7 +1116,13 @@ int avcodec_decode_subtitle2(AVCodecContext *avctx, AVSubtitle *sub,
+ 
+         for (unsigned i = 0; i < sub->num_rects; i++) {
+             if (avctx->sub_charenc_mode != FF_SUB_CHARENC_MODE_IGNORE &&
+-                sub->rects[i]->ass && !utf8_check(sub->rects[i]->ass)) {
++                sub->rects[i]->ass && 
++#ifdef __APPLE__
++                !utf8_check((const uint8_t *)sub->rects[i]->ass)
++#else
++                !utf8_check(sub->rects[i]->ass)
++#endif
++            ) {
+                 av_log(avctx, AV_LOG_ERROR,
+                        "Invalid UTF-8 in decoded subtitles text; "
+                        "maybe missing -sub_charenc option\n");
+@@ -1545,10 +1585,17 @@ static int update_frame_pool(AVCodecContext *avctx, AVFrame *frame)
+                     ret = AVERROR(EINVAL);
+                     goto fail;
+                 }
++#ifdef __APPLE__
++                pool->pools[i] = av_buffer_pool_init((int)(size[i] + 16 + STRIDE_ALIGN - 1),
++                                                     CONFIG_MEMORY_POISONING ?
++                                                        NULL :
++                                                        av_buffer_allocz);
++#else
+                 pool->pools[i] = av_buffer_pool_init(size[i] + 16 + STRIDE_ALIGN - 1,
+                                                      CONFIG_MEMORY_POISONING ?
+                                                         NULL :
+                                                         av_buffer_allocz);
++#endif
+                 if (!pool->pools[i]) {
+                     ret = AVERROR(ENOMEM);
+                     goto fail;
+@@ -1826,6 +1873,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
+         }
+         frame->channels = avctx->channels;
+         break;
++    default: 
++        break;
+     }
+     return 0;
+ }
+@@ -1836,7 +1885,11 @@ static void validate_avframe_allocation(AVCodecContext *avctx, AVFrame *frame)
+         int i;
+         int num_planes = av_pix_fmt_count_planes(frame->format);
+         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
++#ifdef __APPLE__
++        int flags = desc ? (int)desc->flags : 0;
++#else
+         int flags = desc ? desc->flags : 0;
++#endif
+         if (num_planes == 1 && (flags & AV_PIX_FMT_FLAG_PAL))
+             num_planes = 2;
+         if ((flags & FF_PSEUDOPAL) && frame->data[1])

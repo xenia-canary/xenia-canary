@@ -1,0 +1,507 @@
+--- a/third_party/FFmpeg/libavutil/opt.c
++++ b/third_party/FFmpeg/libavutil/opt.c
+@@ -42,6 +42,16 @@
+ 
+ #include <float.h>
+ 
++#ifdef __APPLE__
++#define SAFE_CAST_TO_INT(val) ((int)(val))
++#define SAFE_STRLEN(val) ((int)strlen(val))
++#define SAFE_STRTOL(val, end, base) ((int)strtol(val, end, base))
++#else
++#define SAFE_CAST_TO_INT(val) (val)
++#define SAFE_STRLEN(val) strlen(val)
++#define SAFE_STRTOL(val, end, base) strxftol(val, end, base)
++#endif
++
+ const AVOption *av_opt_next(const void *obj, const AVOption *last)
+ {
+     const AVClass *class;
+@@ -90,8 +100,11 @@ static int read_number(const AVOption *o, const void *dst, double *num, int *den
+     case AV_OPT_TYPE_CONST:
+         *num = o->default_val.dbl;
+         return 0;
++    default:
++        return 0;
+     }
+     return AVERROR(EINVAL);
++    
+ }
+ 
+ static int write_number(void *obj, const AVOption *o, void *dst, double num, int den, int64_t intnum)
+@@ -115,6 +128,18 @@ static int write_number(void *obj, const AVOption *o, void *dst, double num, int
+ 
+     switch (o->type) {
+     case AV_OPT_TYPE_PIXEL_FMT:
++#ifdef __APPLE__
++        *(enum AVPixelFormat *)dst = (enum AVPixelFormat)llrint(num / den) * (enum AVPixelFormat)intnum;
++        break;
++    case AV_OPT_TYPE_SAMPLE_FMT:
++        *(enum AVSampleFormat *)dst = (enum AVSampleFormat)llrint(num / den) * (enum AVSampleFormat)intnum;
++        break;
++    case AV_OPT_TYPE_BOOL:
++    case AV_OPT_TYPE_FLAGS:
++    case AV_OPT_TYPE_INT:
++        *(int *)dst = (int)llrint(num / den) * (int)intnum;
++        break;
++#else
+         *(enum AVPixelFormat *)dst = llrint(num / den) * intnum;
+         break;
+     case AV_OPT_TYPE_SAMPLE_FMT:
+@@ -125,6 +150,7 @@ static int write_number(void *obj, const AVOption *o, void *dst, double num, int
+     case AV_OPT_TYPE_INT:
+         *(int *)dst = llrint(num / den) * intnum;
+         break;
++#endif
+     case AV_OPT_TYPE_DURATION:
+     case AV_OPT_TYPE_CHANNEL_LAYOUT:
+     case AV_OPT_TYPE_INT64:{
+@@ -186,7 +212,11 @@ static int set_string_binary(void *obj, const AVOption *o, const char *val, uint
+     av_freep(dst);
+     *lendst = 0;
+ 
++#ifdef __APPLE__
++    if (!val || !(len = SAFE_STRLEN(val)))
++#else
+     if (!val || !(len = strlen(val)))
++#endif
+         return 0;
+ 
+     if (len & 1)
+@@ -214,7 +244,11 @@ static int set_string_binary(void *obj, const AVOption *o, const char *val, uint
+ static int set_string(void *obj, const AVOption *o, const char *val, uint8_t **dst)
+ {
+     av_freep(dst);
++#ifdef __APPLE__
++    *dst = (uint8_t *)av_strdup(val);
++#else
+     *dst = av_strdup(val);
++#endif
+     return *dst ? 0 : AVERROR(ENOMEM);
+ }
+ 
+@@ -265,8 +299,14 @@ static int set_string_number(void *obj, void *target_obj, const AVOption *o, con
+             if (o_named && o_named->type == AV_OPT_TYPE_CONST)
+                 d = DEFAULT_NUMVAL(o_named);
+             else {
+-                if (o->unit) {
+-                    for (o_named = NULL; o_named = av_opt_next(target_obj, o_named); ) {
++                                if (o->unit) {
++                    for (o_named = NULL; 
++#ifdef __APPLE__
++                         (o_named = av_opt_next(target_obj, o_named)) != NULL;
++#else
++                         o_named = av_opt_next(target_obj, o_named);
++#endif
++                        ) {
+                         if (o_named->type == AV_OPT_TYPE_CONST &&
+                             o_named->unit &&
+                             !strcmp(o_named->unit, o->unit)) {
+@@ -376,7 +416,11 @@ static int set_string_bool(void *obj, const AVOption *o, const char *val, int *d
+         n = 0;
+     } else {
+         char *end = NULL;
++#ifdef __APPLE__
++        n = SAFE_STRTOL(val, &end, 10);
++#else
+         n = strtol(val, &end, 10);
++#endif
+         if (val + strlen(val) != end)
+             goto fail;
+     }
+@@ -403,7 +447,11 @@ static int set_string_fmt(void *obj, const AVOption *o, const char *val, uint8_t
+         fmt = get_fmt(val);
+         if (fmt == -1) {
+             char *tail;
++#ifdef __APPLE__
++            fmt = SAFE_STRTOL(val, &tail, 0);
++#else
+             fmt = strtol(val, &tail, 0);
++#endif
+             if (*tail || (unsigned)fmt >= fmt_nb) {
+                 av_log(obj, AV_LOG_ERROR,
+                        "Unable to parse option value \"%s\" as %s\n", val, desc);
+@@ -545,6 +593,8 @@ int av_opt_set(void *obj, const char *name, const char *val, int search_flags)
+         break;
+     case AV_OPT_TYPE_DICT:
+         return set_string_dict(obj, o, val, dst);
++    default: 
++        return 0;
+     }
+ 
+     av_log(obj, AV_LOG_ERROR, "Invalid option type.\n");
+@@ -793,43 +843,87 @@ int av_opt_get(void *obj, const char *name, int search_flags, uint8_t **out_val)
+     dst = (uint8_t *)target_obj + o->offset;
+ 
+     buf[0] = 0;
+-    switch (o->type) {
++        switch (o->type) {
+     case AV_OPT_TYPE_BOOL:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%s", (char *)av_x_if_null(get_bool_name(*(int *)dst), "invalid"));
++#else
+         ret = snprintf(buf, sizeof(buf), "%s", (char *)av_x_if_null(get_bool_name(*(int *)dst), "invalid"));
++#endif
+         break;
+     case AV_OPT_TYPE_FLAGS:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "0x%08X", *(int *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "0x%08X", *(int *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_INT:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%d", *(int *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "%d", *(int *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_INT64:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%"PRId64, *(int64_t *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "%"PRId64, *(int64_t *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_UINT64:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%"PRIu64, *(uint64_t *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "%"PRIu64, *(uint64_t *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_FLOAT:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%f", *(float *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "%f", *(float *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_DOUBLE:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%f", *(double *)dst);
++#else
+         ret = snprintf(buf, sizeof(buf), "%f", *(double *)dst);
++#endif
+         break;
+     case AV_OPT_TYPE_VIDEO_RATE:
+     case AV_OPT_TYPE_RATIONAL:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%d/%d", ((AVRational *)dst)->num, ((AVRational *)dst)->den);
++#else
+         ret = snprintf(buf, sizeof(buf), "%d/%d", ((AVRational *)dst)->num, ((AVRational *)dst)->den);
++#endif
+         break;
+     case AV_OPT_TYPE_CONST:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%f", o->default_val.dbl);
++#else
+         ret = snprintf(buf, sizeof(buf), "%f", o->default_val.dbl);
++#endif
+         break;
+     case AV_OPT_TYPE_STRING:
+         if (*(uint8_t **)dst) {
++#ifdef __APPLE__
++            *out_val = (uint8_t *)av_strdup((const char *)*(uint8_t **)dst);
++#else
+             *out_val = av_strdup(*(uint8_t **)dst);
++#endif
+         } else if (search_flags & AV_OPT_ALLOW_NULL) {
+             *out_val = NULL;
+             return 0;
+         } else {
++#ifdef __APPLE__
++            *out_val = (uint8_t *)av_strdup("");
++#else
+             *out_val = av_strdup("");
++#endif
+         }
+         return *out_val ? 0 : AVERROR(ENOMEM);
+     case AV_OPT_TYPE_BINARY:
+@@ -840,7 +934,11 @@ int av_opt_get(void *obj, const char *name, int search_flags, uint8_t **out_val)
+         len = *(int *)(((uint8_t *)dst) + sizeof(uint8_t *));
+         if ((uint64_t)len * 2 + 1 > INT_MAX)
+             return AVERROR(EINVAL);
++#ifdef __APPLE__
++        if (!(*out_val = (uint8_t *)av_malloc(len * 2 + 1)))
++#else
+         if (!(*out_val = av_malloc(len * 2 + 1)))
++#endif
+             return AVERROR(ENOMEM);
+         if (!len) {
+             *out_val[0] = '\0';
+@@ -848,30 +946,61 @@ int av_opt_get(void *obj, const char *name, int search_flags, uint8_t **out_val)
+         }
+         bin = *(uint8_t **)dst;
+         for (i = 0; i < len; i++)
++#ifdef __APPLE__
++            snprintf((char *)(*out_val) + i * 2, 3, "%02X", bin[i]);
++#else
+             snprintf(*out_val + i * 2, 3, "%02X", bin[i]);
++#endif
+         return 0;
+     case AV_OPT_TYPE_IMAGE_SIZE:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%dx%d", ((int *)dst)[0], ((int *)dst)[1]);
++#else
+         ret = snprintf(buf, sizeof(buf), "%dx%d", ((int *)dst)[0], ((int *)dst)[1]);
++#endif
+         break;
+     case AV_OPT_TYPE_PIXEL_FMT:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%s", (char *)av_x_if_null(av_get_pix_fmt_name(*(enum AVPixelFormat *)dst), "none"));
++#else
+         ret = snprintf(buf, sizeof(buf), "%s", (char *)av_x_if_null(av_get_pix_fmt_name(*(enum AVPixelFormat *)dst), "none"));
++#endif
+         break;
+     case AV_OPT_TYPE_SAMPLE_FMT:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "%s", (char *)av_x_if_null(av_get_sample_fmt_name(*(enum AVSampleFormat *)dst), "none"));
++#else
+         ret = snprintf(buf, sizeof(buf), "%s", (char *)av_x_if_null(av_get_sample_fmt_name(*(enum AVSampleFormat *)dst), "none"));
++#endif
+         break;
+     case AV_OPT_TYPE_DURATION:
+         i64 = *(int64_t *)dst;
++#ifdef __APPLE__
++        format_duration((char *)buf, sizeof(buf), i64);
++        ret = SAFE_STRLEN((char *)buf); // no overflow possible, checked by an assert
++#else
+         format_duration(buf, sizeof(buf), i64);
+-        ret = strlen(buf); // no overflow possible, checked by an assert
++        ret = SAFE_STRLEN(buf); // no overflow possible, checked by an assert
++#endif
+         break;
+     case AV_OPT_TYPE_COLOR:
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "0x%02x%02x%02x%02x",
++                       (int)((uint8_t *)dst)[0], (int)((uint8_t *)dst)[1],
++                       (int)((uint8_t *)dst)[2], (int)((uint8_t *)dst)[3]);
++#else
+         ret = snprintf(buf, sizeof(buf), "0x%02x%02x%02x%02x",
+                        (int)((uint8_t *)dst)[0], (int)((uint8_t *)dst)[1],
+                        (int)((uint8_t *)dst)[2], (int)((uint8_t *)dst)[3]);
++#endif
+         break;
+     case AV_OPT_TYPE_CHANNEL_LAYOUT:
+         i64 = *(int64_t *)dst;
++#ifdef __APPLE__
++        ret = snprintf((char *)buf, sizeof(buf), "0x%"PRIx64, i64);
++#else
+         ret = snprintf(buf, sizeof(buf), "0x%"PRIx64, i64);
++#endif
+         break;
+     case AV_OPT_TYPE_DICT:
+         if (!*(AVDictionary **)dst && (search_flags & AV_OPT_ALLOW_NULL)) {
+@@ -885,7 +1014,11 @@ int av_opt_get(void *obj, const char *name, int search_flags, uint8_t **out_val)
+ 
+     if (ret >= sizeof(buf))
+         return AVERROR(EINVAL);
++#ifdef __APPLE__
++    *out_val = (uint8_t *)av_strdup((const char *)buf);
++#else
+     *out_val = av_strdup(buf);
++#endif
+     return *out_val ? 0 : AVERROR(ENOMEM);
+ }
+ 
+@@ -943,7 +1076,11 @@ int av_opt_get_q(void *obj, const char *name, int search_flags, AVRational *out_
+         return ret;
+ 
+     if (num == 1.0 && (int)intnum == intnum)
++        #ifdef __APPLE__
++        *out_val = (AVRational){SAFE_CAST_TO_INT(intnum), den};
++#else
+         *out_val = (AVRational){intnum, den};
++#endif
+     else
+         *out_val = av_d2q(num*intnum/den, 1<<24);
+     return 0;
+@@ -977,7 +1114,11 @@ int av_opt_get_video_rate(void *obj, const char *name, int search_flags, AVRatio
+         return ret;
+ 
+     if (num == 1.0 && (int)intnum == intnum)
++#ifdef __APPLE__
++        *out_val = (AVRational) { SAFE_CAST_TO_INT(intnum), den };
++#else
+         *out_val = (AVRational) { intnum, den };
++#endif
+     else
+         *out_val = av_d2q(num * intnum / den, 1 << 24);
+     return 0;
+@@ -1055,7 +1196,11 @@ int av_opt_flag_is_set(void *obj, const char *field_name, const char *flag_name)
+     if (!field || !flag || flag->type != AV_OPT_TYPE_CONST ||
+         av_opt_get_int(obj, field_name, 0, &res) < 0)
+         return 0;
++#ifdef __APPLE__
++    return (int)(res & flag->default_val.i64);
++#else
+     return res & flag->default_val.i64;
++#endif
+ }
+ 
+ static void log_int_value(void *av_log_obj, int level, int64_t i)
+@@ -1138,7 +1283,11 @@ static char *get_opt_flags_string(void *obj, const char *unit, int64_t value)
+         }
+     }
+     if (flags[0])
++#ifdef __APPLE__
++        return (char *)av_strdup(flags);
++#else
+         return av_strdup(flags);
++#endif
+     return NULL;
+ }
+ 
+@@ -1266,8 +1415,11 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
+                     av_log(av_log_obj, AV_LOG_INFO, ")");
+                 }
+                 break;
++            default:
++                break;
+             }
+             av_opt_freep_ranges(&r);
++            
+         }
+ 
+         if (opt->type != AV_OPT_TYPE_CONST  &&
+@@ -1281,7 +1433,11 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
+             av_log(av_log_obj, AV_LOG_INFO, " (default ");
+             switch (opt->type) {
+             case AV_OPT_TYPE_BOOL:
++#ifdef __APPLE__
++                av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(get_bool_name(SAFE_CAST_TO_INT(opt->default_val.i64)), "invalid"));
++#else
+                 av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(get_bool_name(opt->default_val.i64), "invalid"));
++#endif
+                 break;
+             case AV_OPT_TYPE_FLAGS: {
+                 char *def_flags = get_opt_flags_string(obj, opt->unit, opt->default_val.i64);
+@@ -1318,10 +1474,18 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
+                 av_log(av_log_obj, AV_LOG_INFO, "%d/%d", q.num, q.den); }
+                 break;
+             case AV_OPT_TYPE_PIXEL_FMT:
++#ifdef __APPLE__
++                av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(av_get_pix_fmt_name((enum AVPixelFormat)SAFE_CAST_TO_INT(opt->default_val.i64)), "none"));
++#else
+                 av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(av_get_pix_fmt_name(opt->default_val.i64), "none"));
++#endif
+                 break;
+             case AV_OPT_TYPE_SAMPLE_FMT:
++#ifdef __APPLE__
++                av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(av_get_sample_fmt_name((enum AVSampleFormat)SAFE_CAST_TO_INT(opt->default_val.i64)), "none"));
++#else
+                 av_log(av_log_obj, AV_LOG_INFO, "%s", (char *)av_x_if_null(av_get_sample_fmt_name(opt->default_val.i64), "none"));
++#endif                
+                 break;
+             case AV_OPT_TYPE_COLOR:
+             case AV_OPT_TYPE_IMAGE_SIZE:
+@@ -1333,6 +1497,8 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
+             case AV_OPT_TYPE_CHANNEL_LAYOUT:
+                 av_log(av_log_obj, AV_LOG_INFO, "0x%"PRIx64, opt->default_val.i64);
+                 break;
++            default:
++                break;
+             }
+             av_log(av_log_obj, AV_LOG_INFO, ")");
+         }
+@@ -1682,18 +1848,34 @@ const AVOption *av_opt_find2(void *obj, const char *name, const char *unit,
+         if (search_flags & AV_OPT_SEARCH_FAKE_OBJ) {
+             void *iter = NULL;
+             const AVClass *child;
++#ifdef __APPLE__
++            while ((child = av_opt_child_class_iterate(c, &iter)))
++                if ((o = av_opt_find2(&child, name, unit, opt_flags, search_flags, NULL)))
++                    return o;
++#else
+             while (child = av_opt_child_class_iterate(c, &iter))
+                 if (o = av_opt_find2(&child, name, unit, opt_flags, search_flags, NULL))
+                     return o;
++#endif
+         } else {
+             void *child = NULL;
++#ifdef __APPLE__
++            while ((child = av_opt_child_next(obj, child)))
++                if ((o = av_opt_find2(child, name, unit, opt_flags, search_flags, target_obj)))
++                    return o;
++#else
+             while (child = av_opt_child_next(obj, child))
+                 if (o = av_opt_find2(child, name, unit, opt_flags, search_flags, target_obj))
+                     return o;
++#endif
+         }
+     }
+-
+-    while (o = av_opt_next(obj, o)) {
++#ifdef __APPLE__
++    while ((o = av_opt_next(obj, o)))
++#else
++    while (o = av_opt_next(obj, o)) 
++#endif
++    {
+         if (!strcmp(o->name, name) && (o->flags & opt_flags) == opt_flags &&
+             ((!unit && o->type != AV_OPT_TYPE_CONST) ||
+              (unit  && o->type == AV_OPT_TYPE_CONST && o->unit && !strcmp(o->unit, unit)))) {
+@@ -1735,8 +1917,14 @@ const AVClass *av_opt_child_class_iterate(const AVClass *parent, void **iter)
+ #if FF_API_CHILD_CLASS_NEXT
+ FF_DISABLE_DEPRECATION_WARNINGS
+     if (parent->child_class_next) {
++#ifdef __APPLE__
++        const AVClass *next_class = parent->child_class_next(*iter);
++        *iter = (void*)next_class;
++        return next_class;
++#else
+         *iter = parent->child_class_next(*iter);
+         return *iter;
++#endif
+     }
+ FF_ENABLE_DEPRECATION_WARNINGS
+ #endif
+@@ -1782,6 +1970,8 @@ static int opt_size(enum AVOptionType type)
+         return sizeof(enum AVSampleFormat);
+     case AV_OPT_TYPE_COLOR:
+         return 4;
++    default:
++        return 0;
+     }
+     return AVERROR(EINVAL);
+ }
+@@ -1808,7 +1998,11 @@ int av_opt_copy(void *dst, const void *src)
+         if (o->type == AV_OPT_TYPE_STRING) {
+             if (*field_dst8 != *field_src8)
+                 av_freep(field_dst8);
++#ifdef __APPLE__
++            *field_dst8 = (uint8_t *)av_strdup((const char *)*field_src8);
++#else
+             *field_dst8 = av_strdup(*field_src8);
++#endif
+             if (*field_src8 && !*field_dst8)
+                 ret = AVERROR(ENOMEM);
+         } else if (o->type == AV_OPT_TYPE_BINARY) {
+@@ -2099,7 +2293,12 @@ int av_opt_serialize(void *obj, int opt_flags, int flags, char **buffer,
+     *buffer = NULL;
+     av_bprint_init(&bprint, 64, AV_BPRINT_SIZE_UNLIMITED);
+ 
+-    while (o = av_opt_next(obj, o)) {
++#ifdef __APPLE__
++    while ((o = av_opt_next(obj, o)))
++#else
++    while (o = av_opt_next(obj, o))
++#endif
++{
+         if (o->type == AV_OPT_TYPE_CONST)
+             continue;
+         if ((flags & AV_OPT_SERIALIZE_OPT_FLAGS_EXACT) && o->flags != opt_flags)
+@@ -2117,7 +2316,11 @@ int av_opt_serialize(void *obj, int opt_flags, int flags, char **buffer,
+                 av_bprint_append_data(&bprint, &pairs_sep, 1);
+             av_bprint_escape(&bprint, o->name, special_chars, AV_ESCAPE_MODE_BACKSLASH, 0);
+             av_bprint_append_data(&bprint, &key_val_sep, 1);
++#ifdef __APPLE__
++            av_bprint_escape(&bprint, (const char *)buf, special_chars, AV_ESCAPE_MODE_BACKSLASH, 0);
++#else
+             av_bprint_escape(&bprint, buf, special_chars, AV_ESCAPE_MODE_BACKSLASH, 0);
++#endif
+             av_freep(&buf);
+         }
+     }

@@ -1,0 +1,47 @@
+--- a/third_party/FFmpeg/libavcodec/premake5.lua
++++ b/third_party/FFmpeg/libavcodec/premake5.lua
+@@ -120,7 +120,7 @@ project("libavcodec")
+     "fft_fixed_32.c",
+     "fft_init_table.c",
+   })
+-  filter({"platforms:Windows"})
++  filter({"platforms:Windows", "architecture:x86_64"})
+   files({
+     "file_open.c",
+   })
+@@ -128,7 +128,7 @@ project("libavcodec")
+ 
+   -- libavcodec/aarch64/Makefile:
+   --   OBJS:
+-  filter({"platforms:Android-ARM64"})
++  filter({"platforms:Android-ARM64 or platforms:Mac", "architecture:ARM64"})
+   files({
+     "aarch64/fft_init_aarch64.c",
+     "aarch64/idctdsp_init_aarch64.c",
+@@ -136,7 +136,7 @@ project("libavcodec")
+   })
+   filter({})
+   --   NEON-OBJS:
+-  filter({"platforms:Android-ARM64"})
++  filter({"platforms:Android-ARM64 or platforms:Mac", "architecture:ARM64"})
+   files({
+     "aarch64/fft_neon.S",
+     "aarch64/simple_idct_neon.S",
+@@ -147,7 +147,7 @@ project("libavcodec")
+ 
+   -- libavcodec/x86/Makefile:
+   --   OBJS:
+-  filter({"platforms:Android-x86_64 or platforms:Linux or platforms:Windows"})
++  filter({"platforms:Android-x86_64 or platforms:Linux or platforms:Mac or platforms:Windows", "architecture:x86_64"})
+   files({
+     "x86/constants.c",
+     "x86/dct_init.c",
+@@ -158,7 +158,7 @@ project("libavcodec")
+   })
+   filter({})
+   --   MMX-OBJS:
+-  filter({"platforms:Android-x86_64 or platforms:Linux or platforms:Windows"})
++  filter({"platforms:Android-x86_64 or platforms:Linux or platforms:Mac or platforms:Windows", "architecture:x86_64"})
+   files({
+     "x86/fdct.c",
+   })

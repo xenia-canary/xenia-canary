@@ -1,0 +1,54 @@
+--- a/third_party/FFmpeg/libavcodec/avcodec.c
++++ b/third_party/FFmpeg/libavcodec/avcodec.c
+@@ -376,8 +376,14 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, const AVCodec *code
+                 avctx->channel_layout = 0;
+             }
+         }
++#ifdef __APPLE__
++        if ((avctx->channels && avctx->channels < 0) ||
++            avctx->channels > FF_SANE_NB_CHANNELS) 
++#else
+         if (avctx->channels && avctx->channels < 0 ||
+-            avctx->channels > FF_SANE_NB_CHANNELS) {
++            avctx->channels > FF_SANE_NB_CHANNELS) 
++#endif
++        {
+             ret = AVERROR(EINVAL);
+             goto free_and_end;
+         }
+@@ -766,7 +772,11 @@ void avcodec_string(char *buf, int buf_size, AVCodecContext *enc, int encode)
+                          display_aspect_ratio.num, display_aspect_ratio.den);
+             }
+             if (av_log_get_level() >= AV_LOG_DEBUG) {
++#ifdef __APPLE__
++                int g = (int)av_gcd(enc->time_base.num, enc->time_base.den);
++#else
+                 int g = av_gcd(enc->time_base.num, enc->time_base.den);
++#endif
+                 snprintf(buf + strlen(buf), buf_size - strlen(buf),
+                          ", %d/%d",
+                          enc->time_base.num / g, enc->time_base.den / g);
+@@ -791,7 +801,11 @@ void avcodec_string(char *buf, int buf_size, AVCodecContext *enc, int encode)
+             snprintf(buf + strlen(buf), buf_size - strlen(buf),
+                      "%d Hz, ", enc->sample_rate);
+         }
++#ifdef __APPLE__
++        av_get_channel_layout_string(buf + strlen(buf), (int)(buf_size - strlen(buf)), enc->channels, enc->channel_layout);
++#else
+         av_get_channel_layout_string(buf + strlen(buf), buf_size - strlen(buf), enc->channels, enc->channel_layout);
++#endif
+         if (enc->sample_fmt != AV_SAMPLE_FMT_NONE &&
+             (str = av_get_sample_fmt_name(enc->sample_fmt))) {
+             snprintf(buf + strlen(buf), buf_size - strlen(buf),
+@@ -812,7 +826,11 @@ void avcodec_string(char *buf, int buf_size, AVCodecContext *enc, int encode)
+         break;
+     case AVMEDIA_TYPE_DATA:
+         if (av_log_get_level() >= AV_LOG_DEBUG) {
++#ifdef __APPLE__
++            int g = (int)av_gcd(enc->time_base.num, enc->time_base.den);
++#else
+             int g = av_gcd(enc->time_base.num, enc->time_base.den);
++#endif
+             if (g)
+                 snprintf(buf + strlen(buf), buf_size - strlen(buf),
+                          ", %d/%d",

@@ -1,0 +1,15 @@
+--- a/third_party/FFmpeg/libavutil/random_seed.c
++++ b/third_party/FFmpeg/libavutil/random_seed.c
+@@ -95,7 +95,12 @@ static uint32_t get_generic_seed(void)
+             last_td = t - last_t;
+             buffer[++i & 511] += last_td % 3294638521U;
+             if ((t - init_t) >= CLOCKS_PER_SEC>>5)
++#ifdef __APPLE__
++                /* Use explicit parentheses to avoid -Wlogical-op-parentheses warning on macOS */
++                if ((last_i && i - last_i > 4) || i - last_i > 64 || (TEST && i - last_i > 8))
++#else
+                 if (last_i && i - last_i > 4 || i - last_i > 64 || TEST && i - last_i > 8)
++#endif
+                     break;
+         }
+         last_t = t;

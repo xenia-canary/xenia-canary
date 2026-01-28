@@ -3476,7 +3476,12 @@ void DxbcShaderTranslator::WriteShaderCode() {
     } else {
       // Bindful samplers.
       for (uint32_t i = 0; i < uint32_t(sampler_bindings_.size()); ++i) {
+#ifdef __APPLE__
         const SamplerBinding& sampler_binding = sampler_bindings_[i];
+        (void)sampler_binding;
+#else
+        const SamplerBinding& sampler_binding = sampler_bindings_[i];
+#endif
         ao_.OpDclSampler(dxbc::Src::S(dxbc::Src::Dcl, i, i, i));
       }
     }

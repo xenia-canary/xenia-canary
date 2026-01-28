@@ -272,6 +272,41 @@ inline uint8_t tzcnt(uint64_t v) {
   return v == 0 ? 64 : static_cast<uint8_t>(__builtin_ctzll(v));
 }
 #endif
+
+#ifdef __APPLE__
+inline uint8_t lzcnt(int8_t v) {
+  uint8_t uv = static_cast<uint8_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int16_t v) {
+  uint16_t uv = static_cast<uint16_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int32_t v) {
+  uint32_t uv = static_cast<uint32_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t lzcnt(int64_t v) {
+  uint64_t uv = static_cast<uint64_t>(v);
+  return ::xe::lzcnt(uv);
+}
+inline uint8_t tzcnt(int8_t v) {
+  uint8_t uv = static_cast<uint8_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int16_t v) {
+  uint16_t uv = static_cast<uint16_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int32_t v) {
+  uint32_t uv = static_cast<uint32_t>(v);
+  return ::xe::tzcnt(uv);
+}
+inline uint8_t tzcnt(int64_t v) {
+  uint64_t uv = static_cast<uint64_t>(v);
+  return ::xe::tzcnt(uv);
+}
+#else
 inline uint8_t lzcnt(int8_t v) { return lzcnt(static_cast<uint8_t>(v)); }
 inline uint8_t lzcnt(int16_t v) { return lzcnt(static_cast<uint16_t>(v)); }
 inline uint8_t lzcnt(int32_t v) { return lzcnt(static_cast<uint32_t>(v)); }
@@ -280,6 +315,7 @@ inline uint8_t tzcnt(int8_t v) { return tzcnt(static_cast<uint8_t>(v)); }
 inline uint8_t tzcnt(int16_t v) { return tzcnt(static_cast<uint16_t>(v)); }
 inline uint8_t tzcnt(int32_t v) { return tzcnt(static_cast<uint32_t>(v)); }
 inline uint8_t tzcnt(int64_t v) { return tzcnt(static_cast<uint64_t>(v)); }
+#endif
 
 // BitScanForward (bsf).
 // Search the value from least significant bit (LSB) to the most significant bit
@@ -315,7 +351,11 @@ inline bool bit_scan_forward(int64_t v, uint32_t* out_first_set_index) {
 
 template <typename T>
 inline T log2_floor(T v) {
+#ifdef __APPLE__
+  return sizeof(T) * 8 - 1 - lzcnt(static_cast<uint64_t>(v));
+#else
   return sizeof(T) * 8 - 1 - lzcnt(v);
+#endif
 }
 template <typename T>
 inline T log2_ceil(T v) {
@@ -664,7 +704,13 @@ static constexpr uint32_t PregenerateUint32Div(uint32_t _denom,
   extra.info.add_ = magu.a;
   extra.info.shift_ = p - 32;
   out_extra = extra.value_;
+#if defined(__clang__) && defined(__APPLE__)
+  // All Clang compilers (including macOS) should handle this explicitly
+  return static_cast<uint32_t>(static_cast<uint64_t>(q2 + 1));
+#else
+  // Original code for MSVC, GCC, etc.
   return static_cast<uint64_t>(q2 + 1);
+#endif
 }
 
 static constexpr uint32_t ApplyUint32Div(uint32_t num, uint32_t mul,

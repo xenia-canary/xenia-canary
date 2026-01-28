@@ -11,6 +11,7 @@
 
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <cstdio>
 
 namespace xe {
 namespace debugging {
@@ -30,6 +31,15 @@ void Break() {
   // __asm__("int $3");
   __builtin_debugtrap();
 }
+
+namespace internal {
+
+void DebugPrint(const char* s) {
+  fprintf(stderr, "%s", s);
+  fflush(stderr);
+}
+
+}  // namespace internal
 
 }  // namespace debugging
 }  // namespace xe

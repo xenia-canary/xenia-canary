@@ -1,0 +1,13 @@
+diff --git a/third_party/stb/stb_image_write.h b/third_party/stb/stb_image_write.h
+index e4b32ed1b..4e2f0f237 100644
+--- a/third_party/stb/stb_image_write.h
++++ b/third_party/stb/stb_image_write.h
+@@ -772,6 +772,8 @@ static int stbi_write_hdr_core(stbi__write_context *s, int x, int y, int comp, f
+ 
+ #ifdef __STDC_LIB_EXT1__
+       len = sprintf_s(buffer, sizeof(buffer), "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
++#elif defined(__APPLE__)
++      len = snprintf(buffer, sizeof(buffer), "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
+ #else
+       len = sprintf(buffer, "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
+ #endif

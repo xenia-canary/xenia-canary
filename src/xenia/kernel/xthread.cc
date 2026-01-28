@@ -591,7 +591,12 @@ void XThread::EnterCriticalRegion() {
 void XThread::LeaveCriticalRegion() {
   auto kthread = guest_object<X_KTHREAD>();
   // this has nothing to do with user mode apcs!
+#ifdef __APPLE__
   auto apc_disable_count = ++kthread->apc_disable_count;
+  (void)apc_disable_count;
+#else
+  auto apc_disable_count = ++kthread->apc_disable_count;
+#endif
 }
 
 void XThread::EnqueueApc(uint32_t normal_routine, uint32_t normal_context,

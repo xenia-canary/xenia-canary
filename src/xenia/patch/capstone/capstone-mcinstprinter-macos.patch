@@ -1,0 +1,14 @@
+--- a/third_party/capstone/MCInstPrinter.h
++++ b/third_party/capstone/MCInstPrinter.h
+@@ -6,7 +6,11 @@
+ 
+ #include "MCInst.h"
+ #include <assert.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ /// Returned by getMnemonic() of the AsmPrinters.
+ typedef struct {

@@ -1,0 +1,197 @@
+--- a/third_party/FFmpeg/libavcodec/bytestream.h
++++ b/third_party/FFmpeg/libavcodec/bytestream.h
+@@ -157,18 +157,30 @@ static av_always_inline void bytestream2_init_writer(PutByteContext *p,
+ 
+ static av_always_inline int bytestream2_get_bytes_left(GetByteContext *g)
+ {
++#ifdef __APPLE__
++    return (int)(g->buffer_end - g->buffer);
++#else
+     return g->buffer_end - g->buffer;
++#endif
+ }
+ 
+ static av_always_inline int bytestream2_get_bytes_left_p(PutByteContext *p)
+ {
++#ifdef __APPLE__
++    return (int)(p->buffer_end - p->buffer);
++#else
+     return p->buffer_end - p->buffer;
++#endif
+ }
+ 
+ static av_always_inline void bytestream2_skip(GetByteContext *g,
+                                               unsigned int size)
+ {
++#ifdef __APPLE__
++    g->buffer += FFMIN((int)(g->buffer_end - g->buffer), size);
++#else
+     g->buffer += FFMIN(g->buffer_end - g->buffer, size);
++#endif
+ }
+ 
+ static av_always_inline void bytestream2_skipu(GetByteContext *g,
+@@ -183,7 +195,11 @@ static av_always_inline void bytestream2_skip_p(PutByteContext *p,
+     int size2;
+     if (p->eof)
+         return;
++#ifdef __APPLE__
++    size2 = FFMIN((int)(p->buffer_end - p->buffer), size);
++#else
+     size2 = FFMIN(p->buffer_end - p->buffer, size);
++#endif
+     if (size2 != size)
+         p->eof = 1;
+     p->buffer += size2;
+@@ -191,22 +207,38 @@ static av_always_inline void bytestream2_skip_p(PutByteContext *p,
+ 
+ static av_always_inline int bytestream2_tell(GetByteContext *g)
+ {
++#ifdef __APPLE__
+     return (int)(g->buffer - g->buffer_start);
++#else
++    return g->buffer - g->buffer_start;
++#endif
+ }
+ 
+ static av_always_inline int bytestream2_tell_p(PutByteContext *p)
+ {
++#ifdef __APPLE__
+     return (int)(p->buffer - p->buffer_start);
++#else
++    return p->buffer - p->buffer_start;
++#endif
+ }
+ 
+ static av_always_inline int bytestream2_size(GetByteContext *g)
+ {
++#ifdef __APPLE__
+     return (int)(g->buffer_end - g->buffer_start);
++#else
++    return g->buffer_end - g->buffer_start;
++#endif
+ }
+ 
+ static av_always_inline int bytestream2_size_p(PutByteContext *p)
+ {
++#ifdef __APPLE__
+     return (int)(p->buffer_end - p->buffer_start);
++#else
++    return p->buffer_end - p->buffer_start;
++#endif
+ }
+ 
+ static av_always_inline int bytestream2_seek(GetByteContext *g,
+@@ -215,16 +247,29 @@ static av_always_inline int bytestream2_seek(GetByteContext *g,
+ {
+     switch (whence) {
+     case SEEK_CUR:
++#ifdef __APPLE__
++        offset     = av_clip(offset, (int)-(g->buffer - g->buffer_start),
++                             (int)(g->buffer_end - g->buffer));
++#else
+         offset     = av_clip(offset, -(g->buffer - g->buffer_start),
+                              g->buffer_end - g->buffer);
++#endif
+         g->buffer += offset;
+         break;
+     case SEEK_END:
++#ifdef __APPLE__
++        offset    = av_clip(offset, (int)-(g->buffer_end - g->buffer_start), 0);
++#else
+         offset    = av_clip(offset, -(g->buffer_end - g->buffer_start), 0);
++#endif
+         g->buffer = g->buffer_end + offset;
+         break;
+     case SEEK_SET:
++#ifdef __APPLE__
++        offset    = av_clip(offset, 0, (int)(g->buffer_end - g->buffer_start));
++#else
+         offset    = av_clip(offset, 0, g->buffer_end - g->buffer_start);
++#endif
+         g->buffer = g->buffer_start + offset;
+         break;
+     default:
+@@ -242,20 +287,33 @@ static av_always_inline int bytestream2_seek_p(PutByteContext *p,
+     case SEEK_CUR:
+         if (p->buffer_end - p->buffer < offset)
+             p->eof = 1;
++#ifdef __APPLE__
++        offset     = av_clip(offset, (int)-(p->buffer - p->buffer_start),
++                             (int)(p->buffer_end - p->buffer));
++#else
+         offset     = av_clip(offset, -(p->buffer - p->buffer_start),
+                              p->buffer_end - p->buffer);
++#endif
+         p->buffer += offset;
+         break;
+     case SEEK_END:
+         if (offset > 0)
+             p->eof = 1;
++#ifdef __APPLE__
++        offset    = av_clip(offset, (int)-(p->buffer_end - p->buffer_start), 0);
++#else
+         offset    = av_clip(offset, -(p->buffer_end - p->buffer_start), 0);
++#endif
+         p->buffer = p->buffer_end + offset;
+         break;
+     case SEEK_SET:
+         if (p->buffer_end - p->buffer_start < offset)
+             p->eof = 1;
++#ifdef __APPLE__
++        offset    = av_clip(offset, 0, (int)(p->buffer_end - p->buffer_start));
++#else
+         offset    = av_clip(offset, 0, p->buffer_end - p->buffer_start);
++#endif
+         p->buffer = p->buffer_start + offset;
+         break;
+     default:
+@@ -268,7 +326,11 @@ static av_always_inline unsigned int bytestream2_get_buffer(GetByteContext *g,
+                                                             uint8_t *dst,
+                                                             unsigned int size)
+ {
++#ifdef __APPLE__
++    int size2 = FFMIN((int)(g->buffer_end - g->buffer), size);
++#else
+     int size2 = FFMIN(g->buffer_end - g->buffer, size);
++#endif
+     memcpy(dst, g->buffer, size2);
+     g->buffer += size2;
+     return size2;
+@@ -290,7 +352,11 @@ static av_always_inline unsigned int bytestream2_put_buffer(PutByteContext *p,
+     int size2;
+     if (p->eof)
+         return 0;
++#ifdef __APPLE__
++    size2 = FFMIN((int)(p->buffer_end - p->buffer), size);
++#else
+     size2 = FFMIN(p->buffer_end - p->buffer, size);
++#endif
+     if (size2 != size)
+         p->eof = 1;
+     memcpy(p->buffer, src, size2);
+@@ -314,7 +380,11 @@ static av_always_inline void bytestream2_set_buffer(PutByteContext *p,
+     int size2;
+     if (p->eof)
+         return;
++#ifdef __APPLE__
++    size2 = FFMIN((int)(p->buffer_end - p->buffer), size);
++#else
+     size2 = FFMIN(p->buffer_end - p->buffer, size);
++#endif
+     if (size2 != size)
+         p->eof = 1;
+     memset(p->buffer, c, size2);
+@@ -352,8 +422,13 @@ static av_always_inline unsigned int bytestream2_copy_buffer(PutByteContext *p,
+ 
+     if (p->eof)
+         return 0;
++#ifdef __APPLE__
++    size  = FFMIN((unsigned int)(g->buffer_end - g->buffer), size);
++    size2 = FFMIN((int)(p->buffer_end - p->buffer), size);
++#else
+     size  = FFMIN(g->buffer_end - g->buffer, size);
+     size2 = FFMIN(p->buffer_end - p->buffer, size);
++#endif
+     if (size2 != size)
+         p->eof = 1;

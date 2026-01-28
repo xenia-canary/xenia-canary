@@ -11,8 +11,12 @@
 
 #include <string>
 
+#ifdef __APPLE__
+#include "gtk/gtk.h"
+#else
 #include <gdk/gdkx.h>
 #include <gtk/gtk.h>
+#endif
 
 #include "xenia/base/assert.h"
 #include "xenia/base/filesystem.h"

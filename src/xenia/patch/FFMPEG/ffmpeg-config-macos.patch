@@ -1,0 +1,13 @@
+--- a/third_party/FFmpeg/config.h
++++ b/third_party/FFmpeg/config.h
+@@ -10,6 +10,10 @@
+ #elif
+ #error "android arch unsupported"
+ #endif
++#elif defined(__APPLE__) && defined(__aarch64__)
++#include "config_mac_arm64.h"
++#elif defined(__APPLE__) && defined(__x86_64__)
++#include "config_mac_x86_64.h"
+ #else
+ #error "no config"
+ #endif

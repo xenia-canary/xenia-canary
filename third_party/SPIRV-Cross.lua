@@ -1,0 +1,26 @@
+group("third_party")
+project("SPIRV-Cross")
+  uuid("c8f96d88-f149-48fd-870e-41f578a0c020")
+  kind("StaticLib")
+  language("C++")
+  cppdialect("C++17")
+
+  includedirs({
+    ".",
+    "include",
+  })
+  files({
+    "spirv_cross.cpp",
+    "spirv_parser.cpp",
+    "spirv_cross_parsed_ir.cpp",
+    "spirv_cfg.cpp",
+    "spirv_glsl.cpp",
+    "spirv_msl.cpp",
+    "spirv_hlsl.cpp",
+    "spirv_cpp.cpp",
+    "spirv_reflect.cpp",
+    "spirv_cross_util.cpp",
+    "spirv_cross_c.cpp",
+    "*.hpp",
+    "*.h",
+  })

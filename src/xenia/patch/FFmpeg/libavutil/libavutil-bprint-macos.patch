@@ -1,0 +1,55 @@
+--- a/third_party/FFmpeg/libavutil/bprint.c
++++ b/third_party/FFmpeg/libavutil/bprint.c
+@@ -68,8 +68,13 @@ static void av_bprint_grow(AVBPrint *buf, unsigned extra_len)
+ 
+ void av_bprint_init(AVBPrint *buf, unsigned size_init, unsigned size_max)
+ {
++#ifdef __APPLE__
++    unsigned size_auto = (unsigned)((char *)buf + sizeof(*buf) -
++                     buf->reserved_internal_buffer);
++#else
+     unsigned size_auto = (char *)buf + sizeof(*buf) -
+-                         buf->reserved_internal_buffer;
++                     buf->reserved_internal_buffer;
++#endif
+ 
+     if (size_max == 1)
+         size_max = size_auto;
+@@ -186,8 +191,13 @@ void av_bprint_strftime(AVBPrint *buf, const char *fmt, const struct tm *tm)
+             break;
+         /* strftime does not tell us how much room it would need: let us
+            retry with twice as much until the buffer is large enough */
++#ifdef __APPLE__
++        room = !room ? (unsigned)strlen(fmt) + 1 :
++               room <= INT_MAX / 2 ? room * 2 : INT_MAX;
++#else
+         room = !room ? strlen(fmt) + 1 :
+                room <= INT_MAX / 2 ? room * 2 : INT_MAX;
++#endif
+         if (av_bprint_alloc(buf, room)) {
+             /* impossible to grow, try to manage something useful anyway */
+             room = av_bprint_room(buf);
+@@ -212,7 +222,11 @@ void av_bprint_strftime(AVBPrint *buf, const char *fmt, const struct tm *tm)
+             return;
+         }
+     }
++#ifdef __APPLE__
++    av_bprint_grow(buf, (unsigned)l);
++#else
+     av_bprint_grow(buf, l);
++#endif
+ }
+ 
+ void av_bprint_get_buffer(AVBPrint *buf, unsigned size,
+@@ -221,7 +235,11 @@ void av_bprint_get_buffer(AVBPrint *buf, unsigned size,
+     if (size > av_bprint_room(buf))
+         av_bprint_alloc(buf, size);
+     *actual_size = av_bprint_room(buf);
++#ifdef __APPLE__
++    *mem = *actual_size ? (unsigned char *)(buf->str + buf->len) : NULL;
++#else
+     *mem = *actual_size ? buf->str + buf->len : NULL;
++#endif
+ }
+ 
+ void av_bprint_clear(AVBPrint *buf)

@@ -1,0 +1,14 @@
+--- a/third_party/capstone/MCInst.c
++++ b/third_party/capstone/MCInst.c
+@@ -146,7 +146,11 @@ bool MCOperand_isInst(const MCOperand *op)
+ /// getReg - Returns the register number.
+ unsigned MCOperand_getReg(const MCOperand *op)
+ {
++#ifdef __APPLE__
++	return (unsigned int)(op->RegVal);
++#else
+ 	return op->RegVal;
++#endif
+ }
+ 
+ /// setReg - Set the register number.

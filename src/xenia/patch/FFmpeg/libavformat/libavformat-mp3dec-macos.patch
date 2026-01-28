@@ -1,0 +1,17 @@
+--- a/third_party/FFmpeg/libavformat/mp3dec.c
++++ b/third_party/FFmpeg/libavformat/mp3dec.c
+@@ -206,9 +206,14 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
+     if (v & XING_FLAC_QSCALE)
+         avio_rb32(s->pb);
+ 
++    /* Encoder short version string */
+     /* Encoder short version string */
+     memset(version, 0, sizeof(version));
++    #ifdef __APPLE__
++    avio_read(s->pb, (unsigned char *)version, 9);
++    #else
+     avio_read(s->pb, version, 9);
++    #endif
+ 
+     /* Info Tag revision + VBR method */
+     avio_r8(s->pb);

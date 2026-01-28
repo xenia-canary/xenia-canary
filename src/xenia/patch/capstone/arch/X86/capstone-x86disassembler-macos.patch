@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/X86/X86Disassembler.c
++++ b/third_party/capstone/arch/X86/X86Disassembler.c
+@@ -83,7 +83,11 @@
+ #pragma warning(disable:28719)		// disable MSVC's warning on strncpy()
+ #endif
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #if defined(CAPSTONE_HAS_OSXKERNEL)
+ #include <Availability.h>

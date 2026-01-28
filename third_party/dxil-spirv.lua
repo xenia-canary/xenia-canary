@@ -1,0 +1,23 @@
+group("third_party")
+project("dxil-spirv")
+  uuid("d8f96d88-f149-48fd-870e-41f578a0c021")
+  kind("StaticLib")
+  language("C++")
+  cppdialect("C++17")
+
+  includedirs({
+    ".",
+  })
+  files({
+    "dxil_spirv.cpp",
+    "dxil_converter.cpp",
+    "dxil_parser.cpp",
+    "cfg_structurizer.cpp",
+    "spirv_module.cpp",
+    "node.cpp",
+    "memory_stream.cpp",
+    "llvm_bitcode_parser.cpp",
+    "dxil_spirv_c.cpp",
+    "*.hpp",
+    "*.h",
+  })

@@ -17,7 +17,13 @@ project("snappy")
 
   local snappy_dir = path.getabsolute("snappy")
   if not os.isfile(path.join(snappy_dir, "snappy-stubs-public.h")) then
-    prebuildcommands({
-      "cmake -DSNAPPY_BUILD_TESTS=OFF -DSNAPPY_BUILD_BENCHMARKS=OFF -DSNAPPY_REQUIRE_AVX=ON "..snappy_dir.." -B"..snappy_dir
-    })
+    if os.istarget("macosx") then
+      prebuildcommands({
+        'cmake -DSNAPPY_BUILD_TESTS=OFF -DSNAPPY_BUILD_BENCHMARKS=OFF -DSNAPPY_REQUIRE_AVX=ON "'..snappy_dir..'" -B"'..snappy_dir..'"'
+      })
+    else
+      prebuildcommands({
+        "cmake -DSNAPPY_BUILD_TESTS=OFF -DSNAPPY_BUILD_BENCHMARKS=OFF -DSNAPPY_REQUIRE_AVX=ON "..snappy_dir.." -B"..snappy_dir
+      })
+    end
   end

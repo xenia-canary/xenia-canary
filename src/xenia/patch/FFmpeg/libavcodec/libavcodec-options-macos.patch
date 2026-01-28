@@ -1,0 +1,47 @@
+--- a/third_party/FFmpeg/libavcodec/options.c
++++ b/third_party/FFmpeg/libavcodec/options.c
+@@ -65,7 +65,11 @@ static const AVClass *codec_child_class_next(const AVClass *prev)
+             break;
+ 
+     /* find next codec with priv options */
++#ifdef __APPLE__
++    while ((c = av_codec_iterate(&iter)))
++#else
+     while (c = av_codec_iterate(&iter))
++#endif
+         if (c->priv_class)
+             return c->priv_class;
+     return NULL;
+@@ -76,7 +80,11 @@ static const AVClass *codec_child_class_iterate(void **iter)
+ {
+     const AVCodec *c;
+     /* find next codec with priv options */
++#ifdef __APPLE__
++    while ((c = av_codec_iterate(iter)))
++#else
+     while (c = av_codec_iterate(iter))
++#endif
+         if (c->priv_class)
+             return c->priv_class;
+     return NULL;
+@@ -96,7 +104,7 @@ static const AVClass av_codec_context_class = {
+     .version                 = LIBAVUTIL_VERSION_INT,
+     .log_level_offset_offset = offsetof(AVCodecContext, log_level_offset),
+     .child_next              = codec_child_next,
+-#if FF_API_CHILD_CLASS_NEXT
++#if FF_API_CHILD_CLASS_NEXT && !defined(__APPLE__)
+     .child_class_next        = codec_child_class_next,
+ #endif
+     .child_class_iterate     = codec_child_class_iterate,
+@@ -155,7 +163,11 @@ static int init_context_defaults(AVCodecContext *s, const AVCodec *codec)
+         int ret;
+         const AVCodecDefault *d = codec->defaults;
+         while (d->key) {
++#ifdef __APPLE__
++            ret = av_opt_set(s, (const char *)d->key, (const char *)d->value, 0);
++#else
+             ret = av_opt_set(s, d->key, d->value, 0);
++#endif
+             av_assert0(ret >= 0);
+             d++;
+         }

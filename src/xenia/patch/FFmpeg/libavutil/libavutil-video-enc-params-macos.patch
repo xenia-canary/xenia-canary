@@ -1,0 +1,12 @@
+--- a/third_party/FFmpeg/libavutil/video_enc_params.c
++++ b/third_party/FFmpeg/libavutil/video_enc_params.c
+@@ -67,7 +67,7 @@ av_video_enc_params_create_side_data(AVFrame *frame, enum AVVideoEncParamsType t
+         av_free(par);
+         return NULL;
+     }
+-    buf = av_buffer_create((uint8_t *)par, size, NULL, NULL, 0);
++    buf = av_buffer_create((uint8_t *)par, (int)size, NULL, NULL, 0);
+     if (!buf) {
+         av_freep(&par);
+         return NULL;
+Submodule third_party/capstone contains modified content

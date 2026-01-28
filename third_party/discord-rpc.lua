@@ -7,6 +7,12 @@ project("discord-rpc")
     "RAPIDJSON_SSE42",
   --  "RAPIDJSON_NEON",
   })
+
+  filter("platforms:not Mac")
+    defines({
+      "RAPIDJSON_SSE42",
+    })
+  filter({})
   includedirs({
     "discord-rpc/include",
     "rapidjson/include"
@@ -27,7 +33,8 @@ project("discord-rpc")
     })
   filter("platforms:Mac")
     files({
-      "discord-rpc/src/discord_register_osx.m"
+      "discord-rpc/src/discord_register_osx.m",
+      "discord-rpc/src/connection_unix.cpp",
     })
   filter("platforms:Windows")
     files({

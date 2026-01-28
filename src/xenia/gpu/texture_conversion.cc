@@ -82,7 +82,12 @@ void ConvertTexelCTX1ToR8G8(xenos::Endian endian, void* output,
 
 void ConvertTexelDXT3AToDXT3(xenos::Endian endian, void* output,
                              const void* input, size_t length) {
+#ifdef __APPLE__
   constexpr uint32_t bytes_per_block = 16;
+  (void)bytes_per_block;
+#else
+  constexpr uint32_t bytes_per_block = 16;
+#endif
   auto output_bytes = static_cast<uint8_t*>(output);
   CopySwapBlock(endian, &output_bytes[0], input, 8);
   std::memset(&output_bytes[8], 0, 8);

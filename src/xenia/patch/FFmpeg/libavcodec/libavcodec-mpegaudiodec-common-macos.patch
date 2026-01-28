@@ -1,0 +1,18 @@
+--- a/third_party/FFmpeg/libavcodec/mpegaudiodec_common.c
++++ b/third_party/FFmpeg/libavcodec/mpegaudiodec_common.c
+@@ -427,9 +427,15 @@ static av_cold void mpegaudiodec_common_init_static(void)
+ 
+         ff_huff_vlc[++i].table         = huff_vlc_tables + offset;
+         ff_huff_vlc[i].table_allocated = FF_ARRAY_ELEMS(huff_vlc_tables) - offset;
++#ifdef __APPLE__
++        ff_init_vlc_from_lengths(&ff_huff_vlc[i], 7, j,
++                                 (const int8_t *)huff_lens, 1, tmp_symbols, 2, 2,
++                                 0, INIT_VLC_STATIC_OVERLONG, NULL);
++#else
+         ff_init_vlc_from_lengths(&ff_huff_vlc[i], 7, j,
+                                  huff_lens, 1, tmp_symbols, 2, 2,
+                                  0, INIT_VLC_STATIC_OVERLONG, NULL);
++#endif
+         offset    += ff_huff_vlc[i].table_size;
+         huff_lens += j;
+         huff_sym  += j;

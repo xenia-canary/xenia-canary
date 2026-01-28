@@ -1,0 +1,11 @@
+--- a/src/xenia/cpu/hir/opcodes.cc
++++ b/src/xenia/cpu/hir/opcodes.cc
+@@ -29,6 +29,8 @@ const char* GetOpcodeName(Opcode num) {
+     return name;
+ #include "xenia/cpu/hir/opcodes.inl"
+ #undef DEFINE_OPCODE
++    default:
++      break;
+   }
+   return "invalid opcode";
+ }

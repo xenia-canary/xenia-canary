@@ -1,0 +1,62 @@
+--- a/third_party/FFmpeg/libavcodec/utils.c
++++ b/third_party/FFmpeg/libavcodec/utils.c
+@@ -663,6 +663,8 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
+     case AV_CODEC_ID_MP2:
+     case AV_CODEC_ID_MUSEPACK7:    return 1152;
+     case AV_CODEC_ID_AC3:          return 1536;
++    default:
++        return 0;
+     }
+ 
+     if (sr > 0) {
+@@ -758,6 +760,8 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
+             case AV_CODEC_ID_IAC:
+             case AV_CODEC_ID_IMC:
+                 return 4 * frame_bytes / ch;
++            default:
++                return 0;
+             }
+ 
+             if (tag) {
+@@ -788,6 +792,8 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
+                     return blocks * (2 + (ba - 7 * ch) * 2LL / ch);
+                 case AV_CODEC_ID_ADPCM_MTAF:
+                     return blocks * (ba - 16) * 2 / ch;
++                default:
++                    return 0;
+                 }
+             }
+ 
+@@ -804,6 +810,8 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
+                     return (frame_bytes - 4) / ((FFALIGN(ch, 2) * bps) / 8);
+                 case AV_CODEC_ID_S302M:
+                     return 2 * (frame_bytes / ((bps + 4) / 4)) / ch;
++                default:
++                    return 0;
+                 }
+             }
+         }
+@@ -1050,7 +1058,11 @@ AVCPBProperties *ff_add_cpb_side_data(AVCodecContext *avctx)
+ 
+     avctx->coded_side_data[avctx->nb_coded_side_data - 1].type = AV_PKT_DATA_CPB_PROPERTIES;
+     avctx->coded_side_data[avctx->nb_coded_side_data - 1].data = (uint8_t*)props;
++#ifdef __APPLE__
++    avctx->coded_side_data[avctx->nb_coded_side_data - 1].size = (int)size;
++#else
+     avctx->coded_side_data[avctx->nb_coded_side_data - 1].size = size;
++#endif
+ 
+     return props;
+ }
+@@ -1089,7 +1101,11 @@ int ff_alloc_timecode_sei(const AVFrame *frame, AVRational rate, size_t prefix_l
+         return AVERROR(ENOMEM);
+     sei_data = (uint8_t*)*data + prefix_len;
+ 
++#ifdef __APPLE__
++    init_put_bits(&pb, sei_data, (int)*sei_size);
++#else
+     init_put_bits(&pb, sei_data, *sei_size);
++#endif
+     put_bits(&pb, 2, m); // num_clock_ts
+ 
+     for (int j = 1; j <= m; j++) {

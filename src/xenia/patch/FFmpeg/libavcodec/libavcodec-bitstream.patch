@@ -1,0 +1,54 @@
+--- a/third_party/FFmpeg/libavcodec/bitstream.c
++++ b/third_party/FFmpeg/libavcodec/bitstream.c
+@@ -405,7 +405,11 @@ int ff_init_vlc_from_lengths(VLC *vlc_arg, int nb_bits, int nb_codes,
+             else
+                 sym = i;
+             buf[j].symbol = sym + offset;
++#ifdef __APPLE__
++            buf[j++].code = (uint32_t)code;
++#else
+             buf[j++].code = code;
++#endif
+         } else if (len <  0) {
+             len = -len;
+         } else
+
+
+
+
+--- a/third_party/FFmpeg/libavcodec/bsf.c
++++ b/third_party/FFmpeg/libavcodec/bsf.c
+@@ -80,7 +80,7 @@ static const AVClass bsf_class = {
+     .item_name        = bsf_to_name,
+     .version          = LIBAVUTIL_VERSION_INT,
+     .child_next       = bsf_child_next,
+-#if FF_API_CHILD_CLASS_NEXT
++#if FF_API_CHILD_CLASS_NEXT && !defined(__APPLE__)
+     .child_class_next = ff_bsf_child_class_next,
+ #endif
+     .child_class_iterate = ff_bsf_child_class_iterate,
+@@ -538,13 +538,18 @@ int av_bsf_list_parse_str(const char *str, AVBSFContext **bsf_lst)
+         goto end;
+     }
+ 
+-    while (bsf_str = av_strtok(buf, ",", &saveptr)) {
+-        ret = bsf_parse_single(bsf_str, lst);
+-        if (ret < 0)
+-            goto end;
++#ifdef __APPLE__
++while ((bsf_str = av_strtok(buf, ",", &saveptr))) 
++#else
++while (bsf_str = av_strtok(buf, ",", &saveptr)) 
++#endif
++{
++    ret = bsf_parse_single(bsf_str, lst);
++    if (ret < 0)
++        goto end;
+ 
+-        buf = NULL;
+-    }
++    buf = NULL;
++}
+ 
+     ret = av_bsf_list_finalize(&lst, bsf_lst);
+ end:

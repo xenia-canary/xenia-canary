@@ -124,6 +124,17 @@ project("xenia-app")
       })
   end
 
+  filter("system:macosx")
+    files({
+      "Info.plist",
+    })
+    xcodebuildsettings({
+      INFOPLIST_FILE = "../src/xenia/app/Info.plist",
+    })
+    links({
+      "fontconfig"
+    })
+
   filter("platforms:Windows")
     -- Only create the .user file if it doesn't already exist.
     local user_file = project_root.."/build/xenia-app.vcxproj.user"

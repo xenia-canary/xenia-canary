@@ -1,0 +1,58 @@
+--- a/third_party/FFmpeg/libavutil/frame.c
++++ b/third_party/FFmpeg/libavutil/frame.c
+@@ -62,7 +62,11 @@ FF_DISABLE_DEPRECATION_WARNINGS
+     av_buffer_unref(&f->qp_table_buf);
+ 
+     f->qp_table_buf = buf;
++#ifdef __APPLE__
++    f->qscale_table = (int8_t *)buf->data;
++#else
+     f->qscale_table = buf->data;
++#endif
+     f->qstride      = stride;
+     f->qscale_type  = qp_type;
+ FF_ENABLE_DEPRECATION_WARNINGS
+@@ -116,7 +120,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
+         buf     = sd->buf;
+     }
+ 
++#ifdef __APPLE__
++    return buf ? (int8_t *)buf->data : NULL;
++#else
+     return buf ? buf->data : NULL;
++#endif
+ }
+ #endif
+ 
+@@ -428,7 +436,11 @@ FF_DISABLE_DEPRECATION_WARNINGS
+     dst->qscale_type  = 0;
+     av_buffer_replace(&dst->qp_table_buf, src->qp_table_buf);
+     if (dst->qp_table_buf) {
++#ifdef __APPLE__
++        dst->qscale_table = (int8_t *)dst->qp_table_buf->data;
++#else
+         dst->qscale_table = dst->qp_table_buf->data;
++#endif
+         dst->qstride      = src->qstride;
+         dst->qscale_type  = src->qscale_type;
+     }
+@@ -924,11 +936,19 @@ int av_frame_apply_cropping(AVFrame *frame, int flags)
+ 
+     /* adjust the offsets to avoid breaking alignment */
+     if (!(flags & AV_FRAME_CROP_UNALIGNED)) {
++#ifdef __APPLE__
++        int log2_crop_align = frame->crop_left ? ff_ctz((unsigned int)frame->crop_left) : INT_MAX;
++#else
+         int log2_crop_align = frame->crop_left ? ff_ctz(frame->crop_left) : INT_MAX;
++#endif
+         int min_log2_align = INT_MAX;
+ 
+         for (i = 0; frame->data[i]; i++) {
++#ifdef __APPLE__
++            int log2_align = offsets[i] ? ff_ctz((unsigned int)offsets[i]) : INT_MAX;
++#else
+             int log2_align = offsets[i] ? ff_ctz(offsets[i]) : INT_MAX;
++#endif
+             min_log2_align = FFMIN(log2_align, min_log2_align);
+         }
+ 

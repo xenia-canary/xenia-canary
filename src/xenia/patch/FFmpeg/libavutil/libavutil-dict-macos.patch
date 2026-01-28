@@ -1,0 +1,14 @@
+--- a/third_party/FFmpeg/libavutil/dict.c
++++ b/third_party/FFmpeg/libavutil/dict.c
+@@ -46,7 +46,11 @@ AVDictionaryEntry *av_dict_get(const AVDictionary *m, const char *key,
+         return NULL;
+ 
+     if (prev)
++#ifdef __APPLE__
++        i = (unsigned int)(prev - m->elems + 1);
++#else
+         i = prev - m->elems + 1;
++#endif
+     else
+         i = 0;
+ 

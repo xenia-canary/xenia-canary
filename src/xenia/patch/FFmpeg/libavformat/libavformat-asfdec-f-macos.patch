@@ -1,0 +1,15 @@
+--- a/third_party/FFmpeg/libavformat/asfdec_f.c
++++ b/third_party/FFmpeg/libavformat/asfdec_f.c
+@@ -275,7 +275,12 @@ static int asf_read_picture(AVFormatContext *s, int len)
+     desc     = av_malloc(desc_len);
+     if (!desc)
+         return AVERROR(ENOMEM);
++#ifdef __APPLE__
++    /* Cast to char* to avoid pointer-sign warning on macOS */
++    len -= avio_get_str16le(s->pb, len - picsize, (char *)desc, desc_len);
++#else
+     len -= avio_get_str16le(s->pb, len - picsize, desc, desc_len);
++#endif
+ 
+     ret = av_get_packet(s->pb, &pkt, picsize);
+     if (ret < 0)

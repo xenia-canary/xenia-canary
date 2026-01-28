@@ -227,10 +227,23 @@ void RtlInitAnsiString_entry(pointer_t<X_ANSI_STRING> destination,
   destination->pointer = source.guest_address();
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlInitAnsiString, kNone, kImplemented);
+#ifdef __APPLE__
+char16_t toupper_char16(char16_t c) {
+  if (c >= u'a' && c <= u'z') {
+    return c - u'a' + u'A';
+  }
+  return c;
+}
+#endif
+
 // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlupcaseunicodechar
 dword_result_t RtlUpcaseUnicodeChar_entry(dword_t SourceCharacter) {
-  return std::use_facet<std::ctype<char16_t>>(std::locale())
+#ifdef __APPLE__
+  return toupper_char16((char16_t)SourceCharacter);
+#else
+  return std::use_facet<std::ctype<char16_t> >(std::locale())
       .toupper(SourceCharacter);
+#endif
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlUpcaseUnicodeChar, kNone, kImplemented);
 

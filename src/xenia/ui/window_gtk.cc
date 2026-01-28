@@ -7,9 +7,15 @@
  ******************************************************************************
  */
 
+#ifdef __APPLE__
+#include "X11/Xlib-xcb.h"
+#include "gdk/gdkx.h"
+#include "xcb/xcb.h"
+#else
 #include <X11/Xlib-xcb.h>
 #include <gdk/gdkx.h>
 #include <xcb/xcb.h>
+#endif
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"

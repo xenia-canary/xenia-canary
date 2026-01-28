@@ -1,0 +1,19 @@
+--- a/third_party/FFmpeg/libavformat/premake5.lua
++++ b/third_party/FFmpeg/libavformat/premake5.lua
+@@ -15,7 +15,6 @@ project("libavformat")
+ 
+   links({
+     "libavutil",
+-    "libavcodec",
+   })
+ 
+   -- libavformat/Makefile:
+@@ -52,7 +51,7 @@ project("libavformat")
+     "replaygain.c",
+     "file.c",
+   })
+-  filter({"platforms:Windows"})
++  filter({"platforms:Windows", "architecture:x86_64"})
+   files({
+     "file_open.c",
+   })

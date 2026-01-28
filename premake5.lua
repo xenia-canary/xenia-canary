@@ -123,6 +123,27 @@ filter({"configurations:Release", "platforms:Windows"}) -- "toolset:msc"
 --    "/Qpar",   -- TODO: Test this.
   })
 
+filter("platforms:Mac")
+  system("macosx")
+  toolset("clang")
+  defines({
+    "XE_PLATFORM_MACOS=1",
+    "XE_PLATFORM_LINUX=1",
+  })
+  pkg_config.all("gtk+-3.0")
+  links({
+    "stdc++fs",
+    "dl",
+    "lz4",
+    "pthread",
+    "rt",
+    "gtk-3",
+    "gdk-3",
+  })
+
+filter({"platforms:Mac", "kind:*App"})
+  linkgroups("On")
+
 filter("platforms:Linux")
   system("linux")
   toolset("clang")
@@ -176,7 +197,7 @@ filter("toolset:gcc") -- "platforms:Linux"
     })
   end
 
-filter({"language:C++", "toolset:clang"}) -- "platforms:Linux"
+filter({"language:C++", "toolset:clang"}) -- "platforms:Linux or Mac"
   disablewarnings({
     "deprecated-register",
     "deprecated-volatile",
@@ -186,21 +207,21 @@ CLANG_BIN = os.getenv("CC") or _OPTIONS["cc"] or "clang"
 if os.istarget("linux") and string.contains(CLANG_BIN, "clang") then
   CLANG_VER = tonumber(string.match(os.outputof(CLANG_BIN.." --version"), "version (%d%d)"))
   if CLANG_VER >= 20 then
-    filter({"language:C++", "toolset:clang"}) -- "platforms:Linux"
+    filter({"language:C++", "toolset:clang"}) -- "platforms:Linux or Mac"
       disablewarnings({
         "deprecated-literal-operator",   -- Needed only for tabulate
         "nontrivial-memcall",
       })
   end
   if CLANG_VER >= 21 then
-    filter({"language:C++", "toolset:clang"}) -- "platforms:Linux"
+    ilter({"language:C++", "toolset:clang"}) -- "platforms:Linux or Mac"
       disablewarnings({
         "character-conversion",          -- Needed for utfcpp third-party library
       })
   end
 end
 
-filter({"language:C", "toolset:clang or gcc"}) -- "platforms:Linux"
+filter({"language:C", "toolset:clang or gcc"}) -- "platforms:Linux or Mac"
   disablewarnings({
     "implicit-function-declaration",
   })

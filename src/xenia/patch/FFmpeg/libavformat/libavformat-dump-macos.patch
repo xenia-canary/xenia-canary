@@ -1,0 +1,13 @@
+--- a/third_party/FFmpeg/libavformat/dump.c
++++ b/third_party/FFmpeg/libavformat/dump.c
+@@ -512,7 +512,11 @@ static void dump_stream_format(const AVFormatContext *ic, int i,
+     int flags = (is_output ? ic->oformat->flags : ic->iformat->flags);
+     const AVStream *st = ic->streams[i];
+     const AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
++#ifdef __APPLE__
++    const char *separator = (const char *)ic->dump_separator;
++#else
+     const char *separator = ic->dump_separator;
++#endif
+     AVCodecContext *avctx;
+     int ret;

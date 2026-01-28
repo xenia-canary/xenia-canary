@@ -1,0 +1,336 @@
+--- a/third_party/snappy/snappy.cc
++++ b/third_party/snappy/snappy.cc
+@@ -671,8 +671,13 @@ static inline char* EmitCopyAtMost64(char* op, size_t offset, size_t len) {
+   assert(len_less_than_12 == (len < 12));
+ 
+   if (len_less_than_12) {
++#ifdef __APPLE__
++    uint32_t u = static_cast<uint32_t>((len << 2) + (offset << 8));
++    uint32_t copy1 = static_cast<uint32_t>(COPY_1_BYTE_OFFSET - (4 << 2) + ((offset >> 3) & 0xe0));
++#else
+     uint32_t u = (len << 2) + (offset << 8);
+     uint32_t copy1 = COPY_1_BYTE_OFFSET - (4 << 2) + ((offset >> 3) & 0xe0);
++#endif
+     uint32_t copy2 = COPY_2_BYTE_OFFSET - (1 << 2);
+     // It turns out that offset < 2048 is a difficult to predict branch.
+     // `perf record` shows this is the highest percentage of branch misses in
+@@ -685,7 +690,11 @@ static inline char* EmitCopyAtMost64(char* op, size_t offset, size_t len) {
+   } else {
+     // Write 4 bytes, though we only care about 3 of them.  The output buffer
+     // is required to have some slack, so the extra byte won't overrun it.
++#ifdef __APPLE__
++    uint32_t u = static_cast<uint32_t>(COPY_2_BYTE_OFFSET + ((len - 1) << 2) + (offset << 8));
++#else
+     uint32_t u = COPY_2_BYTE_OFFSET + ((len - 1) << 2) + (offset << 8);
++#endif
+     LittleEndian::Store32(op, u);
+     op += 3;
+   }
+@@ -754,7 +763,11 @@ uint32_t CalculateTableSize(uint32_t input_size) {
+ namespace internal {
+ WorkingMemory::WorkingMemory(size_t input_size) {
+   const size_t max_fragment_size = std::min(input_size, kBlockSize);
++#ifdef __APPLE__
++  const size_t table_size = CalculateTableSize(static_cast<uint32_t>(max_fragment_size));
++#else
+   const size_t table_size = CalculateTableSize(max_fragment_size);
++#endif
+   size_ = table_size * sizeof(*table_) + max_fragment_size +
+           MaxCompressedLength(max_fragment_size);
+   mem_ = std::allocator<char>().allocate(size_);
+@@ -769,9 +782,14 @@ WorkingMemory::~WorkingMemory() {
+ 
+ uint16_t* WorkingMemory::GetHashTable(size_t fragment_size,
+                                       int* table_size) const {
++#ifdef __APPLE__
++  const size_t htsize = CalculateTableSize(static_cast<uint32_t>(fragment_size));
++  *table_size = static_cast<int>(htsize);
++#else
+   const size_t htsize = CalculateTableSize(fragment_size);
+   memset(table_, 0, htsize * sizeof(*table_));
+   *table_size = htsize;
++#endif
+   return table_;
+ }
+ }  // end namespace internal
+@@ -866,7 +884,11 @@ char* CompressFragment(const char* input, size_t input_size, char* op,
+       }
+       while (true) {
+         assert(static_cast<uint32_t>(data) == LittleEndian::Load32(ip));
++#ifdef __APPLE__
++        uint16_t* table_entry = TableEntry(table, static_cast<uint32_t>(data), mask);
++#else
+         uint16_t* table_entry = TableEntry(table, data, mask);
++#endif
+         uint32_t bytes_between_hash_lookups = skip >> 5;
+         skip += bytes_between_hash_lookups;
+         const char* next_ip = ip + bytes_between_hash_lookups;
+@@ -891,7 +913,11 @@ char* CompressFragment(const char* input, size_t input_size, char* op,
+       // than 4 bytes match.  But, prior to the match, input
+       // bytes [next_emit, ip) are unmatched.  Emit them as "literal bytes."
+       assert(next_emit + 16 <= ip_end);
++#ifdef __APPLE__
++      op = EmitLiteral</*allow_fast_path=*/true>(op, next_emit, static_cast<int>(ip - next_emit));
++#else
+       op = EmitLiteral</*allow_fast_path=*/true>(op, next_emit, ip - next_emit);
++#endif
+ 
+       // Step 3: Call EmitCopy, and then see if another EmitCopy could
+       // be our next move.  Repeat until we find no match for the
+@@ -928,7 +954,11 @@ char* CompressFragment(const char* input, size_t input_size, char* op,
+         // we also update table[Hash(ip - 1, mask)] and table[Hash(ip, mask)].
+         *TableEntry(table, LittleEndian::Load32(ip - 1), mask) =
+             ip - base_ip - 1;
++#ifdef __APPLE__
++        uint16_t* table_entry = TableEntry(table, static_cast<uint32_t>(data), mask);
++#else
+         uint16_t* table_entry = TableEntry(table, data, mask);
++#endif
+         candidate = base_ip + *table_entry;
+         *table_entry = ip - base_ip;
+         // Measurements on the benchmarks have shown the following probabilities
+@@ -944,14 +974,22 @@ char* CompressFragment(const char* input, size_t input_size, char* op,
+       } while (static_cast<uint32_t>(data) == LittleEndian::Load32(candidate));
+       // Because the least significant 5 bytes matched, we can utilize data
+       // for the next iteration.
++#ifdef __APPLE__
++      preload = static_cast<uint32_t>(data >> 8);
++#else
+       preload = data >> 8;
++#endif
+     }
+   }
+ 
+ emit_remainder:
+   // Emit the remaining bytes as a literal
+   if (ip < ip_end) {
++#ifdef __APPLE__
++    op = EmitLiteral</*allow_fast_path=*/false>(op, ip, static_cast<int>(ip_end - ip));
++#else
+     op = EmitLiteral</*allow_fast_path=*/false>(op, ip, ip_end - ip);
++#endif
+   }
+ 
+   return op;
+@@ -998,12 +1036,21 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+         *table_entry2 = ip - base_ip;
+         if (SNAPPY_PREDICT_FALSE(static_cast<uint32_t>(data) ==
+                                 LittleEndian::Load32(candidate))) {
++#ifdef __APPLE__
++          candidate_length =
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
+           candidate_length =
+               FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4;
++#endif
+           break;
+         }
+ 
++#ifdef __APPLE__
++        uint16_t* table_entry = TableEntry4ByteMatch(table, static_cast<uint32_t>(data), mask);
++#else
+         uint16_t* table_entry = TableEntry4ByteMatch(table, data, mask);
++#endif
+         candidate = base_ip + *table_entry;
+         assert(candidate >= base_ip);
+         assert(candidate < ip);
+@@ -1012,7 +1059,11 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+         if (SNAPPY_PREDICT_FALSE(static_cast<uint32_t>(data) ==
+                                 LittleEndian::Load32(candidate))) {
+           candidate_length =
++#ifdef __APPLE__
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
+               FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4;
++#endif
+           table_entry2 =
+               TableEntry8ByteMatch(table2, LittleEndian::Load64(ip + 1), mask);
+           auto candidate2 = base_ip + *table_entry2;
+@@ -1021,7 +1072,11 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+           if (candidate_length2 > candidate_length) {
+             *table_entry2 = ip - base_ip;
+             candidate = candidate2;
++#ifdef __APPLE__
++            candidate_length = static_cast<uint32_t>(candidate_length2);
++#else
+             candidate_length = candidate_length2;
++#endif
+             ++ip;
+           }
+           break;
+@@ -1048,8 +1103,13 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+       // "literal bytes."
+       assert(next_emit + 16 <= ip_end);
+       if (ip - next_emit > 0) {
++#ifdef __APPLE__
++        op = EmitLiteral</*allow_fast_path=*/true>(op, next_emit,
++                                                   static_cast<int>(ip - next_emit));
++#else
+         op = EmitLiteral</*allow_fast_path=*/true>(op, next_emit,
+                                                    ip - next_emit);
++#endif
+       }
+       // Step 3: Call EmitCopy, and then see if another EmitCopy could
+       // be our next move.  Repeat until we find no match for the
+@@ -1098,8 +1158,18 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+         candidate = base_ip + *table_entry;
+         *table_entry = ip - base_ip;
+         if (LittleEndian::Load32(ip) == LittleEndian::Load32(candidate)) {
++#ifdef __APPLE__
++          candidate_length =
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
++#ifdef __APPLE__
++          candidate_length =
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
+           candidate_length =
+               FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4;
++#endif
++#endif
+           continue;
+         }
+         table_entry =
+@@ -1107,8 +1177,18 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+         candidate = base_ip + *table_entry;
+         *table_entry = ip - base_ip;
+         if (LittleEndian::Load32(ip) == LittleEndian::Load32(candidate)) {
++#ifdef __APPLE__
++          candidate_length =
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
++#ifdef __APPLE__
++          candidate_length =
++              static_cast<uint32_t>(FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4);
++#else
+           candidate_length =
+               FindMatchLengthPlain(candidate + 4, ip + 4, ip_end) + 4;
++#endif
++#endif
+           continue;
+         }
+         break;
+@@ -1119,7 +1199,11 @@ char* CompressFragmentDoubleHash(const char* input, size_t input_size, char* op,
+ emit_remainder:
+   // Emit the remaining bytes as a literal
+   if (ip < ip_end) {
++#ifdef __APPLE__
++    op = EmitLiteral</*allow_fast_path=*/false>(op, ip, static_cast<int>(ip_end - ip));
++#else
+     op = EmitLiteral</*allow_fast_path=*/false>(op, ip, ip_end - ip);
++#endif
+   }
+ 
+   return op;
+@@ -1625,7 +1709,11 @@ class SnappyDecompressor {
+           // Long literal.
+           const size_t literal_length_length = literal_length - 60;
+           literal_length =
++#ifdef __APPLE__
++              ExtractLowBytes(LittleEndian::Load32(ip), static_cast<int>(literal_length_length)) +
++#else
+               ExtractLowBytes(LittleEndian::Load32(ip), literal_length_length) +
++#endif
+               1;
+           ip += literal_length_length;
+         }
+@@ -1663,7 +1751,11 @@ class SnappyDecompressor {
+           // copy_offset/256 is encoded in bits 8..10.  By just fetching
+           // those bits, we get copy_offset (since the bit-field starts at
+           // bit 8).
++#ifdef __APPLE__
++          const uint32_t copy_offset = static_cast<uint32_t>(trailer - entry + length);
++#else
+           const uint32_t copy_offset = trailer - entry + length;
++#endif
+           if (!writer->AppendFromSelf(copy_offset, length, &op)) goto exit;
+ 
+           ip += (c & 3);
+@@ -1770,8 +1862,13 @@ static bool InternalUncompress(Source* r, Writer* writer) {
+   uint32_t uncompressed_len = 0;
+   if (!decompressor.ReadUncompressedLength(&uncompressed_len)) return false;
+ 
++#ifdef __APPLE__
++  return InternalUncompressAllTags(&decompressor, writer, static_cast<uint32_t>(r->Available()),
++                                   uncompressed_len);
++#else
+   return InternalUncompressAllTags(&decompressor, writer, r->Available(),
+                                    uncompressed_len);
++#endif
+ }
+ 
+ template <typename Writer>
+@@ -1806,7 +1903,11 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
+   assert(N <= 0xFFFFFFFFu);
+   const size_t uncompressed_size = N;
+   char ulength[Varint::kMax32];
++#ifdef __APPLE__
++  char* p = Varint::Encode32(ulength, static_cast<uint32_t>(N));
++#else
+   char* p = Varint::Encode32(ulength, N);
++#endif
+   writer->Append(ulength, p - ulength);
+   written += (p - ulength);
+ 
+@@ -1848,7 +1949,11 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
+     uint16_t* table = wmem.GetHashTable(num_to_read, &table_size);
+ 
+     // Compress input_fragment and append to dest
++#ifdef __APPLE__
++    int max_output = static_cast<int>(MaxCompressedLength(num_to_read));
++#else
+     int max_output = MaxCompressedLength(num_to_read);
++#endif
+ 
+     // Since we encode kBlockSize regions followed by a region
+     // which is <= kBlockSize in length, a previously allocated
+@@ -2456,7 +2561,11 @@ class SnappyScatteredWriter {
+   inline bool TryFastAppend(const char* ip, size_t available, size_t length,
+                             char** op_p) {
+     char* op = *op_p;
++#ifdef __APPLE__
++    const int space_left = static_cast<int>(op_limit_ - op);
++#else
+     const int space_left = op_limit_ - op;
++#endif
+     if (length <= 16 && available >= 16 + kMaximumTagLength &&
+         space_left >= 16) {
+       // Fast path, used for the majority (about 95%) of invocations.
+@@ -2515,7 +2624,11 @@ bool SnappyScatteredWriter<Allocator>::SlowAppend(const char* ip, size_t len) {
+ 
+     // Make new block
+     size_t bsize = std::min<size_t>(kBlockSize, expected_ - full_size_);
++#ifdef __APPLE__
++    op_base_ = allocator_.Allocate(static_cast<int>(bsize));
++#else
+     op_base_ = allocator_.Allocate(bsize);
++#endif
+     op_ptr_ = op_base_;
+     op_limit_ = op_base_ + bsize;
+     op_limit_min_slop_ = op_limit_ - std::min<size_t>(kSlopBytes - 1, bsize);
+@@ -2633,15 +2746,25 @@ bool Uncompress(Source* compressed, Sink* uncompressed) {
+   // uncompression
+   if (allocated_size >= uncompressed_len) {
+     SnappyArrayWriter writer(buf);
++#ifdef __APPLE__
++    bool result = InternalUncompressAllTags(&decompressor, &writer,
++                                            static_cast<uint32_t>(compressed_len), uncompressed_len);
++#else
+     bool result = InternalUncompressAllTags(&decompressor, &writer,
+                                             compressed_len, uncompressed_len);
++#endif
+     uncompressed->Append(buf, writer.Produced());
+     return result;
+   } else {
+     SnappySinkAllocator allocator(uncompressed);
+     SnappyScatteredWriter<SnappySinkAllocator> writer(allocator);
++#ifdef __APPLE__
++    return InternalUncompressAllTags(&decompressor, &writer, static_cast<uint32_t>(compressed_len),
++                                     uncompressed_len);
++#else
+     return InternalUncompressAllTags(&decompressor, &writer, compressed_len,
+                                      uncompressed_len);
++#endif
+   }
+ }
+ 

@@ -22,7 +22,11 @@
 #include <llvm/ADT/BitVector.h>
 #pragma warning(pop)
 #else
+#ifdef __APPLE__
+#include "llvm/ADT/BitVector.h"
+#else
 #include <llvm/ADT/BitVector.h>
+#endif
 #include <cmath>
 #endif  // XE_COMPILER_MSVC
 

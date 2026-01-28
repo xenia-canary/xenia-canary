@@ -1,0 +1,20 @@
+--- a/third_party/FFmpeg/libavutil/tx_template.c
++++ b/third_party/FFmpeg/libavutil/tx_template.c
+@@ -146,10 +146,17 @@ static av_always_inline void fft3(FFTComplex *out, FFTComplex *in,
+     mtmp[1] = (int64_t)TX_NAME(ff_cos_53)[0].im * tmp[0].im;
+     mtmp[2] = (int64_t)TX_NAME(ff_cos_53)[1].re * tmp[1].re;
+     mtmp[3] = (int64_t)TX_NAME(ff_cos_53)[1].re * tmp[1].im;
++#ifdef __APPLE__
++    out[1*stride].re = in[0].re - ((mtmp[2] + mtmp[0] + 0x40000000) >> 31);
++    out[1*stride].im = in[0].im - ((mtmp[3] - mtmp[1] + 0x40000000) >> 31);
++    out[2*stride].re = in[0].re - ((mtmp[2] - mtmp[0] + 0x40000000) >> 31);
++    out[2*stride].im = in[0].im - ((mtmp[3] + mtmp[1] + 0x40000000) >> 31);
++#else
+     out[1*stride].re = in[0].re - (mtmp[2] + mtmp[0] + 0x40000000 >> 31);
+     out[1*stride].im = in[0].im - (mtmp[3] - mtmp[1] + 0x40000000 >> 31);
+     out[2*stride].re = in[0].re - (mtmp[2] - mtmp[0] + 0x40000000 >> 31);
+     out[2*stride].im = in[0].im - (mtmp[3] + mtmp[1] + 0x40000000 >> 31);
++#endif
+ #else
+     tmp[0].re = TX_NAME(ff_cos_53)[0].re * tmp[0].re;
+     tmp[0].im = TX_NAME(ff_cos_53)[0].im * tmp[0].im;

@@ -16,7 +16,7 @@
 #include "third_party/SPIRV-Tools/include/spirv-tools/libspirv.h"
 #include "xenia/base/platform.h"
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MACOS
 #include <dlfcn.h>
 #elif XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
@@ -39,15 +39,17 @@ class SpirvToolsContext {
                         std::string* error) const;
 
  private:
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MACOS
   void* library_ = nullptr;
 #elif XE_PLATFORM_WIN32
   HMODULE library_ = nullptr;
+#else
+#error No SPIRV-Tools library loading provided for the target platform.
 #endif
 
   template <typename FunctionPointer>
   bool LoadLibraryFunction(FunctionPointer& function, const char* name) {
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MACOS
     function = reinterpret_cast<FunctionPointer>(dlsym(library_, name));
 #elif XE_PLATFORM_WIN32
     function =

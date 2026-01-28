@@ -1,0 +1,46 @@
+--- a/third_party/FFmpeg/libavcodec/mpegaudiodsp_template.c
++++ b/third_party/FFmpeg/libavcodec/mpegaudiodsp_template.c
+@@ -272,11 +272,22 @@ static const INTFLOAT icos36h[9] = {
+ };
+ 
+ /* using Lee like decomposition followed by hand coded 9 points DCT */
++#ifdef __APPLE__
++static void imdct36(INTFLOAT *out, INTFLOAT *buf, INTFLOAT *in, INTFLOAT *win)
++#else
+ static void imdct36(INTFLOAT *out, INTFLOAT *buf, SUINTFLOAT *in, INTFLOAT *win)
++#endif
+ {
++#ifdef __APPLE__
++    int i, j;
++    SUINTFLOAT t0, t1, t2, t3, s0, s1, s2, s3;
++    SUINTFLOAT tmp[18], *tmp1;
++    INTFLOAT *in1;
++#else
+     int i, j;
+     SUINTFLOAT t0, t1, t2, t3, s0, s1, s2, s3;
+     SUINTFLOAT tmp[18], *tmp1, *in1;
++#endif
+ 
+     for (i = 17; i >= 1; i--)
+         in[i] += in[i-1];
+@@ -358,13 +369,17 @@ void RENAME(ff_imdct36_blocks)(INTFLOAT *out, INTFLOAT *buf, INTFLOAT *in,
+     int j;
+     for (j=0 ; j < count; j++) {
+         /* apply window & overlap with previous buffer */
+-
++        
+         /* select window */
+         int win_idx = (switch_point && j < 2) ? 0 : block_type;
+         INTFLOAT *win = RENAME(ff_mdct_win)[win_idx + (4 & -(j & 1))];
+-
++        
++#ifdef __APPLE__
+         imdct36(out, buf, in, win);
+-
++#else
++        imdct36(out, buf, (SUINTFLOAT *)in, win);
++#endif
++        
+         in  += 18;
+         buf += ((j&3) != 3 ? 1 : (72-3));
+         out++;

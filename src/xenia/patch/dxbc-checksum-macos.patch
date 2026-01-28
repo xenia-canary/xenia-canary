@@ -1,0 +1,20 @@
+--- a/third_party/dxbc/DXBCChecksum.cpp
++++ b/third_party/dxbc/DXBCChecksum.cpp
+@@ -234,10 +234,17 @@ void MD5Init(MD5_CTX* mdContext, unsigned long pseudoRandomNumber)
+     mdContext->i[0] = mdContext->i[1] = (UINT4)0;
+ 
+     /* Load magic initialization constants */
++#ifdef __APPLE__
++    mdContext->buf[0] = (UINT4)0x67452301 + static_cast<UINT4>(pseudoRandomNumber * 11);
++    mdContext->buf[1] = (UINT4)0xefcdab89 + static_cast<UINT4>(pseudoRandomNumber * 71);
++    mdContext->buf[2] = (UINT4)0x98badcfe + static_cast<UINT4>(pseudoRandomNumber * 37);
++    mdContext->buf[3] = (UINT4)0x10325476 + static_cast<UINT4>(pseudoRandomNumber * 97);
++#else
+     mdContext->buf[0] = (UINT4)0x67452301 + (pseudoRandomNumber * 11);
+     mdContext->buf[1] = (UINT4)0xefcdab89 + (pseudoRandomNumber * 71);
+     mdContext->buf[2] = (UINT4)0x98badcfe + (pseudoRandomNumber * 37);
+     mdContext->buf[3] = (UINT4)0x10325476 + (pseudoRandomNumber * 97);
++#endif
+ }
+ 
+ void MD5Update(MD5_CTX* mdContext, unsigned char* inBuf, unsigned int inLen)

@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cs.c
++++ b/third_party/capstone/cs.c
+@@ -12,7 +12,11 @@
+ #endif
+ 
+ #include <string.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "utils.h"
+ #include "MCRegisterInfo.h"

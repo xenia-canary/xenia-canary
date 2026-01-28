@@ -11,6 +11,12 @@ project("zlib-ng")
     "X86_SSE42",
     "WITH_GZFILEOP",
   })
+
+  if os.istarget("macosx") then
+    buildoptions({
+      "-mxsave",
+    })
+  end
   if os.istarget("windows") then
     defines({
       "X86_SSE2",
@@ -59,5 +65,9 @@ project("zlib-ng")
     end
   end
   if zlibng_build then
-    os.execute("cmake -DZLIB_ENABLE_TESTS=OFF -DWITH_GTEST=OFF "..zlibng_dir.." -B"..zlibng_dir)
+  if os.istarget("macosx") then
+      os.execute('cmake -DZLIB_ENABLE_TESTS=OFF -DWITH_GTEST=OFF "'..zlibng_dir..'" -B"'..zlibng_dir..'"')
+    else
+      os.execute("cmake -DZLIB_ENABLE_TESTS=OFF -DWITH_GTEST=OFF "..zlibng_dir.." -B"..zlibng_dir)
+    end
   end

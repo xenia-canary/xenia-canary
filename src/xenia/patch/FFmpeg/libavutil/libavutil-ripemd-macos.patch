@@ -1,0 +1,19 @@
+--- a/third_party/FFmpeg/libavutil/ripemd.c
++++ b/third_party/FFmpeg/libavutil/ripemd.c
+@@ -547,9 +547,16 @@ void av_ripemd_final(AVRIPEMD* ctx, uint8_t *digest)
+     int i;
+     uint64_t finalcount = av_le2ne64(ctx->count << 3);
+ 
++#ifdef __APPLE__
++    av_ripemd_update(ctx, (const uint8_t*)"\200", 1);
++    while ((ctx->count & 63) != 56)
++        av_ripemd_update(ctx, (const uint8_t*)"", 1);
++#else
+     av_ripemd_update(ctx, "\200", 1);
+     while ((ctx->count & 63) != 56)
+         av_ripemd_update(ctx, "", 1);
++#endif
++
+     av_ripemd_update(ctx, (uint8_t *)&finalcount, 8); /* Should cause a transform() */
+     for (i = 0; i < ctx->digest_len; i++)
+         AV_WL32(digest + i*4, ctx->state[i]);

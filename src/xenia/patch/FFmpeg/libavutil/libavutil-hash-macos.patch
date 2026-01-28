@@ -1,0 +1,64 @@
+--- a/third_party/FFmpeg/libavutil/hash.c
++++ b/third_party/FFmpeg/libavutil/hash.c
+@@ -154,6 +154,7 @@ void av_hash_init(AVHashContext *ctx)
+     case SHA512:  av_sha512_init(ctx->ctx, 512); break;
+     case CRC32:   ctx->crc = UINT32_MAX; break;
+     case ADLER32: ctx->crc = 1; break;
++    default: break;
+     }
+ }
+ 
+@@ -178,7 +179,14 @@ void av_hash_update(AVHashContext *ctx, const uint8_t *src, size_t len)
+     case SHA384:
+     case SHA512:  av_sha512_update(ctx->ctx, src, len); break;
+     case CRC32:   ctx->crc = av_crc(ctx->crctab, ctx->crc, src, len); break;
+-    case ADLER32: ctx->crc = av_adler32_update(ctx->crc, src, len); break;
++    case ADLER32:
++#ifdef __APPLE__
++        ctx->crc = (uint32_t)av_adler32_update(ctx->crc, src, len);
++#else
++        ctx->crc = av_adler32_update(ctx->crc, src, len);
++#endif
++        break;
++    default: break;
+     }
+ }
+ 
+@@ -200,6 +208,7 @@ void av_hash_final(AVHashContext *ctx, uint8_t *dst)
+     case SHA512:  av_sha512_final(ctx->ctx, dst); break;
+     case CRC32:   AV_WB32(dst, ctx->crc ^ UINT32_MAX); break;
+     case ADLER32: AV_WB32(dst, ctx->crc); break;
++    default: break;
+     }
+ }
+ 
+@@ -221,7 +230,11 @@ void av_hash_final_hex(struct AVHashContext *ctx, uint8_t *dst, int size)
+ 
+     av_hash_final(ctx, buf);
+     for (i = 0; i < FFMIN(rsize, size / 2); i++)
++#ifdef __APPLE__
++        snprintf((char *)(dst + i * 2), size - i * 2, "%02x", buf[i]);
++#else
+         snprintf(dst + i * 2, size - i * 2, "%02x", buf[i]);
++#endif
+ }
+ 
+ void av_hash_final_b64(struct AVHashContext *ctx, uint8_t *dst, int size)
+@@ -230,9 +243,17 @@ void av_hash_final_b64(struct AVHashContext *ctx, uint8_t *dst, int size)
+     unsigned rsize = av_hash_get_size(ctx), osize;
+ 
+     av_hash_final(ctx, buf);
++#ifdef __APPLE__
++    av_base64_encode((char *)b64, sizeof(b64), buf, rsize);
++#else
+     av_base64_encode(b64, sizeof(b64), buf, rsize);
++#endif
+     osize = AV_BASE64_SIZE(rsize);
++#ifdef __APPLE__
++    memcpy(dst, (const uint8_t *)b64, FFMIN(osize, size));
++#else
+     memcpy(dst, b64, FFMIN(osize, size));
++#endif
+     if (size < osize)
+         dst[size - 1] = 0;
+ }

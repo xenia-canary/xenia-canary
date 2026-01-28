@@ -1,0 +1,67 @@
+--- a/third_party/FFmpeg/libavutil/parseutils.c
++++ b/third_party/FFmpeg/libavutil/parseutils.c
+@@ -160,10 +160,18 @@ int av_parse_video_size(int *width_ptr, int *height_ptr, const char *str)
+         }
+     }
+     if (i == n) {
++#ifdef __APPLE__
++        width = (int)strtol(str, (void*)&p, 10);
++#else
+         width = strtol(str, (void*)&p, 10);
++#endif
+         if (*p)
+             p++;
++#ifdef __APPLE__
++        height = (int)strtol(p, (void*)&p, 10);
++#else
+         height = strtol(p, (void*)&p, 10);
++#endif
+ 
+         /* trailing extraneous data detected, like in 123x345foobar */
+         if (*p)
+@@ -364,12 +372,21 @@ int av_parse_color(uint8_t *rgba_color, const char *color_string, int slen,
+         hex_offset = 2;
+ 
+     if (slen < 0)
++#ifdef __APPLE__
++        slen = (int)strlen(color_string);
++#else
+         slen = strlen(color_string);
++#endif
+     av_strlcpy(color_string2, color_string + hex_offset,
+                FFMIN(slen-hex_offset+1, sizeof(color_string2)));
+     if ((tail = strchr(color_string2, ALPHA_SEP)))
+         *tail++ = 0;
++#ifdef __APPLE__
++    len = (int)strlen(color_string2);
++#else
+     len = strlen(color_string2);
++#endif
++
+     rgba_color[3] = 255;
+ 
+     if (!av_strcasecmp(color_string2, "random") || !av_strcasecmp(color_string2, "bikeshed")) {
+@@ -381,7 +398,11 @@ int av_parse_color(uint8_t *rgba_color, const char *color_string, int slen,
+     } else if (hex_offset ||
+                strspn(color_string2, "0123456789ABCDEFabcdef") == len) {
+         char *tail;
++#ifdef __APPLE__
++        unsigned int rgba = (unsigned int)strtoul(color_string2, &tail, 16);
++#else
+         unsigned int rgba = strtoul(color_string2, &tail, 16);
++#endif
+ 
+         if (*tail || (len != 6 && len != 8)) {
+             av_log(log_ctx, AV_LOG_ERROR, "Invalid 0xRRGGBB[AA] color string: '%s'\n", color_string2);
+@@ -476,7 +497,11 @@ static int date_get_month(const char **pp) {
+     for (; i < 12; i++) {
+         if (!av_strncasecmp(*pp, months[i], 3)) {
+             const char *mo_full = months[i] + 3;
++#ifdef __APPLE__
++            int len = (int)strlen(mo_full);
++#else
+             int len = strlen(mo_full);
++#endif
+             *pp += 3;
+             if (len > 0 && !av_strncasecmp(*pp, mo_full, len))
+                 *pp += len;

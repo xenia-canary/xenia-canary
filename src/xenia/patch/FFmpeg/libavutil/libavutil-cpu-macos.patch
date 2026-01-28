@@ -1,0 +1,26 @@
+--- a/third_party/FFmpeg/libavutil/cpu.c
++++ b/third_party/FFmpeg/libavutil/cpu.c
+@@ -47,7 +47,11 @@
+ #include <unistd.h>
+ #endif
+ 
++#ifdef __APPLE__
++static atomic_int cpu_flags = -1;
++#else
+ static atomic_int cpu_flags = ATOMIC_VAR_INIT(-1);
++#endif
+ 
+ static int get_cpu_flags(void)
+ {
+@@ -269,7 +273,11 @@ int av_parse_cpu_caps(unsigned *flags, const char *s)
+     };
+     const AVClass *pclass = &class;
+ 
++#ifdef __APPLE__
++    return av_opt_eval_flags(&pclass, &cpuflags_opts[0], s, (int *)flags);
++#else
+     return av_opt_eval_flags(&pclass, &cpuflags_opts[0], s, flags);
++#endif
+ }
+ 
+ int av_cpu_count(void)

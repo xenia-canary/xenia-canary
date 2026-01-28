@@ -10,7 +10,11 @@
 #ifndef XENIA_UI_SURFACE_GNULINUX_H_
 #define XENIA_UI_SURFACE_GNULINUX_H_
 
+#ifdef __APPLE__
+#include "xcb/xcb.h"
+#else
 #include <xcb/xcb.h>
+#endif
 
 #include "xenia/ui/surface.h"
 

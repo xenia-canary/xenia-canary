@@ -338,7 +338,11 @@ X_STATUS VirtualFileSystem::ExtractContentFile(Entry* entry,
                                                uint64_t& progress,
                                                bool extract_to_root) {
   // Allocate a buffer when needed.
+#ifdef __APPLE__
+  size_t buffer_size __attribute__((unused)) = 0;
+#else
   size_t buffer_size = 0;
+#endif
   uint8_t* buffer = nullptr;
 
   XELOGI("Extracting file: {}", entry->path());
