@@ -443,6 +443,16 @@ dword_result_t NtRemoveIoCompletion_entry(
 DECLARE_XBOXKRNL_EXPORT2(NtRemoveIoCompletion, kFileSystem, kImplemented,
                          kHighFrequency);
 
+dword_result_t NtCancelIoFile_entry(dword_t handle) {
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(handle);
+  if (!file) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(NtCancelIoFile, kFileSystem, kStub);
+
 dword_result_t NtQueryFullAttributesFile_entry(
     pointer_t<X_OBJECT_ATTRIBUTES> obj_attribs,
     pointer_t<X_FILE_NETWORK_OPEN_INFORMATION> file_info) {
