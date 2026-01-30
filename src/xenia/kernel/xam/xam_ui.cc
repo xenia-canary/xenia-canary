@@ -390,7 +390,7 @@ static dword_result_t XamShowMessageBoxUi(
 }
 
 dword_result_t XamIsUIActive_entry() {
-  return kernel_state()->xam_state()->xam_dialogs_shown_ > 0;
+  return kernel_state()->xam_state()->IsUIActive();
 }
 DECLARE_XAM_EXPORT2(XamIsUIActive, kUI, kImplemented, kHighFrequency);
 

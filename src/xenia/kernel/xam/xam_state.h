@@ -54,10 +54,13 @@ class XamState {
   bool IsUserSignedIn(uint32_t user_index) const;
   bool IsUserSignedIn(uint64_t xuid) const;
 
-  //
   void LoadSpaInfo(const SpaInfo* info);
 
   void SetContentRegisterCallback(uint32_t callback);
+
+  bool IsUIActive() const {
+    return xam_dialogs_shown_ > 0 || xam_nui_dialogs_shown_ > 0;
+  }
 
   X_DASH_APP_INFO dash_app_info_ = {};
   uint32_t dash_backstack_nodes_count_ = 0;

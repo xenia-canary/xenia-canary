@@ -107,7 +107,7 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
-  if (kernel_state()->xam_state()->xam_dialogs_shown_ > 0) {
+  if (kernel_state()->xam_state()->IsUIActive()) {
     return X_ERROR_SUCCESS;
   }
 
@@ -181,7 +181,7 @@ dword_result_t XamInputGetKeystrokeEx_entry(
 
   keystroke.Zero();
 
-  if (kernel_state()->xam_state()->xam_dialogs_shown_ > 0) {
+  if (kernel_state()->xam_state()->IsUIActive()) {
     return X_ERROR_SUCCESS;
   }
 
