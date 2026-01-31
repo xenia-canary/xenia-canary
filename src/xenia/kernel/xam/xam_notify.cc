@@ -10,7 +10,9 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xnotifylistener.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -27,7 +29,7 @@ uint32_t xeXamNotifyCreateListener(uint64_t mask, uint32_t is_system,
 
   auto listener =
       object_ref<XNotifyListener>(new XNotifyListener(kernel_state()));
-  listener->Initialize(mask, max_version);
+  listener->Initialize(mask, is_system, max_version);
 
   // Handle ref is incremented, so return that.
   uint32_t handle = listener->handle();
@@ -37,7 +39,10 @@ uint32_t xeXamNotifyCreateListener(uint64_t mask, uint32_t is_system,
 
 dword_result_t XamNotifyCreateListener_entry(qword_t mask,
                                              dword_t max_version) {
-  return xeXamNotifyCreateListener(mask, 0, max_version);
+  auto thread = kernel::XThread::GetCurrentThread();
+  auto ctx = thread->thread_state()->context();
+  auto type = xboxkrnl::xeKeGetCurrentProcessType(ctx);
+  return xeXamNotifyCreateListener(mask, type == 2, max_version);
 }
 DECLARE_XAM_EXPORT1(XamNotifyCreateListener, kNone, kImplemented);
 
