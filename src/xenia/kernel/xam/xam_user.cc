@@ -88,8 +88,6 @@ dword_result_t XamUserGetIndexFromXUID_entry(qword_t xuid, dword_t flags,
 DECLARE_XAM_EXPORT1(XamUserGetIndexFromXUID, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
-  // Yield, as some games spam this.
-  xe::threading::MaybeYield();
   uint32_t signin_state = 0;
   if (user_index >= XUserMaxUserCount) {
     return signin_state;
