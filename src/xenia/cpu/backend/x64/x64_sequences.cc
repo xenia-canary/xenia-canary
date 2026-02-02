@@ -563,12 +563,23 @@ struct MAX_F64 : Sequence<MAX_F64, I<OPCODE_MAX, F64Op, F64Op, F64Op>> {
 struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    // if 0 and -0, return 0! opposite of minfp
+    // vmaxps returns second operand on equal or NaN, so we do both
+    // orderings and combine. vandps handles +0/-0 correctly (returns +0),
+    // vorps handles NaN correctly (propagates NaN). Use vcmpunordps to
+    // blend between them.
     auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     e.vmaxps(e.xmm2, src1, src2);
     e.vmaxps(e.xmm3, src2, src1);
-    e.vorps(i.dest, e.xmm2, e.xmm3);
+    // xmm0/xmm1 are now free (src1/src2 already consumed by vmaxps)
+    e.vcmpunordps(e.xmm0, e.xmm2, e.xmm3);
+    e.vorps(e.xmm1, e.xmm2, e.xmm3);
+    // PPC vmaxfp converts sNaN to qNaN; x86 vmaxps does not. Force the
+    // quiet bit in the OR result. This is safe to do unconditionally since
+    // the blend below only uses xmm1 for NaN lanes.
+    e.vorps(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMQNaN));
+    e.vandps(i.dest, e.xmm2, e.xmm3);
+    e.vblendvps(i.dest, i.dest, e.xmm1, e.xmm0);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
