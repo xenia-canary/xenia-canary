@@ -304,15 +304,6 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
 }
 DECLARE_XBOXKRNL_EXPORT1(NtFreeVirtualMemory, kMemory, kImplemented);
 
-struct X_MEMORY_BASIC_INFORMATION {
-  be<uint32_t> base_address;
-  be<uint32_t> allocation_base;
-  be<uint32_t> allocation_protect;
-  be<uint32_t> region_size;
-  be<uint32_t> state;
-  be<uint32_t> protect;
-  be<uint32_t> type;
-};
 // chrispy: added region_type ? guessed name, havent seen any except 0 used
 dword_result_t NtQueryVirtualMemory_entry(
     dword_t base_address,
@@ -667,16 +658,8 @@ dword_result_t MmMapIoSpace_entry(dword_t unk0, lpvoid_t src_address,
 }
 DECLARE_XBOXKRNL_EXPORT1(MmMapIoSpace, kMemory, kImplemented);
 
-struct X_POOL_ALLOC_HEADER {
-  uint8_t unk_0;
-  uint8_t unk_1;
-  uint8_t unk_2;  // set this to 170
-  uint8_t unk_3;
-  xe::be<uint32_t> tag;
-};
-
 uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
-                                   uint32_t tag, uint32_t zero) {
+                                   uint32_t tag, uint32_t pool_selector) {
   if (size <= 0xFD8) {
     uint32_t adjusted_size = size + sizeof(X_POOL_ALLOC_HEADER);
 
@@ -694,9 +677,9 @@ uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
 }
 
 dword_result_t ExAllocatePoolTypeWithTag_entry(dword_t size, dword_t tag,
-                                               dword_t zero,
+                                               dword_t pool_selector,
                                                const ppc_context_t& context) {
-  return xeAllocatePoolTypeWithTag(context, size, tag, zero);
+  return xeAllocatePoolTypeWithTag(context, size, tag, pool_selector);
 }
 DECLARE_XBOXKRNL_EXPORT1(ExAllocatePoolTypeWithTag, kMemory, kImplemented);
 
