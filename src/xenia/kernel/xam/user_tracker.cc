@@ -559,7 +559,7 @@ std::optional<UserSetting> UserTracker::GetSetting(UserProfile* user,
     return gpd_setting.value();
   }
 
-  return UserSetting::GetDefaultSetting(user, setting_id);
+  return UserSetting::GetDefaultSetting(setting_id);
 }
 
 bool UserTracker::GetUserSetting(uint64_t xuid, uint32_t title_id,

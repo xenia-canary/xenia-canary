@@ -16,6 +16,7 @@
 
 #include "xenia/xbox.h"
 
+#include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/user_settings.h"
 
 namespace xe {

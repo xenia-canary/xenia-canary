@@ -12,20 +12,10 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
-#include "xenia/kernel/xam/xdbf/gpd_info.h"
 
 namespace xe {
 namespace kernel {
 namespace xam {
-
-const static std::array<UserSetting, 3> default_setting_values = {
-    UserSetting(UserSettingId::XPROFILE_OPTION_CONTROLLER_VIBRATION, 3),
-    UserSetting(
-        UserSettingId::XPROFILE_GAMER_TIER,
-        X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold),
-    UserSetting(
-        UserSettingId::XPROFILE_GAMERCARD_PICTURE_KEY,
-        xe::string_util::read_u16string_and_swap(u"FFFE07D10002000200010002"))};
 
 UserSetting::UserSetting(const UserSetting& setting) : UserData(setting) {
   setting_id_ = setting.setting_id_;
@@ -52,8 +42,7 @@ UserSetting::UserSetting(const X_XDBF_GPD_SETTING_HEADER* profile_setting,
           static_cast<UserSettingId>(profile_setting->setting_id.get())),
       setting_source_(X_USER_PROFILE_SETTING_SOURCE::TITLE) {}
 
-std::optional<UserSetting> UserSetting::GetDefaultSetting(
-    const UserProfile* user, uint32_t setting_id) {
+std::optional<UserSetting> UserSetting::GetDefaultSetting(uint32_t setting_id) {
   for (const auto& setting : default_setting_values) {
     if (setting.get_setting_id() == setting_id) {
       return std::make_optional<UserSetting>(setting);

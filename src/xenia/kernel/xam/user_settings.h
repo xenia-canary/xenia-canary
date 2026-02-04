@@ -15,15 +15,17 @@
 #include <variant>
 #include <vector>
 
-#include "xenia/kernel/xam/profile_manager.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/xam/user_data.h"
-#include "xenia/kernel/xam/user_profile.h"
-
-#include "xenia/xbox.h"
+#include "xenia/kernel/xam/xam.h"
+#include "xenia/kernel/xam/xdbf/gpd_info.h"
 
 namespace xe {
 namespace kernel {
 namespace xam {
+
+enum class X_USER_PROFILE_SETTING_SOURCE : uint32_t;
+struct X_USER_PROFILE_SETTING;
 
 constexpr uint32_t SettingKey(X_USER_DATA_TYPE type, uint16_t size,
                               uint16_t id) {
@@ -478,8 +480,7 @@ class UserSetting : public UserData {
   UserSetting(const X_XDBF_GPD_SETTING_HEADER* profile_setting,
               std::span<const uint8_t> extended_data);
 
-  static std::optional<UserSetting> GetDefaultSetting(const UserProfile* user,
-                                                      uint32_t setting_id);
+  static std::optional<UserSetting> GetDefaultSetting(uint32_t setting_id);
   void WriteToGuest(X_USER_PROFILE_SETTING* setting_ptr,
                     uint32_t& extended_data_address);
   std::vector<uint8_t> Serialize() const;
@@ -520,6 +521,15 @@ class UserSetting : public UserData {
     return is_title_specific(static_cast<uint32_t>(setting_id_));
   }
 };
+
+const static std::array<UserSetting, 3> default_setting_values = {
+    UserSetting(UserSettingId::XPROFILE_OPTION_CONTROLLER_VIBRATION, 3),
+    UserSetting(
+        UserSettingId::XPROFILE_GAMER_TIER,
+        X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold),
+    UserSetting(
+        UserSettingId::XPROFILE_GAMERCARD_PICTURE_KEY,
+        xe::string_util::read_u16string_and_swap(u"FFFE07D10002000200010002"))};
 
 }  // namespace xam
 }  // namespace kernel
