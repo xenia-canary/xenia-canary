@@ -74,11 +74,11 @@ dword_result_t XamAvatarGetManifestLocalUser_entry(
     const uint32_t avatar_info_id =
         static_cast<uint32_t>(UserSettingId::XPROFILE_GAMERCARD_AVATAR_INFO_1);
 
+    // Default avatar setting will be provided if profile doesn't have one.
     const std::optional<UserSetting> avatar_info_setting =
         kernel_state()->xam_state()->user_tracker()->GetSetting(
             user_profile, kDashboardID, avatar_info_id);
 
-    // Profile doesn't have avatar info setting
     if (!avatar_info_setting.has_value()) {
       extended_error = X_E_FAIL;
       return X_ERROR_FUNCTION_FAILED;
@@ -86,6 +86,11 @@ dword_result_t XamAvatarGetManifestLocalUser_entry(
 
     Avatar avatar =
         Avatar::ParseManifest(avatar_info_setting->get_extended_data());
+
+    // Default avatar has a null XUID, we can set it here.
+    if (!avatar.GetOfflineXUID()) {
+      avatar.SetXUID(user_profile->xuid());
+    }
 
     *avatar_metadata_ptr =
         *reinterpret_cast<X_AVATAR_METADATA*>(avatar.GetManifest().data());
@@ -212,13 +217,33 @@ dword_result_t XamAvatarGetMetadataRandom_entry(
   X_AVATAR_BODY_TYPE gender_type =
       static_cast<X_AVATAR_BODY_TYPE>(body_type.value());
 
-  if (overlapped_ptr) {
-    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
-                                                X_ERROR_SUCCESS);
-    return X_ERROR_IO_PENDING;
+  auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    extended_error = X_ERROR_SUCCESS;
+    length = 0;
+
+    // Instead of generating an avatar provide a default avatar.
+    if (gender_type == X_AVATAR_BODY_TYPE::Male) {
+      const Avatar male_avatar = Avatar::ParseManifest(
+          {avatar_metadata_ptr->manifest, kMaxUserDataSize});
+
+      for (uint32_t i = 0; i < avatars_count; i++) {
+        avatar_metadata_ptr[i] = *reinterpret_cast<X_AVATAR_METADATA*>(
+            male_avatar.GetManifest().data());
+      }
+    }
+
+    return X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    X_RESULT result = run(extended_error, length);
+
+    return result == X_ERROR_SUCCESS ? result : extended_error;
   }
 
-  return X_STATUS_SUCCESS;
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+  return X_ERROR_IO_PENDING;
 }
 DECLARE_XAM_EXPORT1(XamAvatarGetMetadataRandom, kAvatars, kStub);
 

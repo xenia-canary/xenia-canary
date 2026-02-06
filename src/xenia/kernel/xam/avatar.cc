@@ -17,6 +17,20 @@ namespace xam {
 
 Avatar::Avatar() {}
 
+void Avatar::SetXUID(uint64_t xuid) {
+  if (xuid == offline_xuid_) {
+    return;
+  }
+
+  const uint32_t offline_xuid_offset = 0x380;
+
+  xe::be<uint64_t>* offline_xuid = reinterpret_cast<xe::be<uint64_t>*>(
+      manifest.data() + offline_xuid_offset);
+
+  *offline_xuid = xuid;
+  offline_xuid_ = xuid;
+}
+
 X_AVATAR_BODY_TYPE Avatar::GetBodyType() const {
   X_AVATAR_ASSET_ID asset_id = GetBodyComponent().asset_id;
 
