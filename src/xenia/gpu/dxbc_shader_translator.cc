@@ -17,7 +17,6 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/math.h"
 #include "xenia/gpu/dxbc_shader.h"
-#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/graphics_provider.h"
 
@@ -1379,10 +1378,7 @@ void DxbcShaderTranslator::PostTranslation() {
       shader_binding.mag_filter = translator_binding.mag_filter;
       shader_binding.min_filter = translator_binding.min_filter;
       shader_binding.mip_filter = translator_binding.mip_filter;
-      shader_binding.aniso_filter =
-          cvars::anisotropic_override > -1 && cvars::anisotropic_override < 6
-              ? xenos::AnisoFilter(cvars::anisotropic_override)
-              : translator_binding.aniso_filter;
+      shader_binding.aniso_filter = translator_binding.aniso_filter;
     }
   }
 }

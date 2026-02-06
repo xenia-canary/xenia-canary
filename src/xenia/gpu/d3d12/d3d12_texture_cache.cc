@@ -696,41 +696,55 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
     parameters.border_color = xenos::BorderColor::k_ABGR_Black;
   }
 
-  uint32_t mip_min_level;
-  texture_util::GetSubresourcesFromFetchConstant(fetch, nullptr, nullptr,
-                                                 nullptr, nullptr, nullptr,
-                                                 &mip_min_level, nullptr);
+  uint32_t mip_min_level, mip_max_level;
+  texture_util::GetSubresourcesFromFetchConstant(
+      fetch, nullptr, nullptr, nullptr, nullptr, nullptr, &mip_min_level,
+      &mip_max_level);
   parameters.mip_min_level = mip_min_level;
+  bool has_mips = mip_max_level > mip_min_level;
+  xenos::TextureFilter mag_filter =
+      binding.mag_filter == xenos::TextureFilter::kUseFetchConst
+          ? fetch.mag_filter
+          : binding.mag_filter;
+  xenos::TextureFilter min_filter =
+      binding.min_filter == xenos::TextureFilter::kUseFetchConst
+          ? fetch.min_filter
+          : binding.min_filter;
+  xenos::TextureFilter mip_filter =
+      binding.mip_filter == xenos::TextureFilter::kUseFetchConst
+          ? fetch.mip_filter
+          : binding.mip_filter;
+  bool min_mag_linear = (mag_filter == xenos::TextureFilter::kLinear) &&
+                        (min_filter == xenos::TextureFilter::kLinear);
+  bool mip_filter_bilinear_or_trilinear =
+      mip_filter == xenos::TextureFilter::kPoint ||
+      mip_filter == xenos::TextureFilter::kLinear;
+  bool mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
   // high cache miss count here, prefetch fetch earlier
   //  TODO(Triang3l): Disable filtering for texture formats not supporting it.
   xenos::AnisoFilter aniso_filter =
       binding.aniso_filter == xenos::AnisoFilter::kUseFetchConst
           ? fetch.aniso_filter
           : binding.aniso_filter;
+  // Apply anisotropic override, but only for mipmapped textures
+  // that are already using bilinear/trilinear filtering.
+  if (cvars::anisotropic_override > -1 && cvars::anisotropic_override < 6 &&
+      has_mips && !mip_base_map && min_mag_linear &&
+      mip_filter_bilinear_or_trilinear) {
+    aniso_filter = xenos::AnisoFilter(cvars::anisotropic_override);
+  }
   aniso_filter = std::min(aniso_filter, xenos::AnisoFilter::kMax_16_1);
   parameters.aniso_filter = aniso_filter;
-  xenos::TextureFilter mip_filter =
-      binding.mip_filter == xenos::TextureFilter::kUseFetchConst
-          ? fetch.mip_filter
-          : binding.mip_filter;
   if (aniso_filter != xenos::AnisoFilter::kDisabled) {
     parameters.mag_linear = 1;
     parameters.min_linear = 1;
     parameters.mip_linear = 1;
   } else {
-    xenos::TextureFilter mag_filter =
-        binding.mag_filter == xenos::TextureFilter::kUseFetchConst
-            ? fetch.mag_filter
-            : binding.mag_filter;
     parameters.mag_linear = mag_filter == xenos::TextureFilter::kLinear;
-    xenos::TextureFilter min_filter =
-        binding.min_filter == xenos::TextureFilter::kUseFetchConst
-            ? fetch.min_filter
-            : binding.min_filter;
     parameters.min_linear = min_filter == xenos::TextureFilter::kLinear;
     parameters.mip_linear = mip_filter == xenos::TextureFilter::kLinear;
   }
-  parameters.mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
+  parameters.mip_base_map = mip_base_map;
 
   return parameters;
 }

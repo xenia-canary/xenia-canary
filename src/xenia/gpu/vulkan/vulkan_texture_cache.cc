@@ -680,14 +680,24 @@ VulkanTextureCache::SamplerParameters VulkanTextureCache::GetSamplerParameters(
       binding.aniso_filter == xenos::AnisoFilter::kUseFetchConst
           ? fetch.aniso_filter
           : binding.aniso_filter;
-  parameters.aniso_filter = std::min(aniso_filter, max_anisotropy_);
   parameters.mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
 
-  uint32_t mip_min_level;
-  texture_util::GetSubresourcesFromFetchConstant(fetch, nullptr, nullptr,
-                                                 nullptr, nullptr, nullptr,
-                                                 &mip_min_level, nullptr);
+  uint32_t mip_min_level, mip_max_level;
+  texture_util::GetSubresourcesFromFetchConstant(
+      fetch, nullptr, nullptr, nullptr, nullptr, nullptr, &mip_min_level,
+      &mip_max_level);
   parameters.mip_min_level = mip_min_level;
+  bool has_mips = mip_max_level > mip_min_level;
+  // Apply anisotropic override, but only for mipmapped textures
+  // that are already using bilinear/trilinear filtering.
+  if (cvars::anisotropic_override > -1 && cvars::anisotropic_override < 6 &&
+      has_mips && !parameters.mip_base_map && parameters.mag_linear &&
+      parameters.min_linear &&
+      (mip_filter == xenos::TextureFilter::kPoint ||
+       mip_filter == xenos::TextureFilter::kLinear)) {
+    aniso_filter = xenos::AnisoFilter(cvars::anisotropic_override);
+  }
+  parameters.aniso_filter = std::min(aniso_filter, max_anisotropy_);
 
   return parameters;
 }

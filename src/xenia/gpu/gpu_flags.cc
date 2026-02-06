@@ -72,8 +72,10 @@ DEFINE_int32(
     "GPU");
 
 DEFINE_int32(anisotropic_override, -1,
-             "Level of anisotropic filtering enforced on all texture fetch "
-             "instructions.\n"
+             "Forces anisotropic filtering (AF) for eligible textures.\n"
+             "Higher values keep textures sharper at oblique angles at the "
+             "cost of GPU bandwidth, though most GPUs handle up to 16x fine.\n"
+             "In rare cases, forcing AF can introduce visual artifacts.\n"
              " -1 = No override\n"
              "  0 = Disable anisotropic filtering\n"
              "  1 = Force 1x anisotropic filtering\n"
