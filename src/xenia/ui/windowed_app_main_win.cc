@@ -13,6 +13,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/main_win.h"
 #include "xenia/base/platform_win.h"
+#include "xenia/kernel/kernel_state.cc"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_win.h"
 
@@ -179,11 +180,26 @@ static bool exception_pointers_handler(HostExceptionReport* report) {
 #endif
       XE_BUILD_BRANCH "@" XE_BUILD_COMMIT_SHORT " on " XE_BUILD_DATE);
 
+  std::string title_info = "Title not started yet.";
+
+  if (xe::kernel::kernel_state()) {
+    if (xe::kernel::kernel_state()->emulator()->is_title_open()) {
+      const uint32_t title_id = xe::kernel::kernel_state()->title_id();
+      const std::string title_name =
+          xe::kernel::kernel_state()->emulator()->title_name();
+      const std::string title_version =
+          xe::kernel::kernel_state()->emulator()->title_version();
+
+      title_info =
+          fmt::format("{}({:08X}) - {}", title_name, title_id, title_version);
+    }
+  }
+
   const std::string except_message = fmt::format(
-      "Exception encountered!\nBuild: {}\nException address: "
-      "{}\nStackpointer: "
-      "{}\nInstruction pointer: {}\nExceptionCode: 0x{} ({})\n",
-      build.c_str(), report->GetFormattedAddress(exception_addr),
+      "Exception encountered!\nTitle Info: {}\nBuild: {}\nException address: "
+      "{}\nStackpointer: {}\nInstruction pointer: {}\nExceptionCode: 0x{} "
+      "({})\n",
+      title_info, build.c_str(), report->GetFormattedAddress(exception_addr),
       report->GetFormattedAddress(last_stackpointer),
       report->GetFormattedAddress(last_rip), except_code,
       HostExceptionReport::ChompNewlines(Ntstatus_msg(except_code)));
