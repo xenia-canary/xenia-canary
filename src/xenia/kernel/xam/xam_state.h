@@ -58,9 +58,7 @@ class XamState {
 
   void SetContentRegisterCallback(uint32_t callback);
 
-  bool IsUIActive() const {
-    return xam_dialogs_shown_ > 0 || xam_nui_dialogs_shown_ > 0;
-  }
+  bool IsUIActive() const { return is_xam_dialog_present_.load(); }
 
   uint32_t GetLanguageFallbackAddress(uint32_t index) const {
     return language_fallback_address_[index];
@@ -75,8 +73,7 @@ class XamState {
   X_DASH_BACKSTACK_DATA dash_backstack_data_[2] = {};
   uint32_t content_register_callback = 0;
 
-  std::atomic<int32_t> xam_dialogs_shown_ = {0};
-  std::atomic<int32_t> xam_nui_dialogs_shown_ = {0};
+  std::atomic<bool> is_xam_dialog_present_ = false;
 
  private:
   void LoadLanguageLocaleFallback();

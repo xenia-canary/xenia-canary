@@ -1587,19 +1587,27 @@ void EmulatorWindow::ToggleDisplayConfigDialog() {
 void EmulatorWindow::ToggleProfilesConfigDialog() {
   if (!profile_config_dialog_) {
     disable_hotkeys_ = true;
-    emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI, 1);
+
+    if (emulator_->kernel_state()->xam_state()->IsUIActive()) {
+      return;
+    }
+
+    emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI,
+                                                     true);
+    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
+
     profile_config_dialog_ =
         std::make_unique<ProfileConfigDialog>(imgui_drawer_.get(), this);
-    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_++;
   } else {
     disable_hotkeys_ = false;
-    emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI, 0);
+    emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI,
+                                                     false);
     if (profile_config_dialog_->IsClosing()) {
       profile_config_dialog_.release();
     } else {
       profile_config_dialog_.reset();
     }
-    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_--;
+    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
   }
 }
 
@@ -2227,7 +2235,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
   if (profile_config_dialog_) {
     profile_config_dialog_.reset();
-    emulator_->kernel_state()->xam_state()->xam_dialogs_shown_--;
+    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
   }
 
   if (display_config_dialog_) {
@@ -2376,7 +2384,7 @@ void EmulatorWindow::ClearDialogs() {
   }
 
   imgui_drawer_.get()->ClearDialogs();
-  emulator_->kernel_state()->xam_state()->xam_dialogs_shown_ = 0;
+  emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
 }
 
 }  // namespace app
