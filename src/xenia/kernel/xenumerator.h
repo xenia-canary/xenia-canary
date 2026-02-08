@@ -51,6 +51,34 @@ struct X_ENUMERATE_PARAM {
 };
 static_assert_size(X_ENUMERATE_PARAM, 0x1C);
 
+struct X_ENUMERATOR_FRIENDS_STRUCT {
+  xe::be<uint64_t> xuid;                    // 0x00 sz:0x8
+  xe::be<uint32_t> friends_amount;          // 0x08 sz:0x4
+  xe::be<uint32_t> friends_starting_index;  // 0x0C sz:0x4
+};
+static_assert_size(X_ENUMERATOR_FRIENDS_STRUCT, 0x10);
+
+struct X_ENUMERATOR_ALLOC_FRIENDS_ENUM : X_KENUMERATOR,
+                                         X_ENUMERATOR_FRIENDS_STRUCT {};
+static_assert_size(X_ENUMERATOR_ALLOC_FRIENDS_ENUM,
+                   sizeof(X_ENUMERATOR_FRIENDS_STRUCT) + sizeof(X_KENUMERATOR));
+
+struct X_ENUMERATOR_PRESENCE_STRUCT {
+  xe::be<uint32_t> enum_user_index;  // 0x00 sz:0x4
+  xe::be<uint32_t> num_peers;        // 0x04 sz:0x4
+  xe::be<uint32_t> peer_xuids_ptr;   // 0x08 sz:0x4
+  uint8_t unk[0x31C];
+  xe::be<uint32_t> starting_index;  // 0x328 sz:0x4
+  xe::be<uint32_t> max_peers;       // 0x32c sz:0x4
+};
+static_assert_size(X_ENUMERATOR_PRESENCE_STRUCT, 0x330);
+
+struct X_ENUMERATOR_ALLOC_PRESENCE_ENUM : X_KENUMERATOR,
+                                          X_ENUMERATOR_PRESENCE_STRUCT {};
+static_assert_size(X_ENUMERATOR_ALLOC_PRESENCE_ENUM,
+                   sizeof(X_ENUMERATOR_PRESENCE_STRUCT) +
+                       sizeof(X_KENUMERATOR));
+
 struct X_KENUMERATOR_CONTENT_AGGREGATE {
   be<uint32_t> magic;
   be<uint32_t> handle;
