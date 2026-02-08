@@ -10,6 +10,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xnet.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -20,7 +21,7 @@ dword_result_t XamPartyGetUserList_entry(dword_t player_count,
                                          lpdword_t party_list) {
   // 5345085D wants specifically this code to skip loading party data.
   // This code is not documented in NT_STATUS code list
-  return 0x807D0003;
+  return X_PARTY_E_NOT_IN_PARTY;
 }
 DECLARE_XAM_EXPORT1(XamPartyGetUserList, kNone, kStub);
 

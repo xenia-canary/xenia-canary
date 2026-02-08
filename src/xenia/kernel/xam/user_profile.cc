@@ -198,6 +198,14 @@ bool UserProfile::RemoveGpd(const uint32_t title_id) {
   return true;
 }
 
+bool UserProfile::IsPlayerMuted(uint64_t xuid) const {
+  const auto it = std::find_if(
+      muted_players_.cbegin(), muted_players_.cend(),
+      [xuid](const uint64_t muted_xuid) { return muted_xuid == xuid; });
+
+  return it != muted_players_.end();
+}
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
