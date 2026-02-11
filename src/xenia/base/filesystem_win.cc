@@ -60,6 +60,8 @@ std::filesystem::path GetUserFolder() {
   return result;
 }
 
+std::filesystem::path GetStateFolder() { return GetUserFolder(); }
+
 bool CreateEmptyFile(const std::filesystem::path& path) {
   auto handle = CreateFileW(path.c_str(), 0, 0, nullptr, CREATE_ALWAYS,
                             FILE_ATTRIBUTE_NORMAL, nullptr);

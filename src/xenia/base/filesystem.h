@@ -40,6 +40,9 @@ std::filesystem::path GetExecutableFolder();
 // Get user folder.
 std::filesystem::path GetUserFolder();
 
+// Get user state folder (XDG_STATE_HOME or ~/.local/state on Linux).
+std::filesystem::path GetStateFolder();
+
 // Creates the parent folder of the specified path if needed.
 // This can be used to ensure the destination path for a new file exists before
 // attempting to create it.

@@ -75,6 +75,23 @@ std::filesystem::path GetUserFolder() {
   return std::filesystem::path(home) / ".local" / "share";
 }
 
+std::filesystem::path GetStateFolder() {
+  char* state_home = std::getenv("XDG_STATE_HOME");
+  if (state_home && state_home[0]) {
+    return std::string(state_home);
+  }
+  char* home = std::getenv("HOME");
+  if (!home) {
+    struct passwd pw1;
+    struct passwd* pw;
+    char buf[4096];
+    getpwuid_r(getuid(), &pw1, buf, sizeof(buf), &pw);
+    assert(&pw1 == pw);
+    home = pw->pw_dir;
+  }
+  return std::filesystem::path(home) / ".local" / "state";
+}
+
 FILE* OpenFile(const std::filesystem::path& path, const std::string_view mode) {
   return fopen(path.c_str(), std::string(mode).c_str());
 }
