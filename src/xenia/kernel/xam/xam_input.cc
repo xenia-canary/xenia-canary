@@ -16,6 +16,8 @@
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/xbox.h"
 
+DECLARE_bool(allow_mic_initialization);
+
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -238,7 +240,11 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
   *out_ptr = 0;
   if (kernel_state()->xam_state()->IsUserSignedIn(user_index) ||
       (user_index & XUserIndexAny) == XUserIndexAny) {
-    *out_ptr = (uint32_t)user_index;
+    if (device_type == 4 && cvars::allow_mic_initialization) {  // Microphone
+      *out_ptr = 6 << 28;
+    } else {
+      *out_ptr = (uint32_t)user_index;
+    }
     return X_E_SUCCESS;
   } else {
     return X_E_DEVICE_NOT_CONNECTED;
