@@ -193,7 +193,7 @@ void XThread::InitializeGuestObject() {
   guest_thread->stack_limit = (this->stack_limit_);
   guest_thread->stack_kernel = (this->stack_base_ - 240);
   guest_thread->tls_address = (this->tls_dynamic_address_);
-  guest_thread->thread_state = 0;
+  guest_thread->thread_state = KTHREAD_STATE_INITIALIZED;
   uint32_t process_info_block_address =
       creation_params_.guest_process ? creation_params_.guest_process
                                      : this->kernel_state_->GetTitleProcess();
@@ -225,7 +225,8 @@ void XThread::InitializeGuestObject() {
   guest_thread->last_error = 0;
   guest_thread->unk_154.blink_ptr = v9 + 340;
   guest_thread->creation_flags = this->creation_params_.creation_flags;
-  guest_thread->unk_17C = 1;
+  // According to nukernel.
+  // guest_thread->host_xthread_stash = reinterpret_cast<void*>(this);
 
   /*
    * not doing this right at all! we're not using our threads context, because

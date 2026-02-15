@@ -335,11 +335,33 @@ struct X_KTHREAD {
   xe::be<uint32_t> fiber_ptr;       // 0x164
   uint8_t unk_168[0x4];             // 0x168
   xe::be<uint32_t> creation_flags;  // 0x16C
-  uint8_t unk_170[0xC];             // 0x170
-  xe::be<uint32_t> unk_17C;         // 0x17C
-  uint8_t unk_180[0x930];           // 0x180
 
-  // This struct is actually quite long... so uh, not filling this out!
+  // we handle context differently from a native kernel, so we can stash extra
+  // data here! the first 8 bytes of vscr are unused anyway
+  union {
+    vec128_t vscr;  // 0x170
+    struct {
+      void* host_xthread_stash;
+      uintptr_t vscr_remainder;
+    };
+  };
+
+  union {
+    // 2048 bytes
+    vec128_t vmx_context[128];  // 0x180
+    struct {
+      // 1536 bytes
+      X_KWAIT_BLOCK scratch_waitblock_memory[65];
+      // space for some more data!
+      uint32_t kernel_aux_stack_base_;
+      uint32_t kernel_aux_stack_current_;
+      uint32_t kernel_aux_stack_limit_;
+    };
+  };
+  xe::be<double> fpscr;            // 0x980
+  xe::be<double> fpu_context[32];  // 0x988
+
+  XAPC unk_A88;  // 0xA88
 };
 static_assert_size(X_KTHREAD, 0xAB0);
 
