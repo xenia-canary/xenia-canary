@@ -38,6 +38,11 @@ static constexpr char DmXboxName[] = "Xbox360Name";
 
 // clang-format on
 
+enum CONSOLE_TYPE : uint32_t {
+  DEVELOPMENT_KIT,
+  TEST_KIT,
+};
+
 enum CONSOLE_MEMORY_CONFIG_STATE : uint32_t {
   DM_CONSOLEMEMCONFIG_NOADDITIONALMEM,
   DM_CONSOLEMEMCONFIG_ADDITIONALMEMDISABLED,

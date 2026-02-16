@@ -22,6 +22,10 @@ DECLARE_bool(debug);
 
 DEFINE_bool(force_mount_devkit, false, "Force devkit mount", "Storage");
 
+DEFINE_int32(console_type, 0,
+             "Console Type Identifier: 0 - Development Kit, 1 - Test Kit",
+             "Kernel");
+
 namespace xe {
 namespace kernel {
 namespace xbdm {
@@ -56,6 +60,17 @@ dword_result_t DmGetXboxName_entry(lpstring_t name_ptr,
   return XBDM_SUCCESSFUL;
 }
 DECLARE_XBDM_EXPORT1(DmGetXboxName, kDebug, kImplemented)
+
+dword_result_t DmGetConsoleType_entry(lpdword_t console_type) {
+  if (!console_type) {
+    return X_E_INVALIDARG;
+  }
+
+  *console_type = CONSOLE_TYPE::DEVELOPMENT_KIT;
+
+  return XBDM_SUCCESSFUL;
+}
+DECLARE_XBDM_EXPORT1(DmGetConsoleType, kDebug, kImplemented);
 
 dword_result_t DmIsDebuggerPresent_entry() {
   return static_cast<uint32_t>(cvars::debug);

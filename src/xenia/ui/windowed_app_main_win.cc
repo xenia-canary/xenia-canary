@@ -191,7 +191,7 @@ static bool exception_pointers_handler(HostExceptionReport* report) {
           xe::kernel::kernel_state()->emulator()->title_version();
 
       title_info =
-          fmt::format("{}({:08X}) - {}", title_name, title_id, title_version);
+          fmt::format("{} ({:08X}) - {}", title_name, title_id, title_version);
     }
   }
 
