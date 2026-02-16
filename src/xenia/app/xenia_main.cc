@@ -91,6 +91,9 @@ DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
 UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
 
+DEFINE_bool(mount_memory_unit, false, "Enable memory unit (MU) mount",
+            "Storage");
+
 DECLARE_bool(force_mount_devkit);
 
 DEFINE_transient_path(target, "",
@@ -641,6 +644,21 @@ void EmulatorApp::EmulatorThread() {
 
     fs->RegisterSymbolicLink("DEVKIT:", "\\DEVKIT");
     fs->RegisterSymbolicLink("e:", "\\DEVKIT");
+  }
+
+  if (cvars::mount_memory_unit) {
+    auto mu_device =
+        std::make_unique<xe::vfs::HostPathDevice>("\\MU", "MU", false);
+
+    if (!mu_device->Initialize()) {
+      XELOGE("Unable to scan MU path");
+    }
+
+    if (!fs->RegisterDevice(std::move(mu_device))) {
+      XELOGE("Unable to register MU path");
+    }
+
+    fs->RegisterSymbolicLink("MU:", "\\MU");
   }
 
   // Set a debug handler.
