@@ -56,6 +56,15 @@ bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
 bool VirtualFileSystem::RegisterSymbolicLink(const std::string_view path,
                                              const std::string_view target) {
   auto global_lock = global_critical_region_.Acquire();
+  auto it = std::find_if(
+      symlinks_.cbegin(), symlinks_.cend(),
+      [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
+  if (it != symlinks_.end()) {
+    XELOGE("Trying to re-register already registered symbolic link: {} => {}",
+           path, target);
+    return false;
+  }
+
   symlinks_.insert({std::string(path), std::string(target)});
   XELOGD("Registered symbolic link: {} => {}", path, target);
 
@@ -74,6 +83,14 @@ bool VirtualFileSystem::UnregisterSymbolicLink(const std::string_view path) {
 
   symlinks_.erase(it);
   return true;
+}
+
+bool VirtualFileSystem::IsSymbolicLinkRegistered(const std::string_view path) {
+  auto it = std::find_if(
+      symlinks_.cbegin(), symlinks_.cend(),
+      [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
+
+  return it != symlinks_.cend();
 }
 
 bool VirtualFileSystem::FindSymbolicLink(const std::string_view path,

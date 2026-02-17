@@ -58,6 +58,7 @@ namespace xe {
 constexpr fourcc_t kEmulatorSaveSignature = make_fourcc("XSAV");
 static constexpr std::string_view kDefaultGameSymbolicLink = "GAME:";
 static constexpr std::string_view kDefaultPartitionSymbolicLink = "D:";
+static constexpr std::string_view kDefaultUpdateSymbolicLink = "UPDATE:";
 
 // The main type that runs the whole emulator.
 // This is responsible for initializing and managing all the various subsystems.

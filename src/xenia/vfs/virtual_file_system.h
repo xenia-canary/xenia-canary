@@ -36,6 +36,7 @@ class VirtualFileSystem {
   bool RegisterSymbolicLink(const std::string_view path,
                             const std::string_view target);
   bool UnregisterSymbolicLink(const std::string_view path);
+  bool IsSymbolicLinkRegistered(const std::string_view path);
   bool FindSymbolicLink(const std::string_view path, std::string& target);
 
   Entry* ResolvePath(const std::string_view path);

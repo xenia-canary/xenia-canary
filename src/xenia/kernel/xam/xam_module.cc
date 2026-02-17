@@ -116,8 +116,8 @@ void XamModule::SaveLoaderData() {
     }
   };
 
-  remove_prefix("game:\\");
-  remove_prefix("d:\\");
+  remove_prefix(fmt::format("{}\\", kDefaultGameSymbolicLink));
+  remove_prefix(fmt::format("{}\\", kDefaultPartitionSymbolicLink));
 
   if (host_path.extension() == ".xex") {
     host_path.remove_filename();

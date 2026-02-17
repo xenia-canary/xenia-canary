@@ -621,7 +621,7 @@ const object_ref<UserModule> KernelState::LoadTitleUpdate(
       "UPDATE", 0, *title_update, content_license, disc_number);
 
   std::string mount_path = "";
-  if (!file_system()->FindSymbolicLink("game:", mount_path)) {
+  if (!file_system()->FindSymbolicLink(kDefaultGameSymbolicLink, mount_path)) {
     return nullptr;
   }
 
@@ -630,7 +630,8 @@ const object_ref<UserModule> KernelState::LoadTitleUpdate(
   }
 
   std::string resolved_path = "";
-  if (!file_system()->FindSymbolicLink("UPDATE:", resolved_path)) {
+  if (!file_system()->FindSymbolicLink(kDefaultUpdateSymbolicLink,
+                                       resolved_path)) {
     return nullptr;
   }
 
