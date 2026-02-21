@@ -1,6 +1,9 @@
 #include <utility>
 #include <vector>
 
+#ifndef XENIA_UI_RESOURCES_H_
+#define XENIA_UI_RESOURCES_H_
+
 static constexpr uint8_t player_one_notification_icon[] = {
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
     0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0xc8, 0x00, 0x00, 0x00, 0xc8,
@@ -4612,3 +4615,5 @@ static const std::vector<std::pair<const uint8_t*, uint32_t>>
 
 static constexpr std::pair<const uint8_t*, uint32_t> locked_achievement_icon = {
     locked_achievement_icon_data, locked_achievement_icon_len};
+
+#endif  // XENIA_UI_RESOURCES_H_

@@ -1,6 +1,8 @@
 /* Xenia: minor tweaks to bring up to date with winnt.h */
 #include <cstdint>
 
+#pragma once
+
 /* Copyright (c) Microsoft Corporation. All rights reserved. */
 /* NT image format (to be used when the Win32 SDK version of WINNT.H cannot) */
 
