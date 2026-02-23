@@ -278,11 +278,12 @@ class XmpApp : public App {
   X_HRESULT XMPDeleteTitlePlaylist(uint32_t playlist_handle);
   X_HRESULT XMPPlayTitlePlaylist(uint32_t playlist_handle,
                                  uint32_t song_handle);
-  X_HRESULT XMPContinue();
-  X_HRESULT XMPStop(uint32_t unk);
-  X_HRESULT XMPPause();
-  X_HRESULT XMPNext();
-  X_HRESULT XMPPrevious();
+  X_HRESULT XMPAccessCheck(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPContinue(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPStop(apu::XMP_CLIENT xmp_client, uint32_t allow_restart);
+  X_HRESULT XMPPause(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPNext(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPPrevious(apu::XMP_CLIENT xmp_client);
   X_HRESULT XMPGetTitlePlaylistBufferSize(apu::XMP_CLIENT xmp_client,
                                           uint32_t song_count,
                                           uint32_t storage_ptr);
