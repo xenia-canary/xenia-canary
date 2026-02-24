@@ -337,6 +337,7 @@ void ImGuiDrawer::SetupNotificationTextures() {
   }
 }
 
+// https://everythingfonts.com/unicode/maps
 static constexpr ImWchar font_glyph_ranges[] = {
     0x0020, 0x00FF,  // Basic Latin + Latin Supplement
     0x0100, 0x024F,  // Extended Latin
@@ -344,8 +345,13 @@ static constexpr ImWchar font_glyph_ranges[] = {
     0x0400, 0x04FF,  // Cyrillic
     0x2000, 0x206F,  // General Punctuation
     0x2070, 0x209F,  // Superscripts & Subscripts
+    0x20A0, 0x20CF,  // Currency Symbols
     0x2100, 0x214F,  // Letterlike Symbols
     0x2150, 0x218F,  // Number Forms
+    0x2500, 0x257F,  // Box Drawing
+    0x2580, 0x259F,  // Block Elements
+    0x25A0, 0x25FF,  // Geometric Shapes
+    0x2600, 0x26FF,  // Miscellaneous Symbols
     0,
 };
 
