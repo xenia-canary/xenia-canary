@@ -68,7 +68,6 @@ uint32_t XStaticUntypedEnumerator::WriteItems(uint8_t* buffer_data,
     return X_ERROR_NO_MORE_FILES;
   }
 
-  // 4E4D07F0 does not respect buffer_size for XContentCreateEnumerator.
   assert_false(buffer_size < item_size());
 
   const size_t available_count = buffer_size / item_size();
@@ -215,8 +214,58 @@ uint32_t XMPCreateUserPlaylistEnumerator::WriteItems(uint8_t* buffer_data,
 
   std::copy_n(items_.begin() + current_item_, valid_count, results);
 
+  current_item_ += valid_count;
+
   if (written_count) {
     *written_count = static_cast<uint32_t>(valid_count);
+  }
+
+  return X_ERROR_SUCCESS;
+}
+
+uint32_t ProfileEnumerator::WriteItems(uint8_t* buffer_data,
+                                       uint32_t buffer_size,
+                                       uint32_t* written_count) {
+  const size_t actual_count =
+      std::min(items_.size() - current_item_, items_per_enumerate());
+  if (!actual_count) {
+    return X_ERROR_NO_MORE_FILES;
+  }
+
+  // FFFE07D1 provides buffer_size of 0.
+  xam::X_PROFILEENUMRESULT* profiles =
+      reinterpret_cast<xam::X_PROFILEENUMRESULT*>(buffer_data);
+
+  std::copy_n(items_.begin() + current_item_, actual_count, profiles);
+
+  current_item_ += actual_count;
+
+  if (written_count) {
+    *written_count = static_cast<uint32_t>(actual_count);
+  }
+
+  return X_ERROR_SUCCESS;
+}
+
+uint32_t ContentEnumerator::WriteItems(uint8_t* buffer_data,
+                                       uint32_t buffer_size,
+                                       uint32_t* written_count) {
+  const size_t actual_count =
+      std::min(items_.size() - current_item_, items_per_enumerate());
+  if (!actual_count) {
+    return X_ERROR_NO_MORE_FILES;
+  }
+
+  // 4E4D07F0 does not respect buffer_size, possibly bug?
+  xam::XCONTENT_DATA* contents =
+      reinterpret_cast<xam::XCONTENT_DATA*>(buffer_data);
+
+  std::copy_n(items_.begin() + current_item_, actual_count, contents);
+
+  current_item_ += actual_count;
+
+  if (written_count) {
+    *written_count = static_cast<uint32_t>(actual_count);
   }
 
   return X_ERROR_SUCCESS;

@@ -157,8 +157,9 @@ dword_result_t XamContentCreateEnumerator_entry(
     xuid = user->xuid();
   }
 
-  auto e = make_object<XStaticEnumerator<XCONTENT_DATA>>(kernel_state(),
-                                                         items_per_enumerate);
+  auto e = object_ref<ContentEnumerator>(
+      new ContentEnumerator(kernel_state(), items_per_enumerate));
+
   auto result = e->Initialize(XUserIndexAny, 0xFE, 0x20005, 0x20007, 0);
   if (XFAILED(result)) {
     return result;
@@ -206,8 +207,7 @@ dword_result_t XamContentCreateEnumerator_entry(
   }
 
   for (const auto& content_data : enumerated_content) {
-    auto item = e->AppendItem();
-    *item = content_data;
+    e->AppendItem(content_data);
     XELOGI("{}: Adding: {} (Filename: {}) to enumerator result", __func__,
            xe::to_utf8(content_data.display_name()), content_data.file_name());
   }
