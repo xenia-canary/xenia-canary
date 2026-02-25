@@ -1858,12 +1858,21 @@ ID3D12Resource* D3D12TextureCache::D3D12Texture::GetOrCreate3DAs2DResource(
       d3d12_cache.command_processor_.GetD3D12Provider();
   ID3D12Device* device = provider.GetDevice();
 
-  D3D12_RESOURCE_DESC source_desc = resource_->GetDesc();
-  D3D12_RESOURCE_DESC desc = source_desc;
+  // Build the 2D resource desc from scratch rather than copying from the 3D
+  // resource's GetDesc(), as inherited internal state can cause issues with
+  // VKD3D (D3D12 over Vulkan translation used by Wine).
+  D3D12_RESOURCE_DESC desc = {};
   desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+  desc.Width = key().GetWidth();
+  desc.Height = key().GetHeight();
   desc.DepthOrArraySize = 1;
   desc.MipLevels = 1;
-  desc.Alignment = 0;
+  desc.Format = d3d12_cache.GetDXGIResourceFormat(key());
+  if (desc.Format == DXGI_FORMAT_UNKNOWN) {
+    return nullptr;
+  }
+  desc.SampleDesc.Count = 1;
+  desc.SampleDesc.Quality = 0;
   desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
   desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
