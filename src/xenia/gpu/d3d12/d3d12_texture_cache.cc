@@ -483,6 +483,33 @@ void D3D12TextureCache::RequestTextures(uint32_t used_texture_mask) {
 
   TextureCache::RequestTextures(used_texture_mask);
 
+  // Pre-create 3D-as-2D wrappers for any 3D textures while we're still in
+  // the texture loading phase (before graphics pipeline setup). LoadTextureData
+  // dispatches compute shaders, which must not happen during draw call setup
+  // as VKD3D asserts a graphics pipeline is active at that point.
+  if (cvars::gpu_3d_to_2d_texture) {
+    uint32_t textures_3d = used_texture_mask;
+    uint32_t index_3d;
+    while (xe::bit_scan_forward(textures_3d, &index_3d)) {
+      textures_3d = xe::clear_lowest_bit(textures_3d);
+      const TextureBinding* binding = GetValidTextureBinding(index_3d);
+      if (!binding || binding->key.dimension != xenos::DataDimension::k3D) {
+        continue;
+      }
+      D3D12Texture* texture = static_cast<D3D12Texture*>(binding->texture);
+      if (texture) {
+        texture->GetOrCreate3DAs2DResource(
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+      }
+      D3D12Texture* texture_signed =
+          static_cast<D3D12Texture*>(binding->texture_signed);
+      if (texture_signed) {
+        texture_signed->GetOrCreate3DAs2DResource(
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+      }
+    }
+  }
+
   // Transition the textures to the needed usage - always in
   // NON_PIXEL_SHADER_RESOURCE | PIXEL_SHADER_RESOURCE states because barriers
   // between read-only stages, if needed, are discouraged (also if these were
