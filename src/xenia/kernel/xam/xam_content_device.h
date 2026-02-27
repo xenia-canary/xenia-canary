@@ -22,8 +22,10 @@ enum class DeviceType : uint32_t {
   Invalid = 0,
   HDD = 1,
   MU = 2,  // support removed in 9199
+  System = 3,
   ODD = 4,
   TransferCable = 8,
+  Sapphire = 15,
   USBMASS = 16,  // Added in 8955
 };
 

@@ -359,6 +359,10 @@ dword_result_t ObCreateSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr,
     path = path.substr(4);  // Strip the full qualifier
   }
 
+  if (kernel_state()->file_system()->FindSymbolicLink(path, target)) {
+    return X_STATUS_OBJECT_NAME_COLLISION;
+  }
+
   if (!kernel_state()->file_system()->RegisterSymbolicLink(path, target)) {
     return X_STATUS_UNSUCCESSFUL;
   }
