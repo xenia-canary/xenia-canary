@@ -25,14 +25,14 @@ dword_result_t XamProfileFindAccount_entry(
 
   account_ptr.Zero();
 
-  const auto& account =
+  const X_XAMACCOUNTINFO* account =
       kernel_state()->xam_state()->profile_manager()->GetAccount(offline_xuid);
 
   if (!account) {
     return X_ERROR_NO_SUCH_USER;
   }
 
-  std::memcpy(account_ptr, &account, sizeof(X_XAMACCOUNTINFO));
+  *account_ptr = *account;
 
   if (device_id) {
     *device_id = 1;
