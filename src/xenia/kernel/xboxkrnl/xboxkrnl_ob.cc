@@ -359,6 +359,15 @@ dword_result_t ObCreateSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr,
     path = path.substr(4);  // Strip the full qualifier
   }
 
+  if (xe::utf8::starts_with(path, "\\System??\\")) {
+    path = path.substr(10);  // Strip the full qualifier
+  }
+
+  // 4D5307DC expects success.
+  if (kernel_state()->file_system()->FindSymbolicLink(path, target)) {
+    return X_STATUS_SUCCESS;
+  }
+
   if (!kernel_state()->file_system()->RegisterSymbolicLink(path, target)) {
     return X_STATUS_UNSUCCESSFUL;
   }
