@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <regex>
+
 #include "xenia/kernel/xam/profile_manager.h"
 
 #include "xenia/base/logging.h"
@@ -596,22 +598,13 @@ bool ProfileManager::DeleteProfile(const uint64_t xuid) {
 }
 
 bool ProfileManager::IsGamertagValid(const std::string gamertag) {
-  if (gamertag.empty()) {
+  std::regex pattern(R"(^[A-Za-z][A-Za-z0-9]*( [A-Za-z0-9]+)*$)");
+
+  if (gamertag.length() < 1 || gamertag.length() > 15) {
     return false;
   }
 
-  if (gamertag.length() > 15) {
-    return false;
-  }
-
-  // Gamertag cannot start with a number.
-  if (std::isdigit(gamertag.at(0))) {
-    return false;
-  }
-
-  return std::find_if(gamertag.cbegin(), gamertag.cend(), [](char c) {
-           return !(std::isalnum(c) || (c == ' '));
-         }) == gamertag.cend();
+  return std::regex_match(gamertag, pattern);
 }
 
 }  // namespace xam
