@@ -189,7 +189,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
              ImGui::GetWindowPos().y);
 
   for (auto& [xuid, account] : *profiles) {
-    ImGui::PushID(static_cast<int>(xuid));
+    ImGui::PushID(fmt::format("{:016X}", xuid).c_str());
 
     const uint8_t user_index =
         profile_manager->GetUserIndexAssignedToProfile(xuid);
