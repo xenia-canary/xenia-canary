@@ -147,6 +147,19 @@ uint2_xe XePackR16G16B16A16UNorm(float4_xe f) {
   return n.rb | (n.ga << 16);
 }
 
+uint XePackR16G16Edram(float2_xe f) {
+  f = min(max(f, float_x2_xe(-32.0f)), float_x2_xe(32.0f));
+  int2_xe n = int2_xe(f * (32767.0f / 32.0f));
+  return uint(n.x & 0xFFFF) | (uint(n.y & 0xFFFF) << 16u);
+}
+
+uint2_xe XePackR16G16B16A16Edram(float4_xe f) {
+  f = min(max(f, float_x4_xe(-32.0f)), float_x4_xe(32.0f));
+  int4_xe n = int4_xe(f * (32767.0f / 32.0f));
+  return uint2_xe(uint(n.x & 0xFFFF) | (uint(n.y & 0xFFFF) << 16u),
+                  uint(n.z & 0xFFFF) | (uint(n.w & 0xFFFF) << 16u));
+}
+
 uint2_xe XePack16bpp4PixelsInUInt2(float4_xe pixel_0, float4_xe pixel_1,
                                    float4_xe pixel_2, float4_xe pixel_3,
                                    uint format) {
@@ -228,11 +241,12 @@ uint4_xe XePack32bpp4Pixels(float4_xe pixel_0, float4_xe pixel_1,
       packed.z = XePackR10G11B11UNorm(pixel_2.rgb);
       packed.w = XePackR10G11B11UNorm(pixel_3.rgb);
       break;
+    case kXenosFormat_16_16_EDRAM:
     case kXenosFormat_16_16:
-      packed.x = XePackR16G16UNorm(pixel_0.rg);
-      packed.y = XePackR16G16UNorm(pixel_1.rg);
-      packed.z = XePackR16G16UNorm(pixel_2.rg);
-      packed.w = XePackR16G16UNorm(pixel_3.rg);
+      packed.x = XePackR16G16Edram(pixel_0.rg);
+      packed.y = XePackR16G16Edram(pixel_1.rg);
+      packed.z = XePackR16G16Edram(pixel_2.rg);
+      packed.w = XePackR16G16Edram(pixel_3.rg);
       break;
     case kXenosFormat_16_16_FLOAT:
       packed.x = pack_half_2x16_xe(float2_xe(pixel_0.r, pixel_0.g));
@@ -256,11 +270,12 @@ void XePack64bpp4Pixels(float4_xe pixel_0, float4_xe pixel_1,
                         out_param_xe(uint4_xe, packed_01),
                         out_param_xe(uint4_xe, packed_23)) {
   switch (format) {
+    case kXenosFormat_16_16_16_16_EDRAM:
     case kXenosFormat_16_16_16_16:
-      packed_01.xy = XePackR16G16B16A16UNorm(pixel_0);
-      packed_01.zw = XePackR16G16B16A16UNorm(pixel_1);
-      packed_23.xy = XePackR16G16B16A16UNorm(pixel_2);
-      packed_23.zw = XePackR16G16B16A16UNorm(pixel_3);
+      packed_01.xy = XePackR16G16B16A16Edram(pixel_0);
+      packed_01.zw = XePackR16G16B16A16Edram(pixel_1);
+      packed_23.xy = XePackR16G16B16A16Edram(pixel_2);
+      packed_23.zw = XePackR16G16B16A16Edram(pixel_3);
       break;
     case kXenosFormat_16_16_16_16_FLOAT:
       packed_01.x = pack_half_2x16_xe(float2_xe(pixel_0.r, pixel_0.g));
@@ -355,18 +370,26 @@ float4_xe XeUnpackR10G10B10A2Float(uint p) {
 // Upper 16 bits are ignored by XeUnpackR16EdramX4.
 
 float4_xe XeUnpackR16EdramX4(uint4_xe p) {
-  return max(float_x4_xe(-1.0f),
+  // Clamp to -32.0 to match the actual k_16_16 format range [-32, 32].
+  // The previous -1.0 clamp was wrong: it destroyed negative values in
+  // [-32, -1], causing water/heightmap surfaces to bias upward.
+  return max(float_x4_xe(-32.0f),
              float4_xe(int4_xe(p) << 16 >> 16) * (32.0f / 32767.0f));
 }
 
 float2_xe XeUnpackR16G16Edram(uint p) {
-  return max(float_x2_xe(-1.0f),
+  // Clamp to -32.0 to match the actual k_16_16 format range [-32, 32].
+  // The previous -1.0 clamp was wrong: it destroyed negative values in
+  // [-32, -1], causing water/heightmap surfaces to bias upward
+  // (xenia-project/xenia#2136).
+  return max(float_x2_xe(-32.0f),
              float2_xe(int_x2_xe(int(p)) << int2_xe(16, 0) >> 16) *
                  (32.0f / 32767.0f));
 }
 
 float4_xe XeUnpackR16G16B16A16Edram(uint2_xe p) {
-  return max(float_x4_xe(-1.0f),
+  // Clamp to -32.0 to match the actual k_16_16_16_16 format range [-32, 32].
+  return max(float_x4_xe(-32.0f),
              float4_xe(int2_xe(p).xxyy << int2_xe(16, 0).xyxy >> 16) *
                  (32.0f / 32767.0f));
 }
