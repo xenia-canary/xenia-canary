@@ -33,6 +33,8 @@ DEFINE_bool(disable_context_promotion, false,
             "some sports games, but will reduce performance.",
             "CPU");
 
+DECLARE_bool(debug);
+
 namespace xe {
 namespace cpu {
 namespace ppc {
@@ -59,7 +61,10 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
 
   // Passes are executed in the order they are added. Multiple of the same
   // pass type may be used.
-  if (!cvars::disable_context_promotion) {
+
+  // Disable context promotion for debug, otherwise register changes won't apply
+  // correctly
+  if (!cvars::disable_context_promotion && !cvars::debug) {
     if (validate) {
       compiler_->AddPass(std::make_unique<passes::ValidationPass>());
     }

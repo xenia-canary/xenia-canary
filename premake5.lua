@@ -377,6 +377,7 @@ workspace("xenia")
 
   if os.istarget("windows") then
     include("src/xenia/apu/xaudio2")
+    include("src/xenia/debug/gdb") -- Needs socket support for other systems.
     include("src/xenia/gpu/d3d12")
     include("src/xenia/hid/winkey")
     include("src/xenia/hid/xinput")

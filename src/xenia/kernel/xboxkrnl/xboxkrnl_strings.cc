@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include "xenia/cpu/processor.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
@@ -840,6 +841,10 @@ SHIM_CALL DbgPrint_entry(PPCContext* ppc_context) {
             str.end());
 
   XELOGI("(DbgPrint) {}", str);
+
+  if (cpu::DebugListener* listener = ppc_context->processor->debug_listener()) {
+    listener->OnDebugPrint(str);
+  }
 
   SHIM_SET_RETURN_32(X_STATUS_SUCCESS);
 }
