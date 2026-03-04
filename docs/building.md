@@ -113,6 +113,31 @@ sudo apt-get install build-essential mesa-vulkan-drivers valgrind libc++-dev lib
 
 In addition, you will need up to date Vulkan libraries and drivers for your hardware, which most distributions have in their standard repositories nowadays.
 
+**Vulkan SDK (for shader compilation)**
+
+The build uses `spirv-opt` and `glslangValidator` for shader compilation. Check
+if your system version is recent enough:
+
+```sh
+spirv-opt --version
+```
+
+If the version is older than 2026.1, the system `spirv-tools` package will not
+support all required options (e.g. `--canonicalize-ids`). In that case, install
+the [Vulkan SDK from LunarG](https://vulkan.lunarg.com/sdk/home) and set
+`VULKAN_SDK` so the build picks up the correct tools:
+
+```sh
+wget -qO vulkan-sdk.tar.xz https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz
+mkdir -p ~/vulkan-sdk
+tar -xf vulkan-sdk.tar.xz -C ~/vulkan-sdk
+rm vulkan-sdk.tar.xz
+export VULKAN_SDK=$HOME/vulkan-sdk/$(ls ~/vulkan-sdk)/x86_64
+export PATH="$VULKAN_SDK/bin:$PATH"
+```
+
+Add the `export` lines to your shell profile to persist them across sessions.
+
 ## Running
 
 To make life easier you can set the program startup arguments in your IDE to something like `--log_file=stdout /path/to/Default.xex` to log to console rather than a file and start up the emulator right away.
