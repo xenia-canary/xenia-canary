@@ -15,9 +15,7 @@ project("xenia-gpu-d3d12")
     "xxhash",
   })
   local_platform_files()
-  files({
-    "../shaders/bytecode/d3d12_5_1/*.h",
-  })
+  shader_rules_dxbc("../shaders")
 
 if enableMiscSubprojects then
   group("src")

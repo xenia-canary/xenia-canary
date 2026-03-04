@@ -20,9 +20,7 @@ project("xenia-gpu-vulkan")
     project_root.."/third_party/glslang",  -- For glslang SPIRV headers
   })
   local_platform_files()
-  files({
-    "../shaders/bytecode/vulkan_spirv/*.h",
-  })
+  shader_rules_spirv("../shaders")
 
 if enableMiscSubprojects then
   group("src")
