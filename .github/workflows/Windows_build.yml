@@ -123,19 +123,19 @@ jobs:
             echo "Warning: fxc.exe not found in Windows SDK"
           }
 
-          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = )(?!third_party\/(premake-(androidndk|cmake|export-compile-commands))).+' .gitmodules).Matches.Value
+          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = ).+' .gitmodules).Matches.Value
       - name: Build
-        run: python xenia-build.py build --config=Release --target=src\xenia-app
+        run: python xenia-build.py build --config=Release --target=xenia-app
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          foreach ($file in 'build\bin\Windows\Release\xenia_canary.exe','build\bin\Windows\Release\xenia_canary.pdb') {
+          foreach ($file in 'build\bin\Windows\Release\xenia_canary.exe') {
             if ((get-item $file).Length -le 100000) {
               echo "::error::$file is too small."
             }
           }
-          robocopy . build\bin\Windows\Release                                                                LICENSE /r:0 /w:0
-          robocopy   build\bin\Windows\Release artifacts\xenia_canary   xenia_canary.exe   xenia_canary.pdb   LICENSE /r:0 /w:0
+          robocopy . build\bin\Windows\Release                                                LICENSE /r:0 /w:0
+          robocopy   build\bin\Windows\Release artifacts\xenia_canary   xenia_canary.exe   LICENSE /r:0 /w:0
           If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
       - name: Upload xenia canary artifacts
         if: steps.prepare_artifacts.outcome == 'success'

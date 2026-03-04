@@ -1,0 +1,11 @@
+add_library(xenia-hid STATIC)
+xe_platform_sources(xenia-hid ${CMAKE_CURRENT_SOURCE_DIR})
+# Exclude demo files
+file(GLOB _hid_demo  "${CMAKE_CURRENT_SOURCE_DIR}/*_demo.cc")
+get_target_property(_hid_srcs xenia-hid SOURCES)
+if(_hid_demo AND _hid_srcs)
+  list(REMOVE_ITEM _hid_srcs ${_hid_demo})
+  set_target_properties(xenia-hid PROPERTIES SOURCES "${_hid_srcs}")
+endif()
+target_link_libraries(xenia-hid PUBLIC xenia-base xenia-hid-skylander)
+xe_target_defaults(xenia-hid)

@@ -7,16 +7,10 @@
 [submodule "third_party/catch"]
 	path = third_party/catch
 	url = https://github.com/catchorg/Catch2.git
-[submodule "third_party/premake-core"]
-	path = third_party/premake-core
-	url = https://github.com/premake/premake-core.git
 [submodule "third_party/snappy"]
 	path = third_party/snappy
 	url = https://github.com/google/snappy.git
 	ignore = dirty
-[submodule "third_party/premake-export-compile-commands"]
-	path = third_party/premake-export-compile-commands
-	url = https://github.com/xenia-project/premake-export-compile-commands.git
 [submodule "third_party/discord-rpc"]
 	path = third_party/discord-rpc
 	url = https://github.com/discordapp/discord-rpc.git
@@ -50,9 +44,6 @@
 [submodule "third_party/DirectXShaderCompiler"]
 	path = third_party/DirectXShaderCompiler
 	url = https://github.com/microsoft/DirectXShaderCompiler.git
-[submodule "third_party/premake-cmake"]
-	path = third_party/premake-cmake
-	url = https://github.com/JoelLinn/premake-cmake.git
 [submodule "third_party/date"]
 	path = third_party/date
 	url = https://github.com/HowardHinnant/date.git
@@ -63,9 +54,6 @@
 	path = third_party/FFmpeg
 	url = https://github.com/has207/FFmpeg.git
 	branch = xmaframes
-[submodule "third_party/premake-androidndk"]
-	path = third_party/premake-androidndk
-	url = https://github.com/Triang3l/premake-androidndk.git
 [submodule "third_party/FidelityFX-CAS"]
 	path = third_party/FidelityFX-CAS
 	url = https://github.com/GPUOpen-Effects/FidelityFX-CAS.git

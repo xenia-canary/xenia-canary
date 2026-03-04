@@ -1,0 +1,7 @@
+add_library(xenia-apu-alsa STATIC)
+xe_platform_sources(xenia-apu-alsa ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(xenia-apu-alsa PUBLIC xenia-apu xenia-base)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(xenia-apu-alsa PRIVATE asound pthread)
+endif()
+xe_target_defaults(xenia-apu-alsa)
