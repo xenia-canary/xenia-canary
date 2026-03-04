@@ -1201,7 +1201,11 @@ def build_shaders(targets=None):
                     src_path,
                 ])
             else:
-                # FXC uses traditional syntax
+                # FXC uses traditional syntax.
+                # Do NOT use /all_resources_bound — it alters the generated
+                # DXBC bytecode (changes dcl_globalFlags, register allocation
+                # and instruction scheduling) which causes rendering artifacts
+                # such as blue lightning/flash glitches at scaled resolutions.
                 compiler_args.extend([
                     "/D", "SHADING_LANGUAGE_HLSL_XE=1",
                     "/I", src_dir,
@@ -1212,7 +1216,6 @@ def build_shaders(targets=None):
                     "/Qstrip_reflect",
                     "/Qstrip_debug",
                     "/Qstrip_priv",
-                    "/all_resources_bound",
                     "/Gfp",
                     "/nologo",
                     src_path,
