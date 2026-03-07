@@ -1,0 +1,94 @@
+name: Linux Build
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: 'Build configuration (Release)'
+        required: false
+        default: 'release'
+        type: string
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    env:
+      LLVM_VERSION: 20
+      UBUNTU_BASE: noble # We're running on ubuntu-24.04. Remember to change it after changing deploy env.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan-sdk-linux
+        uses: actions/cache@v5
+        with:
+          path: ~/vulkan-sdk
+          key: ${{ runner.os }}-vulkan-sdk-latest
+
+      - name: Setup build environment
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-add-repository "deb http://apt.llvm.org/${{ env.UBUNTU_BASE }}/ llvm-toolchain-${{ env.UBUNTU_BASE }}-${{ env.LLVM_VERSION }} main"
+          sudo apt-get -y update
+          sudo apt-get -y install mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libgtk-3-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-${{ env.LLVM_VERSION }} lld-${{ env.LLVM_VERSION }} ninja-build cmake spirv-tools
+
+          # Pin clang to the correct version
+          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-${{ env.LLVM_VERSION }}   200
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.LLVM_VERSION }} 200
+      - name: Install Vulkan SDK
+        run: |
+          # Install Vulkan SDK
+          if [ '${{ steps.cache-vulkan-sdk-linux.outputs.cache-hit }}' != 'true' ]; then
+            wget -qO vulkan-sdk.tar.xz https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz
+            mkdir -p ~/vulkan-sdk
+            tar -xf vulkan-sdk.tar.xz -C ~/vulkan-sdk
+          fi
+
+          VULKAN_SDK_VERSION=$(ls ~/vulkan-sdk)
+          echo "VULKAN_SDK=$HOME/vulkan-sdk/$VULKAN_SDK_VERSION/x86_64" >> $GITHUB_ENV
+          echo "$HOME/vulkan-sdk/$VULKAN_SDK_VERSION/x86_64/bin" >> $GITHUB_PATH
+
+          # Verify shader tools are available
+          for tool in glslangValidator spirv-opt spirv-dis; do
+            which "$tool" && "$tool" --version 2>/dev/null || echo "Warning: $tool not found"
+          done
+
+      - name: Download submodules
+        run: |
+          # Exclude not needed 3pp modules
+          EXCLUDE="DirectXShaderCompiler"
+          SUBMODULES=$(grep -oP '(?<=path = ).+' .gitmodules | grep -vE "$EXCLUDE")
+          git submodule update --init --depth=1 -j$(nproc) $SUBMODULES
+
+      - name: Build Xenia
+        env:
+          CC: clang-${{ env.LLVM_VERSION }}
+          CXX: clang++-${{ env.LLVM_VERSION }}
+        run: ./xenia-build.py build --config=Release
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          binary=build/bin/Linux/Release/xenia_canary
+          if [ $(stat -c%s $binary) -le 100000 ]; then
+            echo "::error::Binary is too small."
+            exit 1
+          fi
+          chmod +x $binary
+          mkdir -p artifacts
+          XZ_OPT=-e9 tar cJvpf artifacts/xenia_canary_linux.tar.xz --transform='s|build/bin/Linux/Release/||' $binary LICENSE
+
+      - name: Upload Xenia Canary artifact
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xenia_canary_linux.tar.xz
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
+          archive: false

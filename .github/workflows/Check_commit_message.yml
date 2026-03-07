@@ -1,0 +1,56 @@
+name: Commit Message Check
+
+on:
+  workflow_call:
+
+jobs:
+  commit-message:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          COMMITS=$(git log --format="%H %s" "${BASE}..${HEAD}" --)
+
+          if [ -z "${COMMITS}" ]; then
+            echo "No commits found in this PR."
+            exit 0
+          fi
+
+          FAILED=0
+          while IFS= read -r LINE; do
+            SHA="${LINE%% *}"
+            MSG="${LINE#* }"
+            SHORT="${SHA::7}"
+
+            if echo "${MSG}" | grep -qP '^\[.+?\]'; then
+              echo "✅ ${SHORT}: ${MSG}"
+            else
+              echo "❌ ${SHORT}: ${MSG}"
+              echo "::error::Commit ${SHORT} is missing a [Tag] prefix. Expected format: [Tag] Description (e.g. [CPU] Fix overflow in JIT)"
+              FAILED=1
+            fi
+          done <<< "${COMMITS}"
+
+          echo ""
+
+          if [ "${FAILED}" -eq 1 ]; then
+            echo "::error::One or more commits are missing a [Tag] prefix."
+            echo ""
+            echo "Expected format:  [Tag] Description"
+            echo "Examples:         [CPU] <commit message>"
+            echo "                  [GPU] <commit message>"
+            echo "                  [UI] <commit message>"
+            echo "                  [CI] <commit message>"
+            exit 1
+          fi
+
+          echo "All commit messages have a valid [Tag] prefix."

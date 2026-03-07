@@ -1,0 +1,92 @@
+name: Windows (x86-64)
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: 'Build configuration (Release)'
+        required: false
+        default: 'release'
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-2025
+
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan-sdk
+        uses: actions/cache@v5
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-
+
+      - name: Install Vulkan SDK
+        run: |
+          # Install Vulkan SDK with spirv-tools
+          if (Test-Path -Path "C:\VulkanSDK") {
+            echo "Vulkan SDK found in cache."
+          } else {
+            Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "vulkan-sdk.exe"
+            Start-Process -FilePath "vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
+          }
+          $env:VULKAN_SDK = "C:\VulkanSDK\$(Get-ChildItem -Path 'C:\VulkanSDK' -Directory | Select-Object -First 1 -ExpandProperty Name)"
+          $env:PATH = "$env:VULKAN_SDK\Bin;$env:PATH"
+          echo "VULKAN_SDK=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$env:VULKAN_SDK\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Verify shader tools are available
+          foreach ($tool in @("glslangValidator", "spirv-opt", "spirv-dis")) {
+            $toolPath = "$env:VULKAN_SDK\Bin\$tool.exe"
+            if (Test-Path $toolPath) {
+              echo "$tool found at: $toolPath"
+              & $toolPath --version 2>$null
+            } else {
+              echo "Warning: $tool.exe not found at expected location"
+            }
+          }
+
+          # Verify FXC is available (from Windows SDK)
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          if ($fxcPaths) {
+            $fxcPath = $fxcPaths[-1].FullName
+            echo "FXC found at: $fxcPath"
+          } else {
+            echo "Warning: fxc.exe not found in Windows SDK"
+          }
+
+      - name: Download submodules
+        run: git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Build Xenia
+        run: python xenia-build.py build --config=Release --target=xenia-app
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          if ((Get-Item 'build\bin\Windows\Release\xenia_canary.exe').Length -le 100000) {
+            echo "::error:: Executable is too small."
+            exit 1
+          }
+          robocopy . build\bin\Windows\Release                                             LICENSE /r:0 /w:0
+          robocopy   build\bin\Windows\Release artifacts\xenia_canary   xenia_canary.exe   LICENSE /r:0 /w:0
+          If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
+
+      - name: Upload Xenia Canary artifact
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xenia_canary_windows
+          path: artifacts\xenia_canary
+          if-no-files-found: error
+          retention-days: 7

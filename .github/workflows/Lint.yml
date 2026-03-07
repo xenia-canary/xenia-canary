@@ -1,0 +1,29 @@
+name: Lint
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    outputs:
+      #LLVM_VERSION: ${{ steps.setup.outputs.LLVM_VERSION }}
+      UBUNTU_BASE: ${{ steps.setup.outputs.UBUNTU_BASE }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup
+        id: setup
+        env:
+          LLVM_VERSION: 20
+        run: |
+          UBUNTU_BASE=$(lsb_release -cs)
+          #echo "LLVM_VERSION=$LLVM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "UBUNTU_BASE=$UBUNTU_BASE" >> "$GITHUB_OUTPUT"
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-$LLVM_VERSION main"
+          sudo apt-get -y update
+          sudo apt-get -y install clang-format-$LLVM_VERSION
+      - name: Lint
+        run: ./xenia-build.py lint --all
+

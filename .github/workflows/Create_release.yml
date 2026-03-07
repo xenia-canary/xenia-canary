@@ -1,59 +1,169 @@
-name: Create release
+name: Create Release
 
 on:
   workflow_call:
     inputs:
-      os:
+      tag:
+        description: 'Full commit SHA for tagging'
         required: true
         type: string
-    secrets:
-      RELEASE_TOKEN:
-        required: true
+      branch:
+        description: 'Branch name used as release tag suffix (e.g. canary_experimental)'
+        required: false
+        type: string
+        default: 'canary_experimental'
 
 jobs:
   release:
-    name: Release
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
     steps:
-      #- uses: actions/checkout@main
-      #  with:
-      #    repository: ${{ github.repository_owner }}/xenia-canary-releases
-      - uses: actions/download-artifact@main
-      - name: Release
+      # Checkout for git log access — no submodules needed
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build release notes
+        id: meta
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          GH_REPO: ${{ github.repository_owner }}/xenia-canary-releases
-          notes: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          case ${{ inputs.os }} in
-            windows)
-              asset=xenia_canary_${{ inputs.os }}.zip
-              7z a $asset -xr!'*.pdb' -mx9 -bb3
-              ;;
-            linux)
-              asset=xenia_canary_${{ inputs.os }}.tar.xz
-              ;;
-          esac
-          if [ ! -f $asset ]; then
-            ls -R
-            echo "::error::$asset doesn't exist!"
-            exit 1
+          FULL_SHA="${{ inputs.tag }}"
+          SHORT_SHA="${FULL_SHA::7}"
+          BRANCH="${{ inputs.branch }}"
+          TAG_NAME="${SHORT_SHA}_${BRANCH}"
+
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+          PREV_TAG=$(gh release list \
+            --repo "${REPO}" \
+            --limit 1 \
+            --json tagName \
+            --jq '.[0].tagName' 2>/dev/null || echo "")
+
+          if [ -n "${PREV_TAG}" ]; then
+            PREV_SHA=$(git rev-parse "${PREV_TAG}^{}" 2>/dev/null || \
+                       git rev-parse "${PREV_TAG}" 2>/dev/null || echo "")
           fi
-          if [ $(stat -c%s $asset) -lt 100000 ]; then
-            ls -R
-            echo "::error::$asset is too small!"
-            exit 1
+
+          if [ -n "${PREV_SHA}" ]; then
+            COMMITS=$(git log --format="- %s (\`%h\`)" --abbrev=7 "${PREV_SHA}..${FULL_SHA}" --)
+            COMPARE_URL="https://github.com/${REPO}/compare/${PREV_TAG}...${TAG_NAME}"
+          else
+            COMMITS=$(git log --format="- %s (\`%h\`)" --abbrev=7 -1 "${FULL_SHA}" --)
+            COMPARE_URL=""
           fi
-          create_or_edit_release() {
-            local tag=$1
-            local title=$2
-            if gh release view $tag; then
-              gh release edit $tag -t $title -n "$notes"
-              gh release upload $tag $asset --clobber
-            else
-              gh release create $tag $asset --target 925ed98d5dce604b651027c36fb522dc1ff0fa55 -t $title -n "$notes"
+
+          # Assemble body
+          {
+            echo "body<<RELEASE_BODY_EOF"
+
+            if [ -n "${COMMITS}" ]; then
+              echo "### Changes"
+              echo ""
+              echo "${COMMITS}"
             fi
-          }
-          tag=${GITHUB_SHA::7}
-          create_or_edit_release $tag ${tag}_$GITHUB_REF_NAME
-          create_or_edit_release $GITHUB_REF_NAME $tag
+
+            if [ -n "${COMPARE_URL}" ]; then
+              echo ""
+              echo "**Full changelog**: ${COMPARE_URL}"
+            fi
+
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # --- Download artifacts only for platforms that succeeded ---
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: xenia_canary_windows
+          path: artifacts/windows/xenia_canary
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: xenia_canary_linux.tar.xz
+          path: artifacts
+
+      # Uncomment when platforms are enabled:
+      # - name: Download macOS artifacts
+      #   uses: actions/download-artifact@v8
+      #   with:
+      #     name: xenia_canary_macos
+      #     path: artifacts/macos
+
+      # - name: Download Android artifacts
+      #   uses: actions/download-artifact@v8
+      #   with:
+      #     name: xenia_canary_android
+      #     path: artifacts/android
+
+      # --- Package everything into release assets ---
+
+      - name: Package release assets
+        run: |
+          mkdir -p release_assets
+
+          # Windows
+          if [ -d "artifacts/windows/xenia_canary" ]; then
+            cd artifacts/windows/xenia_canary
+            zip -r ../../../release_assets/xenia_canary_windows.zip . -x "*.pdb"
+            cd ../../..
+          fi
+
+          # Linux (already tar.gz)
+          if [ -f "artifacts/xenia_canary_linux.tar.xz" ]; then
+            cp artifacts/xenia_canary_linux.tar.xz release_assets/
+          fi
+
+          # macOS (uncomment when enabled)
+          # if [ -f "artifacts/macos/xenia_canary_macos.tar.gz" ]; then
+          #   cp artifacts/macos/xenia_canary_macos.tar.gz release_assets/
+          # fi
+
+          # Android (uncomment when enabled)
+          # if [ -f "artifacts/android/xenia_canary_android.zip" ]; then
+          #   cp artifacts/android/xenia_canary_android.zip release_assets/
+          # fi
+
+          echo "=== Release assets ==="
+          ls -lh release_assets/
+
+      # --- Create the release ---
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag_name }}
+          BODY: ${{ steps.meta.outputs.body }}
+          TARGET: ${{ inputs.tag }}
+        run: |
+          echo "${BODY}" > release_notes.md
+          echo "Creating release: ${TAG}"
+
+          # Check if tag/release already exists (re-run safety)
+          if gh release view "${TAG}" --repo "${REPO}" --json tagName 2>/dev/null; then
+            echo "Release ${TAG} exists, uploading new assets..."
+            gh release upload "${TAG}" \
+              --repo "${REPO}" \
+              --clobber \
+              release_assets/*
+          else
+            gh release create "${TAG}" \
+              --repo "${REPO}" \
+              --target "${{ inputs.tag }}" \
+              --title "${TAG}" \
+              --notes-file release_notes.md \
+              --notes "${BODY}" \
+              --latest \
+              release_assets/*
+          fi
+
+          echo "✅ Release ${TAG} published"

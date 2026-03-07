@@ -1,0 +1,88 @@
+name: Orchestrator
+
+on:
+  push:
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Pre-requirements
+  # ===========================================================================
+  commit-message:
+    name: Commit Message Validation
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/Check_commit_message.yml
+
+  lint:
+    name: Lint
+    uses: ./.github/workflows/Lint.yml
+
+  # Add optional steps here
+
+  # ===========================================================================
+  # Stage 2: Platform builds
+  # ===========================================================================
+  build-windows:
+    name: Windows (x86-64)
+    needs: [lint, commit-message]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/Windows_x86.yml
+
+  build-linux:
+    name: Linux (x86-64)
+    needs: [lint, commit-message]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/Linux_x86.yml
+
+  # Uncomment when platform support is ready:
+  # build-windows-arm64:
+  #   name: Windows-ARM64
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-win_arm64.yml
+
+  # build-linux-arm64:
+  #   name: Linux-ARM64
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-linux_arm64.yml
+
+  # build-macos:
+  #   name: macOS
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-macos.yml
+
+  # build-android:
+  #   name: Android
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-android.yml
+
+  # ===========================================================================
+  # Stage 3: Release
+  # ===========================================================================
+  release:
+    name: Create Release
+    needs: [build-windows, build-linux]
+    if: |
+      always() &&
+      github.repository == 'xenia-canary/xenia-canary' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/canary_experimental' &&
+      (needs.build-windows.result == 'success' && needs.build-linux.result == 'success')
+    uses: ./.github/workflows/Create_release.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      tag: ${{ github.sha }}
+      branch: ${{ github.ref_name }}
