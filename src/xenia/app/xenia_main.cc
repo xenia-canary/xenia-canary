@@ -224,9 +224,9 @@ class EmulatorApp final : public xe::ui::WindowedApp {
 
       // "Specified" path. Winkey is always added on windows.
       if (name != "winkey") {
-        auto it = std::find_if(
-            creators_.cbegin(), creators_.cend(),
-            [&name](const auto& f) { return name.compare(f.name) == 0; });
+        auto it =
+            std::find_if(creators_.cbegin(), creators_.cend(),
+                         [&name](const auto& f) { return name == f.name; });
 
         if (it != creators_.cend() && (*it).is_available()) {
           auto instance = (*it).instantiate(std::forward<Args>(args)...);
@@ -237,9 +237,9 @@ class EmulatorApp final : public xe::ui::WindowedApp {
       }
 
       // Always add winkey for passthrough.
-      auto it = std::find_if(
-          creators_.cbegin(), creators_.cend(),
-          [&name](const auto& f) { return f.name.compare("winkey") == 0; });
+      auto it =
+          std::find_if(creators_.cbegin(), creators_.cend(),
+                       [&name](const auto& f) { return f.name == "winkey"; });
       if (it != creators_.cend() && (*it).is_available()) {
         auto instance = (*it).instantiate(std::forward<Args>(args)...);
         if (instance) {
@@ -434,7 +434,7 @@ std::unique_ptr<gpu::GraphicsSystem> EmulatorApp::CreateGraphicsSystem() {
 std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
     ui::Window* window) {
   std::vector<std::unique_ptr<hid::InputDriver>> drivers;
-  if (cvars::hid.compare("nop") == 0) {
+  if (cvars::hid == "nop") {
     drivers.emplace_back(
         xe::hid::nop::Create(window, EmulatorWindow::kZOrderHidInput));
   } else {

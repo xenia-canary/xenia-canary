@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "xenia/app/profile_dialogs.h"
 #include "xenia/emulator.h"
@@ -82,15 +83,15 @@ class EmulatorWindow {
   void OnEmulatorInitialized();
 
   xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
-  void UpdateTitle();
-  void SetFullscreen(bool fullscreen);
+  void UpdateTitle() const;
+  void SetFullscreen(bool fullscreen) const;
   void ToggleFullscreen();
   void SetInitializingShaderStorage(bool initializing);
 
   void TakeScreenshot();
   void ExportScreenshot(const xe::ui::RawImage& image);
-  void SaveImage(const std::filesystem::path& path,
-                 const xe::ui::RawImage& image);
+  static void SaveImage(const std::filesystem::path& path,
+                        const xe::ui::RawImage& image);
 
   void ToggleProfilesConfigDialog();
   void ToggleXMPConfigDialog();
@@ -175,11 +176,11 @@ class EmulatorWindow {
         std::shared_ptr<std::vector<Emulator::ContentInstallEntry>> entries)
         : ui::ImGuiDialog(imgui_drawer),
           emulator_window_(emulator_window),
-          installation_entries_(entries) {
+          installation_entries_(std::move(entries)) {
       window_id_ = GetWindowId();
     }
 
-    ~ContentInstallDialog() {
+    ~ContentInstallDialog() override {
       for (auto& entry : *installation_entries_) {
         entry.icon_.release();
       }
@@ -249,7 +250,7 @@ class EmulatorWindow {
   GetGuestOutputPaintEffectForCvarValue(const std::string& cvar_value);
   static ui::Presenter::GuestOutputPaintConfig
   GetGuestOutputPaintConfigForCvars();
-  void ApplyDisplayConfigForCvars();
+  void ApplyDisplayConfigForCvars() const;
 
   void OnKeyDown(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
@@ -259,21 +260,21 @@ class EmulatorWindow {
   void FileOpen();
   void FileClose();
   void InstallContent();
-  void ExtractZarchive();
-  void CreateZarchive();
-  void ShowContentDirectory();
-  void CpuTimeScalarReset();
-  void CpuTimeScalarSetHalf();
-  void CpuTimeScalarSetDouble();
-  void CpuBreakIntoDebugger();
+  void ExtractZarchive() const;
+  void CreateZarchive() const;
+  void ShowContentDirectory() const;
+  void CpuTimeScalarReset() const;
+  void CpuTimeScalarSetHalf() const;
+  void CpuTimeScalarSetDouble() const;
+  void CpuBreakIntoDebugger() const;
   void CpuBreakIntoHostDebugger();
-  void GpuTraceFrame();
-  void GpuClearCaches();
+  void GpuTraceFrame() const;
+  void GpuClearCaches() const;
   void ToggleDisplayConfigDialog();
-  void ToggleControllerVibration();
-  void ShowCompatibility();
-  void ShowFAQ();
-  void ShowBuildCommit();
+  void ToggleControllerVibration() const;
+  void ShowCompatibility() const;
+  static void ShowFAQ();
+  static void ShowBuildCommit();
 
   EmulatorWindow::ControllerHotKey ProcessControllerHotkey(int buttons);
   void VibrateController(xe::hid::InputSystem* input_sys, uint32_t user_index,
@@ -289,8 +290,8 @@ class EmulatorWindow {
   void RunPreviouslyPlayedTitle();
   void FillRecentlyLaunchedTitlesMenu(xe::ui::MenuItem* recent_menu);
   void LoadRecentlyLaunchedTitles();
-  void AddRecentlyLaunchedTitle(std::filesystem::path path_to_file,
-                                std::string title_name);
+  void AddRecentlyLaunchedTitle(const std::filesystem::path& path_to_file,
+                                const std::string& title_name);
 
   void ClearDialogs();
 
