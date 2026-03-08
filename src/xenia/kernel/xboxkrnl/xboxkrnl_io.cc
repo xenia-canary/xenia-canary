@@ -171,6 +171,15 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
       // Mark that we should signal the event now. We do this after
       // we have written the info out.
       signal_event = true;
+
+      if (XSUCCEEDED(result)) {
+        if (auto patch = kernel_state()->xmp_volume_patch()) {
+          auto host_buf =
+              kernel_memory()->TranslateVirtual(buffer.guest_address());
+          patch->OnFileRead(file->entry()->name(), host_buf, buffer_length,
+                            buffer.guest_address());
+        }
+      }
     } else {
       // TODO(benvanik): async.
 
@@ -346,6 +355,15 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
       // Mark that we should signal the event now. We do this after
       // we have written the info out.
       signal_event = true;
+
+      if (XSUCCEEDED(result)) {
+        if (auto patch = kernel_state()->xmp_volume_patch()) {
+          auto host_buf =
+              kernel_memory()->TranslateVirtual(buffer.guest_address());
+          patch->OnFileWrite(file->entry()->name(), host_buf, buffer_length,
+                             buffer.guest_address());
+        }
+      }
     } else {
       // X_STATUS_PENDING if not returning immediately.
       result = X_STATUS_PENDING;

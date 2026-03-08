@@ -121,11 +121,22 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
     actual_user_index = 0;
   }
 
+  X_RESULT result;
   auto input_system = kernel_state()->emulator()->input_system();
-  auto lock = input_system->lock();
-  return input_system->GetState(
-      user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
-      input_state);
+  {
+    auto lock = input_system->lock();
+    result = input_system->GetState(
+        user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
+        input_state);
+  }
+
+  if (input_state && result == X_ERROR_SUCCESS) {
+    if (auto patch = kernel_state()->xmp_volume_patch()) {
+      patch->OnInputPoll(input_state->packet_number);
+    }
+  }
+
+  return result;
 }
 DECLARE_XAM_EXPORT2(XamInputGetState, kInput, kImplemented, kHighFrequency);
 
