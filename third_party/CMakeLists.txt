@@ -240,44 +240,57 @@ if(_zlibng_needs_configure)
   )
 endif()
 file(GLOB _zlibng_c "zlib-ng/*.c")
-file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
 file(GLOB _zlibng_generic "zlib-ng/arch/generic/*.c")
-add_library(zlib-ng STATIC
-  ${_zlibng_c}
-  ${_zlibng_x86}
-  ${_zlibng_generic}
-)
-target_compile_definitions(zlib-ng PRIVATE
-  X86_FEATURES
-  X86_HAVE_XSAVE_INTRIN
-  X86_SSSE3
-  X86_SSE42
-  WITH_GZFILEOP
-)
-if(WIN32)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
+  add_library(zlib-ng STATIC
+    ${_zlibng_c}
+    ${_zlibng_x86}
+    ${_zlibng_generic}
+  )
   target_compile_definitions(zlib-ng PRIVATE
-    X86_SSE2
-    X86_AVX2
-    X86_AVX512
-    X86_AVX512VNNI
-    X86_PCLMULQDQ_CRC
-    X86_VPCLMULQDQ_CRC
+    X86_FEATURES
+    X86_HAVE_XSAVE_INTRIN
+    X86_SSSE3
+    X86_SSE42
+    WITH_GZFILEOP
   )
-else()
-  # Remove AVX2/AVX512 files on non-Windows
-  set(_zlibng_exclude_patterns
-    "adler32_avx2" "adler32_avx512" "adler32_avx512_vnni"
-    "chunkset_avx2" "compare256_avx2"
-    "crc32_pclmulqdq" "crc32_vpclmulqdq"
-    "slide_hash_avx2"
-  )
-  foreach(_pat ${_zlibng_exclude_patterns})
+  if(WIN32)
+    target_compile_definitions(zlib-ng PRIVATE
+      X86_SSE2
+      X86_AVX2
+      X86_AVX512
+      X86_AVX512VNNI
+      X86_PCLMULQDQ_CRC
+      X86_VPCLMULQDQ_CRC
+    )
+  else()
+    # Remove AVX2/AVX512 files on non-Windows
+    set(_zlibng_exclude_patterns
+      "adler32_avx2" "adler32_avx512" "adler32_avx512_vnni"
+      "chunkset_avx2" "compare256_avx2"
+      "crc32_pclmulqdq" "crc32_vpclmulqdq"
+      "slide_hash_avx2"
+    )
+    foreach(_pat ${_zlibng_exclude_patterns})
     list(FILTER _zlibng_x86 EXCLUDE REGEX "${_pat}")
-  endforeach()
-  # Re-set sources without excluded files
-  get_target_property(_zlibng_srcs zlib-ng SOURCES)
-  set_target_properties(zlib-ng PROPERTIES SOURCES "")
-  target_sources(zlib-ng PRIVATE ${_zlibng_c} ${_zlibng_x86} ${_zlibng_generic})
+    endforeach()
+    # Re-set sources without excluded files
+    get_target_property(_zlibng_srcs zlib-ng SOURCES)
+    set_target_properties(zlib-ng PROPERTIES SOURCES "")
+    target_sources(zlib-ng PRIVATE ${_zlibng_c} ${_zlibng_x86} ${_zlibng_generic})
+  endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+  file(GLOB _zlibng_arm "zlib-ng/arch/arm/*.c")
+  add_library(zlib-ng STATIC
+    ${_zlibng_c}
+    ${_zlibng_arm}
+    ${_zlibng_generic}
+  )
+  target_compile_definitions(zlib-ng PRIVATE
+    ARM_NEON
+    WITH_GZFILEOP
+  )
 endif()
 target_include_directories(zlib-ng PUBLIC zlib-ng)
 
