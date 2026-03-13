@@ -601,13 +601,13 @@ std::string disc_desc =
     "There's been an issue reading content from the game disc.\nThis is "
     "likely caused by bad or unimplemented file IO calls.";
 
-void XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
+dword_result_t XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
   // uses XamIsDataCenterMode & XamShowAndWaitForMessageBoxEx, same as
   // XamShowNuiDirtyDiscErrorUI except flag = 1, user index always set to
   // XUserIndexAny
   if (cvars::headless) {
     assert_always();
-    return;
+    return X_ERROR_SUCCESS;
   }
 
   const Emulator* emulator = kernel_state()->emulator();
@@ -615,16 +615,20 @@ void XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
   xeXamDispatchDialog<MessageBoxDialog>(
       new MessageBoxDialog(imgui_drawer, disc_title, disc_desc, {"OK"}, 0),
       [](MessageBoxDialog*) -> X_RESULT { return X_ERROR_SUCCESS; }, 0);
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamShowDirtyDiscErrorUI, kUI, kStub);
 
-void XamShowNuiDirtyDiscErrorUI_entry(dword_t tracking_id) {
-  // xeXamNuiHudCheck & XamShowAndWaitForMessageBoxEx, same as
-  // XamShowDirtyDiscErrorUI except flag = 0x2001, user index always set to
-  // XUserIndexAny
+dword_result_t XamShowNuiDirtyDiscErrorUI_entry(dword_t tracking_id) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  // XamShowAndWaitForMessageBoxEx, same as XamShowDirtyDiscErrorUI except flag
+  // = 0x2001, user index always set to XUserIndexAny
   if (cvars::headless) {
     assert_always();
-    return;
+    return X_ERROR_SUCCESS;
   }
 
   const Emulator* emulator = kernel_state()->emulator();
@@ -632,6 +636,7 @@ void XamShowNuiDirtyDiscErrorUI_entry(dword_t tracking_id) {
   xeXamDispatchDialog<MessageBoxDialog>(
       new MessageBoxDialog(imgui_drawer, disc_title, disc_desc, {"OK"}, 0),
       [](MessageBoxDialog*) -> X_RESULT { return X_ERROR_SUCCESS; }, 0);
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamShowNuiDirtyDiscErrorUI, kUI, kStub);
 
@@ -1040,6 +1045,10 @@ DECLARE_XAM_EXPORT1(XamShowSigninUIEx, kUserProfiles, kSketchy);
 
 dword_result_t XamShowNuiSigninUI_entry(dword_t tracking_id, dword_t user_index,
                                         dword_t flags) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
   uint32_t users_needed = 1;
   uint32_t sent_flags = flags | static_cast<uint32_t>(SigninUiFlags::NUI);
   // xeXamNuiHudCheck(tracking_id) = success then continue else return
@@ -1189,6 +1198,10 @@ dword_result_t XamShowNuiHardwareRequiredUI_entry(unknown_t unk1) {
 DECLARE_XAM_EXPORT1(XamShowNuiHardwareRequiredUI, kNone, kImplemented);
 
 dword_result_t XamShowNuiGuideUI_entry(unknown_t tracking_id, unknown_t unk2) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
   /* Notes:
    - calls xeXamNuiHudCheck, if success call XamAppRequestLoadEx(4) and if
    succeed call XMsgSystemProcessCall and some sub function that ensures correct
