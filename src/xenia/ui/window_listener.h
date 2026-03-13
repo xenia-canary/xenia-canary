@@ -34,6 +34,7 @@ class WindowListener {
   virtual void OnLostFocus(UISetupEvent& e) {}
 
   virtual void OnFileDrop(FileDropEvent& e) {}
+  virtual void OnUsbDeviceChanged(bool is_arrival) {}
 };
 
 class WindowInputListener {

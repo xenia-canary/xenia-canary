@@ -553,6 +553,8 @@ class Window {
   void OnDpiChanged(UISetupEvent& e,
                     WindowDestructionReceiver& destruction_receiver);
   void OnMonitorUpdate(MonitorUpdateEvent& e);
+  void OnUsbDeviceChanged(bool is_arrival,
+                          WindowDestructionReceiver& destruction_receiver);
   // For calling when the platform changes something in the non-maximized,
   // non-fullscreen size of the window.
   void OnDesiredLogicalSizeUpdate(uint32_t new_desired_logical_width,

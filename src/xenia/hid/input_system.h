@@ -16,7 +16,7 @@
 #include "xenia/base/mutex.h"
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_driver.h"
-#include "xenia/hid/skylander/skylander_portal.h"
+#include "xenia/hid/portal/portal.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -56,7 +56,7 @@ class InputSystem {
 
   uint32_t GetLastUsedSlot() const { return last_used_slot; }
 
-  SkylanderPortal* GetSkylanderPortal() { return skylander_portal_.get(); }
+  Portal* GetPortal() { return portal_.get(); }
 
   std::unique_lock<xe_unlikely_mutex> lock();
 
@@ -77,7 +77,7 @@ class InputSystem {
 
   std::vector<std::unique_ptr<InputDriver>> drivers_;
 
-  std::unique_ptr<SkylanderPortal> skylander_portal_;
+  std::unique_ptr<Portal> portal_;
 
   std::bitset<XUserMaxUserCount> connected_slots = {};
   std::array<std::pair<joystick_value, joystick_value>, XUserMaxUserCount>

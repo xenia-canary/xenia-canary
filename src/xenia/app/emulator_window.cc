@@ -297,6 +297,20 @@ void EmulatorWindow::EmulatorWindowListener::OnMouseUp(ui::MouseEvent& e) {
   emulator_window_.OnMouseUp(e);
 }
 
+void EmulatorWindow::EmulatorWindowListener::OnUsbDeviceChanged(
+    bool is_arrival) {
+  auto* portal = emulator_window_.emulator()->input_system()->GetPortal();
+  if (!portal) {
+    return;
+  }
+
+  if (is_arrival) {
+    portal->OnDeviceArrival();
+  } else {
+    portal->OnDeviceRemoval();
+  }
+}
+
 void EmulatorWindow::DisplayConfigGameConfigLoadCallback::PostGameConfigLoad() {
   emulator_window_.ApplyDisplayConfigForCvars();
 }

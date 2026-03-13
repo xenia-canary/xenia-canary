@@ -246,43 +246,76 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamUserGetDeviceContext, kInput, kStub);
 
-X_HRESULT_result_t XamInputNonControllerGetRaw_entry(
-    lpdword_t state_ptr, lpdword_t buffer_length_ptr, lpdword_t buffer_ptr) {
+X_HRESULT_result_t XamInputNonControllerGetRawEx_entry(
+    dword_t device_id, lpdword_t buffer_ptr, lpdword_t buffer_length_ptr,
+    lpword_t state_ptr) {
+  if (device_id != 5 && device_id != 6) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
   if (!state_ptr || !buffer_length_ptr || !buffer_ptr) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  const uint32_t data_size = *buffer_length_ptr;
-
-  if (data_size == 0 || data_size > 0x20) {
+  if (*buffer_length_ptr == 0 || *buffer_length_ptr > hid::kPortalBufferSize) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  auto input_system = kernel_state()->emulator()->input_system();
+  auto portal = kernel_state()->emulator()->input_system()->GetPortal();
+  if (!portal) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
 
-  std::vector<uint8_t> data(data_size, 0);
-  const auto result = input_system->GetSkylanderPortal()->read(data);
-  *state_ptr = 1;
-  memcpy(buffer_ptr, data.data(), data.size());
+  uint32_t bytes_read = *buffer_length_ptr;
+  uint16_t state = 0;
 
+  const auto result = portal->Read(
+      {kernel_memory()->TranslateVirtual(buffer_ptr.guest_address()),
+       *buffer_length_ptr},
+      bytes_read, state);
+
+  if (XSUCCEEDED(result)) {
+    *buffer_length_ptr = bytes_read;
+    *state_ptr = state;
+  }
   return result;
 }
-DECLARE_XAM_EXPORT1(XamInputNonControllerGetRaw, kInput, kStub);
+DECLARE_XAM_EXPORT1(XamInputNonControllerGetRawEx, kInput, kSketchy);
+
+X_HRESULT_result_t XamInputNonControllerSetRawEx_entry(dword_t device_id,
+                                                       lpdword_t buffer_ptr,
+                                                       dword_t buffer_length) {
+  if (device_id != 5 && device_id != 6) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (!buffer_ptr || !buffer_length || buffer_length > hid::kPortalBufferSize) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto portal = kernel_state()->emulator()->input_system()->GetPortal();
+  if (!portal) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+
+  return portal->Write(
+      {kernel_memory()->TranslateVirtual(buffer_ptr.guest_address()),
+       buffer_length});
+}
+DECLARE_XAM_EXPORT1(XamInputNonControllerSetRawEx, kInput, kSketchy);
+
+X_HRESULT_result_t XamInputNonControllerGetRaw_entry(
+    lpword_t state_ptr, lpdword_t buffer_length_ptr, lpdword_t buffer_ptr) {
+  return XamInputNonControllerGetRawEx_entry(5, buffer_ptr, buffer_length_ptr,
+                                             state_ptr);
+}
+DECLARE_XAM_EXPORT1(XamInputNonControllerGetRaw, kInput, kSketchy);
 
 X_HRESULT_result_t XamInputNonControllerSetRaw_entry(dword_t buffer_length,
                                                      lpdword_t buffer_ptr) {
-  if (!buffer_ptr || !buffer_length || buffer_length > 0x20) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
-  auto input_system = kernel_state()->emulator()->input_system();
-
-  std::vector<uint8_t> data(buffer_length, 0);
-  memcpy(data.data(), buffer_ptr, buffer_length);
-
-  return input_system->GetSkylanderPortal()->write(data);
+  // Normally there are handled separatelly with different first param, but
+  // whatever.
+  return XamInputNonControllerSetRawEx_entry(5, buffer_ptr, buffer_length);
 }
-DECLARE_XAM_EXPORT1(XamInputNonControllerSetRaw, kInput, kStub);
+DECLARE_XAM_EXPORT1(XamInputNonControllerSetRaw, kInput, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

@@ -19,6 +19,7 @@
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/windowed_app_context_win.h"
 
+#include <Dbt.h>
 #include <ShellScalingApi.h>
 #include <dwmapi.h>
 
@@ -47,6 +48,10 @@ Win32Window::~Win32Window() {
   if (cursor_auto_hide_timer_) {
     DeleteTimerQueueTimer(nullptr, cursor_auto_hide_timer_, nullptr);
     cursor_auto_hide_timer_ = nullptr;
+  }
+  if (usb_device_notify_) {
+    UnregisterDeviceNotification(usb_device_notify_);
+    usb_device_notify_ = nullptr;
   }
   if (hwnd_) {
     // Set hwnd_ to null to ignore events from now on since this Win32Window is
@@ -202,6 +207,14 @@ bool Win32Window::OpenImpl() {
 
   // Enable file dragging from external sources
   DragAcceptFiles(hwnd_, true);
+
+  // Register USB listener
+  DEV_BROADCAST_DEVICEINTERFACE filter = {};
+  filter.dbcc_size = sizeof(filter);
+  filter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+  usb_device_notify_ = RegisterDeviceNotificationW(
+      hwnd_, &filter,
+      DEVICE_NOTIFY_WINDOW_HANDLE | DEVICE_NOTIFY_ALL_INTERFACE_CLASSES);
 
   // Apply the initial state from the Window that the window shouldn't be
   // visibly transitioned to.
@@ -1084,7 +1097,16 @@ LRESULT Win32Window::WndProc(HWND hWnd, UINT message, WPARAM wParam,
       MonitorUpdateEvent update_event{this, true};
       OnMonitorUpdate(update_event);
     } break;
-
+    case WM_DEVICECHANGE: {
+      if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
+        bool is_arrival = (wParam == DBT_DEVICEARRIVAL);
+        WindowDestructionReceiver destruction_receiver(this);
+        OnUsbDeviceChanged(is_arrival, destruction_receiver);
+        if (destruction_receiver.IsWindowDestroyedOrClosed()) {
+          break;
+        }
+      }
+    } break;
     case WM_DPICHANGED: {
       // Note that for some reason, WM_DPICHANGED is not sent when the window is
       // borderless fullscreen with per-monitor DPI awareness v1.
