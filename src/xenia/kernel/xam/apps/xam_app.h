@@ -18,6 +18,15 @@ namespace kernel {
 namespace xam {
 namespace apps {
 
+#pragma pack(push, 4)
+struct X_2B003_UNK {
+  xe::be<uint64_t> unk1;
+  xe::be<uint64_t> unk2;
+  xe::be<uint32_t> flags;
+};
+static_assert_size(X_2B003_UNK, 0x14);
+#pragma pack(pop)
+
 class XamApp : public App {
  public:
   explicit XamApp(KernelState* kernel_state);
