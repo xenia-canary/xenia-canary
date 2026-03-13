@@ -77,7 +77,11 @@ add_library(discord-rpc STATIC
   discord-rpc/src/serialization.cpp
   discord-rpc/src/serialization.h
 )
-target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_SSE42)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_SSE42)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+  target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_NEON)
+endif()
 target_include_directories(discord-rpc PUBLIC discord-rpc/include PRIVATE rapidjson/include)
 if(WIN32)
   target_sources(discord-rpc PRIVATE
