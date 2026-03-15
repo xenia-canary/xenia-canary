@@ -100,3 +100,6 @@
 [submodule "third_party/DirectX-Headers"]
 	path = third_party/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers.git
+[submodule "third_party/xbyak_aarch64"]
+	path = third_party/xbyak_aarch64
+	url = https://github.com/fujitsu/xbyak_aarch64.git
