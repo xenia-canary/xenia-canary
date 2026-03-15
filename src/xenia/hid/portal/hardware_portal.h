@@ -28,15 +28,14 @@ class HardwarePortal final : public Portal {
   HardwarePortal();
   ~HardwarePortal() override;
 
-  virtual void OnDeviceArrival() override;
-  virtual void OnDeviceRemoval() override;
+  void OnDeviceArrival() override;
+  void OnDeviceRemoval() override;
 
  private:
-  virtual void OpenDevice() override;
-  virtual void CloseDevice() override;
-  virtual X_STATUS ReadInternal(std::span<uint8_t> data,
-                                int32_t& read_count) override;
-  virtual X_STATUS WriteInternal(std::span<uint8_t> data) override;
+  void OpenDevice() override;
+  void CloseDevice() override;
+  X_STATUS ReadInternal(std::span<uint8_t> data, int32_t& read_count) override;
+  X_STATUS WriteInternal(std::span<uint8_t> data) override;
 
   const uint8_t read_endpoint = 0x81;
   const uint8_t write_endpoint = 0x02;

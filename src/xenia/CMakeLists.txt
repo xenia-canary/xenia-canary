@@ -45,7 +45,7 @@ add_subdirectory(helper/sdl)
 add_subdirectory(hid/sdl)
 
 # Platform-conditional modules
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(LINUX)
   add_subdirectory(apu/alsa)
 endif()
 

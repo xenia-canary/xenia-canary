@@ -30,7 +30,7 @@ if(XENIA_BUILD_MISC)
   target_link_libraries(xenia-ui-window-vulkan-demo PRIVATE
     fmt imgui xenia-base xenia-ui xenia-ui-vulkan
   )
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(LINUX)
     target_link_libraries(xenia-ui-window-vulkan-demo PRIVATE X11 xcb X11-xcb)
   endif()
   xe_target_defaults(xenia-ui-window-vulkan-demo)

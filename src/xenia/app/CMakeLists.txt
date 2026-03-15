@@ -112,7 +112,7 @@ if(WIN32)
     xenia-hid-xinput
     xenia-ui-d3d12
   )
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif(LINUX)
   target_link_libraries(xenia-app PRIVATE
     xenia-apu-alsa
     X11

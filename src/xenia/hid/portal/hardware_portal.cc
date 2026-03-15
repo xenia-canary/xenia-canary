@@ -13,7 +13,7 @@
 namespace xe {
 namespace hid {
 
-HardwarePortal::HardwarePortal() : Portal() {
+HardwarePortal::HardwarePortal() {
   libusb_init(&context_);
   OpenDevice();
 }
@@ -41,7 +41,7 @@ void HardwarePortal::OpenDevice() {
   for (ssize_t i = 0; i < cnt; ++i) {
     libusb_device* dev = devs[i];
 
-    libusb_device_descriptor desc;
+    libusb_device_descriptor desc{};
     if (libusb_get_device_descriptor(dev, &desc) == 0) {
       // Check if this device matches the target Vendor ID and Product ID.
       // Small limitation. We're only supporting one device being connected at
@@ -49,6 +49,9 @@ void HardwarePortal::OpenDevice() {
       for (const auto& entry : kPortalVendorProductIdList) {
         if (desc.idVendor == entry.first && desc.idProduct == entry.second) {
           if (libusb_open(dev, &handle_) == 0) {
+#if XE_PLATFORM_LINUX
+            libusb_set_auto_detach_kernel_driver(handle_, 1);
+#endif
             libusb_claim_interface(handle_, 0);
             connected_ = true;
             // We found device. No need to go thorugh remaining IDs.
