@@ -991,7 +991,7 @@ dword_result_t XamSessionRefObjByHandle_entry(dword_t handle,
 DECLARE_XAM_EXPORT1(XamSessionRefObjByHandle, kUserProfiles, kStub);
 
 dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t user_index,
-                                                       dword_t unk,
+                                                       dword_t pc_check,
                                                        lpdword_t result_ptr) {
   if (!result_ptr) {
     return X_ERROR_INVALID_PARAMETER;
@@ -1000,7 +1000,7 @@ dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t user_index,
   if (user_index != XUserIndexAny && user_index >= XUserMaxUserCount) {
     return X_ERROR_INVALID_PARAMETER;
   }
-
+  // ExGetXConfigSetting(3,0xf,&pc_flags,1,*size_out);
   // uint32_t result = XamUserCheckPrivilege_entry(user_index, 0xD4u,
   // result_ptr);
 
@@ -1010,29 +1010,64 @@ dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamUserIsUnsafeProgrammingAllowed, kUserProfiles, kStub);
 
-dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
-                                                lpdword_t subscription_ptr,
-                                                lpdword_t r5,
-                                                dword_t overlapped_ptr) {
-  if (user_index >= XUserMaxUserCount) {
-    return X_E_INVALIDARG;
+dword_result_t XamUserGetSubscriptionType_entry(
+    dword_t user_index, lpdword_t subscription_length_ptr,
+    lpdword_t subscription_payment_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    extended_error = X_ERROR_SUCCESS;
+    length = 0;
+
+    if (user_index >= XUserMaxUserCount) {
+      extended_error = X_E_INVALIDARG;
+      return X_ERROR_INVALID_PARAMETER;
+    }
+
+    if (!subscription_length_ptr || !subscription_payment_ptr) {
+      extended_error = X_E_INVALIDARG;
+      return X_ERROR_INVALID_PARAMETER;
+    }
+
+    const auto user_profile =
+        kernel_state()->xam_state()->GetUserProfile(user_index);
+
+    if (!user_profile) {
+      extended_error = X_E_NO_SUCH_USER;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    if (const auto setting =
+            kernel_state()->xam_state()->user_tracker()->GetSetting(
+                user_profile, kDashboardID,
+                static_cast<uint32_t>(
+                    UserSettingId::
+                        XPROFILE_SUBSCRIPTION_TYPE_LENGTH_IN_MONTHS))) {
+      *subscription_length_ptr = std::get<int32_t>(setting->get_host_data());
+    }
+
+    if (const auto setting =
+            kernel_state()->xam_state()->user_tracker()->GetSetting(
+                user_profile, kDashboardID,
+                static_cast<uint32_t>(
+                    UserSettingId::XPROFILE_SUBSCRIPTION_PAYMENT_TYPE))) {
+      *subscription_payment_ptr = std::get<int32_t>(setting->get_host_data());
+    }
+
+    return X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    X_RESULT result = run(extended_error, length);
+
+    return result == X_ERROR_SUCCESS ? result : extended_error;
   }
 
-  if (!subscription_ptr || !r5) {
-    return X_E_INVALIDARG;
-  }
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
 
-  auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
-  *subscription_ptr = user->GetSubscriptionTier();
-  *r5 = 0x0;
-
-  return X_ERROR_SUCCESS;
+  return X_ERROR_IO_PENDING;
 }
-DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kStub);
+DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetCachedUserFlags_entry(dword_t user_index) {
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
@@ -1140,11 +1175,9 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
 }
 DECLARE_XAM_EXPORT1(XamUserCreateStatsEnumerator, kUserProfiles, kSketchy);
 
-dword_result_t XamUserGetUserTenure_entry(dword_t user_index,
-                                          lpdword_t tenure_level_ptr,
-                                          lpdword_t milestone_ptr,
-                                          lpqword_t milestone_date_ptr,
-                                          dword_t overlap_ptr) {
+dword_result_t XamUserGetUserTenure_entry(
+    dword_t user_index, lpdword_t tenure_level_ptr, lpdword_t milestone_ptr,
+    lpqword_t milestone_date_ptr, pointer_t<XAM_OVERLAPPED> overlap_ptr) {
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
     return X_E_INVALIDARG;
   }
