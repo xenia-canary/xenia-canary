@@ -13,6 +13,7 @@ from argparse import ArgumentParser
 from glob import glob
 from json import loads as jsonloads
 import os
+from re import findall as re_findall
 from shutil import rmtree
 import subprocess
 import sys
@@ -594,11 +595,22 @@ def get_pr_number():
 def git_submodule_update():
     """Runs a git submodule sync, init, and update.
     """
+    if sys.platform == "linux":
+        submodules_ignore = ["DirectX-Headers", "DirectXShaderCompiler"]
+    else:
+        submodules_ignore = None
+    if submodules_ignore:
+        with open(".gitmodules") as f:
+            gitmodules = f.read()
+        submodules = re_findall(r"(?<=path = )(?!third_party\/(?:" + "|".join(submodules_ignore) + r")).+", gitmodules)
+    else:
+        submodules = None
     # Sync submodule URLs from .gitmodules to local config
     shell_call([
         "git",
         "submodule",
         "sync",
+        *(submodules or []),
         ])
     # Then update all submodules to their recorded commits
     shell_call([
@@ -610,6 +622,7 @@ def git_submodule_update():
         "--init",
         "--depth=1",
         "-j", f"{os.cpu_count()}",
+        *(submodules or []),
         ])
 
 
