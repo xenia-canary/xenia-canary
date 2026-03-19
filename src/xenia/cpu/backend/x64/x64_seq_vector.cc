@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "xenia/cpu/backend/x64/x64_op.h"
+#include "xenia/cpu/backend/x64/x64_util.h"
 
 // For OPCODE_PACK/OPCODE_UNPACK
 #include "third_party/half/include/half.hpp"
@@ -159,6 +160,16 @@ struct VECTOR_DENORMFLUSH
     : Sequence<VECTOR_DENORMFLUSH,
                I<OPCODE_VECTOR_DENORMFLUSH, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    if (e.IsFeatureEnabled(kX64EmitAVX512Ortho | kX64EmitAVX512DQ)) {
+      const Xbyak::Opmask denormal_mask = e.k1;
+      e.vptestnmd(denormal_mask, i.src1,
+                  e.GetXmmConstPtr(XMMSingleDenormalMask));
+      e.vxorps(e.xmm1, e.xmm1, e.xmm1);
+      e.vrangeps(i.dest.reg() | denormal_mask, i.src1, e.xmm1,
+                 FpRangeSelect::AbsMin | FpRangeSign::OperandA);
+      return;
+    }
+
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
     e.vxorps(e.xmm1, e.xmm1, e.xmm1);  // 0.25 P0123
 

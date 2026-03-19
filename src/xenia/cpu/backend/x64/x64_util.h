@@ -38,6 +38,21 @@ constexpr uint8_t b = 0b11001100;
 constexpr uint8_t c = 0b10101010;
 }  // namespace TernaryOperand
 
+// Opcodes for use with vrange* instructions
+namespace FpRangeSelect {
+constexpr uint8_t Min = 0b00;
+constexpr uint8_t Max = 0b01;
+constexpr uint8_t AbsMin = 0b10;  // Smaller absolute value
+constexpr uint8_t AbsMax = 0b11;  // Larger absolute value
+};  // namespace FpRangeSelect
+
+namespace FpRangeSign {
+constexpr uint8_t OperandA = 0b00;  // Copy sign of operand A
+constexpr uint8_t Preserve = 0b01;  // Leave sign as is
+constexpr uint8_t Positive = 0b10;  // Set Positive
+constexpr uint8_t Negative = 0b11;  // Set Negative
+};  // namespace FpRangeSign
+
 }  // namespace x64
 }  // namespace backend
 }  // namespace cpu
