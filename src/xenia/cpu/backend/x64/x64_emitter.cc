@@ -1313,6 +1313,12 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, const vec128_t& v) {
       }
 
       if (all_equal_bytes) {
+        if (IsFeatureEnabled(kX64EmitGFNI)) {
+          vpxor(dest, dest);
+          vgf2p8affineqb(dest, dest, dest, firstbyte);
+          return;
+        }
+
         void* bval = FindByteConstantOffset(firstbyte);
 
         if (bval) {
