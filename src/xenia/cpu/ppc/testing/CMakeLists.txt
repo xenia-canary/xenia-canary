@@ -29,9 +29,11 @@ target_link_libraries(xenia-cpu-ppc-tests PRIVATE
   capstone fmt imgui mspack
 )
 
-# x64 backend
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+# Architecture-specific backend
+if(XE_TARGET_X86_64)
   target_link_libraries(xenia-cpu-ppc-tests PRIVATE xenia-cpu-backend-x64)
+elseif(XE_TARGET_AARCH64)
+  target_link_libraries(xenia-cpu-ppc-tests PRIVATE xenia-cpu-backend-a64)
 endif()
 
 xe_target_defaults(xenia-cpu-ppc-tests)

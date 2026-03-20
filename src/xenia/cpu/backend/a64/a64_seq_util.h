@@ -1,0 +1,342 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_CPU_BACKEND_A64_A64_SEQ_UTIL_H_
+#define XENIA_CPU_BACKEND_A64_A64_SEQ_UTIL_H_
+
+#include "xenia/base/memory.h"
+#include "xenia/base/vec128.h"
+#include "xenia/cpu/backend/a64/a64_backend.h"
+#include "xenia/cpu/backend/a64/a64_emitter.h"
+#include "xenia/cpu/backend/a64/a64_op.h"
+#include "xenia/cpu/backend/a64/a64_stack_layout.h"
+
+#include "xbyak_aarch64.h"
+
+namespace xe {
+namespace cpu {
+namespace backend {
+namespace a64 {
+
+using Xbyak_aarch64::QReg;
+using Xbyak_aarch64::VReg;
+using Xbyak_aarch64::WReg;
+using Xbyak_aarch64::XReg;
+
+// Load a compile-time vec128_t constant into a NEON register.
+inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
+  e.mov(e.x0, val.low);
+  e.mov(e.x1, val.high);
+  e.stp(e.x0, e.x1,
+        Xbyak_aarch64::ptr(e.sp,
+                           static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+  e.ldr(QReg(vreg_idx),
+        Xbyak_aarch64::ptr(e.sp,
+                           static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+}
+
+// Resolve a V128 operand to a register index, loading constants into
+// scratch_idx if needed.
+template <typename T>
+inline int SrcVReg(A64Emitter& e, const T& op, int scratch_idx) {
+  if (op.is_constant) {
+    LoadV128Const(e, scratch_idx, op.constant());
+    return scratch_idx;
+  }
+  return op.reg().getIdx();
+}
+
+// Byte-swap index within 32-bit lanes (for PPC big-endian conversion).
+inline int bswap_lane_idx(int byte_idx) {
+  return (byte_idx & ~3) | (3 - (byte_idx & 3));
+}
+
+// Compute a guest memory address, returning the XReg for [x21, xN] addressing.
+// For constants, loads the address into x0 (scratch).
+inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
+  using namespace Xbyak_aarch64;
+  if (guest.is_constant) {
+    uint32_t address = static_cast<uint32_t>(guest.constant());
+    if (address >= 0xE0000000 &&
+        xe::memory::allocation_granularity() > 0x1000) {
+      address += 0x1000;
+    }
+    e.mov(e.x0, static_cast<uint64_t>(address));
+    return e.x0;
+  } else {
+    if (xe::memory::allocation_granularity() > 0x1000) {
+      auto src = guest.reg();
+      e.mov(e.w0, WReg(src.getIdx()));
+      e.mov(e.w17, 0xE0000000u);
+      e.cmp(e.w0, e.w17);
+      auto& skip = e.NewCachedLabel();
+      e.b(LO, skip);
+      // 0x1000 doesn't fit in a 12-bit immediate; use mov+add.
+      e.mov(e.w17, 0x1000u);
+      e.add(e.w0, e.w0, e.w17);
+      e.L(skip);
+      return e.x0;
+    }
+    return guest.reg();
+  }
+}
+
+// Flush denormal float32 lanes to zero in a NEON register (in-place).
+// A float32 is denormal when 0 < abs(val) < 0x00800000.
+// vreg must not equal sa or sb.
+// This is needed because FPCR.FZ may not flush denormal inputs on all ARM64
+// implementations (the ARM spec says input flushing is implementation-defined).
+inline void FlushDenormals_V128(A64Emitter& e, int vreg, int sa = 2,
+                                int sb = 3) {
+  // val<<1 removes the sign bit and doubles the value.
+  // Denormals become [0x00000002, 0x00FFFFFE]; zeros become 0x00000000.
+  // (val<<1) - 1: wraps 0→0xFFFFFFFF (excluded),
+  // denorms→[0x00000001,0x00FFFFFD]. Denormal iff ((val<<1) - 1) < 0x00FFFFFF
+  // (unsigned).
+  e.shl(VReg(sa).s4, VReg(vreg).s4, 1);
+  e.mov(e.w0, static_cast<uint64_t>(1u));
+  e.dup(VReg(sb).s4, e.w0);
+  e.sub(VReg(sa).s4, VReg(sa).s4, VReg(sb).s4);
+  e.mov(e.w0, static_cast<uint64_t>(0x00FFFFFFu));
+  e.dup(VReg(sb).s4, e.w0);
+  e.cmhi(VReg(sb).s4, VReg(sb).s4,
+         VReg(sa).s4);  // mask: all-1s for denormal lanes
+  // Clear only bits 30:0 (preserve sign bit 31) so -denormal → -0, +denormal →
+  // +0.
+  e.ushr(VReg(sa).s4, VReg(sb).s4, 1);  // sa = mask with bit 31 cleared
+  e.bic(VReg(vreg).b16, VReg(vreg).b16, VReg(sa).b16);
+}
+
+// Fixup for vmaxfp/vminfp when BOTH inputs are NaN.
+// ARM64 fmax/fmin with DN=0 correctly propagates NaN when only one input is
+// NaN, but when both are NaN it may quiet an SNaN differently than x64.
+// x64 uses maxps(a,b)|maxps(b,a) which effectively gives src1|src2 for NaN
+// lanes. We replicate that: use src1|src2 only for lanes where BOTH are NaN.
+// Expects: v0=flushed src1, v1=flushed src2, v2=hardware fmax/fmin result.
+// Modifies v2 in place. Clobbers v0, v1, v3.
+inline void FixupVmxMaxMinNan(A64Emitter& e) {
+  // Compute OR fallback first (before clobbering v0/v1).
+  e.orr(VReg(3).b16, VReg(0).b16, VReg(1).b16);  // v3 = src1 | src2
+  // Build "at least one not NaN" mask.
+  e.fcmeq(VReg(0).s4, VReg(0).s4, VReg(0).s4);   // v0 = non-NaN mask for src1
+  e.fcmeq(VReg(1).s4, VReg(1).s4, VReg(1).s4);   // v1 = non-NaN mask for src2
+  e.orr(VReg(0).b16, VReg(0).b16, VReg(1).b16);  // v0 = 1 where at least one ok
+  // BSL: mask=1 → v2 (fmax result), mask=0 → v3 (src1|src2 for both-NaN)
+  e.bsl(VReg(0).b16, VReg(2).b16, VReg(3).b16);
+  e.mov(VReg(2).b16, VReg(0).b16);
+}
+
+// Prepare two V128 operands for a VMX FP operation: copy to scratch v0/v1
+// and flush denormals. Returns the flushed register indices (always 0 and 1).
+template <typename T1, typename T2>
+inline void PrepareVmxFpSources(A64Emitter& e, const T1& op1, const T2& op2,
+                                int& out_s1, int& out_s2) {
+  int s1 = SrcVReg(e, op1, 0);
+  int s2 = SrcVReg(e, op2, 1);
+  // Copy to scratch v0/v1 so we don't modify live allocated registers.
+  if (s1 != 0) e.mov(VReg(0).b16, VReg(s1).b16);
+  if (s2 != 1) e.mov(VReg(1).b16, VReg(s2).b16);
+  FlushDenormals_V128(e, 0);
+  FlushDenormals_V128(e, 1);
+  out_s1 = 0;
+  out_s2 = 1;
+}
+
+// Fix PPC NaN propagation for V128 float32 lanes after a NEON FP operation.
+// Expects: v0=flushed src1, v1=flushed src2, v2=hardware FP result.
+// Modifies v2 in place. Clobbers v0, v1, v3, w0, w16, w17.
+// PPC rule: first NaN by operand position wins; SNaN is quieted (bit 22 set).
+// If neither input was NaN but the op generated NaN (e.g., inf-inf),
+// use the PPC default NaN (0xFFC00000).
+inline void FixupVmxNan_V128(A64Emitter& e) {
+  using namespace Xbyak_aarch64;
+  auto& done = e.NewCachedLabel();
+
+  // Fast path: if no result lane is NaN, skip entirely.
+  e.fcmeq(VReg(3).s4, VReg(2).s4, VReg(2).s4);  // all-1s for non-NaN
+  e.uminv(SReg(3), VReg(3).s4);                 // min across lanes
+  e.fmov(e.w0, SReg(3));
+  e.cbnz(e.w0, done);  // all non-NaN → skip
+
+  // Save s1/s2 to stack for scalar lane extraction.
+  e.str(QReg(0), ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+  e.str(QReg(1),
+        ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 16));
+
+  // NaN threshold: (val<<1) > 0xFF000000 means val is NaN.
+  e.mov(e.w16, 0xFF000000u);
+
+  for (int lane = 0; lane < 4; lane++) {
+    auto& lane_ok = e.NewCachedLabel();
+    auto& s1_not_nan = e.NewCachedLabel();
+    auto& use_default = e.NewCachedLabel();
+
+    // Check if result[lane] is NaN.
+    e.umov(e.w0, VReg(2).s4[lane]);
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, lane_ok);
+
+    // Result is NaN. Check s1[lane].
+    e.ldr(e.w0, ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                              lane * 4));
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, s1_not_nan);
+
+    // s1 is NaN: quiet it and insert.
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.ins(VReg(2).s4[lane], e.w0);
+    e.b(lane_ok);
+
+    e.L(s1_not_nan);
+    // Check s2[lane].
+    e.ldr(e.w0, ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                              16 + lane * 4));
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, use_default);
+
+    // s2 is NaN: quiet it and insert.
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.ins(VReg(2).s4[lane], e.w0);
+    e.b(lane_ok);
+
+    e.L(use_default);
+    // Generated NaN (neither input was NaN): use PPC default NaN.
+    e.mov(e.w0, 0xFFC00000u);
+    e.ins(VReg(2).s4[lane], e.w0);
+
+    e.L(lane_ok);
+  }
+
+  e.L(done);
+}
+
+// Fix PPC NaN propagation for V128 FMA result (3 source operands).
+// Expects: result in v2, flushed sources saved on stack at:
+//   GUEST_SCRATCH + 0  = src1 (16 bytes)
+//   GUEST_SCRATCH + 16 = src2 (16 bytes)
+//   GUEST_SCRATCH + 32 = src3 (16 bytes)
+// PPC rule: first NaN by operand position (src1 > src2 > src3) wins.
+// Clobbers v0, v1, v3, w0, w16, w17.
+inline void FixupVmxNan_V128_Fma(A64Emitter& e) {
+  using namespace Xbyak_aarch64;
+  auto& done = e.NewCachedLabel();
+
+  // Fast path: if no result lane is NaN, skip entirely.
+  e.fcmeq(VReg(3).s4, VReg(2).s4, VReg(2).s4);
+  e.uminv(SReg(3), VReg(3).s4);
+  e.fmov(e.w0, SReg(3));
+  e.cbnz(e.w0, done);
+
+  // NaN threshold constant.
+  e.mov(e.w16, 0xFF000000u);
+
+  for (int lane = 0; lane < 4; lane++) {
+    auto& lane_ok = e.NewCachedLabel();
+    auto& s1_not_nan = e.NewCachedLabel();
+    auto& s2_not_nan = e.NewCachedLabel();
+    auto& use_default = e.NewCachedLabel();
+
+    // Check if result[lane] is NaN.
+    e.umov(e.w0, VReg(2).s4[lane]);
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, lane_ok);
+
+    // Result is NaN. Check src1[lane].
+    e.ldr(e.w0, ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                              lane * 4));
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, s1_not_nan);
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.ins(VReg(2).s4[lane], e.w0);
+    e.b(lane_ok);
+
+    e.L(s1_not_nan);
+    // Check src2[lane].
+    e.ldr(e.w0, ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                              16 + lane * 4));
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, s2_not_nan);
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.ins(VReg(2).s4[lane], e.w0);
+    e.b(lane_ok);
+
+    e.L(s2_not_nan);
+    // Check src3[lane].
+    e.ldr(e.w0, ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                              32 + lane * 4));
+    e.lsl(e.w17, e.w0, 1);
+    e.cmp(e.w17, e.w16);
+    e.b(LS, use_default);
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.ins(VReg(2).s4[lane], e.w0);
+    e.b(lane_ok);
+
+    e.L(use_default);
+    e.mov(e.w0, 0xFFC00000u);
+    e.ins(VReg(2).s4[lane], e.w0);
+
+    e.L(lane_ok);
+  }
+
+  e.L(done);
+}
+
+// VMX float32x4 binary operations with full PPC semantics.
+enum class VmxFpBinOp { Add, Sub, Mul, Div };
+
+// Execute a VMX float32x4 binary operation with denormal flushing and PPC NaN
+// propagation.  Result goes into dest_idx.
+// Clobbers v0-v3, w0, w16, w17.
+template <typename T1, typename T2>
+inline void EmitVmxFpBinOp_V128(A64Emitter& e, int dest_idx, const T1& src1,
+                                const T2& src2, VmxFpBinOp op) {
+  e.ChangeFpcrMode(FPCRMode::Vmx);
+
+  // Flush input denormals → v0=s1, v1=s2.
+  int s1, s2;
+  PrepareVmxFpSources(e, src1, src2, s1, s2);
+
+  // Hardware FP op → v2.
+  switch (op) {
+    case VmxFpBinOp::Add:
+      e.fadd(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      break;
+    case VmxFpBinOp::Sub:
+      e.fsub(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      break;
+    case VmxFpBinOp::Mul:
+      e.fmul(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      break;
+    case VmxFpBinOp::Div:
+      e.fdiv(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      break;
+  }
+
+  // PPC NaN propagation fixup (fast-path skip when no NaN).
+  FixupVmxNan_V128(e);
+
+  // Flush output denormals.
+  FlushDenormals_V128(e, 2, 0, 1);
+
+  // Move to dest.
+  e.mov(VReg(dest_idx).b16, VReg(2).b16);
+}
+
+}  // namespace a64
+}  // namespace backend
+}  // namespace cpu
+}  // namespace xe
+
+#endif  // XENIA_CPU_BACKEND_A64_A64_SEQ_UTIL_H_

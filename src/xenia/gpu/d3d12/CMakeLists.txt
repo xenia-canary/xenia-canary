@@ -18,7 +18,7 @@ if(XENIA_BUILD_MISC)
     xenia-kernel xenia-patcher xenia-ui xenia-ui-d3d12 xenia-vfs
     aes_128 capstone dxbc fmt imgui libavcodec libavutil mspack snappy xxhash
   )
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  if(XE_TARGET_X86_64)
     target_link_libraries(xenia-gpu-d3d12-trace-viewer PRIVATE xenia-cpu-backend-x64)
   endif()
   xe_target_defaults(xenia-gpu-d3d12-trace-viewer)
@@ -34,7 +34,7 @@ if(XENIA_BUILD_MISC)
     xenia-kernel xenia-patcher xenia-ui xenia-ui-d3d12 xenia-vfs
     aes_128 capstone dxbc fmt imgui libavcodec libavutil mspack snappy xxhash
   )
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  if(XE_TARGET_X86_64)
     target_link_libraries(xenia-gpu-d3d12-trace-dump PRIVATE xenia-cpu-backend-x64)
   endif()
   xe_target_defaults(xenia-gpu-d3d12-trace-dump)

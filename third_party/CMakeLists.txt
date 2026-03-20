@@ -8,6 +8,27 @@ else()
 endif()
 
 # ==============================================================================
+# xbyak_aarch64 (ARM64 JIT assembler)
+# ==============================================================================
+if(XE_TARGET_AARCH64)
+  add_library(xbyak_aarch64 STATIC
+    xbyak_aarch64/src/xbyak_aarch64_impl.cpp
+    xbyak_aarch64/src/util_impl.cpp
+  )
+  target_include_directories(xbyak_aarch64 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/xbyak_aarch64
+    ${CMAKE_CURRENT_SOURCE_DIR}/xbyak_aarch64/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/xbyak_aarch64/xbyak_aarch64
+  )
+  if(MSVC)
+    target_compile_definitions(xbyak_aarch64 PRIVATE NOMINMAX)
+    target_compile_options(xbyak_aarch64 PRIVATE /w)
+  else()
+    target_compile_options(xbyak_aarch64 PRIVATE -w)
+  endif()
+endif()
+
+# ==============================================================================
 # aes_128
 # ==============================================================================
 add_library(aes_128 STATIC
@@ -21,25 +42,37 @@ target_include_directories(aes_128 PUBLIC aes_128)
 add_library(capstone STATIC
   capstone/cs.c
   capstone/MCInst.c
+  capstone/MCInstPrinter.c
   capstone/MCInstrDesc.c
   capstone/MCRegisterInfo.c
   capstone/SStream.c
   capstone/utils.c
   capstone/Mapping.c
 )
-# Glob X86 arch files
-file(GLOB _capstone_x86_c "capstone/arch/X86/*.c")
-file(GLOB _capstone_x86_h "capstone/arch/X86/*.h")
-file(GLOB _capstone_x86_inc "capstone/arch/X86/*.inc")
-# Remove excluded files
-list(FILTER _capstone_x86_c EXCLUDE REGEX "X86ATTInstPrinter\\.c$")
-list(FILTER _capstone_x86_inc EXCLUDE REGEX "reduce\\.inc$")
-target_sources(capstone PRIVATE ${_capstone_x86_c} ${_capstone_x86_h} ${_capstone_x86_inc})
-target_compile_definitions(capstone PRIVATE
-  CAPSTONE_X86_ATT_DISABLE
-  CAPSTONE_HAS_X86
-  CAPSTONE_USE_SYS_DYN_MEM
-)
+# Architecture-specific capstone files
+if(XE_TARGET_AARCH64)
+  file(GLOB _capstone_arch_c "capstone/arch/AArch64/*.c")
+  file(GLOB _capstone_arch_h "capstone/arch/AArch64/*.h")
+  file(GLOB _capstone_arch_inc "capstone/arch/AArch64/*.inc")
+  target_sources(capstone PRIVATE ${_capstone_arch_c} ${_capstone_arch_h} ${_capstone_arch_inc})
+  target_compile_definitions(capstone PRIVATE
+    CAPSTONE_HAS_ARM64
+    CAPSTONE_HAS_AARCH64
+    CAPSTONE_USE_SYS_DYN_MEM
+  )
+else()
+  file(GLOB _capstone_x86_c "capstone/arch/X86/*.c")
+  file(GLOB _capstone_x86_h "capstone/arch/X86/*.h")
+  file(GLOB _capstone_x86_inc "capstone/arch/X86/*.inc")
+  list(FILTER _capstone_x86_c EXCLUDE REGEX "X86ATTInstPrinter\\.c$")
+  list(FILTER _capstone_x86_inc EXCLUDE REGEX "reduce\\.inc$")
+  target_sources(capstone PRIVATE ${_capstone_x86_c} ${_capstone_x86_h} ${_capstone_x86_inc})
+  target_compile_definitions(capstone PRIVATE
+    CAPSTONE_X86_ATT_DISABLE
+    CAPSTONE_HAS_X86
+    CAPSTONE_USE_SYS_DYN_MEM
+  )
+endif()
 target_include_directories(capstone PUBLIC capstone/include PRIVATE capstone)
 # Force all capstone sources to compile as C
 file(GLOB_RECURSE _capstone_all_c "capstone/*.c")
@@ -77,9 +110,9 @@ add_library(discord-rpc STATIC
   discord-rpc/src/serialization.cpp
   discord-rpc/src/serialization.h
 )
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+if(XE_TARGET_X86_64)
   target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_SSE42)
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+elseif(XE_TARGET_ARM64)
   target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_NEON)
 endif()
 target_include_directories(discord-rpc PUBLIC discord-rpc/include PRIVATE rapidjson/include)
@@ -156,11 +189,16 @@ target_include_directories(pugixml PUBLIC pugixml/src)
 # ==============================================================================
 # Generate snappy-stubs-public.h if missing
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/snappy/snappy-stubs-public.h")
+  if(XE_TARGET_X86_64)
+    set(_snappy_avx_flag "-DSNAPPY_REQUIRE_AVX=ON")
+  else()
+    set(_snappy_avx_flag "-DSNAPPY_REQUIRE_AVX=OFF")
+  endif()
   execute_process(
     COMMAND ${CMAKE_COMMAND}
       -DSNAPPY_BUILD_TESTS=OFF
       -DSNAPPY_BUILD_BENCHMARKS=OFF
-      -DSNAPPY_REQUIRE_AVX=ON
+      ${_snappy_avx_flag}
       ${CMAKE_CURRENT_SOURCE_DIR}/snappy
       -B${CMAKE_CURRENT_SOURCE_DIR}/snappy
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -244,44 +282,56 @@ if(_zlibng_needs_configure)
   )
 endif()
 file(GLOB _zlibng_c "zlib-ng/*.c")
-file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
 file(GLOB _zlibng_generic "zlib-ng/arch/generic/*.c")
-add_library(zlib-ng STATIC
-  ${_zlibng_c}
-  ${_zlibng_x86}
-  ${_zlibng_generic}
-)
-target_compile_definitions(zlib-ng PRIVATE
-  X86_FEATURES
-  X86_HAVE_XSAVE_INTRIN
-  X86_SSSE3
-  X86_SSE42
-  WITH_GZFILEOP
-)
-if(WIN32)
+if(XE_TARGET_AARCH64)
+  file(GLOB _zlibng_arch "zlib-ng/arch/arm/*.c")
+  add_library(zlib-ng STATIC
+    ${_zlibng_c}
+    ${_zlibng_arch}
+    ${_zlibng_generic}
+  )
   target_compile_definitions(zlib-ng PRIVATE
-    X86_SSE2
-    X86_AVX2
-    X86_AVX512
-    X86_AVX512VNNI
-    X86_PCLMULQDQ_CRC
-    X86_VPCLMULQDQ_CRC
+    WITH_GZFILEOP
   )
 else()
-  # Remove AVX2/AVX512 files on non-Windows
-  set(_zlibng_exclude_patterns
-    "adler32_avx2" "adler32_avx512" "adler32_avx512_vnni"
-    "chunkset_avx2" "compare256_avx2"
-    "crc32_pclmulqdq" "crc32_vpclmulqdq"
-    "slide_hash_avx2"
+  file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
+  add_library(zlib-ng STATIC
+    ${_zlibng_c}
+    ${_zlibng_x86}
+    ${_zlibng_generic}
   )
-  foreach(_pat ${_zlibng_exclude_patterns})
-    list(FILTER _zlibng_x86 EXCLUDE REGEX "${_pat}")
-  endforeach()
-  # Re-set sources without excluded files
-  get_target_property(_zlibng_srcs zlib-ng SOURCES)
-  set_target_properties(zlib-ng PROPERTIES SOURCES "")
-  target_sources(zlib-ng PRIVATE ${_zlibng_c} ${_zlibng_x86} ${_zlibng_generic})
+  target_compile_definitions(zlib-ng PRIVATE
+    X86_FEATURES
+    X86_HAVE_XSAVE_INTRIN
+    X86_SSSE3
+    X86_SSE42
+    WITH_GZFILEOP
+  )
+  if(WIN32)
+    target_compile_definitions(zlib-ng PRIVATE
+      X86_SSE2
+      X86_AVX2
+      X86_AVX512
+      X86_AVX512VNNI
+      X86_PCLMULQDQ_CRC
+      X86_VPCLMULQDQ_CRC
+    )
+  else()
+    # Remove AVX2/AVX512 files on non-Windows
+    set(_zlibng_exclude_patterns
+      "adler32_avx2" "adler32_avx512" "adler32_avx512_vnni"
+      "chunkset_avx2" "compare256_avx2"
+      "crc32_pclmulqdq" "crc32_vpclmulqdq"
+      "slide_hash_avx2"
+    )
+    foreach(_pat ${_zlibng_exclude_patterns})
+      list(FILTER _zlibng_x86 EXCLUDE REGEX "${_pat}")
+    endforeach()
+    # Re-set sources without excluded files
+    get_target_property(_zlibng_srcs zlib-ng SOURCES)
+    set_target_properties(zlib-ng PROPERTIES SOURCES "")
+    target_sources(zlib-ng PRIVATE ${_zlibng_c} ${_zlibng_x86} ${_zlibng_generic})
+  endif()
 endif()
 target_include_directories(zlib-ng PUBLIC zlib-ng)
 
@@ -389,6 +439,66 @@ endif()
 # ==============================================================================
 # FFmpeg (source in FFmpeg submodule, config overlay in ffmpeg-xenia)
 # ==============================================================================
+set(XE_HAS_GAS_ASM FALSE)
+if(XE_TARGET_AARCH64)
+  if(MSVC)
+    # MSVC can't assemble GAS-syntax .S files. Use clang as the ASM compiler
+    # if available — the resulting .obj files link fine with MSVC-compiled code.
+    # Pick clang from the host architecture directory so it can actually
+    # run on this machine (clang is a cross-compiler — it handles the
+    # target arch via --target regardless of host).
+    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+      set(_clang_host_dir "ARM64")
+    else()
+      set(_clang_host_dir "x64")
+    endif()
+    find_program(CLANG_EXE clang HINTS
+      "$ENV{VCINSTALLDIR}/Tools/Llvm/${_clang_host_dir}/bin"
+      "$ENV{VCINSTALLDIR}/Tools/Llvm/bin"
+      "C:/Program Files/LLVM/bin"
+    )
+    if(CLANG_EXE)
+      set(XE_HAS_GAS_ASM TRUE)
+      set(XE_CLANG_ASM "${CLANG_EXE}")
+      message(STATUS "Using clang for ARM64 assembly: ${CLANG_EXE}")
+    else()
+      message(WARNING "clang not found — FFmpeg NEON assembly disabled on MSVC ARM64. "
+                      "Install LLVM/clang to enable optimized audio decoding.")
+    endif()
+  else()
+    enable_language(ASM)
+    set(XE_HAS_GAS_ASM TRUE)
+  endif()
+endif()
+
+# Helper: compile GAS-syntax .S files with clang on MSVC, or natively on
+# GCC/Clang. Adds the resulting objects to the target.
+function(xe_add_gas_sources target)
+  if(NOT XE_HAS_GAS_ASM)
+    return()
+  endif()
+  foreach(src ${ARGN})
+    if(XE_CLANG_ASM)
+      # MSVC: use clang to assemble .S -> .obj
+      get_filename_component(src_name "${src}" NAME_WE)
+      get_filename_component(src_abs "${src}" ABSOLUTE)
+      set(obj "${CMAKE_CURRENT_BINARY_DIR}/${src_name}.obj")
+      add_custom_command(
+        OUTPUT "${obj}"
+        COMMAND "${XE_CLANG_ASM}" --target=aarch64-pc-windows-msvc
+                -I "${CMAKE_CURRENT_SOURCE_DIR}/FFmpeg"
+                -I "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg-xenia"
+                -c "${src_abs}" -o "${obj}"
+        DEPENDS "${src_abs}"
+        COMMENT "Assembling ${src} with clang"
+      )
+      target_sources(${target} PRIVATE "${obj}")
+    else()
+      # GCC/Clang: native ASM support
+      target_sources(${target} PRIVATE "${src}")
+    endif()
+  endforeach()
+endfunction()
 
 # Common function to apply shared FFmpeg settings to a target.
 function(ffmpeg_common target)
@@ -515,7 +625,7 @@ add_library(libavutil STATIC
   FFmpeg/libavutil/timestamp.c
 )
 # x86 platform files
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+if(XE_TARGET_X86_64)
   target_sources(libavutil PRIVATE
     FFmpeg/libavutil/x86/cpu.c
     FFmpeg/libavutil/x86/fixed_dsp_init.c
@@ -524,6 +634,24 @@ if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     FFmpeg/libavutil/x86/lls_init.c
     FFmpeg/libavutil/x86/tx_float_init.c
   )
+endif()
+# aarch64 platform files
+if(XE_TARGET_AARCH64)
+  target_sources(libavutil PRIVATE
+    FFmpeg/libavutil/aarch64/cpu.c
+  )
+  if(XE_HAS_GAS_ASM)
+    # NEON init files reference symbols from the .S files, so both must
+    # be included together. Requires a GAS-compatible assembler (gcc/clang).
+    target_sources(libavutil PRIVATE
+      FFmpeg/libavutil/aarch64/float_dsp_init.c
+      FFmpeg/libavutil/aarch64/tx_float_init.c
+    )
+    xe_add_gas_sources(libavutil
+      FFmpeg/libavutil/aarch64/float_dsp_neon.S
+      FFmpeg/libavutil/aarch64/tx_float_neon.S
+    )
+  endif()
 endif()
 ffmpeg_common(libavutil)
 
@@ -602,7 +730,7 @@ if(WIN32)
   target_sources(libavcodec PRIVATE FFmpeg/libavcodec/file_open.c)
 endif()
 # x86 platform files
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+if(XE_TARGET_X86_64)
   target_sources(libavcodec PRIVATE
     FFmpeg/libavcodec/x86/constants.c
     FFmpeg/libavcodec/x86/fdctdsp_init.c
@@ -610,6 +738,21 @@ if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     FFmpeg/libavcodec/x86/mpegaudiodsp.c
     FFmpeg/libavcodec/x86/fdct.c
   )
+endif()
+# aarch64 platform files
+if(XE_TARGET_AARCH64)
+  if(XE_HAS_GAS_ASM)
+    target_sources(libavcodec PRIVATE
+      FFmpeg/libavcodec/aarch64/idctdsp_init_aarch64.c
+      FFmpeg/libavcodec/aarch64/mpegaudiodsp_init.c
+    )
+    xe_add_gas_sources(libavcodec
+      FFmpeg/libavcodec/aarch64/idctdsp_neon.S
+      FFmpeg/libavcodec/aarch64/mpegaudiodsp_neon.S
+      FFmpeg/libavcodec/aarch64/neon.S
+      FFmpeg/libavcodec/aarch64/simple_idct_neon.S
+    )
+  endif()
 endif()
 target_include_directories(libavcodec PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/FFmpeg/libavcodec

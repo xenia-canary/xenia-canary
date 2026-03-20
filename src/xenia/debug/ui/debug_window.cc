@@ -970,6 +970,7 @@ void DebugWindow::DrawRegistersPane() {
     } break;
     case RegisterGroup::kHostGeneral: {
       ImGui::BeginChild("##host_general");
+#if XE_ARCH_AMD64
       for (int i = 0; i < 18; ++i) {
         auto reg = static_cast<X64Register>(i);
         ImGui::BeginGroup();
@@ -990,10 +991,37 @@ void DebugWindow::DrawRegistersPane() {
         }
         ImGui::EndGroup();
       }
+#elif XE_ARCH_ARM64
+      // x0-x30, sp, pc, pstate
+      for (int i = 0; i < 34; ++i) {
+        auto reg = static_cast<Arm64Register>(i);
+        ImGui::BeginGroup();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%5s", HostThreadContext::GetRegisterName(reg));
+        ImGui::SameLine();
+        ImGui::Dummy(ImVec2(4, 0));
+        ImGui::SameLine();
+        if (i < 31) {
+          dirty_host_context |=
+              DrawRegisterTextBox(i, &thread_info->host_context.x[i]);
+        } else if (i == 31) {
+          dirty_host_context |=
+              DrawRegisterTextBox(i, &thread_info->host_context.sp);
+        } else if (i == 32) {
+          dirty_host_context |=
+              DrawRegisterTextBox(i, &thread_info->host_context.pc);
+        } else {
+          dirty_host_context |=
+              DrawRegisterTextBox(i, &thread_info->host_context.pstate);
+        }
+        ImGui::EndGroup();
+      }
+#endif
       ImGui::EndChild();
     } break;
     case RegisterGroup::kHostVector: {
       ImGui::BeginChild("##host_vector");
+#if XE_ARCH_AMD64
       for (int i = 0; i < 16; ++i) {
         auto reg =
             static_cast<X64Register>(static_cast<int>(X64Register::kXmm0) + i);
@@ -1007,6 +1035,21 @@ void DebugWindow::DrawRegistersPane() {
             i, thread_info->host_context.xmm_registers[i].f32);
         ImGui::EndGroup();
       }
+#elif XE_ARCH_ARM64
+      for (int i = 0; i < 32; ++i) {
+        auto reg = static_cast<Arm64Register>(
+            static_cast<int>(Arm64Register::kV0) + i);
+        ImGui::BeginGroup();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%5s", HostThreadContext::GetRegisterName(reg));
+        ImGui::SameLine();
+        ImGui::Dummy(ImVec2(4, 0));
+        ImGui::SameLine();
+        dirty_host_context |=
+            DrawRegisterTextBoxes(i, thread_info->host_context.v[i].f32);
+        ImGui::EndGroup();
+      }
+#endif
       ImGui::EndChild();
     }
   }

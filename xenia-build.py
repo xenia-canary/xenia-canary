@@ -9,11 +9,12 @@ Run with --help or no arguments for possible commands.
 from datetime import datetime
 from multiprocessing import Pool
 from functools import partial
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 from glob import glob
 from json import loads as jsonloads
 import os
 from re import findall as re_findall
+import platform
 from shutil import rmtree
 import subprocess
 import sys
@@ -444,10 +445,11 @@ def shell_call(command, throw_on_error=True, stdout_path=None, stderr_path=None,
     return result
 
 
-def generate_version_h():
-    """Generates a build/version.h file that contains current git info.
+def generate_version_h(build_dir="build"):
+    """Generates version.h in the given build directory with current git info.
     """
-    header_file = "build/version.h"
+    os.makedirs(build_dir, exist_ok=True)
+    header_file = os.path.join(build_dir, "version.h")
     pr_number = None
 
     if git_is_repository():
@@ -686,8 +688,32 @@ def get_clang_format_binary():
     sys.exit(1)
 
 
+def normalize_target_arch(value):
+    """Normalizes --target-arch values to canonical names (arm64, x64, or None)."""
+    v = value.lower()
+    if v in ("arm64", "aarch64", "a64"):
+        return "arm64"
+    if v in ("x64", "x86_64", "amd64", "x86"):
+        return "x64"
+    raise ArgumentTypeError(
+        f"unknown architecture '{value}' (expected: arm64, aarch64, a64, x64, amd64, x86_64, x86)")
+
+
+def get_build_dir(target_arch=None):
+    """Returns the Ninja build directory for the given target architecture.
+
+    Uses a separate directory when cross-compiling to avoid cache conflicts.
+    """
+    is_native_arm64 = platform.machine() in ("ARM64", "aarch64")
+    if target_arch == "arm64" and not is_native_arm64:
+        return "build-arm64"
+    if target_arch == "x64" and is_native_arm64:
+        return "build-x64"
+    return "build"
+
+
 def run_cmake_configure(build_type="Release", cc=None, build_tests=False,
-                        extra_args=None):
+                        extra_args=None, target_arch=None):
     """Runs cmake configure on the project.
 
     Args:
@@ -695,14 +721,29 @@ def run_cmake_configure(build_type="Release", cc=None, build_tests=False,
       cc: C compiler to use (e.g. 'clang', 'gcc').
       build_tests: If True, enables building test suites.
       extra_args: Additional arguments to pass to cmake (e.g. -D flags).
+      target_arch: Target architecture override (e.g. 'arm64' for cross-compile).
 
     Returns:
       Return code from cmake.
     """
+    # Cross-compilation via --target-arch is only supported on Windows where
+    # we can locate the MSVC cross-compiler automatically.  On Linux it would
+    # silently produce a native build in a differently-named directory.
+    if target_arch is not None and sys.platform != "win32":
+        is_native_arm64 = platform.machine() in ("ARM64", "aarch64")
+        native_arch = "arm64" if is_native_arm64 else "x64"
+        if target_arch != native_arch:
+            print_error(
+                f"Cross-compilation (--target-arch {target_arch}) is only "
+                f"supported on Windows.\n"
+                f"  The current host architecture is {native_arch}.")
+            return 1
+
+    build_dir = get_build_dir(target_arch)
     args = [
         "cmake",
         "-S", ".",
-        "-B", "build",
+        "-B", build_dir,
         "-G", "Ninja Multi-Config",
     ]
     if sys.platform != "win32":
@@ -714,6 +755,49 @@ def run_cmake_configure(build_type="Release", cc=None, build_tests=False,
             f"-DCMAKE_C_COMPILER={c_compiler}",
             f"-DCMAKE_CXX_COMPILER={cxx_compiler}",
         ]
+    elif platform.machine() in ("ARM64", "aarch64") or target_arch == "arm64":
+        # Determine the effective target and the appropriate compiler/environment.
+        is_native_arm64 = platform.machine() in ("ARM64", "aarch64")
+        if target_arch == "x64" and is_native_arm64:
+            # Cross-compiling from ARM64 to x64
+            target = "x64"
+            vcvars_arg = "arm64_amd64"
+            processor = "AMD64"
+            cl_glob = r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\HostARM64\x64\cl.exe"
+        else:
+            # Targeting ARM64 (native or cross-compile from x64)
+            target = "arm64"
+            vcvars_arg = "x64_arm64"
+            processor = "ARM64"
+            cl_glob = r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\arm64\cl.exe"
+
+        cl_paths = sorted(glob(cl_glob))
+        if cl_paths:
+            cl_exe = cl_paths[-1]
+            # Derive the VS install root from the compiler path:
+            # .../VC/Tools/MSVC/<ver>/bin/Host<x>/target<y>/cl.exe -> .../VC
+            vc_root = cl_exe
+            for _ in range(7):  # walk up 7 levels to VC/
+                vc_root = os.path.dirname(vc_root)
+            vcvarsall = os.path.join(vc_root, "Auxiliary", "Build", "vcvarsall.bat")
+            if os.path.exists(vcvarsall):
+                print(f"  Setting up {target.upper()} build environment via: {vcvarsall}")
+                cmd = f'"{vcvarsall}" {vcvars_arg} >nul 2>&1 && set'
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        if "=" in line:
+                            key, _, value = line.partition("=")
+                            os.environ[key] = value
+            args += [
+                "-DCMAKE_SYSTEM_NAME=Windows",
+                f"-DCMAKE_SYSTEM_PROCESSOR={processor}",
+                f"-DCMAKE_C_COMPILER={cl_exe.replace(os.sep, '/')}",
+                f"-DCMAKE_CXX_COMPILER={cl_exe.replace(os.sep, '/')}",
+            ]
+        else:
+            print(f"  WARNING: {target.upper()} cross-compiler not found. Install "
+                  f"'MSVC {target.upper()} build tools' in Visual Studio.")
     if build_tests:
         args += ["-DXENIA_BUILD_TESTS=ON"]
     if extra_args:
@@ -722,7 +806,7 @@ def run_cmake_configure(build_type="Release", cc=None, build_tests=False,
     ret = subprocess.call(args)
 
     if ret == 0:
-        generate_version_h()
+        generate_version_h(build_dir)
 
     return ret
 
@@ -739,8 +823,9 @@ def get_build_bin_path(args):
     """
     config = args["config"].title()
     platform = "Windows" if sys.platform == "win32" else "Linux"
-    # Multi-config: build/bin/<Platform>/<Config>
-    return os.path.join(self_path, "build", "bin", platform, config)
+    build_dir = get_build_dir(args.get("target_arch"))
+    # Multi-config: <build_dir>/bin/<Platform>/<Config>
+    return os.path.join(self_path, build_dir, "bin", platform, config)
 
 
 def create_clion_workspace():
@@ -919,6 +1004,9 @@ class SetupCommand(Command):
             name="setup",
             help_short="Setup the build environment.",
             *args, **kwargs)
+        self.parser.add_argument(
+            "--target-arch", type=normalize_target_arch, default=None,
+            help="Target architecture (arm64/aarch64, x64/amd64/x86_64/x86).")
 
     def execute(self, args, pass_args, cwd):
         print("Setting up the build environment...\n")
@@ -931,7 +1019,7 @@ class SetupCommand(Command):
             print_warning("Git not available or not a repository. Dependencies may be missing.")
 
         print("\n- running cmake configure...")
-        ret = run_cmake_configure()
+        ret = run_cmake_configure(target_arch=args["target_arch"])
         print_status(ResultStatus.SUCCESS if not ret else ResultStatus.FAILURE)
         return ret
 
@@ -998,11 +1086,15 @@ class PremakeCommand(Command):
         self.parser.add_argument(
             "--build-tests", action="store_true", default=False,
             help="Enables building test suites.")
+        self.parser.add_argument(
+            "--target-arch", type=normalize_target_arch, default=None,
+            help="Target architecture (arm64/aarch64, x64/amd64/x86_64/x86).")
 
     def execute(self, args, pass_args, cwd):
         print("Running cmake configure...\n")
         ret = run_cmake_configure(cc=args["cc"],
-                                  build_tests=args["build_tests"])
+                                  build_tests=args["build_tests"],
+                                  target_arch=args["target_arch"])
         print_status(ResultStatus.SUCCESS if not ret else ResultStatus.FAILURE)
 
         return ret
@@ -1037,6 +1129,9 @@ class BaseBuildCommand(Command):
             "--cmake-define", dest="cmake_defines", action="append",
             default=[], metavar="KEY=VALUE",
             help="Pass a CMake define (e.g. --cmake-define CMAKE_CXX_FLAGS=/DUSE_BCRYPT_RSA).")
+        self.parser.add_argument(
+            "--target-arch", type=normalize_target_arch, default=None,
+            help="Target architecture (arm64/aarch64, x64/amd64/x86_64/x86).")
 
     def execute(self, args, pass_args, cwd):
         config = args["config"].title()
@@ -1045,17 +1140,21 @@ class BaseBuildCommand(Command):
 
         if not args["no_premake"]:
             print("- running cmake configure...")
-            run_cmake_configure(build_type=config, cc=args["cc"],
-                                build_tests=args["build_tests"],
-                                extra_args=extra_args)
+            ret = run_cmake_configure(build_type=config, cc=args["cc"],
+                                      build_tests=args["build_tests"],
+                                      target_arch=args["target_arch"],
+                                      extra_args=extra_args)
+            if ret:
+                return ret
             print("")
 
+        build_dir = get_build_dir(args.get("target_arch"))
         print("- building (%s):%s..." % (
             "all" if not len(args["target"]) else ", ".join(args["target"]),
             args["config"]))
         build_args = [
             "cmake",
-            "--build", "build",
+            "--build", build_dir,
             "--config", config,
         ]
         if args["target"]:
@@ -1511,9 +1610,10 @@ class CleanCommand(Command):
     def execute(self, args, pass_args, cwd):
         print("Cleaning build artifacts...")
         # Clean all build directories
-        if os.path.isdir("build"):
-            print("- cleaning build...")
-            subprocess.call(["cmake", "--build", "build", "--target", "clean"])
+        for build_dir in ["build", "build-arm64"]:
+            if os.path.isdir(build_dir):
+                print(f"- cleaning {build_dir}...")
+                subprocess.call(["cmake", "--build", build_dir, "--target", "clean"])
 
         # Also clean generated files
         clean_generated_files()
@@ -1921,6 +2021,9 @@ class DevenvCommand(Command):
             name="devenv",
             help_short="Launches the development environment.",
             *args, **kwargs)
+        self.parser.add_argument(
+            "--target-arch", type=normalize_target_arch, default=None,
+            help="Target architecture (arm64/aarch64, x64/amd64/x86_64/x86).")
 
     def execute(self, args, pass_args, cwd):
         if sys.platform == "win32":
@@ -1934,27 +2037,106 @@ class DevenvCommand(Command):
         else:
             print("IDE not detected. CMakeLists.txt is in the project root.")
 
+        target_arch = args.get("target_arch", None)
+
         print("\n- running cmake configure...")
-        run_cmake_configure()
+        run_cmake_configure(target_arch=target_arch)
 
         print("\n- launching devenv...")
         if sys.platform == "win32":
             # Generate a VS .sln for IDE use (normal builds still use Ninja)
-            vs_build_dir = os.path.join("build", "vs")
-            subprocess.call([
+            is_native_arm64 = platform.machine() in ("ARM64", "aarch64")
+            # Determine the effective target architecture
+            if target_arch == "arm64":
+                vs_arch = "ARM64"
+            elif target_arch == "x64":
+                vs_arch = "x64"
+            elif is_native_arm64:
+                vs_arch = "ARM64"
+            else:
+                vs_arch = "x64"
+
+            is_cross = (vs_arch == "ARM64" and not is_native_arm64)
+            vs_build_dir = os.path.join(get_build_dir(target_arch), "vs-" + vs_arch.lower())
+
+            cmake_args = [
                 "cmake",
                 "-S", ".",
                 "-B", vs_build_dir,
-                "-A", "x64",
+                "-A", vs_arch,
                 "-DXENIA_BUILD_TESTS=ON",
-            ])
-            # Since VS 2026 default solution extension is slnx.
-            slnx_path = os.path.join(vs_build_dir, "xenia.slnx")
-            if not os.path.exists(slnx_path):
-                slnx_path = os.path.join(vs_build_dir, "xenia.sln")
+            ]
 
-            print(f"Opening {slnx_path} in Visual Studio...")
-            shell_call(["devenv", slnx_path])
+            if is_cross:
+                # Cross-compiling from x64 to ARM64.
+                # Use vswhere to find a VS installation with ARM64 C++ tools
+                # and force the correct generator/instance since CMake might
+                # otherwise pick a VS without ARM64 support.
+                vs_generator_map = {
+                    2019: "Visual Studio 16 2019",
+                    2022: "Visual Studio 17 2022",
+                }
+                try:
+                    vswhere_out = subprocess.check_output(
+                        "tools/vswhere/vswhere.exe"
+                        ' -version "[17,)" -latest -prerelease'
+                        " -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+                        " -format json -utf8"
+                        " -products"
+                        " Microsoft.VisualStudio.Product.Enterprise"
+                        " Microsoft.VisualStudio.Product.Professional"
+                        " Microsoft.VisualStudio.Product.Community"
+                        " Microsoft.VisualStudio.Product.BuildTools",
+                        encoding="utf-8",
+                    )
+                    arm64_vs_list = jsonloads(vswhere_out) if vswhere_out else []
+                except Exception:
+                    arm64_vs_list = []
+
+                if not arm64_vs_list:
+                    print_error(
+                        "No Visual Studio installation with ARM64 C++ build tools found.\n"
+                        "  Install the 'MSVC ARM64/ARM64EC build tools' component\n"
+                        "  via the Visual Studio Installer.")
+                    return 1
+
+                arm64_vs = arm64_vs_list[0]
+                arm64_vs_path = arm64_vs.get("installationPath", "")
+                arm64_vs_plv = int(arm64_vs.get("catalog", {}).get(
+                    "productLineVersion", VSVERSION_MINIMUM))
+
+                vs_generator = vs_generator_map.get(arm64_vs_plv)
+                toolset_parts = ["host=x64"]
+                if not vs_generator:
+                    latest_known = max(vs_generator_map.keys())
+                    vs_generator = vs_generator_map[latest_known]
+                    print(f"  Note: VS {arm64_vs_plv} detected with ARM64 tools.")
+                    print(f"  Using \"{vs_generator}\" generator with that instance.")
+                    vc_dir = os.path.join(arm64_vs_path, "MSBuild", "Microsoft", "VC")
+                    if os.path.isdir(vc_dir):
+                        toolsets = sorted(d for d in os.listdir(vc_dir) if d.startswith("v"))
+                        if toolsets:
+                            toolset_parts.insert(0, toolsets[-1])
+
+                cmake_args += [
+                    "-G", vs_generator,
+                    "-T", ",".join(toolset_parts),
+                    "-DCMAKE_SYSTEM_PROCESSOR=ARM64",
+                    f"-DCMAKE_GENERATOR_INSTANCE={arm64_vs_path}",
+                ]
+
+            ret = subprocess.call(cmake_args)
+            if ret == 0:
+                generate_version_h(vs_build_dir)
+            # VS 2026+ generates .slnx, older versions generate .sln
+            sln_path = os.path.join(vs_build_dir, "xenia.slnx")
+            if not os.path.exists(sln_path):
+                sln_path = os.path.join(vs_build_dir, "xenia.sln")
+            if ret != 0 or not os.path.exists(sln_path):
+                print_error(f"Failed to generate VS solution. Check cmake output above.")
+                return 1
+            print(f"Opening {sln_path} in Visual Studio...")
+            shell_call(["devenv", sln_path])
         elif has_bin("clion"):
             shell_call(["clion", "."])
         elif has_bin("clion.sh"):

@@ -173,40 +173,71 @@ class Win32StackWalker : public StackWalker {
     } else {
       // Copy thread context local. We will be modifying it during stack
       // walking, so we don't want to mess with the incoming copy.
+#if XE_ARCH_AMD64
       thread_context.Rip = in_host_context->rip;
       thread_context.EFlags = in_host_context->eflags;
       std::memcpy(&thread_context.Rax, in_host_context->int_registers,
                   sizeof(in_host_context->int_registers));
       std::memcpy(&thread_context.Xmm0, in_host_context->xmm_registers,
                   sizeof(in_host_context->xmm_registers));
+#elif XE_ARCH_ARM64
+      thread_context.Pc = in_host_context->pc;
+      thread_context.Cpsr = in_host_context->pstate;
+      thread_context.Sp = in_host_context->sp;
+      std::memcpy(&thread_context.X0, in_host_context->x,
+                  sizeof(in_host_context->x));
+      std::memcpy(&thread_context.V[0], in_host_context->v,
+                  sizeof(in_host_context->v));
+#endif
     }
 
     if (out_host_context) {
       // Write out the captured thread context if the caller asked for it.
+#if XE_ARCH_AMD64
       out_host_context->rip = thread_context.Rip;
       out_host_context->eflags = thread_context.EFlags;
       std::memcpy(out_host_context->int_registers, &thread_context.Rax,
                   sizeof(out_host_context->int_registers));
       std::memcpy(out_host_context->xmm_registers, &thread_context.Xmm0,
                   sizeof(out_host_context->xmm_registers));
+#elif XE_ARCH_ARM64
+      out_host_context->pc = thread_context.Pc;
+      out_host_context->pstate = thread_context.Cpsr;
+      out_host_context->sp = thread_context.Sp;
+      std::memcpy(out_host_context->x, &thread_context.X0,
+                  sizeof(out_host_context->x));
+      std::memcpy(out_host_context->v, &thread_context.V[0],
+                  sizeof(out_host_context->v));
+#endif
     }
 
     // Setup the frame for walking.
     STACKFRAME64 stack_frame = {};
     stack_frame.AddrPC.Mode = AddrModeFlat;
-    stack_frame.AddrPC.Offset = thread_context.Rip;
     stack_frame.AddrFrame.Mode = AddrModeFlat;
-    stack_frame.AddrFrame.Offset = thread_context.Rbp;
     stack_frame.AddrStack.Mode = AddrModeFlat;
+#if XE_ARCH_AMD64
+    stack_frame.AddrPC.Offset = thread_context.Rip;
+    stack_frame.AddrFrame.Offset = thread_context.Rbp;
     stack_frame.AddrStack.Offset = thread_context.Rsp;
+    DWORD machine_type = IMAGE_FILE_MACHINE_AMD64;
+#elif XE_ARCH_ARM64
+    stack_frame.AddrPC.Offset = thread_context.Pc;
+    stack_frame.AddrFrame.Offset = thread_context.Fp;
+    stack_frame.AddrStack.Offset = thread_context.Sp;
+    DWORD machine_type = IMAGE_FILE_MACHINE_ARM64;
+#endif
 
     // Walk the stack.
     // Note that StackWalk64 is thread safe, though other dbghelp functions are
     // not.
+    // TODO(has207): verify StackWalk64 + dbghelp callbacks work for JIT'd
+    // ARM64 code with dynamically registered unwind info
+    // (RtlAddGrowableFunctionTable).
     size_t frame_index = 0;
     while (frame_index < frame_count &&
-           stack_walk_64_(IMAGE_FILE_MACHINE_AMD64, GetCurrentProcess(),
-                          thread_handle, &stack_frame, &thread_context, nullptr,
+           stack_walk_64_(machine_type, GetCurrentProcess(), thread_handle,
+                          &stack_frame, &thread_context, nullptr,
                           XSymFunctionTableAccess64, XSymGetModuleBase64,
                           nullptr) == TRUE) {
       if (frame_index >= frame_offset) {

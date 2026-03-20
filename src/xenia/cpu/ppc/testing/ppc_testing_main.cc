@@ -28,6 +28,8 @@
 
 #if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#elif XE_ARCH_ARM64
+#include "xenia/cpu/backend/a64/a64_backend.h"
 #endif  // XE_ARCH
 
 #if XE_COMPILER_MSVC
@@ -247,11 +249,17 @@ class TestRunner {
       if (cvars::cpu == "x64") {
         backend.reset(new xe::cpu::backend::x64::X64Backend());
       }
+#elif XE_ARCH_ARM64
+      if (cvars::cpu == "a64") {
+        backend.reset(new xe::cpu::backend::a64::A64Backend());
+      }
 #endif  // XE_ARCH
       if (cvars::cpu == "any") {
         if (!backend) {
 #if XE_ARCH_AMD64
           backend.reset(new xe::cpu::backend::x64::X64Backend());
+#elif XE_ARCH_ARM64
+          backend.reset(new xe::cpu::backend::a64::A64Backend());
 #endif  // XE_ARCH
         }
       }
@@ -308,6 +316,21 @@ class TestRunner {
       auto* bctx =
           x64_backend->BackendContextForGuestContext(thread_state_->context());
       bctx->flags &= ~(1U << xe::cpu::backend::x64::kX64BackendMXCSRModeBit);
+    }
+#elif XE_ARCH_ARM64
+    // Reset FPCR and backend flags to default FPU state before each test.
+    {
+      auto* a64_backend = static_cast<xe::cpu::backend::a64::A64Backend*>(
+          processor_->backend());
+      auto* bctx =
+          a64_backend->BackendContextForGuestContext(thread_state_->context());
+      bctx->flags &= ~(1U << xe::cpu::backend::a64::kA64BackendFPCRModeBit);
+      // Explicitly reset the hardware FPCR to default FPU mode (0 = round
+      // nearest, no flush-to-zero, no default-NaN). Without this, a previous
+      // test that set VMX mode (FZ|DN) leaves the hardware FPCR dirty, and
+      // subsequent scalar FP tests produce wrong NaN results because DN=1
+      // causes ARM64 to return the default NaN instead of propagating inputs.
+      a64_backend->SetGuestRoundingMode(thread_state_->context(), 0);
     }
 #endif
 

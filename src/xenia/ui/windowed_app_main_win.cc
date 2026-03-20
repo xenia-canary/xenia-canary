@@ -75,7 +75,13 @@ struct HostExceptionReport {
       : ExceptionInfo(_ExceptionInfo),
         Report_Scratchpos(0u),
         last_win32_error(GetLastError()),
+#if XE_ARCH_AMD64
         last_ntstatus(__readgsdword(0x1250)),
+#elif XE_ARCH_ARM64
+        // TEB.LastStatusValue at offset 0x1250 (same as x64).
+        // ARM64 uses x18 register for TEB base instead of GS segment.
+        last_ntstatus(__readx18dword(0x1250)),
+#endif
         errno_value(errno),
         address_format_ring_index(0)
 
@@ -168,9 +174,13 @@ static bool exception_pointers_handler(HostExceptionReport* report) {
   PVOID exception_addr =
       report->ExceptionInfo->ExceptionRecord->ExceptionAddress;
 
+#if XE_ARCH_AMD64
   DWORD64 last_stackpointer = report->ExceptionInfo->ContextRecord->Rsp;
-
   DWORD64 last_rip = report->ExceptionInfo->ContextRecord->Rip;
+#elif XE_ARCH_ARM64
+  DWORD64 last_stackpointer = report->ExceptionInfo->ContextRecord->Sp;
+  DWORD64 last_rip = report->ExceptionInfo->ContextRecord->Pc;
+#endif
   DWORD except_code = report->ExceptionInfo->ExceptionRecord->ExceptionCode;
 
   std::string build = (

@@ -92,6 +92,8 @@ node_modules/.bin/
 /scratch/
 
 /build/
+/build-arm64/
+/build-x64/
 
 # ==============================================================================
 # Local-only paths
