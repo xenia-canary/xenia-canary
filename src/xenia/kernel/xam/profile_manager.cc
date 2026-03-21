@@ -278,10 +278,11 @@ void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
   }
 
   // Find if xuid is already logged in. We might want to logout.
-  for (auto& logged_profile : logged_profiles_) {
-    if (logged_profile.second->xuid() == xuid) {
-      Logout(logged_profile.first);
-    }
+  auto it = std::find_if(
+      logged_profiles_.begin(), logged_profiles_.end(),
+      [xuid](const auto& entry) { return entry.second->xuid() == xuid; });
+  if (it != logged_profiles_.end()) {
+    Logout(it->first);
   }
 
   if (!accounts_.count(xuid)) {
