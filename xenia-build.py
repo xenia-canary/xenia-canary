@@ -1939,7 +1939,11 @@ class DevenvCommand(Command):
 
         print("\n- launching devenv...")
         if sys.platform == "win32":
-            # Generate a VS .sln for IDE use (normal builds still use Ninja)
+            # Generate a VS .sln for IDE use (normal builds still use Ninja).
+            # Point XENIA_OUTPUT_BASE and XENIA_GENERATED_DIR at the main
+            # build/ tree so binaries and generated headers (version.h) are
+            # shared with the Ninja build regardless of generator.
+            ninja_build_dir = os.path.abspath("build")
             vs_build_dir = os.path.join("build", "vs")
             subprocess.call([
                 "cmake",
@@ -1947,6 +1951,8 @@ class DevenvCommand(Command):
                 "-B", vs_build_dir,
                 "-A", "x64",
                 "-DXENIA_BUILD_TESTS=ON",
+                f"-DXENIA_OUTPUT_BASE={ninja_build_dir}",
+                f"-DXENIA_GENERATED_DIR={ninja_build_dir}",
             ])
             # Since VS 2026 default solution extension is slnx.
             slnx_path = os.path.join(vs_build_dir, "xenia.slnx")
