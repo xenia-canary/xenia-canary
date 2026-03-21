@@ -29,6 +29,21 @@ using Xbyak_aarch64::VReg;
 using Xbyak_aarch64::WReg;
 using Xbyak_aarch64::XReg;
 
+template <typename Fn>
+inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
+  // VMX vector FP uses round-to-nearest with flush-to-zero, but the scalar
+  // PPC FP path keeps its own FPCR state. Save and restore around each VMX op
+  // so vector code doesn't leak FPCR changes into later scalar instructions.
+  e.mrs(e.x13, 3, 3, 4, 4, 0);
+  e.mov(e.x14, e.x13);
+  e.mov(e.x15, ~static_cast<uint64_t>(0b11u << 22));
+  e.and_(e.x14, e.x14, e.x15);
+  e.orr(e.x14, e.x14, static_cast<uint64_t>(1u << 24));
+  e.msr(3, 3, 4, 4, 0, e.x14);
+  emit_op();
+  e.msr(3, 3, 4, 4, 0, e.x13);
+}
+
 // Load a compile-time vec128_t constant into a NEON register.
 inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
   e.mov(e.x0, val.low);
@@ -302,36 +317,36 @@ enum class VmxFpBinOp { Add, Sub, Mul, Div };
 template <typename T1, typename T2>
 inline void EmitVmxFpBinOp_V128(A64Emitter& e, int dest_idx, const T1& src1,
                                 const T2& src2, VmxFpBinOp op) {
-  e.ChangeFpcrMode(FPCRMode::Vmx);
+  EmitWithVmxFpcr(e, [&] {
+    // Flush input denormals → v0=s1, v1=s2.
+    int s1, s2;
+    PrepareVmxFpSources(e, src1, src2, s1, s2);
 
-  // Flush input denormals → v0=s1, v1=s2.
-  int s1, s2;
-  PrepareVmxFpSources(e, src1, src2, s1, s2);
+    // Hardware FP op → v2.
+    switch (op) {
+      case VmxFpBinOp::Add:
+        e.fadd(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+        break;
+      case VmxFpBinOp::Sub:
+        e.fsub(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+        break;
+      case VmxFpBinOp::Mul:
+        e.fmul(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+        break;
+      case VmxFpBinOp::Div:
+        e.fdiv(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+        break;
+    }
 
-  // Hardware FP op → v2.
-  switch (op) {
-    case VmxFpBinOp::Add:
-      e.fadd(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-      break;
-    case VmxFpBinOp::Sub:
-      e.fsub(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-      break;
-    case VmxFpBinOp::Mul:
-      e.fmul(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-      break;
-    case VmxFpBinOp::Div:
-      e.fdiv(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-      break;
-  }
+    // PPC NaN propagation fixup (fast-path skip when no NaN).
+    FixupVmxNan_V128(e);
 
-  // PPC NaN propagation fixup (fast-path skip when no NaN).
-  FixupVmxNan_V128(e);
+    // Flush output denormals.
+    FlushDenormals_V128(e, 2, 0, 1);
 
-  // Flush output denormals.
-  FlushDenormals_V128(e, 2, 0, 1);
-
-  // Move to dest.
-  e.mov(VReg(dest_idx).b16, VReg(2).b16);
+    // Move to dest.
+    e.mov(VReg(dest_idx).b16, VReg(2).b16);
+  });
 }
 
 }  // namespace a64

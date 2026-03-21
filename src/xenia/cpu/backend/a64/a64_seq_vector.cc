@@ -223,16 +223,17 @@ struct VECTOR_CONVERT_I2F
     : Sequence<VECTOR_CONVERT_I2F,
                I<OPCODE_VECTOR_CONVERT_I2F, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    if (i.instr->flags & ARITHMETIC_UNSIGNED) {
-      // ARM64 ucvtf does a single-step unsigned int->float conversion,
-      // avoiding the double-rounding issue that x64 has to work around.
-      e.ucvtf(VReg(d).s4, VReg(s).s4);
-    } else {
-      e.scvtf(VReg(d).s4, VReg(s).s4);
-    }
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      int d = i.dest.reg().getIdx();
+      if (i.instr->flags & ARITHMETIC_UNSIGNED) {
+        // ARM64 ucvtf does a single-step unsigned int->float conversion,
+        // avoiding the double-rounding issue that x64 has to work around.
+        e.ucvtf(VReg(d).s4, VReg(s).s4);
+      } else {
+        e.scvtf(VReg(d).s4, VReg(s).s4);
+      }
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_CONVERT_I2F, VECTOR_CONVERT_I2F);
@@ -244,16 +245,17 @@ struct VECTOR_CONVERT_F2I
     : Sequence<VECTOR_CONVERT_F2I,
                I<OPCODE_VECTOR_CONVERT_F2I, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    if (i.instr->flags & ARITHMETIC_UNSIGNED) {
-      // ARM64 fcvtzu: NaN->0, negative->0, overflow->UINT_MAX.
-      e.fcvtzu(VReg(d).s4, VReg(s).s4);
-    } else {
-      // ARM64 fcvtzs: NaN->0, overflow saturates to INT_MIN/INT_MAX.
-      e.fcvtzs(VReg(d).s4, VReg(s).s4);
-    }
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      int d = i.dest.reg().getIdx();
+      if (i.instr->flags & ARITHMETIC_UNSIGNED) {
+        // ARM64 fcvtzu: NaN->0, negative->0, overflow->UINT_MAX.
+        e.fcvtzu(VReg(d).s4, VReg(s).s4);
+      } else {
+        // ARM64 fcvtzs: NaN->0, overflow saturates to INT_MIN/INT_MAX.
+        e.fcvtzs(VReg(d).s4, VReg(s).s4);
+      }
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_CONVERT_F2I, VECTOR_CONVERT_F2I);
@@ -414,16 +416,18 @@ struct VECTOR_MAX
 
   template <typename T>
   static void EmitVmxFpMaxMin(A64Emitter& e, const T& i, bool is_min) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s1, s2;
-    PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
-    if (is_min)
-      e.fmin(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-    else
-      e.fmax(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-    FixupVmxMaxMinNan(e);
-    FlushDenormals_V128(e, 2, 0, 1);
-    e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    EmitWithVmxFpcr(e, [&] {
+      int s1, s2;
+      PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
+      if (is_min) {
+        e.fmin(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      } else {
+        e.fmax(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      }
+      FixupVmxMaxMinNan(e);
+      FlushDenormals_V128(e, 2, 0, 1);
+      e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_MAX, VECTOR_MAX);
@@ -491,8 +495,8 @@ struct VECTOR_COMPARE_EQ_V128
         e.cmeq(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
         break;
       case FLOAT32_TYPE:
-        e.ChangeFpcrMode(FPCRMode::Vmx);
-        e.fcmeq(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        EmitWithVmxFpcr(e,
+                        [&] { e.fcmeq(VReg(d).s4, VReg(s1).s4, VReg(s2).s4); });
         break;
       default:
         assert_unhandled_case(i.instr->flags);
@@ -523,8 +527,8 @@ struct VECTOR_COMPARE_SGT_V128
         e.cmgt(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
         break;
       case FLOAT32_TYPE:
-        e.ChangeFpcrMode(FPCRMode::Vmx);
-        e.fcmgt(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        EmitWithVmxFpcr(e,
+                        [&] { e.fcmgt(VReg(d).s4, VReg(s1).s4, VReg(s2).s4); });
         break;
       default:
         assert_unhandled_case(i.instr->flags);
@@ -555,8 +559,8 @@ struct VECTOR_COMPARE_SGE_V128
         e.cmge(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
         break;
       case FLOAT32_TYPE:
-        e.ChangeFpcrMode(FPCRMode::Vmx);
-        e.fcmge(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        EmitWithVmxFpcr(e,
+                        [&] { e.fcmge(VReg(d).s4, VReg(s1).s4, VReg(s2).s4); });
         break;
       default:
         assert_unhandled_case(i.instr->flags);
