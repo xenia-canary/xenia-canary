@@ -608,8 +608,13 @@ bool A64Backend::Initialize(Processor* processor) {
   }
 
   // Set the indirection table default to point at the resolve thunk.
+#if XE_A64_INDIRECTION_64BIT
+  code_cache_->set_indirection_default_64(
+      reinterpret_cast<uint64_t>(resolve_function_thunk_));
+#else
   code_cache_->set_indirection_default(
       uint32_t(reinterpret_cast<uint64_t>(resolve_function_thunk_)));
+#endif
 
   // Commit the indirection table range used by guest trampolines so that
   // CreateGuestTrampoline can call AddIndirection without faulting.
@@ -749,9 +754,14 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
       GUEST_TRAMPOLINE_BASE +
       (static_cast<uint32_t>(new_index) * GUEST_TRAMPOLINE_MIN_LEN);
 
+#if XE_A64_INDIRECTION_64BIT
+  code_cache()->AddIndirection64(indirection_guest_addr,
+                                 reinterpret_cast<uint64_t>(write_pos));
+#else
   code_cache()->AddIndirection(
       indirection_guest_addr,
       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(write_pos)));
+#endif
 
   return indirection_guest_addr;
 }

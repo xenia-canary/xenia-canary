@@ -360,7 +360,27 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   if (code_cache_->has_indirection_table()) {
     // Load host code address from indirection table.
     mov(w16, function->address());
+#if XE_A64_INDIRECTION_64BIT
+    Label external_target;
+    Label indirection_target_ready;
+    mov(x9, code_cache_->indirection_table_base_bias());
+    add(x9, x9, x16);
+    ldr(w16, ptr(x9, static_cast<uint32_t>(0)));
+    tbnz(w16, 31, external_target);
+    mov(w15, w16);
+    mov(x9, code_cache_->execute_base_address());
+    add(x9, x9, x15);
+    b(indirection_target_ready);
+    L(external_target);
+    and_(w15, w16, A64CodeCache::kIndirectionExternalIndexMask);
+    mov(x9, code_cache_->external_indirection_table_base_address());
+    lsl(x15, x15, 3);
+    add(x9, x9, x15);
+    ldr(x9, ptr(x9, static_cast<uint32_t>(0)));
+    L(indirection_target_ready);
+#else
     ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
+#endif
   } else {
     // Fallback: resolve at runtime.
     mov(x0, x20);  // context
@@ -403,8 +423,28 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
   // Load host code address from indirection table.
   if (code_cache_->has_indirection_table()) {
     mov(w16, target_w);  // w16 = guest address (also used by resolve thunk)
+#if XE_A64_INDIRECTION_64BIT
+    Label external_target;
+    Label indirection_target_ready;
+    mov(x9, code_cache_->indirection_table_base_bias());
+    add(x9, x9, x16);
+    ldr(w16, ptr(x9, static_cast<uint32_t>(0)));
+    tbnz(w16, 31, external_target);
+    mov(w15, w16);
+    mov(x9, code_cache_->execute_base_address());
+    add(x9, x9, x15);
+    b(indirection_target_ready);
+    L(external_target);
+    and_(w15, w16, A64CodeCache::kIndirectionExternalIndexMask);
+    mov(x9, code_cache_->external_indirection_table_base_address());
+    lsl(x15, x15, 3);
+    add(x9, x9, x15);
+    ldr(x9, ptr(x9, static_cast<uint32_t>(0)));
+    L(indirection_target_ready);
+#else
     ldr(w9, ptr(x16, static_cast<uint32_t>(
                          0)));  // w9 = host code from indirection table
+#endif
   } else {
     // Fallback: resolve at runtime.
     mov(w16, target_w);

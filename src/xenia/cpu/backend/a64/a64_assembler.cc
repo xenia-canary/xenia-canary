@@ -93,10 +93,15 @@ bool A64Assembler::Assemble(GuestFunction* function, HIRBuilder* builder,
 
   // Install into indirection table.
   uint64_t host_address = reinterpret_cast<uint64_t>(machine_code);
+#if XE_A64_INDIRECTION_64BIT
+  reinterpret_cast<A64CodeCache*>(backend_->code_cache())
+      ->AddIndirection64(function->address(), host_address);
+#else
   assert_true((host_address >> 32) == 0);
   reinterpret_cast<A64CodeCache*>(backend_->code_cache())
       ->AddIndirection(function->address(),
                        static_cast<uint32_t>(host_address));
+#endif
 
   return true;
 }

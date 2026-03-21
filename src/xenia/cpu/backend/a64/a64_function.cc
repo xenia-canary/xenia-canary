@@ -9,9 +9,24 @@
 
 #include "xenia/cpu/backend/a64/a64_function.h"
 
+#if XE_PLATFORM_APPLE && !XE_PLATFORM_IOS && defined(__aarch64__)
+#include <pthread.h>
+#endif
+
 #include "xenia/cpu/backend/a64/a64_backend.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/thread_state.h"
+
+#if XE_PLATFORM_APPLE && !XE_PLATFORM_IOS && defined(__aarch64__)
+thread_local bool jit_thread_initialized = false;
+
+static void InitializeJITThread() {
+  if (!jit_thread_initialized) {
+    pthread_jit_write_protect_np(1);
+    jit_thread_initialized = true;
+  }
+}
+#endif
 
 namespace xe {
 namespace cpu {
@@ -26,18 +41,23 @@ A64Function::~A64Function() {
 }
 
 void A64Function::Setup(uint8_t* machine_code, size_t machine_code_length) {
-  machine_code_ = machine_code;
-  machine_code_length_ = machine_code_length;
+  machine_code_length_.store(machine_code_length, std::memory_order_relaxed);
+  machine_code_.store(machine_code, std::memory_order_release);
 }
 
 bool A64Function::CallImpl(ThreadState* thread_state, uint32_t return_address) {
+#if XE_PLATFORM_APPLE && !XE_PLATFORM_IOS && defined(__aarch64__)
+  InitializeJITThread();
+#endif
+
   auto backend =
       reinterpret_cast<A64Backend*>(thread_state->processor()->backend());
   auto thunk = backend->host_to_guest_thunk();
-  if (!thunk || !machine_code_) {
+  auto* code = machine_code_.load(std::memory_order_acquire);
+  if (!thunk || !code) {
     return false;
   }
-  thunk(machine_code_, thread_state->context(),
+  thunk(code, thread_state->context(),
         reinterpret_cast<void*>(uintptr_t(return_address)));
   return true;
 }
