@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <type_traits>
 
 #include "xenia/base/byte_order.h"
@@ -1434,9 +1435,10 @@ struct NEG_F64 : Sequence<NEG_F64, I<OPCODE_NEG, F64Op, F64Op>> {
 };
 struct NEG_V128 : Sequence<NEG_V128, I<OPCODE_NEG, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    e.fneg(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      e.fneg(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_NEG, NEG_I8, NEG_I16, NEG_I32, NEG_I64, NEG_F32,
@@ -1479,9 +1481,10 @@ struct ABS_F64 : Sequence<ABS_F64, I<OPCODE_ABS, F64Op, F64Op>> {
 };
 struct ABS_V128 : Sequence<ABS_V128, I<OPCODE_ABS, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    e.fabs(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      e.fabs(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_ABS, ABS_F32, ABS_F64, ABS_V128);
@@ -3192,14 +3195,15 @@ struct MAX_F64 : Sequence<MAX_F64, I<OPCODE_MAX, F64Op, F64Op, F64Op>> {
 };
 struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s1, s2;
-    PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
-    e.fmax(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-    // PPC vmaxfp: if either input is NaN, result = src1 (vA).
-    FixupVmxMaxMinNan(e);
-    FlushDenormals_V128(e, 2, 0, 1);
-    e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    EmitWithVmxFpcr(e, [&] {
+      int s1, s2;
+      PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
+      e.fmax(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      // PPC vmaxfp: if either input is NaN, result = src1 (vA).
+      FixupVmxMaxMinNan(e);
+      FlushDenormals_V128(e, 2, 0, 1);
+      e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
@@ -3328,14 +3332,15 @@ struct MIN_F64 : Sequence<MIN_F64, I<OPCODE_MIN, F64Op, F64Op, F64Op>> {
 };
 struct MIN_V128 : Sequence<MIN_V128, I<OPCODE_MIN, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s1, s2;
-    PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
-    e.fmin(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
-    // PPC vminfp: if either input is NaN, result = src1 (vA).
-    FixupVmxMaxMinNan(e);
-    FlushDenormals_V128(e, 2, 0, 1);
-    e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    EmitWithVmxFpcr(e, [&] {
+      int s1, s2;
+      PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
+      e.fmin(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      // PPC vminfp: if either input is NaN, result = src1 (vA).
+      FixupVmxMaxMinNan(e);
+      FlushDenormals_V128(e, 2, 0, 1);
+      e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MIN, MIN_I8, MIN_I16, MIN_I32, MIN_I64, MIN_F32,
@@ -3562,28 +3567,29 @@ struct ROUND_F64 : Sequence<ROUND_F64, I<OPCODE_ROUND, F64Op, F64Op>> {
 };
 struct ROUND_V128 : Sequence<ROUND_V128, I<OPCODE_ROUND, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    auto src = VReg(s).s4;
-    auto dst = VReg(i.dest.reg().getIdx()).s4;
-    switch (i.instr->flags) {
-      case ROUND_TO_ZERO:
-        e.frintz(dst, src);
-        break;
-      case ROUND_TO_NEAREST:
-        e.frintn(dst, src);
-        break;
-      case ROUND_TO_MINUS_INFINITY:
-        e.frintm(dst, src);
-        break;
-      case ROUND_TO_POSITIVE_INFINITY:
-        e.frintp(dst, src);
-        break;
-      default:
-        // ROUND_DYNAMIC - use current rounding mode.
-        e.frinti(dst, src);
-        break;
-    }
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      auto src = VReg(s).s4;
+      auto dst = VReg(i.dest.reg().getIdx()).s4;
+      switch (i.instr->flags) {
+        case ROUND_TO_ZERO:
+          e.frintz(dst, src);
+          break;
+        case ROUND_TO_NEAREST:
+          e.frintn(dst, src);
+          break;
+        case ROUND_TO_MINUS_INFINITY:
+          e.frintm(dst, src);
+          break;
+        case ROUND_TO_POSITIVE_INFINITY:
+          e.frintp(dst, src);
+          break;
+        default:
+          // ROUND_DYNAMIC - use current rounding mode.
+          e.frinti(dst, src);
+          break;
+      }
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_ROUND, ROUND_F32, ROUND_F64, ROUND_V128);
@@ -3625,9 +3631,10 @@ struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
 };
 struct SQRT_V128 : Sequence<SQRT_V128, I<OPCODE_SQRT, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    e.fsqrt(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      e.fsqrt(VReg(i.dest.reg().getIdx()).s4, VReg(s).s4);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_SQRT, SQRT_F32, SQRT_F64, SQRT_V128);
@@ -4039,38 +4046,39 @@ struct MUL_ADD_V128
     //   1. Flush s3 into v3, save to stack[32].
     //   2. Flush s1/s2 into v0/v1, save to stack[0]/stack[16].
     //   3. Restore s3 into v3, fmla into v2, NaN fixup, flush output.
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int d = i.dest.reg().getIdx();
+    EmitWithVmxFpcr(e, [&] {
+      int d = i.dest.reg().getIdx();
 
-    // Flush s3 → v3, save to stack slot 2.
-    int s3 = SrcVReg(e, i.src3, 3);
-    if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
-    FlushDenormals_V128(e, 3, 0, 1);
-    e.str(QReg(3),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
+      // Flush s3 → v3, save to stack slot 2.
+      int s3 = SrcVReg(e, i.src3, 3);
+      if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
+      FlushDenormals_V128(e, 3, 0, 1);
+      e.str(QReg(3),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
 
-    // Flush s1/s2 → v0/v1, save to stack slots 0/1.
-    int s1, s2;
-    PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
-    e.str(QReg(0), Xbyak_aarch64::ptr(
-                       e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-    e.str(QReg(1),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 16));
+      // Flush s1/s2 → v0/v1, save to stack slots 0/1.
+      int s1, s2;
+      PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
+      e.str(QReg(0), Xbyak_aarch64::ptr(e.sp, static_cast<int32_t>(
+                                                  StackLayout::GUEST_SCRATCH)));
+      e.str(QReg(1),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 16));
 
-    // Restore flushed s3, compute fmla into v2 via copy.
-    e.ldr(QReg(2),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
-    e.fmla(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      // Restore flushed s3, compute fmla into v2 via copy.
+      e.ldr(QReg(2),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
+      e.fmla(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
 
-    // PPC NaN fixup (sources on stack at offsets 0/16/32).
-    FixupVmxNan_V128_Fma(e);
+      // PPC NaN fixup (sources on stack at offsets 0/16/32).
+      FixupVmxNan_V128_Fma(e);
 
-    // Flush output denormals.
-    FlushDenormals_V128(e, 2, 0, 1);
-    e.mov(VReg(d).b16, VReg(2).b16);
+      // Flush output denormals.
+      FlushDenormals_V128(e, 2, 0, 1);
+      e.mov(VReg(d).b16, VReg(2).b16);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);
@@ -4160,39 +4168,40 @@ struct MUL_SUB_V128
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // dest = s1*s2 - s3 with VMX denormal flushing + PPC NaN propagation.
     // Same as MUL_ADD but negate s3 before the fmla.
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int d = i.dest.reg().getIdx();
+    EmitWithVmxFpcr(e, [&] {
+      int d = i.dest.reg().getIdx();
 
-    // Flush s3 → v3, save un-negated for NaN fixup.
-    int s3 = SrcVReg(e, i.src3, 3);
-    if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
-    FlushDenormals_V128(e, 3, 0, 1);
-    e.str(QReg(3),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
+      // Flush s3 → v3, save un-negated for NaN fixup.
+      int s3 = SrcVReg(e, i.src3, 3);
+      if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
+      FlushDenormals_V128(e, 3, 0, 1);
+      e.str(QReg(3),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
 
-    // Flush s1/s2 → v0/v1, save for NaN fixup.
-    int s1, s2;
-    PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
-    e.str(QReg(0), Xbyak_aarch64::ptr(
-                       e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-    e.str(QReg(1),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 16));
+      // Flush s1/s2 → v0/v1, save for NaN fixup.
+      int s1, s2;
+      PrepareVmxFpSources(e, i.src1, i.src2, s1, s2);
+      e.str(QReg(0), Xbyak_aarch64::ptr(e.sp, static_cast<int32_t>(
+                                                  StackLayout::GUEST_SCRATCH)));
+      e.str(QReg(1),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 16));
 
-    // Reload flushed s3, negate into v2, fmla: v2 = -s3 + s1*s2 = s1*s2 - s3.
-    e.ldr(QReg(2),
-          Xbyak_aarch64::ptr(
-              e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
-    e.fneg(VReg(2).s4, VReg(2).s4);
-    e.fmla(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
+      // Reload flushed s3, negate into v2, fmla: v2 = -s3 + s1*s2 = s1*s2 - s3.
+      e.ldr(QReg(2),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) + 32));
+      e.fneg(VReg(2).s4, VReg(2).s4);
+      e.fmla(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
 
-    // PPC NaN fixup (sources on stack at offsets 0/16/32).
-    FixupVmxNan_V128_Fma(e);
+      // PPC NaN fixup (sources on stack at offsets 0/16/32).
+      FixupVmxNan_V128_Fma(e);
 
-    // Flush output denormals.
-    FlushDenormals_V128(e, 2, 0, 1);
-    e.mov(VReg(d).b16, VReg(2).b16);
+      // Flush output denormals.
+      FlushDenormals_V128(e, 2, 0, 1);
+      e.mov(VReg(d).b16, VReg(2).b16);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_SUB, MUL_SUB_F32, MUL_SUB_F64, MUL_SUB_V128);
@@ -4274,15 +4283,16 @@ struct POW2_F64 : Sequence<POW2_F64, I<OPCODE_POW2, F64Op, F64Op>> {
 };
 struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    e.str(QReg(s),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
-    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulatePow2));
-    e.ldr(QReg(d),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      int d = i.dest.reg().getIdx();
+      e.str(QReg(s),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulatePow2));
+      e.ldr(QReg(d),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
@@ -4302,15 +4312,16 @@ struct LOG2_F64 : Sequence<LOG2_F64, I<OPCODE_LOG2, F64Op, F64Op>> {
 };
 struct LOG2_V128 : Sequence<LOG2_V128, I<OPCODE_LOG2, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    e.str(QReg(s),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
-    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateLog2));
-    e.ldr(QReg(d),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    EmitWithVmxFpcr(e, [&] {
+      int s = SrcVReg(e, i.src1, 0);
+      int d = i.dest.reg().getIdx();
+      e.str(QReg(s),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulateLog2));
+      e.ldr(QReg(d),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
@@ -4322,39 +4333,40 @@ struct DOT_PRODUCT_3_V128
     : Sequence<DOT_PRODUCT_3_V128,
                I<OPCODE_DOT_PRODUCT_3, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    // Inline NEON: multiply in double precision, sum 3 elements, convert back.
-    // Uses v0-v3 as scratch.
-    int s1 = SrcVReg(e, i.src1, 0);
-    int s2 = SrcVReg(e, i.src2, 1);
-    int d = i.dest.reg().getIdx();
-    // Widen low 2 floats of each source to double.
-    e.fcvtl(VReg(0).d2, VReg(s1).s2);            // v0 = {s1[0], s1[1]} as f64
-    e.fcvtl(VReg(1).d2, VReg(s2).s2);            // v1 = {s2[0], s2[1]} as f64
-    e.fmul(VReg(0).d2, VReg(0).d2, VReg(1).d2);  // v0 = {a0*b0, a1*b1}
-    // Widen high 2 floats (elements 2,3) to double.
-    e.fcvtl2(VReg(2).d2, VReg(s1).s4);           // v2 = {s1[2], s1[3]} as f64
-    e.fcvtl2(VReg(3).d2, VReg(s2).s4);           // v3 = {s2[2], s2[3]} as f64
-    e.fmul(VReg(2).d2, VReg(2).d2, VReg(3).d2);  // v2 = {a2*b2, a3*b3}
-    // Sum: d0 = v0[0] + v0[1] + v2[0] (skip v2[1] = element 3).
-    // faddp d1, v0.2d  → d1 = v0[0] + v0[1]
-    e.faddp(DReg(1), VReg(0).d2);
-    // fadd d1, d1, d2  → d1 = d1 + v2[0]
-    e.fadd(DReg(1), DReg(1), DReg(2));
-    // Convert back to float.
-    e.fcvt(SReg(0), DReg(1));
-    // Check for infinity → QNaN.
-    e.fabs(SReg(1), SReg(0));
-    e.mov(e.w17, 0x7F800000u);  // +inf
-    e.fmov(SReg(2), e.w17);
-    e.fcmp(SReg(1), SReg(2));
-    auto& not_inf = e.NewCachedLabel();
-    e.b(Xbyak_aarch64::NE, not_inf);
-    e.mov(e.w17, 0x7FC00000u);  // QNaN
-    e.fmov(SReg(0), e.w17);
-    e.L(not_inf);
-    // Splat result to all 4 lanes.
-    e.dup(VReg(d).s4, VReg(0).s4[0]);
+    EmitWithVmxFpcr(e, [&] {
+      // Inline NEON: multiply in double precision, sum 3 elements, convert
+      // back. Uses v0-v3 as scratch.
+      int s1 = SrcVReg(e, i.src1, 0);
+      int s2 = SrcVReg(e, i.src2, 1);
+      int d = i.dest.reg().getIdx();
+      // Widen low 2 floats of each source to double.
+      e.fcvtl(VReg(0).d2, VReg(s1).s2);            // v0 = {s1[0], s1[1]} as f64
+      e.fcvtl(VReg(1).d2, VReg(s2).s2);            // v1 = {s2[0], s2[1]} as f64
+      e.fmul(VReg(0).d2, VReg(0).d2, VReg(1).d2);  // v0 = {a0*b0, a1*b1}
+      // Widen high 2 floats (elements 2,3) to double.
+      e.fcvtl2(VReg(2).d2, VReg(s1).s4);           // v2 = {s1[2], s1[3]} as f64
+      e.fcvtl2(VReg(3).d2, VReg(s2).s4);           // v3 = {s2[2], s2[3]} as f64
+      e.fmul(VReg(2).d2, VReg(2).d2, VReg(3).d2);  // v2 = {a2*b2, a3*b3}
+      // Sum: d0 = v0[0] + v0[1] + v2[0] (skip v2[1] = element 3).
+      // faddp d1, v0.2d  → d1 = v0[0] + v0[1]
+      e.faddp(DReg(1), VReg(0).d2);
+      // fadd d1, d1, d2  → d1 = d1 + v2[0]
+      e.fadd(DReg(1), DReg(1), DReg(2));
+      // Convert back to float.
+      e.fcvt(SReg(0), DReg(1));
+      // Check for infinity → QNaN.
+      e.fabs(SReg(1), SReg(0));
+      e.mov(e.w17, 0x7F800000u);  // +inf
+      e.fmov(SReg(2), e.w17);
+      e.fcmp(SReg(1), SReg(2));
+      auto& not_inf = e.NewCachedLabel();
+      e.b(Xbyak_aarch64::NE, not_inf);
+      e.mov(e.w17, 0x7FC00000u);  // QNaN
+      e.fmov(SReg(0), e.w17);
+      e.L(not_inf);
+      // Splat result to all 4 lanes.
+      e.dup(VReg(d).s4, VReg(0).s4[0]);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
@@ -4366,37 +4378,38 @@ struct DOT_PRODUCT_4_V128
     : Sequence<DOT_PRODUCT_4_V128,
                I<OPCODE_DOT_PRODUCT_4, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    // Inline NEON: multiply in double precision, sum all 4 elements.
-    int s1 = SrcVReg(e, i.src1, 0);
-    int s2 = SrcVReg(e, i.src2, 1);
-    int d = i.dest.reg().getIdx();
-    // Widen low 2 floats to double, multiply.
-    e.fcvtl(VReg(0).d2, VReg(s1).s2);
-    e.fcvtl(VReg(1).d2, VReg(s2).s2);
-    e.fmul(VReg(0).d2, VReg(0).d2, VReg(1).d2);
-    // Widen high 2 floats to double, multiply.
-    e.fcvtl2(VReg(2).d2, VReg(s1).s4);
-    e.fcvtl2(VReg(3).d2, VReg(s2).s4);
-    e.fmul(VReg(2).d2, VReg(2).d2, VReg(3).d2);
-    // Sum all 4 products: v0 = {a0*b0+a2*b2, a1*b1+a3*b3}
-    e.fadd(VReg(0).d2, VReg(0).d2, VReg(2).d2);
-    // faddp d1, v0.2d → d1 = sum of both lanes
-    e.faddp(DReg(1), VReg(0).d2);
-    // Convert back to float.
-    e.fcvt(SReg(0), DReg(1));
-    // Check for infinity → QNaN.
-    e.fabs(SReg(1), SReg(0));
-    e.mov(e.w17, 0x7F800000u);
-    e.fmov(SReg(2), e.w17);
-    e.fcmp(SReg(1), SReg(2));
-    auto& not_inf = e.NewCachedLabel();
-    e.b(Xbyak_aarch64::NE, not_inf);
-    e.mov(e.w17, 0x7FC00000u);
-    e.fmov(SReg(0), e.w17);
-    e.L(not_inf);
-    // Splat result to all 4 lanes.
-    e.dup(VReg(d).s4, VReg(0).s4[0]);
+    EmitWithVmxFpcr(e, [&] {
+      // Inline NEON: multiply in double precision, sum all 4 elements.
+      int s1 = SrcVReg(e, i.src1, 0);
+      int s2 = SrcVReg(e, i.src2, 1);
+      int d = i.dest.reg().getIdx();
+      // Widen low 2 floats to double, multiply.
+      e.fcvtl(VReg(0).d2, VReg(s1).s2);
+      e.fcvtl(VReg(1).d2, VReg(s2).s2);
+      e.fmul(VReg(0).d2, VReg(0).d2, VReg(1).d2);
+      // Widen high 2 floats to double, multiply.
+      e.fcvtl2(VReg(2).d2, VReg(s1).s4);
+      e.fcvtl2(VReg(3).d2, VReg(s2).s4);
+      e.fmul(VReg(2).d2, VReg(2).d2, VReg(3).d2);
+      // Sum all 4 products: v0 = {a0*b0+a2*b2, a1*b1+a3*b3}
+      e.fadd(VReg(0).d2, VReg(0).d2, VReg(2).d2);
+      // faddp d1, v0.2d → d1 = sum of both lanes
+      e.faddp(DReg(1), VReg(0).d2);
+      // Convert back to float.
+      e.fcvt(SReg(0), DReg(1));
+      // Check for infinity → QNaN.
+      e.fabs(SReg(1), SReg(0));
+      e.mov(e.w17, 0x7F800000u);
+      e.fmov(SReg(2), e.w17);
+      e.fcmp(SReg(1), SReg(2));
+      auto& not_inf = e.NewCachedLabel();
+      e.b(Xbyak_aarch64::NE, not_inf);
+      e.mov(e.w17, 0x7FC00000u);
+      e.fmov(SReg(0), e.w17);
+      e.L(not_inf);
+      // Splat result to all 4 lanes.
+      e.dup(VReg(d).s4, VReg(0).s4[0]);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_4, DOT_PRODUCT_4_V128);
@@ -4476,61 +4489,215 @@ struct SET_ROUNDING_MODE
 };
 EMITTER_OPCODE_TABLE(OPCODE_SET_ROUNDING_MODE, SET_ROUNDING_MODE);
 
+inline uint32_t CountLeadingZeros32(uint32_t value) {
+  return value ? static_cast<uint32_t>(xe::lzcnt(value)) : 32u;
+}
+
+inline uint32_t CountLeadingZeros64(uint64_t value) {
+  return value ? static_cast<uint32_t>(xe::lzcnt(value)) : 64u;
+}
+
+inline float BitsToFloat(uint32_t bits) {
+  float value;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+inline double BitsToDouble(uint64_t bits) {
+  double value;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+// Copied from the x64 backend to match PPC estimate behavior, including
+// denormal, NaN, and reciprocal-square-root table semantics.
+static constexpr uint32_t kVrsqrteTable[32] = {
+    0x0568B4FDu, 0x04F3AF97u, 0x048DAAA5u, 0x0435A618u, 0x03E7A1E4u,
+    0x03A29DFEu, 0x03659A5Cu, 0x032E96F8u, 0x02FC93CAu, 0x02D090CEu,
+    0x02A88DFEu, 0x02838B57u, 0x026188D4u, 0x02438673u, 0x02268431u,
+    0x020B820Bu, 0x03D27FFAu, 0x03807C29u, 0x033878AAu, 0x02F97572u,
+    0x02C27279u, 0x02926FB7u, 0x02666D26u, 0x023F6AC0u, 0x021D6881u,
+    0x01FD6665u, 0x01E16468u, 0x01C76287u, 0x01AF60C1u, 0x01995F12u,
+    0x01855D79u, 0x01735BF4u,
+};
+
+static constexpr uint8_t kFrsqrteTable[16] = {
+    241u, 216u, 192u, 168u, 152u, 136u, 128u, 112u,
+    96u,  76u,  60u,  48u,  32u,  24u,  16u,  8u,
+};
+
+inline uint32_t EmulateVrsqrteScalarBits(uint32_t src_bits,
+                                         bool njm_enabled = true) {
+  uint32_t r8d = src_bits;
+  float input = BitsToFloat(r8d);
+  uint32_t ecx = r8d & 0x7FFFFFu;
+  uint32_t edx = ecx;
+  int32_t eax = 0;
+  uint32_t r9d = 0;
+
+  if (r8d == 0xFF800000u) {
+    return 0x7FC00000u;
+  }
+
+  if ((r8d & 0x7F800000u) == 0 && ecx != 0) {
+    if (!njm_enabled) {
+      r9d = r8d & 0x7FFFFFFFu;
+      if (r9d == 0x00400000u) {
+        return ((~r8d >> 31) != 0) ? 0x5F34FD00u : 0x7FC00000u;
+      }
+      ecx = CountLeadingZeros32(ecx);
+      r9d = 9;
+      eax = -118;
+      edx = static_cast<uint32_t>(static_cast<int32_t>(ecx) - 8);
+      r9d -= ecx;
+      eax -= static_cast<int32_t>(ecx);
+      edx = r8d << edx;
+      edx &= 0x7FFFFEu;
+      goto compute_from_fields;
+    }
+    return ((~r8d >> 31) != 0) ? 0x7F800000u : 0xFF800000u;
+  }
+
+  r9d = (r8d >> 23) & 0xFFu;
+  eax = static_cast<int32_t>(r9d) - 127;
+  if (r9d == 255u) {
+    if (!(input < 0.0f || std::isnan(input))) {
+      if (ecx == 0) {
+        return 0u;
+      }
+    }
+    return r8d | 0x00400000u;
+  }
+
+compute_from_fields:
+  if (eax == 128) {
+    if (0.0f > input) {
+      if (edx == 0) {
+        return 0x7FC00000u;
+      }
+      return r8d | 0x00400000u;
+    }
+  }
+
+  if (edx == 0) {
+    if (r9d == 0u) {
+      return ((~r8d >> 31) != 0) ? 0x7F800000u : 0xFF800000u;
+    }
+  } else if (eax == 128) {
+    return r8d | 0x00400000u;
+  }
+
+  if (0.0f > input) {
+    return 0x7FC00000u;
+  }
+
+  ecx = 127;
+  eax <<= 4;
+  ecx -= static_cast<int32_t>(r9d);
+  r9d = edx;
+  eax &= 16;
+  edx >>= 9;
+  r9d >>= 19;
+  edx &= 1023;
+  ecx >>= 1;
+  eax |= static_cast<int32_t>(r9d);
+  eax ^= 16;
+
+  uint32_t table_entry = kVrsqrteTable[static_cast<uint32_t>(eax) & 31];
+  eax = static_cast<int32_t>(table_entry);
+  r9d = table_entry >> 16;
+  edx *= r9d;
+  eax <<= 10;
+  eax &= 0x3FFFC00;
+  eax -= static_cast<int32_t>(edx);
+  if (((static_cast<uint32_t>(eax) >> 25) & 1u) == 0) {
+    edx = static_cast<uint32_t>(eax) & 0x1FFFFFFu;
+    ecx += 6;
+    uint32_t lz = CountLeadingZeros32(edx);
+    r9d = lz - 6;
+    ecx -= static_cast<int32_t>(lz);
+    eax = static_cast<int32_t>(static_cast<uint32_t>(eax) << r9d);
+  }
+
+  if ((eax & 0x5) != 0 && (eax & 0x2) != 0) {
+    eax += 4;
+  }
+
+  ecx <<= 23;
+  r8d &= 0x80000000u;
+  eax = static_cast<int32_t>(static_cast<uint32_t>(eax) >> 2);
+  ecx += 0x3F800000;
+  eax &= 0x7FFFFF;
+  uint32_t out = static_cast<uint32_t>(ecx) | r8d | static_cast<uint32_t>(eax);
+  if ((out & 0x7F800000u) == 0 && (out & 0x007FFFFFu) != 0) {
+    out &= 0x80000000u;
+  }
+  return out;
+}
+
+inline uint64_t EmulateFrsqrteBits(uint64_t src_bits,
+                                   bool non_ieee_mode = false) {
+  uint64_t rax = src_bits;
+  constexpr uint64_t kSignMask = 0x8000000000000000ULL;
+  constexpr uint64_t kExpMask = 0x7FF0000000000000ULL;
+
+  if (non_ieee_mode) {
+    uint64_t shifted = rax << 12;
+    if (shifted != 0 && (rax & kExpMask) == 0) {
+      return (rax & kSignMask) | kExpMask;
+    }
+  }
+
+  uint64_t rcx = rax + rax;
+  if (rcx == 0) {
+    return (rax & kSignMask) | kExpMask;
+  }
+
+  if (((~rax) & kExpMask) == 0) {
+    if (rax == kExpMask) {
+      return 0ULL;
+    }
+    uint64_t shifted = rax << 12;
+    if (shifted == 0 && BitsToDouble(rax) < 0.0) {
+      return 0x7FF8000000000000ULL;
+    }
+    return rax | 0x7FF8000000000000ULL;
+  }
+
+  if (0.0 > BitsToDouble(rax)) {
+    return 0x7FF8000000000000ULL;
+  }
+
+  uint64_t exponent = (rax >> 52) & 0x7FFULL;
+  uint64_t mantissa = rax & 0x000FFFFFFFFFFFFFULL;
+
+  if (mantissa != 0 && exponent == 0) {
+    uint32_t lz = CountLeadingZeros64(mantissa);
+    mantissa <<= static_cast<uint32_t>(static_cast<int32_t>(lz) - 11);
+    exponent = static_cast<uint64_t>(12 - static_cast<int32_t>(lz));
+  }
+
+  uint32_t edx = static_cast<uint32_t>(exponent * 8);
+  uint32_t eax = static_cast<uint32_t>(mantissa >> 49) & 7u;
+  int32_t exp_unbiased = static_cast<int32_t>(exponent) - 1023;
+  edx &= 8u;
+  exp_unbiased >>= 1;
+  eax |= edx;
+  edx = static_cast<uint32_t>(1022 - exp_unbiased);
+  eax ^= 8u;
+  return (static_cast<uint64_t>(edx) << 52) |
+         (static_cast<uint64_t>(kFrsqrteTable[eax & 15u]) << 44);
+}
+
 // PPC frsqrte lookup table implementation (PowerISA Table E-5).
 // Matches the x64 backend's EmitFrsqrteHelper.
 static uint64_t PpcFrsqrte(void* raw_context) {
   auto* ctx = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  uint64_t bits = ctx->scratch;
-
-  uint32_t sign = (uint32_t)(bits >> 63);
-  uint32_t exp = (uint32_t)((bits >> 52) & 0x7FF);
-  uint64_t mantissa = bits & 0x000FFFFFFFFFFFFFULL;
-
-  // NaN → QNaN (quiet it, preserve sign and payload)
-  if (exp == 0x7FF && mantissa != 0) {
-    return bits | (1ULL << 51);
-  }
-  // ±0 → ±inf
-  if (exp == 0 && mantissa == 0) {
-    return sign ? 0xFFF0000000000000ULL : 0x7FF0000000000000ULL;
-  }
-  // +inf → +0
-  if (exp == 0x7FF && !sign) {
-    return 0;
-  }
-  // -inf or negative → QNaN
-  if (sign) {
-    return 0x7FF8000000000000ULL;
-  }
-
-  // Denormal: normalize (matching x64 EmitFrsqrteHelper L25).
-  int32_t effective_exp = (int32_t)exp;
-  uint64_t norm_mantissa = mantissa;
-  if (exp == 0) {
-    int lz = (int)xe::lzcnt(mantissa);  // leading zeros in 64-bit
-    norm_mantissa = mantissa << (lz - 11);
-    effective_exp = 12 - lz;
-  }
-
-  // PPC frsqrte lookup table (16 entries, 8 bits each).
-  static constexpr uint8_t table[] = {241, 216, 192, 168, 152, 136, 128, 112,
-                                      96,  76,  60,  48,  32,  24,  16,  8};
-
-  // Index: bit 3 = !(exp & 1), bits 2:0 = top 3 mantissa bits.
-  // For denormals, norm_mantissa has implicit 1 at bit 52; & 7 masks it out.
-  uint32_t top3 = (uint32_t)(norm_mantissa >> 49) & 7;
-  uint32_t index = (((uint32_t)effective_exp & 1) << 3) | top3;
-  index ^= 8;
-
-  // Result exponent = 1022 - floor((effective_exp - 1023) / 2).
-  int32_t unbiased = effective_exp - 1023;
-  int32_t half = unbiased >> 1;  // arithmetic shift = floor division
-  uint32_t result_exp = (uint32_t)(1022 - half);
-
-  // Construct result: exponent in bits 62:52, table value in bits 51:44.
-  uint64_t result =
-      ((uint64_t)result_exp << 52) | ((uint64_t)table[index] << 44);
-  return result;
+  auto* backend_context = reinterpret_cast<A64BackendContext*>(
+      reinterpret_cast<uint8_t*>(raw_context) - sizeof(A64BackendContext));
+  bool non_ieee_mode =
+      (backend_context->flags & (1u << kA64BackendNonIEEEMode)) != 0;
+  return EmulateFrsqrteBits(ctx->scratch, non_ieee_mode);
 }
 
 // ============================================================================
@@ -4579,115 +4746,42 @@ struct RSQRT_F64 : Sequence<RSQRT_F64, I<OPCODE_RSQRT, F64Op, F64Op>> {
 // PPC vrsqrtefp per-lane implementation.
 // Uses the same 32-entry lookup table + interpolation as x64's
 // EmitScalarVRsqrteHelper.
-static uint32_t PpcVrsqrtefpLane(uint32_t bits) {
-  static constexpr uint32_t table[32] = {
-      0x0568B4FD, 0x04F3AF97, 0x048DAAA5, 0x0435A618, 0x03E7A1E4, 0x03A29DFE,
-      0x03659A5C, 0x032E96F8, 0x02FC93CA, 0x02D090CE, 0x02A88DFE, 0x02838B57,
-      0x026188D4, 0x02438673, 0x02268431, 0x020B820B, 0x03D27FFA, 0x03807C29,
-      0x033878AA, 0x02F97572, 0x02C27279, 0x02926FB7, 0x02666D26, 0x023F6AC0,
-      0x021D6881, 0x01FD6665, 0x01E16468, 0x01C76287, 0x01AF60C1, 0x01995F12,
-      0x01855D79, 0x01735BF4,
-  };
-
-  uint32_t sign = bits >> 31;
-  uint32_t biased_exp = (bits >> 23) & 0xFF;
-  uint32_t mantissa = bits & 0x007FFFFF;
-
-  // -Inf → QNaN
-  if (bits == 0xFF800000u) return 0x7FC00000u;
-
-  // Denormal or zero (exp == 0)
-  if (biased_exp == 0) {
-    // ±0 or denormal with NJM on → flush to ±0 → ±Inf
-    return sign ? 0xFF800000u : 0x7F800000u;
-  }
-
-  // NaN/Inf (exp == 255)
-  if (biased_exp == 255) {
-    if (mantissa == 0) {
-      // +Inf → +0 (-Inf already handled above)
-      return 0;
-    }
-    // NaN: quiet it (set bit 22), preserve sign and payload
-    return bits | 0x00400000u;
-  }
-
-  // Negative normal → QNaN
-  if (sign) return 0x7FC00000u;
-
-  // Normal positive: table lookup + interpolation
-  int32_t unbiased_exp = (int32_t)biased_exp - 127;
-
-  // Table index: exp parity selects half, top 4 mantissa bits select entry
-  uint32_t exp_parity = ((uint32_t)(unbiased_exp << 4)) & 16;
-  uint32_t top4 = mantissa >> 19;
-  uint32_t index = (exp_parity | top4) ^ 16;
-
-  // 10-bit interpolation factor from mantissa
-  uint32_t interp = (mantissa >> 9) & 1023;
-
-  // Result exponent (arithmetic shift)
-  int32_t result_exp = (127 - (int32_t)biased_exp) >> 1;
-
-  // Lookup + linear interpolation
-  uint32_t entry = table[index];
-  uint32_t slope = entry >> 16;
-  uint32_t base = (entry << 10) & 0x3FFFC00u;
-  int32_t raw = (int32_t)base - (int32_t)(interp * slope);
-
-  // Normalize if bit 25 not set
-  if (!(raw & (1 << 25))) {
-    uint32_t val = (uint32_t)raw & 0x1FFFFFF;
-    uint32_t lz = (uint32_t)xe::lzcnt(val);
-    int32_t shift = (int32_t)lz - 6;
-    result_exp += 6;
-    result_exp -= (int32_t)lz;
-    raw <<= shift;
-  }
-
-  // Rounding
-  if ((raw & 5) && (raw & 2)) raw += 4;
-
-  // Assemble result
-  uint32_t res_exp = (uint32_t)((result_exp << 23) + 0x3F800000);
-  uint32_t res_man = ((uint32_t)raw >> 2) & 0x7FFFFF;
-  uint32_t result = res_exp | res_man;
-
-  // DAZ: flush denormal output to +0
-  if (((result >> 23) & 0xFF) == 0 && (result & 0x7FFFFF)) {
-    result = 0;
-  }
-
-  return result;
+static uint32_t PpcVrsqrtefpLane(uint32_t bits, bool njm_enabled = true) {
+  return EmulateVrsqrteScalarBits(bits, njm_enabled);
 }
 
 static uint64_t PpcVrsqrtefpHelper(void* raw_context) {
   auto* ctx = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  return (uint64_t)PpcVrsqrtefpLane((uint32_t)ctx->scratch);
+  auto* backend_context = reinterpret_cast<A64BackendContext*>(
+      reinterpret_cast<uint8_t*>(raw_context) - sizeof(A64BackendContext));
+  bool njm_enabled = (backend_context->flags & (1u << kA64BackendNJMOn)) != 0;
+  return static_cast<uint64_t>(
+      PpcVrsqrtefpLane(static_cast<uint32_t>(ctx->scratch), njm_enabled));
 }
 
 struct RSQRT_V128 : Sequence<RSQRT_V128, I<OPCODE_RSQRT, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    // Save source to stack scratch (survives CallNative).
-    int src_idx = SrcVReg(e, i.src1, 0);
-    e.str(QReg(src_idx),
-          Xbyak_aarch64::ptr(e.sp,
-                             static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-    int dest_idx = i.dest.reg().getIdx();
-    for (int lane = 0; lane < 4; lane++) {
-      // Load float32 bits from saved source.
-      e.ldr(e.w0, Xbyak_aarch64::ptr(
-                      e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
-                                lane * 4));
-      // Store to PPCContext::scratch for helper.
-      e.str(e.x0, Xbyak_aarch64::ptr(e.GetContextReg(),
-                                     static_cast<int32_t>(
-                                         offsetof(ppc::PPCContext, scratch))));
-      e.CallNative(reinterpret_cast<void*>(PpcVrsqrtefpHelper));
-      // Insert result lane into dest (allocated reg, survives CallNative).
-      e.ins(VReg(dest_idx).s4[lane], e.w0);
-    }
+    EmitWithVmxFpcr(e, [&] {
+      // Save source to stack scratch (survives CallNative).
+      int src_idx = SrcVReg(e, i.src1, 0);
+      e.str(QReg(src_idx),
+            Xbyak_aarch64::ptr(
+                e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+      int dest_idx = i.dest.reg().getIdx();
+      for (int lane = 0; lane < 4; lane++) {
+        // Load float32 bits from saved source.
+        e.ldr(e.w0, Xbyak_aarch64::ptr(
+                        e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH) +
+                                  lane * 4));
+        // Store to PPCContext::scratch for helper.
+        e.str(e.x0, Xbyak_aarch64::ptr(e.GetContextReg(),
+                                       static_cast<int32_t>(offsetof(
+                                           ppc::PPCContext, scratch))));
+        e.CallNative(reinterpret_cast<void*>(PpcVrsqrtefpHelper));
+        // Insert result lane into dest (allocated reg, survives CallNative).
+        e.ins(VReg(dest_idx).s4[lane], e.w0);
+      }
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RSQRT, RSQRT_F32, RSQRT_F64, RSQRT_V128);
@@ -4731,21 +4825,22 @@ struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
 };
 struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Vmx);
-    if (i.src1.is_constant) {
-      LoadV128Const(e, 1, i.src1.constant());
-    } else {
-      e.mov(VReg(1).b16, VReg(i.src1.reg().getIdx()).b16);
-    }
-    // Flush input denormals.
-    FlushDenormals_V128(e, 1);  // scratch v2, v3
-    auto d = VReg(i.dest.reg().getIdx()).s4;
-    // Load 1.0f vector.
-    e.mov(e.w0, static_cast<uint64_t>(0x3F800000u));
-    e.dup(VReg(0).s4, e.w0);
-    e.fdiv(d, VReg(0).s4, VReg(1).s4);
-    // Flush output denormals.
-    FlushDenormals_V128(e, i.dest.reg().getIdx(), 0, 1);
+    EmitWithVmxFpcr(e, [&] {
+      if (i.src1.is_constant) {
+        LoadV128Const(e, 1, i.src1.constant());
+      } else {
+        e.mov(VReg(1).b16, VReg(i.src1.reg().getIdx()).b16);
+      }
+      // Flush input denormals.
+      FlushDenormals_V128(e, 1);  // scratch v2, v3
+      auto d = VReg(i.dest.reg().getIdx()).s4;
+      // Load 1.0f vector.
+      e.mov(e.w0, static_cast<uint64_t>(0x3F800000u));
+      e.dup(VReg(0).s4, e.w0);
+      e.fdiv(d, VReg(0).s4, VReg(1).s4);
+      // Flush output denormals.
+      FlushDenormals_V128(e, i.dest.reg().getIdx(), 0, 1);
+    });
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
@@ -4779,32 +4874,27 @@ EMITTER_OPCODE_TABLE(OPCODE_TO_SINGLE, TOSINGLE);
 // ============================================================================
 struct SET_NJM : Sequence<SET_NJM, I<OPCODE_SET_NJM, VoidOp, I8Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // NJM (Non-Java Mode) maps to ARM64 FPCR FZ (Flush-to-Zero) bit (bit 24).
-    // When NJM=1, enable flush-to-zero. When NJM=0, disable.
-    // mrs x0, FPCR  (op0=3, op1=3, CRn=4, CRm=4, op2=0)
-    e.mrs(e.x0, 3, 3, 4, 4, 0);
+    // NJM feeds the PPC estimate helpers through backend context state, not the
+    // live host FPCR. VMX ops force their own scoped FPCR settings separately.
+    e.sub(e.x17, e.GetContextReg(),
+          static_cast<uint32_t>(sizeof(A64BackendContext)));
+    e.ldr(e.w0, ptr(e.x17,
+                    static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
+    e.mov(e.w1, 1u << kA64BackendNJMOn);
     if (i.src1.is_constant) {
       if (i.src1.constant()) {
-        e.orr(e.x0, e.x0, (1u << 24));  // Set FZ bit
+        e.orr(e.w0, e.w0, e.w1);
       } else {
-        e.and_(e.x0, e.x0, ~(1ull << 24));  // Clear FZ bit
+        e.bic(e.w0, e.w0, e.w1);
       }
     } else {
-      // Dynamic: test src1, set/clear FZ accordingly.
-      auto& set_fz = e.NewCachedLabel();
-      auto& done = e.NewCachedLabel();
-      e.cbnz(i.src1, set_fz);
-      // NJM=0: clear FZ
-      e.and_(e.x0, e.x0, ~(1ull << 24));
-      e.b(done);
-      e.L(set_fz);
-      // NJM=1: set FZ
-      e.orr(e.x0, e.x0, (1u << 24));
-      e.L(done);
+      e.bic(e.w0, e.w0, e.w1);
+      e.tst(i.src1, 1);
+      e.csel(e.w1, e.w1, e.wzr, Xbyak_aarch64::Cond::NE);
+      e.orr(e.w0, e.w0, e.w1);
     }
-    // msr FPCR, x0  (op0=3, op1=3, CRn=4, CRm=4, op2=0)
-    e.msr(3, 3, 4, 4, 0, e.x0);
-    e.ForgetFpcrMode();
+    e.str(e.w0, ptr(e.x17,
+                    static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_SET_NJM, SET_NJM);

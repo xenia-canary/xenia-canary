@@ -126,6 +126,12 @@ HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk() {
   // x21 = virtual_membase (loaded from context)
   ldr(x21, ptr(x20, static_cast<int32_t>(
                         offsetof(ppc::PPCContext, virtual_membase))));
+  // Restore the guest scalar FPCR on every host->guest entry so host-side
+  // work done before the call can't leak a stale rounding / non-IEEE mode.
+  sub(x10, x20, static_cast<uint32_t>(sizeof(A64BackendContext)));
+  ldr(w11,
+      ptr(x10, static_cast<uint32_t>(offsetof(A64BackendContext, fpcr_fpu))));
+  msr(3, 3, 4, 4, 0, x11);
   // x0 still holds target, x2 holds return address.
   // The guest function's prolog stores x0 to GUEST_RET_ADDR on its stack
   // frame. Move the target to a scratch reg and put the guest return
@@ -238,6 +244,13 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
   mov(x0, x20);  // x0 = PPCContext* (our context reg)
   // x1, x2, x3 already hold args from the caller.
   blr(x9);
+
+  // Host callbacks may change FPCR. Restore the guest scalar FPCR before
+  // resuming the JIT so later guest ops observe the cached PPC mode.
+  sub(x10, x20, static_cast<uint32_t>(sizeof(A64BackendContext)));
+  ldr(w11,
+      ptr(x10, static_cast<uint32_t>(offsetof(A64BackendContext, fpcr_fpu))));
+  msr(3, 3, 4, 4, 0, x11);
 
   code_offsets.epilog = getSize();
 
@@ -698,6 +711,10 @@ void A64Backend::InitializeBackendContext(void* ctx) {
       a64_ctx->stackpoints = new A64BackendStackpoint[max_stackpoints]();
     }
   }
+
+  // Reset the live host FPCR for a fresh PPC context so one test's rounding
+  // state does not leak into the next on the shared PPC test runner thread.
+  SetGuestRoundingMode(ctx, 0);
 }
 
 void A64Backend::DeinitializeBackendContext(void* ctx) {
@@ -781,15 +798,18 @@ void A64Backend::SetGuestRoundingMode(void* ctx, unsigned int mode) {
   A64BackendContext* bctx = BackendContextForGuestContext(ctx);
   uint32_t control = mode & 7;
   uint32_t fpcr_val = fpcr_table[control];
-#if XE_ARCH_ARM64
 #if XE_COMPILER_MSVC
   // MSVC ARM64 intrinsic: ARM64_FPCR = register ID 0x5A20.
   _WriteStatusReg(0x5A20, static_cast<uint64_t>(fpcr_val));
 #else
   __asm__ volatile("msr fpcr, %0" : : "r"(static_cast<uint64_t>(fpcr_val)));
 #endif
-#endif
   bctx->fpcr_fpu = fpcr_val;
+  if (control & 0b100) {
+    bctx->flags |= (1u << kA64BackendNonIEEEMode);
+  } else {
+    bctx->flags &= ~(1u << kA64BackendNonIEEEMode);
+  }
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(ctx);
   ppc_context->fpscr.bits.rn = control;
   ppc_context->fpscr.bits.ni = control >> 2;
