@@ -21,8 +21,12 @@
 #include "xenia/cpu/hir/instr.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
+#include "xenia/cpu/xex_module.h"
 
+DECLARE_bool(emit_mmio_aware_stores_for_recorded_exception_addresses);
 DECLARE_bool(emit_inline_mmio_checks);
+DEFINE_bool(a64_force_mmio_aware_byteswap_loads, false,
+            "Force MMIO-aware helper loads for byte-swapped I32 loads.", "a64");
 
 namespace xe {
 namespace cpu {
@@ -30,6 +34,23 @@ namespace backend {
 namespace a64 {
 
 volatile int anchor_memory = 0;
+
+static bool IsPossibleMMIOInstruction(A64Emitter& e, const hir::Instr* i) {
+  if (!cvars::emit_mmio_aware_stores_for_recorded_exception_addresses) {
+    return false;
+  }
+  uint32_t guest_address = i->GuestAddressFor();
+  if (!guest_address) {
+    return false;
+  }
+
+  auto* guest_module = e.GuestModule();
+  if (!guest_module) {
+    return false;
+  }
+  auto* flags = guest_module->GetInstructionAddressFlags(guest_address);
+  return flags && flags->accessed_mmio;
+}
 
 // ============================================================================
 // OPCODE_DELAY_EXECUTION
@@ -151,6 +172,24 @@ struct LOAD_I16 : Sequence<LOAD_I16, I<OPCODE_LOAD, I16Op, I64Op>> {
 };
 struct LOAD_I32 : Sequence<LOAD_I32, I<OPCODE_LOAD, I32Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const bool force_mmio_byteswap =
+        cvars::a64_force_mmio_aware_byteswap_loads &&
+        (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP);
+    if (force_mmio_byteswap || IsPossibleMMIOInstruction(e, i.instr)) {
+      void* mmio_fn = (void*)&MMIOAwareLoad<uint32_t, false>;
+      if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
+        mmio_fn = (void*)&MMIOAwareLoad<uint32_t, true>;
+      }
+      if (i.src1.is_constant) {
+        e.mov(e.w1,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
+      } else {
+        e.mov(e.w1, WReg(i.src1.reg().getIdx()));
+      }
+      e.CallNativeSafe(mmio_fn);
+      e.mov(i.dest, e.w0);
+      return;
+    }
     if (cvars::emit_inline_mmio_checks) {
       if (i.src1.is_constant) {
         e.mov(e.w17,
@@ -277,6 +316,27 @@ struct STORE_I16 : Sequence<STORE_I16, I<OPCODE_STORE, VoidOp, I64Op, I16Op>> {
 };
 struct STORE_I32 : Sequence<STORE_I32, I<OPCODE_STORE, VoidOp, I64Op, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP ||
+        IsPossibleMMIOInstruction(e, i.instr)) {
+      void* mmio_fn = (void*)&MMIOAwareStore<uint32_t, false>;
+      if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
+        mmio_fn = (void*)&MMIOAwareStore<uint32_t, true>;
+      }
+      if (i.src1.is_constant) {
+        e.mov(e.w1,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
+      } else {
+        e.mov(e.w1, WReg(i.src1.reg().getIdx()));
+      }
+      if (i.src2.is_constant) {
+        e.mov(e.w2,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src2.constant())));
+      } else {
+        e.mov(e.w2, i.src2);
+      }
+      e.CallNativeSafe(mmio_fn);
+      return;
+    }
     if (cvars::emit_inline_mmio_checks) {
       if (i.src1.is_constant) {
         e.mov(e.w17,
@@ -473,26 +533,14 @@ EMITTER_OPCODE_TABLE(OPCODE_LOAD_CLOCK, LOAD_CLOCK);
 struct LOAD_OFFSET_I8
     : Sequence<LOAD_OFFSET_I8, I<OPCODE_LOAD_OFFSET, I8Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     e.ldrb(i.dest, ptr(e.GetMembaseReg(), e.x0));
   }
 };
 struct LOAD_OFFSET_I16
     : Sequence<LOAD_OFFSET_I16, I<OPCODE_LOAD_OFFSET, I16Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     e.ldrh(i.dest, ptr(e.GetMembaseReg(), e.x0));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev16(i.dest, i.dest);
@@ -502,6 +550,31 @@ struct LOAD_OFFSET_I16
 struct LOAD_OFFSET_I32
     : Sequence<LOAD_OFFSET_I32, I<OPCODE_LOAD_OFFSET, I32Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const bool force_mmio_byteswap =
+        cvars::a64_force_mmio_aware_byteswap_loads &&
+        (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP);
+    if (force_mmio_byteswap || IsPossibleMMIOInstruction(e, i.instr)) {
+      void* mmio_fn = (void*)&MMIOAwareLoad<uint32_t, false>;
+      if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
+        mmio_fn = (void*)&MMIOAwareLoad<uint32_t, true>;
+      }
+      if (i.src1.is_constant) {
+        e.mov(e.w1,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
+      } else {
+        e.mov(e.w1, WReg(i.src1.reg().getIdx()));
+      }
+      if (i.src2.is_constant) {
+        e.mov(e.w17,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src2.constant())));
+      } else {
+        e.mov(e.w17, WReg(i.src2.reg().getIdx()));
+      }
+      e.add(e.w1, e.w1, e.w17);
+      e.CallNativeSafe(mmio_fn);
+      e.mov(i.dest, e.w0);
+      return;
+    }
     if (cvars::emit_inline_mmio_checks) {
       // Compute raw guest address (src1 + src2) in w17 for range check.
       if (i.src1.is_constant) {
@@ -538,13 +611,7 @@ struct LOAD_OFFSET_I32
       e.b(done);
       e.L(normal_access);
       {
-        auto addr_reg = ComputeMemoryAddress(e, i.src1);
-        if (i.src2.is_constant) {
-          e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-          e.add(e.x0, addr_reg, e.x17);
-        } else {
-          e.add(e.x0, addr_reg, i.src2.reg());
-        }
+        AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
         e.ldr(i.dest, ptr(e.GetMembaseReg(), e.x0));
         if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
           e.rev(i.dest, i.dest);
@@ -552,13 +619,7 @@ struct LOAD_OFFSET_I32
       }
       e.L(done);
     } else {
-      auto addr_reg = ComputeMemoryAddress(e, i.src1);
-      if (i.src2.is_constant) {
-        e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-        e.add(e.x0, addr_reg, e.x17);
-      } else {
-        e.add(e.x0, addr_reg, i.src2.reg());
-      }
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
       e.ldr(i.dest, ptr(e.GetMembaseReg(), e.x0));
       if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
         e.rev(i.dest, i.dest);
@@ -569,13 +630,7 @@ struct LOAD_OFFSET_I32
 struct LOAD_OFFSET_I64
     : Sequence<LOAD_OFFSET_I64, I<OPCODE_LOAD_OFFSET, I64Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     e.ldr(i.dest, ptr(e.GetMembaseReg(), e.x0));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev(i.dest, i.dest);
@@ -589,13 +644,7 @@ struct STORE_OFFSET_I8
     : Sequence<STORE_OFFSET_I8,
                I<OPCODE_STORE_OFFSET, VoidOp, I64Op, I64Op, I8Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     if (i.src3.is_constant) {
       e.mov(e.w17, static_cast<uint64_t>(i.src3.constant() & 0xFF));
       e.strb(e.w17, ptr(e.GetMembaseReg(), e.x0));
@@ -608,13 +657,7 @@ struct STORE_OFFSET_I16
     : Sequence<STORE_OFFSET_I16,
                I<OPCODE_STORE_OFFSET, VoidOp, I64Op, I64Op, I16Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       if (i.src3.is_constant) {
         uint16_t val = xe::byte_swap(static_cast<uint16_t>(i.src3.constant()));
@@ -637,6 +680,34 @@ struct STORE_OFFSET_I32
     : Sequence<STORE_OFFSET_I32,
                I<OPCODE_STORE_OFFSET, VoidOp, I64Op, I64Op, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP ||
+        IsPossibleMMIOInstruction(e, i.instr)) {
+      void* mmio_fn = (void*)&MMIOAwareStore<uint32_t, false>;
+      if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
+        mmio_fn = (void*)&MMIOAwareStore<uint32_t, true>;
+      }
+      if (i.src1.is_constant) {
+        e.mov(e.w1,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
+      } else {
+        e.mov(e.w1, WReg(i.src1.reg().getIdx()));
+      }
+      if (i.src2.is_constant) {
+        e.mov(e.w17,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src2.constant())));
+      } else {
+        e.mov(e.w17, WReg(i.src2.reg().getIdx()));
+      }
+      e.add(e.w1, e.w1, e.w17);
+      if (i.src3.is_constant) {
+        e.mov(e.w2,
+              static_cast<uint64_t>(static_cast<uint32_t>(i.src3.constant())));
+      } else {
+        e.mov(e.w2, i.src3);
+      }
+      e.CallNativeSafe(mmio_fn);
+      return;
+    }
     if (cvars::emit_inline_mmio_checks) {
       // Compute raw guest address (src1 + src2) in w17 for range check.
       if (i.src1.is_constant) {
@@ -678,13 +749,7 @@ struct STORE_OFFSET_I32
       e.b(done);
       e.L(normal_access);
       {
-        auto addr_reg = ComputeMemoryAddress(e, i.src1);
-        if (i.src2.is_constant) {
-          e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-          e.add(e.x0, addr_reg, e.x17);
-        } else {
-          e.add(e.x0, addr_reg, i.src2.reg());
-        }
+        AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
         if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
           if (i.src3.is_constant) {
             uint32_t val =
@@ -706,13 +771,7 @@ struct STORE_OFFSET_I32
       }
       e.L(done);
     } else {
-      auto addr_reg = ComputeMemoryAddress(e, i.src1);
-      if (i.src2.is_constant) {
-        e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-        e.add(e.x0, addr_reg, e.x17);
-      } else {
-        e.add(e.x0, addr_reg, i.src2.reg());
-      }
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
       if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
         if (i.src3.is_constant) {
           uint32_t val =
@@ -738,13 +797,7 @@ struct STORE_OFFSET_I64
     : Sequence<STORE_OFFSET_I64,
                I<OPCODE_STORE_OFFSET, VoidOp, I64Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    auto addr_reg = ComputeMemoryAddress(e, i.src1);
-    if (i.src2.is_constant) {
-      e.mov(e.x17, static_cast<uint64_t>(i.src2.constant()));
-      e.add(e.x0, addr_reg, e.x17);
-    } else {
-      e.add(e.x0, addr_reg, i.src2.reg());
-    }
+    AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       if (i.src3.is_constant) {
         uint64_t val = xe::byte_swap(static_cast<uint64_t>(i.src3.constant()));

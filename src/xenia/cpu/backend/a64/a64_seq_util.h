@@ -85,9 +85,11 @@ inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
     e.mov(e.x0, static_cast<uint64_t>(address));
     return e.x0;
   } else {
+    auto src = guest.reg();
+    // Guest addresses are always 32-bit. Clear any stale upper bits before
+    // applying the host membase so guest pointers can't escape above 4 GB.
+    e.mov(e.w0, WReg(src.getIdx()));
     if (xe::memory::allocation_granularity() > 0x1000) {
-      auto src = guest.reg();
-      e.mov(e.w0, WReg(src.getIdx()));
       e.mov(e.w17, 0xE0000000u);
       e.cmp(e.w0, e.w17);
       auto& skip = e.NewCachedLabel();
@@ -96,10 +98,26 @@ inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
       e.mov(e.w17, 0x1000u);
       e.add(e.w0, e.w0, e.w17);
       e.L(skip);
-      return e.x0;
     }
-    return guest.reg();
+    return e.x0;
   }
+}
+
+template <typename OffsetOp>
+inline XReg AddGuestMemoryOffset(A64Emitter& e, const XReg& base,
+                                 const OffsetOp& offset) {
+  // Guest address arithmetic wraps at 32 bits before the host membase is
+  // applied. Keep the add in W registers so stale high bits can't escape into
+  // the final host pointer.
+  e.mov(e.w0, WReg(base.getIdx()));
+  if (offset.is_constant) {
+    e.mov(e.w17,
+          static_cast<uint64_t>(static_cast<uint32_t>(offset.constant())));
+    e.add(e.w0, e.w0, e.w17);
+  } else {
+    e.add(e.w0, e.w0, WReg(offset.reg().getIdx()));
+  }
+  return e.x0;
 }
 
 // Flush denormal float32 lanes to zero in a NEON register (in-place).
