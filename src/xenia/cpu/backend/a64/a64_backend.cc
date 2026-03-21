@@ -9,14 +9,25 @@
 
 #include "xenia/cpu/backend/a64/a64_backend.h"
 
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
+
+#if XE_PLATFORM_MAC
+#include <pthread.h>
+#endif
+
+#if XE_PLATFORM_MAC || XE_PLATFORM_LINUX || XE_PLATFORM_IOS
+#include <dlfcn.h>
+#endif
 
 #include "xenia/base/clock.h"
 #include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
+#include "xenia/base/string_buffer.h"
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 #endif
@@ -30,11 +41,14 @@
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
 #include "xenia/cpu/breakpoint.h"
+#include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
 #include "xenia/cpu/thread_state.h"
 #include "xenia/cpu/xex_module.h"
+
+DECLARE_bool(record_mmio_access_exceptions);
 
 DEFINE_int64(a64_max_stackpoints, 65536,
              "Max number of host->guest stack mappings we can record.", "a64");
@@ -44,15 +58,45 @@ DEFINE_bool(a64_enable_host_guest_stack_synchronization, true,
             "and checks for reentry at return sites. Has slight performance "
             "impact, but fixes crashes in games that use setjmp/longjmp.",
             "a64");
+DEFINE_bool(a64_resolve_function_log, false,
+            "Log A64 ResolveFunction failures with module ranges.", "a64");
+DEFINE_int32(a64_resolve_function_log_limit, 8,
+             "Maximum ResolveFunction failure logs.", "a64");
+DEFINE_bool(a64_stack_sync_log, false, "Log A64 stack sync events.", "a64");
+DEFINE_int32(a64_stack_sync_log_limit, 16, "Maximum A64 stack sync logs.",
+             "a64");
 
 namespace xe {
 namespace cpu {
 namespace backend {
 namespace a64 {
 
+namespace {
+
+bool ShouldLogResolveFailure() {
+  if (!cvars::a64_resolve_function_log) {
+    return false;
+  }
+  const int32_t limit = cvars::a64_resolve_function_log_limit;
+  if (limit <= 0) {
+    return false;
+  }
+  static std::atomic<int32_t> log_count{0};
+  const int32_t count = log_count.fetch_add(1, std::memory_order_relaxed);
+  return count < limit;
+}
+
+}  // namespace
+
 // Resolve a guest function at runtime. Called by the resolve thunk when
 // a guest address has not yet been compiled.
-uint64_t ResolveFunction(void* raw_context, uint64_t target_address);
+uint64_t ResolveFunction(void* raw_context, uint64_t target_address,
+                         uint64_t host_return_address);
+
+void ForwardMMIOAccessForRecording(void* context, void* hostaddr) {
+  reinterpret_cast<A64Backend*>(context)
+      ->RecordMMIOExceptionForGuestInstruction(hostaddr);
+}
 
 // ==========================================================================
 // A64HelperEmitter — generates thunks using xbyak_aarch64.
@@ -61,10 +105,11 @@ class A64HelperEmitter : public A64Emitter {
  public:
   A64HelperEmitter(A64Backend* backend, XbyakA64Allocator* allocator);
 
-  HostToGuestThunk EmitHostToGuestThunk();
-  GuestToHostThunk EmitGuestToHostThunk();
-  ResolveFunctionThunk EmitResolveFunctionThunk();
-  void* EmitGuestAndHostSynchronizeStackHelper();
+  HostToGuestThunk EmitHostToGuestThunk(size_t* code_size_out = nullptr);
+  GuestToHostThunk EmitGuestToHostThunk(size_t* code_size_out = nullptr);
+  ResolveFunctionThunk EmitResolveFunctionThunk(size_t* code_size_out = nullptr);
+  void* EmitGuestAndHostSynchronizeStackHelper(
+      size_t* code_size_out = nullptr);
 };
 
 A64HelperEmitter::A64HelperEmitter(A64Backend* backend,
@@ -85,7 +130,7 @@ A64HelperEmitter::A64HelperEmitter(A64Backend* backend,
 //
 // We save all callee-saved regs, set up context (x20) and membase (x21),
 // then call the target. On return, restore and return to host.
-HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk() {
+HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk(size_t* code_size_out) {
   struct {
     size_t prolog;
     size_t prolog_stack_alloc;
@@ -175,6 +220,9 @@ HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk() {
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = thunk_stack;
 
+  if (code_size_out) {
+    *code_size_out = func_info.code_size.total;
+  }
   void* fn = Emplace(func_info);
   return reinterpret_cast<HostToGuestThunk>(fn);
 }
@@ -189,7 +237,7 @@ HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk() {
 //
 // We save volatile guest registers that we need to preserve across the
 // host call, then call the host function with context as the first arg.
-GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
+GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk(size_t* code_size_out) {
   struct {
     size_t prolog;
     size_t prolog_stack_alloc;
@@ -217,8 +265,9 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
   //   q28, q29     sp + 0x100
   //   q30, q31     sp + 0x120
   //   x29, x30     sp + 0x140
-  //   Total: 0x150 = 336 bytes (16-byte aligned)
-  const size_t g2h_stack = 336;
+  //   x20, x21     sp + 0x150
+  //   Total: 0x160 = 352 bytes (16-byte aligned)
+  const size_t g2h_stack = 352;
   sub(sp, sp, static_cast<uint32_t>(g2h_stack));
   code_offsets.prolog_stack_alloc = getSize();
 
@@ -235,6 +284,8 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
   stp(Xbyak_aarch64::QReg(30), Xbyak_aarch64::QReg(31), ptr(sp, 0x120));
   // Save x29/x30 (FP/LR).
   stp(x29, x30, ptr(sp, 0x140));
+  // Some host callbacks don't preserve our reserved guest-state registers.
+  stp(x20, x21, ptr(sp, 0x150));
 
   code_offsets.body = getSize();
 
@@ -245,6 +296,12 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
   // x1, x2, x3 already hold args from the caller.
   blr(x9);
 
+  // Restore the reserved guest-state registers explicitly rather than relying
+  // on every host callback to honor AAPCS64 callee-save rules.
+  ldp(x20, x21, ptr(sp, 0x150));
+  // Reload membase in case the host callback clobbered x21.
+  ldr(x21, ptr(x20, static_cast<int32_t>(
+                        offsetof(ppc::PPCContext, virtual_membase))));
   // Host callbacks may change FPCR. Restore the guest scalar FPCR before
   // resuming the JIT so later guest ops observe the cached PPC mode.
   sub(x10, x20, static_cast<uint32_t>(sizeof(A64BackendContext)));
@@ -282,6 +339,9 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = g2h_stack;
 
+  if (code_size_out) {
+    *code_size_out = func_info.code_size.total;
+  }
   void* fn = Emplace(func_info);
   return reinterpret_cast<GuestToHostThunk>(fn);
 }
@@ -294,10 +354,11 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
 // We call ResolveFunction to compile/lookup the target, then jump to it.
 //
 // On entry from the indirection table:
-//   w16 = guest PPC address (loaded by the call sequence)
+//   w17 = guest PPC address (preserved by the call sequence)
 //   x20 = context
 //   x30 = return address (from the BLR that got us here)
-ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
+ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk(
+    size_t* code_size_out) {
   struct {
     size_t prolog;
     size_t prolog_stack_alloc;
@@ -319,14 +380,20 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
 
   code_offsets.body = getSize();
 
-  // Call ResolveFunction(context, target_address).
+  // Call ResolveFunction(context, target_address, host_return_address).
+  stp(x20, x21, ptr(sp, 0x10));
   mov(x0, x20);  // x0 = PPCContext*
-  mov(x1, x16);  // x1 = guest address (32-bit in w16)
+  mov(w1, w17);  // x1 = guest address (32-bit in w17)
+  mov(x2, x30);  // x2 = host return address after the call site
   // Load address of ResolveFunction.
   mov(x9, reinterpret_cast<uint64_t>(&ResolveFunction));
   blr(x9);
   // x0 now holds the resolved host machine code address.
   mov(x9, x0);
+  ldp(x20, x21, ptr(sp, 0x10));
+  // Reload membase in case ResolveFunction clobbered x21.
+  ldr(x21, ptr(x20, static_cast<int32_t>(
+                        offsetof(ppc::PPCContext, virtual_membase))));
 
   code_offsets.epilog = getSize();
 
@@ -351,6 +418,9 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = thunk_stack;
 
+  if (code_size_out) {
+    *code_size_out = func_info.code_size.total;
+  }
   void* fn = Emplace(func_info);
   return reinterpret_cast<ResolveFunctionThunk>(fn);
 }
@@ -367,7 +437,8 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
 //   x9  = caller's stack size (to subtract from restored SP)
 //   x20 = PPCContext*
 //   The backend context is at (x20 - sizeof(A64BackendContext)).
-void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
+void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper(
+    size_t* code_size_out) {
   using namespace Xbyak_aarch64;
   struct {
     size_t prolog;
@@ -461,27 +532,369 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = 0;
 
+  if (code_size_out) {
+    *code_size_out = func_info.code_size.total;
+  }
   return Emplace(func_info);
 }
 
 // ==========================================================================
 // ResolveFunction — runtime function resolution.
 // ==========================================================================
-uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
+uint64_t ResolveFunction(void* raw_context, uint64_t target_address,
+                         uint64_t host_return_address) {
   auto guest_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
+  assert_not_null(guest_context);
   auto thread_state = guest_context->thread_state;
+  assert_not_null(thread_state);
   assert_not_zero(target_address);
 
-  auto fn = thread_state->processor()->ResolveFunction(
-      static_cast<uint32_t>(target_address));
-  if (!fn) {
-    // Unresolvable — return 0 which will fault.
+  uint32_t guest_address = 0;
+  if (target_address > 0xFFFFFFFFu) {
+    const auto ctx_ptr = reinterpret_cast<uint64_t>(guest_context);
+    if (target_address >= ctx_ptr &&
+        target_address < ctx_ptr + sizeof(ppc::PPCContext)) {
+      XELOGE(
+          "ResolveFunction: target_address 0x{:016X} is within PPCContext "
+          "[0x{:016X}, 0x{:016X})",
+          target_address, ctx_ptr, ctx_ptr + sizeof(ppc::PPCContext));
+      XELOGE(
+          "ResolveFunction: The target register contains a context pointer "
+          "instead of a function address");
+      return 0;
+    }
+
+    auto* code_cache = static_cast<A64CodeCache*>(
+        thread_state->processor()->backend()->code_cache());
+    auto* guest_function = code_cache->LookupFunction(target_address);
+    if (guest_function) {
+      guest_address =
+          guest_function->MapMachineCodeToGuestAddress(target_address);
+    } else {
+      guest_address = static_cast<uint32_t>(target_address);
+    }
+  } else {
+    guest_address = static_cast<uint32_t>(target_address);
+  }
+
+  if (!guest_address) {
+    XELOGE("ResolveFunction: guest_address is 0");
     return 0;
   }
 
-  auto guest_fn = static_cast<GuestFunction*>(fn);
+  if (cvars::a64_enable_host_guest_stack_synchronization &&
+      target_address <= 0xFFFFFFFFu) {
+    auto* processor = thread_state->processor();
+    auto* module_for_address =
+        processor->LookupModule(static_cast<uint32_t>(target_address));
+    if (module_for_address) {
+      auto* xexmod = dynamic_cast<XexModule*>(module_for_address);
+      if (xexmod) {
+        auto* flags = xexmod->GetInstructionAddressFlags(
+            static_cast<uint32_t>(target_address));
+        if (flags && flags->is_return_site) {
+          auto ones_with_address = processor->FindFunctionsWithAddress(
+              static_cast<uint32_t>(target_address));
+          if (!ones_with_address.empty()) {
+            A64Function* candidate = nullptr;
+            uintptr_t host_address = 0;
+            for (auto* entry : ones_with_address) {
+              auto* afunc = static_cast<A64Function*>(entry);
+              host_address = afunc->MapGuestAddressToMachineCode(
+                  static_cast<uint32_t>(target_address));
+              if (host_address &&
+                  afunc->machine_code() !=
+                      reinterpret_cast<const uint8_t*>(host_address)) {
+                candidate = afunc;
+                break;
+              }
+            }
+
+            if (candidate && host_address) {
+              auto* backend = static_cast<A64Backend*>(processor->backend());
+              auto* backend_context =
+                  backend->BackendContextForGuestContext(guest_context);
+              if (backend_context->stackpoints &&
+                  backend_context->current_stackpoint_depth > 0) {
+                uint32_t current_stackpoint_index =
+                    backend_context->current_stackpoint_depth - 1;
+                const uint32_t current_guest_stackpointer =
+                    static_cast<uint32_t>(guest_context->r[1]);
+                uint32_t num_frames_bigger = 0;
+
+                while (current_stackpoint_index != 0xFFFFFFFFu) {
+                  if (current_guest_stackpointer >
+                      backend_context->stackpoints[current_stackpoint_index]
+                          .guest_stack_) {
+                    --current_stackpoint_index;
+                    ++num_frames_bigger;
+                  } else {
+                    break;
+                  }
+                }
+
+                if (num_frames_bigger > 1 &&
+                    current_stackpoint_index != 0xFFFFFFFFu) {
+                  const uint32_t guest_lr =
+                      static_cast<uint32_t>(guest_context->lr);
+                  uint32_t scan_index = current_stackpoint_index;
+                  while (scan_index != 0xFFFFFFFFu) {
+                    const auto& sp_entry =
+                        backend_context->stackpoints[scan_index];
+                    if (sp_entry.guest_stack_ != current_guest_stackpointer) {
+                      break;
+                    }
+                    if (sp_entry.guest_return_address_ == guest_lr) {
+                      current_stackpoint_index = scan_index;
+                      break;
+                    }
+                    if (!scan_index) {
+                      break;
+                    }
+                    --scan_index;
+                  }
+
+                  if (cvars::a64_stack_sync_log) {
+                    static std::atomic<int32_t> sync_log_count{0};
+                    const int32_t limit = cvars::a64_stack_sync_log_limit;
+                    const int32_t count = sync_log_count.fetch_add(
+                        1, std::memory_order_relaxed);
+                    if (limit <= 0 || count < limit) {
+                      XELOGI(
+                          "A64 stack sync: guest=0x{:08X} host=0x{:016X} "
+                          "guest_sp=0x{:08X} depth={} index={}",
+                          static_cast<uint32_t>(target_address), host_address,
+                          current_guest_stackpointer,
+                          backend_context->current_stackpoint_depth,
+                          current_stackpoint_index);
+                    }
+                  }
+                  return host_address;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  auto fn = thread_state->processor()->ResolveFunction(guest_address);
+  if (!fn) {
+    XELOGE("ResolveFunction: Failed to resolve guest address 0x{:08X} "
+           "(target=0x{:016X}, lr=0x{:016X}, ctr=0x{:016X}, "
+           "host_return=0x{:016X}, thread={})",
+           guest_address, target_address, guest_context->lr,
+           guest_context->ctr, host_return_address, guest_context->thread_id);
+    if (ShouldLogResolveFailure()) {
+      auto* processor = thread_state->processor();
+      auto* code_cache = static_cast<A64CodeCache*>(processor->backend()->code_cache());
+      auto log_modules_for_address = [&](uint32_t address, const char* label) {
+        bool found = false;
+        for (auto* module : processor->GetModules()) {
+          if (!module) {
+            continue;
+          }
+          if (module->ContainsAddress(address)) {
+            XELOGI("ResolveFunction: {} module '{}' contains 0x{:08X}", label,
+                   module->name(), address);
+            found = true;
+          }
+        }
+        if (!found) {
+          XELOGI("ResolveFunction: {} no module contains 0x{:08X}", label,
+                 address);
+        }
+      };
+      log_modules_for_address(static_cast<uint32_t>(guest_context->lr), "lr");
+      log_modules_for_address(guest_address, "guest");
+
+      auto lr_functions = processor->FindFunctionsWithAddress(
+          static_cast<uint32_t>(guest_context->lr));
+      if (lr_functions.empty()) {
+        XELOGI("ResolveFunction: no resolved function covers LR 0x{:08X}",
+               static_cast<uint32_t>(guest_context->lr));
+      } else {
+        const auto* lr_fn = lr_functions.front();
+        XELOGI("ResolveFunction: LR function {} [0x{:08X},0x{:08X}) name='{}'",
+               lr_functions.size(), lr_fn->address(), lr_fn->end_address(),
+               lr_fn->name());
+      }
+
+      if (host_return_address) {
+        auto* host_fn = code_cache->LookupFunction(host_return_address);
+        if (!host_fn || !host_fn->machine_code()) {
+          XELOGI("ResolveFunction: no compiled guest function covers "
+                 "host_return=0x{:016X}",
+                 host_return_address);
+        } else {
+          const uint32_t host_resume_guest =
+              host_fn->MapMachineCodeToGuestAddress(host_return_address);
+          const uint32_t host_call_guest =
+              host_resume_guest >= 4 ? host_resume_guest - 4 : host_resume_guest;
+          XELOGI(
+              "ResolveFunction: host_return=0x{:016X} maps to function "
+              "[0x{:08X},0x{:08X}) '{}' resume=0x{:08X} callsite=0x{:08X}",
+              host_return_address, host_fn->address(), host_fn->end_address(),
+              host_fn->name(), host_resume_guest, host_call_guest);
+        }
+      }
+
+      auto* memory = thread_state->memory();
+      if (!memory) {
+        XELOGI("ResolveFunction: no Memory available for guest dump");
+      } else if (!memory->LookupHeap(guest_address)) {
+        XELOGI("ResolveFunction: guest_address 0x{:08X} not in any heap",
+               guest_address);
+      } else {
+        const uint8_t* data =
+            memory->TranslateVirtual<const uint8_t*>(guest_address);
+        std::array<uint8_t, 16> bytes = {};
+        std::memcpy(bytes.data(), data, bytes.size());
+        XELOGI(
+            "ResolveFunction: guest[0x{:08X}] = {:02X} {:02X} {:02X} {:02X} "
+            "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
+            "{:02X} {:02X} {:02X} {:02X}",
+            guest_address, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
+            bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
+            bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+
+        const uint32_t lr = static_cast<uint32_t>(guest_context->lr);
+        if (memory->LookupHeap(lr)) {
+          XELOGI(
+              "ResolveFunction: GPRs "
+              "r0=0x{:08X} r1=0x{:08X} r2=0x{:08X} r3=0x{:08X} "
+              "r4=0x{:08X} r5=0x{:08X} r6=0x{:08X} r7=0x{:08X}",
+              static_cast<uint32_t>(guest_context->r[0]),
+              static_cast<uint32_t>(guest_context->r[1]),
+              static_cast<uint32_t>(guest_context->r[2]),
+              static_cast<uint32_t>(guest_context->r[3]),
+              static_cast<uint32_t>(guest_context->r[4]),
+              static_cast<uint32_t>(guest_context->r[5]),
+              static_cast<uint32_t>(guest_context->r[6]),
+              static_cast<uint32_t>(guest_context->r[7]));
+          XELOGI(
+              "ResolveFunction: GPRs "
+              "r8=0x{:08X} r9=0x{:08X} r10=0x{:08X} r11=0x{:08X} "
+              "r12=0x{:08X} r13=0x{:08X} r31=0x{:08X}",
+              static_cast<uint32_t>(guest_context->r[8]),
+              static_cast<uint32_t>(guest_context->r[9]),
+              static_cast<uint32_t>(guest_context->r[10]),
+              static_cast<uint32_t>(guest_context->r[11]),
+              static_cast<uint32_t>(guest_context->r[12]),
+              static_cast<uint32_t>(guest_context->r[13]),
+              static_cast<uint32_t>(guest_context->r[31]));
+
+          for (int offset = -4; offset <= 4; ++offset) {
+            const uint32_t pc = lr + offset * 4;
+            if (!memory->LookupHeap(pc)) {
+              continue;
+            }
+            const uint32_t* instruction_ptr =
+                memory->TranslateVirtual<const uint32_t*>(pc);
+            if (!instruction_ptr) {
+              continue;
+            }
+            const uint32_t instruction = xe::load_and_swap<uint32_t>(
+                const_cast<uint32_t*>(instruction_ptr));
+            xe::StringBuffer disasm;
+            if (cpu::ppc::DisasmPPC(pc, instruction, &disasm)) {
+              XELOGI("ResolveFunction: lr_window{} 0x{:08X} {}",
+                     offset == 0 ? "*" : " ", instruction,
+                     disasm.to_string());
+            } else {
+              XELOGI("ResolveFunction: lr_window{} 0x{:08X}",
+                     offset == 0 ? "*" : " ", instruction);
+            }
+          }
+
+          if (host_return_address) {
+            auto* host_fn = code_cache->LookupFunction(host_return_address);
+            if (host_fn && host_fn->machine_code()) {
+              const uint32_t host_resume_guest =
+                  host_fn->MapMachineCodeToGuestAddress(host_return_address);
+              const uint32_t host_call_guest =
+                  host_resume_guest >= 4 ? host_resume_guest - 4
+                                         : host_resume_guest;
+              for (int offset = -4; offset <= 8; ++offset) {
+                const uint32_t pc = host_call_guest + offset * 4;
+                if (!memory->LookupHeap(pc)) {
+                  continue;
+                }
+                const uint32_t* instruction_ptr =
+                    memory->TranslateVirtual<const uint32_t*>(pc);
+                if (!instruction_ptr) {
+                  continue;
+                }
+                const uint32_t instruction = xe::load_and_swap<uint32_t>(
+                    const_cast<uint32_t*>(instruction_ptr));
+                xe::StringBuffer disasm;
+                if (cpu::ppc::DisasmPPC(pc, instruction, &disasm)) {
+                  XELOGI("ResolveFunction: callsite_window{} 0x{:08X} {}",
+                         offset == 0 ? "*" : " ", instruction,
+                         disasm.to_string());
+                } else {
+                  XELOGI("ResolveFunction: callsite_window{} 0x{:08X}",
+                         offset == 0 ? "*" : " ", instruction);
+                }
+              }
+            }
+          }
+
+          const uint32_t r31 = static_cast<uint32_t>(guest_context->r[31]);
+          if (memory->LookupHeap(r31)) {
+            XELOGI(
+                "ResolveFunction: stack32 "
+                "[r31+0x120]=0x{:08X} [r31+0x124]=0x{:08X} "
+                "[r31+0x128]=0x{:08X} [r31+0x12C]=0x{:08X}",
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x120)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x124)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x128)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x12C)));
+            XELOGI(
+                "ResolveFunction: stack32 "
+                "[r31+0x130]=0x{:08X} [r31+0x134]=0x{:08X} "
+                "[r31+0x138]=0x{:08X} [r31+0x13C]=0x{:08X}",
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x130)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x134)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x138)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x13C)));
+            XELOGI(
+                "ResolveFunction: stack32 "
+                "[r31+0x140]=0x{:08X} [r31+0x144]=0x{:08X} "
+                "[r31+0x148]=0x{:08X} [r31+0x14C]=0x{:08X}",
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x140)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x144)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x148)),
+                xe::load_and_swap<uint32_t>(
+                    memory->TranslateVirtual<uint32_t*>(r31 + 0x14C)));
+          }
+        } else {
+          XELOGI("ResolveFunction: LR 0x{:08X} not in any heap", lr);
+        }
+      }
+    }
+    return 0;
+  }
+
+  auto* guest_fn = static_cast<A64Function*>(fn);
   auto code = guest_fn->machine_code();
   if (!code) {
+    XELOGE(
+        "ResolveFunction: Function at guest address 0x{:08X} has no machine "
+        "code",
+        guest_address);
     return 0;
   }
   return reinterpret_cast<uint64_t>(code);
@@ -595,9 +1008,17 @@ bool A64Backend::Initialize(Processor* processor) {
   XbyakA64Allocator allocator;
   A64HelperEmitter thunk_emitter(this, &allocator);
 
-  host_to_guest_thunk_ = thunk_emitter.EmitHostToGuestThunk();
-  guest_to_host_thunk_ = thunk_emitter.EmitGuestToHostThunk();
-  resolve_function_thunk_ = thunk_emitter.EmitResolveFunctionThunk();
+  size_t host_to_guest_thunk_size = 0;
+  size_t guest_to_host_thunk_size = 0;
+  size_t resolve_function_thunk_size = 0;
+  size_t synchronize_guest_and_host_stack_helper_size = 0;
+
+  host_to_guest_thunk_ =
+      thunk_emitter.EmitHostToGuestThunk(&host_to_guest_thunk_size);
+  guest_to_host_thunk_ =
+      thunk_emitter.EmitGuestToHostThunk(&guest_to_host_thunk_size);
+  resolve_function_thunk_ =
+      thunk_emitter.EmitResolveFunctionThunk(&resolve_function_thunk_size);
 
   if (!host_to_guest_thunk_ || !guest_to_host_thunk_ ||
       !resolve_function_thunk_) {
@@ -607,8 +1028,15 @@ bool A64Backend::Initialize(Processor* processor) {
 
   if (cvars::a64_enable_host_guest_stack_synchronization) {
     synchronize_guest_and_host_stack_helper_ =
-        thunk_emitter.EmitGuestAndHostSynchronizeStackHelper();
+        thunk_emitter.EmitGuestAndHostSynchronizeStackHelper(
+            &synchronize_guest_and_host_stack_helper_size);
   }
+  host_to_guest_thunk_size_ = static_cast<uint32_t>(host_to_guest_thunk_size);
+  guest_to_host_thunk_size_ = static_cast<uint32_t>(guest_to_host_thunk_size);
+  resolve_function_thunk_size_ =
+      static_cast<uint32_t>(resolve_function_thunk_size);
+  synchronize_guest_and_host_stack_helper_size_ =
+      static_cast<uint32_t>(synchronize_guest_and_host_stack_helper_size);
 
   // Set the indirection table default to point at the resolve thunk.
 #if XE_A64_INDIRECTION_64BIT
@@ -629,6 +1057,10 @@ bool A64Backend::Initialize(Processor* processor) {
 
   // Register exception handler for MMIO access from JIT code.
   ExceptionHandler::Install(ExceptionCallbackThunk, this);
+  if (cvars::record_mmio_access_exceptions) {
+    processor->memory()->SetMMIOExceptionRecordingCallback(
+        ForwardMMIOAccessForRecording, this);
+  }
 
   return true;
 }
@@ -655,6 +1087,8 @@ uint64_t A64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
 
 // ARM64 BRK #0 encoding (4 bytes, fixed-width instruction).
 static constexpr uint32_t kArm64Brk0 = 0xD4200000;
+static constexpr uint32_t kArm64BrkMask = 0xFFE0001F;
+static constexpr uint32_t kArm64BrkFixed = 0xD4200000;
 
 void A64Backend::InstallBreakpoint(Breakpoint* breakpoint) {
   breakpoint->ForEachHostAddress([breakpoint](uint64_t host_address) {
@@ -744,9 +1178,18 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
   uint8_t* write_pos =
       &guest_trampoline_memory_[kGuestTrampolineSize * new_index];
 
+#if XE_PLATFORM_MAC
+  // MAP_JIT pages are only writable while thread-local JIT write protection is
+  // disabled. Guest trampolines are emitted lazily on running guest threads, so
+  // we must flip the thread into write mode for this small patch-up window.
+  pthread_jit_write_protect_np(0);
+#endif
   BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
                        userdata2,
                        reinterpret_cast<void*>(guest_to_host_thunk_));
+#if XE_PLATFORM_MAC
+  pthread_jit_write_protect_np(1);
+#endif
 
   // Flush instruction cache for the new trampoline code.
 #if XE_PLATFORM_WIN32
@@ -856,11 +1299,48 @@ void A64Backend::RecordMMIOExceptionForGuestInstruction(void* host_address) {
         cpu::InfoCacheFlags* icf =
             xex_guest_module->GetInstructionAddressFlags(guestaddr);
         if (icf) {
+          const bool was_mmio = icf->accessed_mmio;
           icf->accessed_mmio = true;
+          if (!was_mmio) {
+            xex_guest_module->FlushInfoCache();
+          }
         }
       }
     }
   }
+}
+
+const char* A64Backend::LookupHelperThunk(uint64_t host_pc,
+                                          uint32_t* offset_out) const {
+  struct HelperRange {
+    uint64_t start;
+    uint32_t size;
+    const char* name;
+  };
+  const HelperRange ranges[] = {
+      {reinterpret_cast<uint64_t>(host_to_guest_thunk_), host_to_guest_thunk_size_,
+       "host_to_guest"},
+      {reinterpret_cast<uint64_t>(guest_to_host_thunk_), guest_to_host_thunk_size_,
+       "guest_to_host"},
+      {reinterpret_cast<uint64_t>(resolve_function_thunk_),
+       resolve_function_thunk_size_, "resolve_function"},
+      {reinterpret_cast<uint64_t>(synchronize_guest_and_host_stack_helper_),
+       synchronize_guest_and_host_stack_helper_size_, "stack_sync_helper"},
+  };
+
+  for (const auto& range : ranges) {
+    if (!range.start || !range.size) {
+      continue;
+    }
+    const uint64_t end = range.start + range.size;
+    if (host_pc >= range.start && host_pc < end) {
+      if (offset_out) {
+        *offset_out = static_cast<uint32_t>(host_pc - range.start);
+      }
+      return range.name;
+    }
+  }
+  return nullptr;
 }
 
 bool A64Backend::ExceptionCallbackThunk(Exception* ex, void* data) {
@@ -869,14 +1349,145 @@ bool A64Backend::ExceptionCallbackThunk(Exception* ex, void* data) {
 }
 
 bool A64Backend::ExceptionCallback(Exception* ex) {
+  if (ex->code() == Exception::Code::kAccessViolation) {
+    const uint64_t host_pc = ex->pc();
+    const uint64_t fault_address = ex->fault_address();
+    uint64_t guest_pc = 0;
+    uint32_t host_offset = 0;
+    uint32_t helper_offset = 0;
+    bool in_trampoline_stub = false;
+    const char* helper_name = LookupHelperThunk(host_pc, &helper_offset);
+    if (guest_trampoline_memory_) {
+      const uint64_t tramp_base =
+          reinterpret_cast<uint64_t>(guest_trampoline_memory_);
+      const uint64_t tramp_end =
+          tramp_base +
+          static_cast<uint64_t>(kGuestTrampolineSize) *
+              static_cast<uint64_t>(MAX_GUEST_TRAMPOLINES);
+      if (host_pc >= tramp_base && host_pc < tramp_end) {
+        const size_t stub_index = static_cast<size_t>((host_pc - tramp_base) /
+                                                      kGuestTrampolineSize);
+        guest_pc = GUEST_TRAMPOLINE_BASE +
+                   static_cast<uint32_t>(stub_index) * GUEST_TRAMPOLINE_MIN_LEN;
+        in_trampoline_stub = true;
+      }
+    }
+    auto function = code_cache_->LookupFunction(host_pc);
+    if (function && function->machine_code()) {
+      const uint64_t function_pc =
+          reinterpret_cast<uint64_t>(function->machine_code());
+      host_offset = static_cast<uint32_t>(host_pc - function_pc);
+      if (const auto* entry = function->LookupMachineCodeOffset(host_offset)) {
+        guest_pc = entry->guest_address;
+      }
+    }
+    auto* thread_context = ex->thread_context();
+    XELOGE(
+        "A64 AV: host_pc=0x{:016X} guest_pc=0x{:08X} host_off=0x{:X} "
+        "fault=0x{:016X} op={} helper={} helper_off=0x{:X} trampoline={} "
+        "x0=0x{:016X} x1=0x{:016X} x2=0x{:016X} x9=0x{:016X} "
+        "x16=0x{:016X} x20=0x{:016X} x21=0x{:016X}",
+        host_pc, guest_pc, host_offset, fault_address,
+        static_cast<int>(ex->access_violation_operation()),
+        helper_name ? helper_name : "-",
+        helper_name ? helper_offset : 0, in_trampoline_stub,
+        thread_context ? thread_context->x[0] : 0,
+        thread_context ? thread_context->x[1] : 0,
+        thread_context ? thread_context->x[2] : 0,
+        thread_context ? thread_context->x[9] : 0,
+        thread_context ? thread_context->x[16] : 0,
+        thread_context ? thread_context->x[20] : 0,
+        thread_context ? thread_context->x[21] : 0);
+#if XE_PLATFORM_MAC || XE_PLATFORM_LINUX || XE_PLATFORM_IOS
+    if (!function && !helper_name && !in_trampoline_stub) {
+      const uint64_t code_base = code_cache_->execute_base_address();
+      const uint64_t code_end = code_base + code_cache_->total_size();
+      XELOGE("A64 AV: host_pc in code cache range? {} base=0x{:016X} end=0x{:016X}",
+             (host_pc >= code_base && host_pc < code_end), code_base, code_end);
+      Dl_info info;
+      if (dladdr(reinterpret_cast<void*>(host_pc), &info) && info.dli_fname) {
+        XELOGE("A64 AV: dladdr image={} sym={}",
+               info.dli_fname, info.dli_sname ? info.dli_sname : "unknown");
+      }
+    }
+#endif
+    return false;
+  }
   if (ex->code() != Exception::Code::kIllegalInstruction) {
     return false;
   }
 
-  // Verify it's our BRK #0 instruction.
-  auto instruction_bytes =
-      xe::load<uint32_t>(reinterpret_cast<void*>(ex->pc()));
-  if (instruction_bytes != kArm64Brk0) {
+  const uint64_t host_pc = ex->pc();
+  const auto instruction_bytes =
+      xe::load<uint32_t>(reinterpret_cast<void*>(host_pc));
+  if ((instruction_bytes & kArm64BrkMask) != kArm64BrkFixed) {
+    return false;
+  }
+
+  const uint32_t trap_imm = (instruction_bytes >> 5) & 0xFFFF;
+  uint32_t host_offset = 0;
+  uint32_t helper_offset = 0;
+  uint64_t guest_pc = 0;
+  bool in_trampoline_stub = false;
+  const char* helper_name = LookupHelperThunk(host_pc, &helper_offset);
+  if (guest_trampoline_memory_) {
+    const uint64_t tramp_base =
+        reinterpret_cast<uint64_t>(guest_trampoline_memory_);
+    const uint64_t tramp_end =
+        tramp_base + static_cast<uint64_t>(kGuestTrampolineSize) *
+                         static_cast<uint64_t>(MAX_GUEST_TRAMPOLINES);
+    if (host_pc >= tramp_base && host_pc < tramp_end) {
+      const size_t stub_index =
+          static_cast<size_t>((host_pc - tramp_base) / kGuestTrampolineSize);
+      guest_pc = GUEST_TRAMPOLINE_BASE +
+                 static_cast<uint32_t>(stub_index) * GUEST_TRAMPOLINE_MIN_LEN;
+      in_trampoline_stub = true;
+    }
+  }
+  auto* function = code_cache_->LookupFunction(host_pc);
+  if (function && function->machine_code()) {
+    const uint64_t function_pc =
+        reinterpret_cast<uint64_t>(function->machine_code());
+    host_offset = static_cast<uint32_t>(host_pc - function_pc);
+    if (const auto* entry = function->LookupMachineCodeOffset(host_offset)) {
+      guest_pc = entry->guest_address;
+    }
+  }
+
+  if (trap_imm != 0) {
+    auto* thread_context = ex->thread_context();
+    XELOGE(
+        "A64 BRK: imm=0x{:X} host_pc=0x{:016X} guest_pc=0x{:08X} "
+        "host_off=0x{:X} helper={} helper_off=0x{:X} trampoline={} "
+        "x0=0x{:016X} x1=0x{:016X} x2=0x{:016X} x9=0x{:016X} "
+        "x16=0x{:016X} x20=0x{:016X} x21=0x{:016X}",
+        trap_imm, host_pc, guest_pc, host_offset, helper_name ? helper_name : "-",
+        helper_name ? helper_offset : 0, in_trampoline_stub,
+        thread_context ? thread_context->x[0] : 0,
+        thread_context ? thread_context->x[1] : 0,
+        thread_context ? thread_context->x[2] : 0,
+        thread_context ? thread_context->x[9] : 0,
+        thread_context ? thread_context->x[16] : 0,
+        thread_context ? thread_context->x[20] : 0,
+        thread_context ? thread_context->x[21] : 0);
+    if (function) {
+      XELOGE("A64 BRK: function='{}' range=[0x{:08X},0x{:08X})",
+             function->name(), function->address(), function->end_address());
+    }
+#if XE_PLATFORM_MAC || XE_PLATFORM_LINUX || XE_PLATFORM_IOS
+    if (!function && !helper_name && !in_trampoline_stub) {
+      const uint64_t code_base = code_cache_->execute_base_address();
+      const uint64_t code_end = code_base + code_cache_->total_size();
+      XELOGE(
+          "A64 BRK: host_pc in code cache range? {} base=0x{:016X} end=0x{:016X}",
+          (host_pc >= code_base && host_pc < code_end), code_base, code_end);
+      Dl_info info;
+      if (dladdr(reinterpret_cast<void*>(host_pc), &info) && info.dli_fname) {
+        XELOGE("A64 BRK: dladdr image={} sym={}", info.dli_fname,
+               info.dli_sname ? info.dli_sname : "unknown");
+      }
+    }
+#endif
     return false;
   }
 

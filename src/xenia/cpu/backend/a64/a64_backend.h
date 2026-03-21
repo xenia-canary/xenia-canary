@@ -143,6 +143,7 @@ class A64Backend : public Backend {
   void RecordMMIOExceptionForGuestInstruction(void* host_address);
 
  private:
+  const char* LookupHelperThunk(uint64_t host_pc, uint32_t* offset_out) const;
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
 
@@ -155,6 +156,10 @@ class A64Backend : public Backend {
   GuestToHostThunk guest_to_host_thunk_ = nullptr;
   ResolveFunctionThunk resolve_function_thunk_ = nullptr;
   void* synchronize_guest_and_host_stack_helper_ = nullptr;
+  uint32_t host_to_guest_thunk_size_ = 0;
+  uint32_t guest_to_host_thunk_size_ = 0;
+  uint32_t resolve_function_thunk_size_ = 0;
+  uint32_t synchronize_guest_and_host_stack_helper_size_ = 0;
 
  public:
   void* try_acquire_reservation_helper_ = nullptr;
