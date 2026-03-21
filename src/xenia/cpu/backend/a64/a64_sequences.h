@@ -22,11 +22,11 @@ namespace a64 {
 class A64Emitter;
 
 typedef bool (*SequenceSelectFn)(A64Emitter&, const hir::Instr*, uint32_t ikey);
-extern std::unordered_map<uint32_t, SequenceSelectFn> sequence_table;
+std::unordered_map<uint32_t, SequenceSelectFn>& SequenceTable();
 
 template <typename T>
 bool Register() {
-  sequence_table.insert({T::head_key(), T::Select});
+  SequenceTable().insert({T::head_key(), T::Select});
   return true;
 }
 

@@ -35,7 +35,11 @@ namespace a64 {
 using namespace xe::cpu::hir;
 using namespace Xbyak_aarch64;
 
-std::unordered_map<uint32_t, SequenceSelectFn> sequence_table;
+std::unordered_map<uint32_t, SequenceSelectFn>& SequenceTable() {
+  static auto* sequence_table =
+      new std::unordered_map<uint32_t, SequenceSelectFn>();
+  return *sequence_table;
+}
 
 // ============================================================================
 // Debug validation helpers
@@ -4821,6 +4825,7 @@ static int anchor_vector_dest = anchor_vector;
 bool SelectSequence(A64Emitter* e, const hir::Instr* i,
                     const hir::Instr** new_tail) {
   const InstrKey key(i);
+  auto& sequence_table = SequenceTable();
   auto it = sequence_table.find(key);
   if (it != sequence_table.end()) {
     if (it->second(*e, i, InstrKeyValue(key))) {
