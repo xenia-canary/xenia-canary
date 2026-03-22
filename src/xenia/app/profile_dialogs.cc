@@ -213,7 +213,21 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
           if (ImGui::BeginMenu("Login to slot:")) {
             for (uint8_t i = 1; i <= XUserMaxUserCount; i++) {
               if (ImGui::MenuItem(fmt::format("slot {}", i).c_str())) {
+                uint64_t current_slot_xuid = 0;
+
+                if (const auto current_profile = profile_manager->GetProfile(
+                        static_cast<uint8_t>(i - 1));
+                    current_profile) {
+                  current_slot_xuid = current_profile->xuid();
+                }
+
                 profile_manager->Login(xuid, i - 1);
+                LoadProfileIcon(xuid);
+
+                // Release resources
+                if (current_slot_xuid) {
+                  LoadProfileIcon(current_slot_xuid);
+                }
               }
             }
             ImGui::EndMenu();
