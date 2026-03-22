@@ -33,9 +33,8 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
     return;
   }
 
-  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-      !ImGui::IsAnyItemActive() && !ImGui::IsMouseClicked(0)) {
-    ImGui::SetKeyboardFocusHere(0);
+  if (ImGui::IsWindowAppearing()) {
+    ImGui::SetKeyboardFocusHere();
   }
 
   ImGui::TextUnformatted("Gamertag:");
