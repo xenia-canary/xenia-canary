@@ -24,6 +24,11 @@
 #include "xenia/cpu/hir/value.h"
 #include "xenia/cpu/mmio_handler.h"
 
+#if defined(XE_COMPILER_MSVC) && defined(XE_ARCH_ARM64)
+// winnt.h defines `MemoryBarrier` as a macro on ARM-MSVC
+#undef MemoryBarrier
+#endif
+
 namespace xe {
 namespace cpu {
 namespace hir {
