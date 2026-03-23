@@ -160,7 +160,7 @@ jobs:
           if-no-files-found: error
 
   create-release:
-    name: Create release (${{ matrix.os }})
+    name: Create release
     needs: [lint, build]
     if: |
       github.repository == 'xenia-canary/xenia-canary' &&
