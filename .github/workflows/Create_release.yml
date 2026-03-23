@@ -30,6 +30,10 @@ jobs:
               asset=xenia_canary_${{ inputs.os }}.zip
               7z a $asset -xr!'*.pdb' -mx9 -bb3
               ;;
+            windows_arm64)
+              asset=xenia_canary_${{ inputs.os }}.zip
+              7z a $asset -xr!'*.pdb' -mx9 -bb3
+              ;;
             linux)
               asset=xenia_canary_${{ inputs.os }}.tar.xz
               ;;

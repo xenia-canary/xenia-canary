@@ -59,9 +59,23 @@ jobs:
         run: python xenia-build.py lint --all
 
   build:
-    name: Build
+    name: Build (${{ matrix.arch }})
     needs: lint
-    runs-on: windows-2025
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+            fxc_arch: x64
+            artifact_name: xenia_canary_windows
+            cache_key_prefix: ''
+          - arch: ARM64
+            runner: windows-11-arm
+            fxc_arch: arm64
+            artifact_name: xenia_canary_windows_arm64
+            cache_key_prefix: 'arm64-'
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
     steps:
@@ -73,9 +87,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\VulkanSDK
-          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
+          key: ${{ runner.os }}-${{ matrix.cache_key_prefix }}vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
           restore-keys: |
-            ${{ runner.os }}-vulkan-sdk-
+            ${{ runner.os }}-${{ matrix.cache_key_prefix }}vulkan-sdk-
       - name: Setup
         run: |
           # Install Vulkan SDK which includes spirv-tools
@@ -115,7 +129,7 @@ jobs:
           }
 
           # Verify FXC is available (from Windows SDK)
-          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\${{ matrix.fxc_arch }}\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
           if ($fxcPaths) {
             $fxcPath = $fxcPaths[-1].FullName
             echo "FXC found at: $fxcPath"
@@ -141,19 +155,23 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_canary_windows
+          name: ${{ matrix.artifact_name }}
           path: artifacts\xenia_canary
           if-no-files-found: error
 
   create-release:
-    name: Create release
+    name: Create release (${{ matrix.os }})
     needs: [lint, build]
     if: |
       github.repository == 'xenia-canary/xenia-canary' &&
       github.event.action != 'pull_request' &&
       github.ref == 'refs/heads/canary_experimental'
+    strategy:
+      matrix:
+        os: [windows, windows_arm64]
     uses: ./.github/workflows/Create_release.yml
     with:
-      os: windows
+      os: ${{ matrix.os }}
     secrets:
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
