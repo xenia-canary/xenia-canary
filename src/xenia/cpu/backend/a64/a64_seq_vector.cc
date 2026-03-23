@@ -31,8 +31,8 @@ volatile int anchor_vector = 0;
 struct SPLAT_I8 : Sequence<SPLAT_I8, I<OPCODE_SPLAT, V128Op, I8Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (i.src1.is_constant) {
-      e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
-      e.dup(VReg(i.dest.reg().getIdx()).b16, e.w0);
+      e.movi(VReg(i.dest.reg().getIdx()).b16,
+             static_cast<uint8_t>(i.src1.constant()));
     } else {
       e.dup(VReg(i.dest.reg().getIdx()).b16, i.src1);
     }
@@ -647,22 +647,19 @@ struct VECTOR_SHL_V128
     // Mask shift amounts to element width, then ushl.
     switch (i.instr->flags) {
       case INT8_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x07));
-        e.dup(VReg(2).b16, e.w0);
+        e.movi(VReg(2).b16, 0x07);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.ushl(VReg(d).b16, VReg(s1).b16, VReg(2).b16);
         break;
       }
       case INT16_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x0F));
-        e.dup(VReg(2).h8, e.w0);
+        e.movi(VReg(2).h8, 0x0F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.ushl(VReg(d).h8, VReg(s1).h8, VReg(2).h8);
         break;
       }
       case INT32_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x1F));
-        e.dup(VReg(2).s4, e.w0);
+        e.movi(VReg(2).s4, 0x1F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.ushl(VReg(d).s4, VReg(s1).s4, VReg(2).s4);
         break;
@@ -687,24 +684,21 @@ struct VECTOR_SHR_V128
     // Mask, negate, then ushl (negative shift = right shift).
     switch (i.instr->flags) {
       case INT8_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x07));
-        e.dup(VReg(2).b16, e.w0);
+        e.movi(VReg(2).b16, 0x07);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).b16, VReg(2).b16);
         e.ushl(VReg(d).b16, VReg(s1).b16, VReg(2).b16);
         break;
       }
       case INT16_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x0F));
-        e.dup(VReg(2).h8, e.w0);
+        e.movi(VReg(2).h8, 0x0F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).h8, VReg(2).h8);
         e.ushl(VReg(d).h8, VReg(s1).h8, VReg(2).h8);
         break;
       }
       case INT32_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x1F));
-        e.dup(VReg(2).s4, e.w0);
+        e.movi(VReg(2).s4, 0x1F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).s4, VReg(2).s4);
         e.ushl(VReg(d).s4, VReg(s1).s4, VReg(2).s4);
@@ -730,24 +724,21 @@ struct VECTOR_SHA_V128
     // Mask, negate, then sshl (signed shift with negative = arith right).
     switch (i.instr->flags) {
       case INT8_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x07));
-        e.dup(VReg(2).b16, e.w0);
+        e.movi(VReg(2).b16, 0x07);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).b16, VReg(2).b16);
         e.sshl(VReg(d).b16, VReg(s1).b16, VReg(2).b16);
         break;
       }
       case INT16_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x0F));
-        e.dup(VReg(2).h8, e.w0);
+        e.movi(VReg(2).h8, 0x0F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).h8, VReg(2).h8);
         e.sshl(VReg(d).h8, VReg(s1).h8, VReg(2).h8);
         break;
       }
       case INT32_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x1F));
-        e.dup(VReg(2).s4, e.w0);
+        e.movi(VReg(2).s4, 0x1F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.neg(VReg(2).s4, VReg(2).s4);
         e.sshl(VReg(d).s4, VReg(s1).s4, VReg(2).s4);
@@ -774,14 +765,12 @@ struct VECTOR_ROTATE_LEFT_V128
     // rotate = (src << amt) | (src >> (width - amt))
     switch (i.instr->flags) {
       case INT8_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x07));
-        e.dup(VReg(2).b16, e.w0);
+        e.movi(VReg(2).b16, 0x07);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         // Left shift.
         e.ushl(VReg(3).b16, VReg(s1).b16, VReg(2).b16);
         // Right shift = negate amount.
-        e.mov(e.w0, static_cast<uint64_t>(8));
-        e.dup(VReg(0).b16, e.w0);
+        e.movi(VReg(0).b16, 8);
         e.sub(VReg(0).b16, VReg(0).b16, VReg(2).b16);
         e.neg(VReg(0).b16, VReg(0).b16);
         e.ushl(VReg(0).b16, VReg(s1).b16, VReg(0).b16);
@@ -789,12 +778,10 @@ struct VECTOR_ROTATE_LEFT_V128
         break;
       }
       case INT16_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x0F));
-        e.dup(VReg(2).h8, e.w0);
+        e.movi(VReg(2).h8, 0x0F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.ushl(VReg(3).h8, VReg(s1).h8, VReg(2).h8);
-        e.mov(e.w0, static_cast<uint64_t>(16));
-        e.dup(VReg(0).h8, e.w0);
+        e.movi(VReg(0).h8, 16);
         e.sub(VReg(0).h8, VReg(0).h8, VReg(2).h8);
         e.neg(VReg(0).h8, VReg(0).h8);
         e.ushl(VReg(0).h8, VReg(s1).h8, VReg(0).h8);
@@ -802,12 +789,10 @@ struct VECTOR_ROTATE_LEFT_V128
         break;
       }
       case INT32_TYPE: {
-        e.mov(e.w0, static_cast<uint64_t>(0x1F));
-        e.dup(VReg(2).s4, e.w0);
+        e.movi(VReg(2).s4, 0x1F);
         e.and_(VReg(2).b16, VReg(s2).b16, VReg(2).b16);
         e.ushl(VReg(3).s4, VReg(s1).s4, VReg(2).s4);
-        e.mov(e.w0, static_cast<uint64_t>(32));
-        e.dup(VReg(0).s4, e.w0);
+        e.movi(VReg(0).s4, 32);
         e.sub(VReg(0).s4, VReg(0).s4, VReg(2).s4);
         e.neg(VReg(0).s4, VReg(0).s4);
         e.ushl(VReg(0).s4, VReg(s1).s4, VReg(0).s4);
@@ -884,8 +869,7 @@ struct VECTOR_DENORMFLUSH
     e.cmeq(VReg(0).s4, VReg(0).s4, 0);
     // v0 = all-ones where exponent is zero (denormal or zero).
     // Keep sign bits of denormals.
-    e.mov(e.w0, static_cast<uint64_t>(0x80000000u));
-    e.dup(VReg(1).s4, e.w0);
+    e.movi(VReg(1).s4, 0x80, LSL, 24);
     e.and_(VReg(1).b16, VReg(s).b16, VReg(1).b16);
     // v1 = sign bits only.
     // Select: where exponent is zero -> sign bits, else -> original.
@@ -968,11 +952,9 @@ struct PERMUTE_V128
     }
     // XOR control bytes with 0x03 to remap PPC byte indices to LE,
     // then mask to 5 bits (0-31) so TBL indices stay in range.
-    e.mov(e.w0, static_cast<uint64_t>(0x03030303u));
-    e.dup(VReg(3).s4, e.w0);
+    e.movi(VReg(3).b16, 0x03);
     e.eor(VReg(3).b16, VReg(ctrl).b16, VReg(3).b16);
-    e.mov(e.w0, static_cast<uint64_t>(0x1F1F1F1Fu));
-    e.dup(VReg(2).s4, e.w0);
+    e.movi(VReg(2).b16, 0x1F);
     e.and_(VReg(3).b16, VReg(3).b16, VReg(2).b16);
     // TBL with 2-register table {v0, v1}.
     e.tbl(VReg(d).b16, VReg(0).b16, 2, VReg(3).b16);
@@ -1081,8 +1063,7 @@ struct LOAD_VECTOR_SHL_I8
     // Add shift amount (splatted).
     if (i.src1.is_constant) {
       if (i.src1.constant() != 0) {
-        e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
-        e.dup(VReg(0).b16, e.w0);
+        e.movi(VReg(0).b16, static_cast<uint8_t>(i.src1.constant()));
         e.add(VReg(d).b16, VReg(d).b16, VReg(0).b16);
       }
     } else {
@@ -1111,8 +1092,7 @@ struct LOAD_VECTOR_SHR_I8
     // Subtract shift amount (splatted).
     if (i.src1.is_constant) {
       if (i.src1.constant() != 0) {
-        e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
-        e.dup(VReg(0).b16, e.w0);
+        e.movi(VReg(0).b16, static_cast<uint8_t>(i.src1.constant()));
         e.sub(VReg(d).b16, VReg(d).b16, VReg(0).b16);
       }
     } else {
