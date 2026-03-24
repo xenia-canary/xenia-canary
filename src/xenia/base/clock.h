@@ -16,7 +16,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/platform.h"
 
-#if XE_ARCH_AMD64
+#if XE_ARCH_AMD64 || XE_ARCH_ARM64
 #define XE_CLOCK_RAW_AVAILABLE 1
 #endif
 
