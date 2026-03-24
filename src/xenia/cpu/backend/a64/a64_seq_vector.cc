@@ -31,8 +31,7 @@ volatile int anchor_vector = 0;
 struct SPLAT_I8 : Sequence<SPLAT_I8, I<OPCODE_SPLAT, V128Op, I8Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (i.src1.is_constant) {
-      e.movi(VReg(i.dest.reg().getIdx()).b16,
-             static_cast<uint8_t>(i.src1.constant()));
+      LoadV128Const(e, i.dest.reg().getIdx(), vec128b(i.src1.constant()));
     } else {
       e.dup(VReg(i.dest.reg().getIdx()).b16, i.src1);
     }
@@ -41,8 +40,7 @@ struct SPLAT_I8 : Sequence<SPLAT_I8, I<OPCODE_SPLAT, V128Op, I8Op>> {
 struct SPLAT_I16 : Sequence<SPLAT_I16, I<OPCODE_SPLAT, V128Op, I16Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (i.src1.is_constant) {
-      e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFFFF));
-      e.dup(VReg(i.dest.reg().getIdx()).h8, e.w0);
+      LoadV128Const(e, i.dest.reg().getIdx(), vec128s(i.src1.constant()));
     } else {
       e.dup(VReg(i.dest.reg().getIdx()).h8, i.src1);
     }
@@ -51,10 +49,7 @@ struct SPLAT_I16 : Sequence<SPLAT_I16, I<OPCODE_SPLAT, V128Op, I16Op>> {
 struct SPLAT_I32 : Sequence<SPLAT_I32, I<OPCODE_SPLAT, V128Op, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (i.src1.is_constant) {
-      uint32_t val = static_cast<uint32_t>(i.src1.constant());
-      // Use movz/movn via mov(xreg, uint64) for full 32-bit range.
-      e.mov(e.x0, static_cast<uint64_t>(val));
-      e.dup(VReg(i.dest.reg().getIdx()).s4, e.w0);
+      LoadV128Const(e, i.dest.reg().getIdx(), vec128i(i.src1.constant()));
     } else {
       e.dup(VReg(i.dest.reg().getIdx()).s4, i.src1);
     }
@@ -63,13 +58,8 @@ struct SPLAT_I32 : Sequence<SPLAT_I32, I<OPCODE_SPLAT, V128Op, I32Op>> {
 struct SPLAT_F32 : Sequence<SPLAT_F32, I<OPCODE_SPLAT, V128Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (i.src1.is_constant) {
-      union {
-        float f;
-        uint32_t u;
-      } c;
-      c.f = i.src1.constant();
-      e.mov(e.w0, static_cast<uint64_t>(c.u));
-      e.dup(VReg(i.dest.reg().getIdx()).s4, e.w0);
+      LoadV128Const(e, i.dest.reg().getIdx(),
+                    vec128i(std::bit_cast<uint32_t, float>(i.src1.constant())));
     } else {
       int src_idx = i.src1.reg().getIdx();
       e.dup(VReg(i.dest.reg().getIdx()).s4, VReg(src_idx).s4[0]);
