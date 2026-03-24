@@ -1444,8 +1444,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int d = i.dest.reg().getIdx();
     // Clamp to [3.0f, 3.0f + 255*2^-22].
     // fmaxnm/fminnm: NaN operand returns the non-NaN value (pack NaN as zero).
-    e.mov(e.w0, 0x40400000u);  // 3.0f
-    e.dup(VReg(0).s4, e.w0);
+    e.fmov(VReg(0).s4, 3.0f);
     e.fmaxnm(VReg(d).s4, VReg(s).s4, VReg(0).s4);
     e.mov(e.w0, 0x404000FFu);  // 3.0f + 255*2^-22
     e.dup(VReg(0).s4, e.w0);
@@ -1676,8 +1675,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     int d = i.dest.reg().getIdx();
     if (i.src1.is_constant && i.src1.value->IsConstantZero()) {
       // Zero -> 1.0f in all lanes.
-      e.mov(e.w0, 0x3F800000u);
-      e.dup(VReg(d).s4, e.w0);
+      e.fmov(VReg(d).s4, 1.0f);
       return;
     }
     // TBL: extract bytes from packed D3DCOLOR -> one byte per lane.
@@ -1690,8 +1688,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     LoadV128Const(e, 1, ctrl);
     e.tbl(VReg(d).b16, VReg(s).b16, 1, VReg(1).b16);
     // OR with 1.0f (0x3F800000) to form the magic float.
-    e.mov(e.w0, 0x3F800000u);
-    e.dup(VReg(0).s4, e.w0);
+    e.fmov(VReg(0).s4, 1.0f);
     e.orr(VReg(d).b16, VReg(d).b16, VReg(0).b16);
   }
   static void EmitCallHelper(A64Emitter& e, const EmitArgType& i, void* fn) {
