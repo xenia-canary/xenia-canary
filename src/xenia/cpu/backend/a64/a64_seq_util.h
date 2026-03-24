@@ -46,6 +46,83 @@ inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
 
 // Load a compile-time vec128_t constant into a NEON register.
 inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
+  if (!val.low && !val.high) {
+    // 0000...
+    e.movi(VReg2D(vreg_idx), 0);
+    return;
+  } else if (val.low == ~uint64_t(0) && val.high == ~uint64_t(0)) {
+    // 1111...
+    e.movi(VReg2D(vreg_idx), ~0ULL);
+    return;
+  } else {
+    bool all_equal_u8 = true;
+    const uint8_t splat_u8 = val.u8[0];
+    for (unsigned i = 1; i < 16; ++i) {
+      if (val.u8[i] != splat_u8) {
+        all_equal_u8 = false;
+        break;
+      }
+    }
+    if (all_equal_u8) {
+      e.movi(VReg(vreg_idx).b16, static_cast<uint8_t>(splat_u8));
+      return;
+    }
+
+    bool all_equal_u16 = true;
+    const uint16_t splat_u16 = val.u16[0];
+    for (unsigned i = 1; i < 8; ++i) {
+      if (val.u16[i] != splat_u16) {
+        all_equal_u16 = false;
+        break;
+      }
+    }
+    if (all_equal_u16) {
+      if ((splat_u16 & 0xFF'00) == 0) {
+        e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16));
+      } else if ((splat_u16 & 0x00'FF) == 0) {
+        e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16 >> 8), LSL, 8);
+      } else {
+        e.movz(e.w0, splat_u16);
+        e.dup(VReg(vreg_idx).h8, e.w0);
+      }
+      return;
+    }
+
+    bool all_equal_u32 = true;
+    const uint32_t splat_u32 = val.u32[0];
+    for (unsigned i = 1; i < 4; ++i) {
+      if (val.u32[i] != splat_u32) {
+        all_equal_u32 = false;
+        break;
+      }
+    }
+    if (all_equal_u32) {
+      if ((splat_u32 & 0xFF'FF'FF'00) == 0) {
+        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32));
+      } else if ((splat_u32 & 0xFF'FF'00'FF) == 0) {
+        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 8), LSL, 8);
+      } else if ((splat_u32 & 0xFF'00'FF'FF) == 0) {
+        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 16), LSL,
+               16);
+      } else if ((splat_u32 & 0x00'FF'FF'FF) == 0) {
+        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 24), LSL,
+               24);
+      } else {
+        e.mov(e.w0, splat_u32);
+        e.dup(VReg(vreg_idx).s4, e.w0);
+      }
+      return;
+    }
+
+    const bool all_equal_u64 = val.low == val.high;
+    const uint64_t splat_u64 = val.u64[0];
+    if (all_equal_u64) {
+      e.mov(e.x0, splat_u64);
+      e.dup(VReg(vreg_idx).d2, e.x0);
+      return;
+    }
+  }
+
   e.mov(e.x0, val.low);
   e.mov(e.x1, val.high);
   e.stp(e.x0, e.x1,
