@@ -4717,8 +4717,7 @@ struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
       e.mov(e.w0, static_cast<uint64_t>(c.u));
       e.fmov(e.s0, e.w0);
     }
-    e.mov(e.w0, static_cast<uint64_t>(0x3F800000u));
-    e.fmov(e.s2, e.w0);
+    e.fmov(e.s2, 1.0f);
     e.fdiv(i.dest, e.s2, src);
   }
 };
@@ -4734,8 +4733,7 @@ struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d0, e.x0);
     }
-    e.mov(e.x0, static_cast<uint64_t>(0x3FF0000000000000ull));
-    e.fmov(e.d2, e.x0);
+    e.fmov(e.d2, 1.0);
     e.fdiv(i.dest, e.d2, src);
   }
 };
@@ -4751,8 +4749,7 @@ struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
       FlushDenormals_V128(e, 1);  // scratch v2, v3
       auto d = VReg(i.dest.reg().getIdx()).s4;
       // Load 1.0f vector.
-      e.mov(e.w0, static_cast<uint64_t>(0x3F800000u));
-      e.dup(VReg(0).s4, e.w0);
+      e.fmov(VReg(0).s4, 1.0f);
       e.fdiv(d, VReg(0).s4, VReg(1).s4);
       // Flush output denormals.
       FlushDenormals_V128(e, i.dest.reg().getIdx(), 0, 1);
