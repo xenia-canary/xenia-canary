@@ -318,7 +318,7 @@ void A64Emitter::MarkSourceOffset(const hir::Instr* i) {
   entry->code_offset = static_cast<uint32_t>(getSize());
 }
 
-void A64Emitter::DebugBreak() { brk(0); }
+void A64Emitter::DebugBreak() { brk(0xF000); }
 
 void A64Emitter::Trap(uint16_t trap_type) { brk(trap_type); }
 

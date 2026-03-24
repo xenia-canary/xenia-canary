@@ -335,9 +335,9 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
   ldp(x29, x30, ptr(sp, 0x50));
   add(sp, sp, static_cast<uint32_t>(thunk_stack));
 
-  cbz(x9, 8);  // skip br x9 if null, fall through to brk
-  br(x9);      // Jump to the resolved function (tail call — preserves LR).
-  brk(0xF0);   // Resolution failed — trap for debugging.
+  cbz(x9, 8);   // skip br x9 if null, fall through to brk
+  br(x9);       // Jump to the resolved function (tail call — preserves LR).
+  brk(0xF000);  // Resolution failed — trap for debugging.
 
   code_offsets.tail = getSize();
 
@@ -446,7 +446,7 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
 
   L(underflow);
   // Should be impossible — stackpoint array underflowed.
-  brk(0xF1);
+  brk(0xF001);  // assertion failure
 
   code_offsets.epilog = getSize();
   code_offsets.tail = getSize();
