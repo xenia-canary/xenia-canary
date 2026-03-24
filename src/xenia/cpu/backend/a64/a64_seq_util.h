@@ -45,7 +45,9 @@ inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
 }
 
 // Load a compile-time vec128_t constant into a NEON register.
-inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
+// May clobber the provided GPR scratch-register
+inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val,
+                          int gpr_scratch_idx = 0) {
   if (!val.low && !val.high) {
     // 0000...
     e.movi(VReg2D(vreg_idx), 0);
@@ -82,8 +84,8 @@ inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
       } else if ((splat_u16 & 0x00'FF) == 0) {
         e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16 >> 8), LSL, 8);
       } else {
-        e.movz(e.w0, splat_u16);
-        e.dup(VReg(vreg_idx).h8, e.w0);
+        e.movz(WReg(gpr_scratch_idx), splat_u16);
+        e.dup(VReg(vreg_idx).h8, WReg(gpr_scratch_idx));
       }
       return;
     }
@@ -108,8 +110,8 @@ inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
         e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 24), LSL,
                24);
       } else {
-        e.mov(e.w0, splat_u32);
-        e.dup(VReg(vreg_idx).s4, e.w0);
+        e.mov(WReg(gpr_scratch_idx), splat_u32);
+        e.dup(VReg(vreg_idx).s4, WReg(gpr_scratch_idx));
       }
       return;
     }
@@ -117,20 +119,16 @@ inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val) {
     const bool all_equal_u64 = val.low == val.high;
     const uint64_t splat_u64 = val.u64[0];
     if (all_equal_u64) {
-      e.mov(e.x0, splat_u64);
-      e.dup(VReg(vreg_idx).d2, e.x0);
+      e.mov(XReg(gpr_scratch_idx), splat_u64);
+      e.dup(VReg(vreg_idx).d2, XReg(gpr_scratch_idx));
       return;
     }
   }
 
-  e.mov(e.x0, val.low);
-  e.mov(e.x1, val.high);
-  e.stp(e.x0, e.x1,
-        Xbyak_aarch64::ptr(e.sp,
-                           static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-  e.ldr(QReg(vreg_idx),
-        Xbyak_aarch64::ptr(e.sp,
-                           static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+  e.mov(XReg(gpr_scratch_idx), val.low);
+  e.fmov(DReg(vreg_idx), XReg(gpr_scratch_idx));
+  e.mov(XReg(gpr_scratch_idx), val.high);
+  e.ins(VReg(vreg_idx).d2[1], XReg(gpr_scratch_idx));
 }
 
 // Resolve a V128 operand to a register index, loading constants into
