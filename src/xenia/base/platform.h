@@ -186,5 +186,7 @@ constexpr char kGuestPathSeparator = '\\';
 }  // namespace xe
 #if XE_ARCH_AMD64 == 1
 #include "platform_amd64.h"
+#elif XE_ARCH_ARM64 == 1
+#include "platform_arm64.h"
 #endif
 #endif  // XENIA_BASE_PLATFORM_H_

@@ -907,6 +907,12 @@ struct ATOMIC_EXCHANGE_I8
     } else {
       e.and_(e.w0, i.src2, 0xFF);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.swpalb(i.dest, e.w0, ptr(e.x4));
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     e.L(retry);
     e.ldaxrb(e.w1, ptr(e.x4));
@@ -930,6 +936,12 @@ struct ATOMIC_EXCHANGE_I16
     } else {
       e.and_(e.w0, i.src2, 0xFFFF);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.swpalh(i.dest, e.w0, ptr(e.x4));
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     e.L(retry);
     e.ldaxrh(e.w1, ptr(e.x4));
@@ -954,6 +966,12 @@ struct ATOMIC_EXCHANGE_I32
     } else {
       e.mov(e.w0, i.src2);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.swpal(i.dest, e.w0, ptr(e.x4));
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     e.L(retry);
     e.ldaxr(e.w1, ptr(e.x4));
@@ -976,6 +994,12 @@ struct ATOMIC_EXCHANGE_I64
     } else {
       e.mov(e.x0, i.src2);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.swpal(i.dest, e.x0, ptr(e.x4));
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     e.L(retry);
     e.ldaxr(e.x1, ptr(e.x4));
@@ -1011,6 +1035,15 @@ struct ATOMIC_COMPARE_EXCHANGE_I32
     } else {
       e.mov(e.w6, i.src3);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.mov(e.w0, e.w5);
+      e.casal(e.w5, e.w6, ptr(e.x4));
+      e.cmp(e.w5, e.w0);
+      e.cset(i.dest, Xbyak_aarch64::EQ);
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     auto& fail = e.NewCachedLabel();
     auto& done = e.NewCachedLabel();
@@ -1044,6 +1077,15 @@ struct ATOMIC_COMPARE_EXCHANGE_I64
     } else {
       e.mov(e.x6, i.src3);
     }
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.mov(e.x0, e.x5);
+      e.casal(e.x5, e.x6, ptr(e.x4));
+      e.cmp(e.x5, e.x0);
+      e.cset(i.dest, Xbyak_aarch64::EQ);
+      return;
+    }
+
     auto& retry = e.NewCachedLabel();
     auto& fail = e.NewCachedLabel();
     auto& done = e.NewCachedLabel();
@@ -1201,6 +1243,15 @@ struct RESERVED_STORE_I32
     }
     // Compute host address.
     e.add(e.x4, e.GetMembaseReg(), addr);
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.mov(e.w0, e.w5);
+      e.casal(e.w5, e.w6, ptr(e.x4));
+      e.cmp(e.w5, e.w0);
+      e.cset(i.dest, Xbyak_aarch64::EQ);
+      return;
+    }
+
     // LDXR/STXR loop.
     auto& cas_loop = e.NewCachedLabel();
     auto& cas_fail = e.NewCachedLabel();
@@ -1249,6 +1300,15 @@ struct RESERVED_STORE_I64
       e.mov(e.x6, XReg(i.src2.reg().getIdx()));
     }
     e.add(e.x4, e.GetMembaseReg(), addr);
+
+    if (e.IsFeatureEnabled(kA64EmitLSE)) {
+      e.mov(e.x0, e.x5);
+      e.casal(e.x5, e.x6, ptr(e.x4));
+      e.cmp(e.x5, e.x0);
+      e.cset(i.dest, Xbyak_aarch64::EQ);
+      return;
+    }
+
     auto& cas_loop = e.NewCachedLabel();
     auto& cas_fail = e.NewCachedLabel();
     e.L(cas_loop);

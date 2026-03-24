@@ -36,7 +36,7 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace a64 {
-
+using namespace arm64;
 class A64Backend;
 class A64CodeCache;
 
@@ -140,6 +140,9 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   void ForgetFpcrMode() { fpcr_mode_ = FPCRMode::Unknown; }
   bool ChangeFpcrMode(FPCRMode new_mode, bool already_set = false);
+  bool IsFeatureEnabled(uint64_t feature_flag) const {
+    return (feature_flags_ & feature_flag) == feature_flag;
+  }
 
   Xbyak_aarch64::Label& AddToTail(TailEmitCallback callback,
                                   uint32_t alignment = 0);
@@ -161,6 +164,7 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   A64CodeCache* code_cache_ = nullptr;
   XbyakA64Allocator* allocator_ = nullptr;
   XexModule* guest_module_ = nullptr;
+  uint64_t feature_flags_ = 0;
   uint32_t current_guest_function_ = 0;
 
   Xbyak_aarch64::Label* epilog_label_ = nullptr;

@@ -75,7 +75,8 @@ A64Emitter::A64Emitter(A64Backend* backend, XbyakA64Allocator* allocator)
       processor_(backend->processor()),
       backend_(backend),
       code_cache_(backend->code_cache()),
-      allocator_(allocator) {}
+      allocator_(allocator),
+      feature_flags_(arm64::GetFeatureFlags()) {}
 
 A64Emitter::~A64Emitter() = default;
 

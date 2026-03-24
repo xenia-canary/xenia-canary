@@ -492,6 +492,8 @@ bool EmulatorApp::OnInitialize() {
 
 #if XE_ARCH_AMD64 == 1
   amd64::InitFeatureFlags();
+#elif XE_ARCH_ARM64 == 1
+  arm64::InitFeatureFlags();
 #endif
 
   std::filesystem::path content_root = cvars::content_root;
