@@ -133,11 +133,9 @@ inline void FlushDenormals_V128(A64Emitter& e, int vreg, int sa = 2,
   // denorms→[0x00000001,0x00FFFFFD]. Denormal iff ((val<<1) - 1) < 0x00FFFFFF
   // (unsigned).
   e.shl(VReg(sa).s4, VReg(vreg).s4, 1);
-  e.mov(e.w0, static_cast<uint64_t>(1u));
-  e.dup(VReg(sb).s4, e.w0);
+  e.movi(VReg(sb).s4, 1u);
   e.sub(VReg(sa).s4, VReg(sa).s4, VReg(sb).s4);
-  e.mov(e.w0, static_cast<uint64_t>(0x00FFFFFFu));
-  e.dup(VReg(sb).s4, e.w0);
+  e.mvni(VReg(sb).s4, 0xFFu, LSL, 24);  // 0x00FFFFFF
   e.cmhi(VReg(sb).s4, VReg(sb).s4,
          VReg(sa).s4);  // mask: all-1s for denormal lanes
   // Clear only bits 30:0 (preserve sign bit 31) so -denormal → -0, +denormal →
