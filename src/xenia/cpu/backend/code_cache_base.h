@@ -210,13 +210,9 @@ class CodeCacheBase : public CodeCache {
     self().OnCodePlaced(guest_address, function_info, code_execute_address,
                         func_info.code_size.total);
 
-    // Fix up indirection table.
-    if (guest_address && indirection_table_base_) {
-      uint32_t* indirection_slot = reinterpret_cast<uint32_t*>(
-          indirection_table_base_ + (guest_address - kIndirectionTableBase));
-      *indirection_slot =
-          uint32_t(reinterpret_cast<uint64_t>(code_execute_address));
-    }
+    // Fix up indirection table.  Dispatch through the derived class so
+    // it can use encoded entries when the table is dynamically allocated.
+    self().OnPlaceGuestCodeIndirection(guest_address, code_execute_address);
   }
 
   uint32_t PlaceData(const void* data, size_t length) {
@@ -297,6 +293,7 @@ class CodeCacheBase : public CodeCache {
           "other system DLL",
           static_cast<uint64_t>(kIndirectionTableBase),
           kIndirectionTableBase + kIndirectionTableSize);
+      return false;
     }
 
     file_name_ =
@@ -354,6 +351,17 @@ class CodeCacheBase : public CodeCache {
   // Default no-op for the OnCodePlaced hook.
   void OnCodePlaced(uint32_t guest_address, GuestFunction* function_info,
                     void* code_execute_address, size_t code_size) {}
+
+  // Default indirection write: store truncated 32-bit absolute address.
+  // Overridden by A64CodeCache for encoded indirection mode.
+  void OnPlaceGuestCodeIndirection(uint32_t guest_address,
+                                   void* code_execute_address) {
+    if (guest_address && indirection_table_base_) {
+      uint32_t* slot = reinterpret_cast<uint32_t*>(
+          indirection_table_base_ + (guest_address - kIndirectionTableBase));
+      *slot = uint32_t(reinterpret_cast<uint64_t>(code_execute_address));
+    }
+  }
 
   std::filesystem::path file_name_;
   xe::memory::FileMappingHandle mapping_ =

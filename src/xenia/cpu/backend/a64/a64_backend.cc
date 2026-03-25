@@ -574,6 +574,15 @@ A64Backend::A64Backend() {
       break;
     }
   }
+  if (!buf) {
+    // Fixed allocation failed (e.g. macOS). Allocate at any address.
+    // Trampolines will be outside the code cache; encoded indirection
+    // handles this via the external table.
+    buf = memory::AllocFixed(nullptr,
+                             kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
+                             xe::memory::AllocationType::kReserveCommit,
+                             xe::memory::PageAccess::kExecuteReadWrite);
+  }
   xenia_assert(buf);
   guest_trampoline_memory_ = reinterpret_cast<uint8_t*>(buf);
   guest_trampoline_address_bitmap_.Resize(MAX_GUEST_TRAMPOLINES);
@@ -639,8 +648,13 @@ bool A64Backend::Initialize(Processor* processor) {
   }
 
   // Set the indirection table default to point at the resolve thunk.
-  code_cache_->set_indirection_default(
-      uint32_t(reinterpret_cast<uint64_t>(resolve_function_thunk_)));
+  if (code_cache_->encoded_indirection()) {
+    code_cache_->set_indirection_default_encoded(
+        reinterpret_cast<uint64_t>(resolve_function_thunk_));
+  } else {
+    code_cache_->set_indirection_default(
+        uint32_t(reinterpret_cast<uint64_t>(resolve_function_thunk_)));
+  }
 
   // Commit the indirection table range used by guest trampolines so that
   // CreateGuestTrampoline can call AddIndirection without faulting.
@@ -727,6 +741,21 @@ void A64Backend::InitializeBackendContext(void* ctx) {
   a64_ctx->flags = (1U << kA64BackendNJMOn);  // NJM on by default
   a64_ctx->guest_tick_count = Clock::GetGuestTickCountPointer();
 
+  // Encoded indirection fields (used when fixed-address allocation failed).
+  if (code_cache_->encoded_indirection()) {
+    a64_ctx->indirection_table_bias =
+        reinterpret_cast<uintptr_t>(code_cache_->indirection_table_base()) -
+        static_cast<uintptr_t>(0x80000000);
+    a64_ctx->code_execute_base =
+        reinterpret_cast<uintptr_t>(code_cache_->generated_code_execute_base());
+    a64_ctx->external_indirection_table =
+        reinterpret_cast<uintptr_t>(code_cache_->external_table());
+  } else {
+    a64_ctx->indirection_table_bias = 0;
+    a64_ctx->code_execute_base = 0;
+    a64_ctx->external_indirection_table = 0;
+  }
+
   // Allocate stackpoints for longjmp detection.
   if (cvars::a64_enable_host_guest_stack_synchronization) {
     uint64_t max_stackpoints = cvars::a64_max_stackpoints;
@@ -790,9 +819,14 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
       GUEST_TRAMPOLINE_BASE +
       (static_cast<uint32_t>(new_index) * GUEST_TRAMPOLINE_MIN_LEN);
 
-  code_cache()->AddIndirection(
-      indirection_guest_addr,
-      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(write_pos)));
+  if (code_cache()->encoded_indirection()) {
+    code_cache()->AddIndirectionEncoded(indirection_guest_addr,
+                                        reinterpret_cast<uint64_t>(write_pos));
+  } else {
+    code_cache()->AddIndirection(
+        indirection_guest_addr,
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(write_pos)));
+  }
 
   return indirection_guest_addr;
 }

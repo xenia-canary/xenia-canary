@@ -84,6 +84,13 @@ struct A64BackendContext {
   // bit 1 = got reserve
   unsigned int flags;
   unsigned int Ox1000;  // constant 0x1000
+
+  // Encoded indirection support (for platforms where fixed-address allocation
+  // fails, e.g. macOS ARM64).  When encoded_indirection is false these are
+  // unused; the fast 2-instruction indirection path is emitted instead.
+  uintptr_t indirection_table_bias;      // actual_table_base - 0x80000000
+  uintptr_t code_execute_base;           // actual code cache base address
+  uintptr_t external_indirection_table;  // pointer to external uint64_t table
 };
 
 // Default FPCR for FPU mode (round to nearest, no flush to zero).
