@@ -249,7 +249,7 @@ else()
     add_compile_options(${GTK3_CFLAGS_OTHER})
 
     # Global Linux libraries
-    link_libraries(stdc++fs dl lz4 pthread rt)
+    link_libraries(stdc++fs dl pthread rt)
 
     # Link groups for executables (resolves circular deps)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--start-group")

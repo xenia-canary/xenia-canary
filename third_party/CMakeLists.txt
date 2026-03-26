@@ -231,6 +231,16 @@ add_library(xxhash STATIC
 target_include_directories(xxhash PUBLIC xxhash)
 
 # ==============================================================================
+# lz4 (bundled; used by CCI disc images)
+# ==============================================================================
+add_library(lz4 STATIC
+  lz4/lz4.c
+  lz4/lz4.h
+)
+target_include_directories(lz4 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lz4)
+target_compile_definitions(lz4 PRIVATE _LIB)
+
+# ==============================================================================
 # zstd
 # ==============================================================================
 file(GLOB_RECURSE _zstd_common "zstd/lib/common/*.c" "zstd/lib/common/*.h")
