@@ -19,6 +19,17 @@
 
 #include "xbyak_aarch64.h"
 
+#if XE_COMPILER_MSVC
+#include <intrin.h>
+constexpr uint32_t DCZID_EL0 = ARM64_SYSREG(0b11, 0b011, 0b0000, 0b0000, 0b111);
+#define xe_cpu_mrs(reg) _ReadStatusReg(reg)
+#elif XE_COMPILER_CLANG || XE_COMPILER_GNUC
+#include <arm_acle.h>
+#define xe_cpu_mrs(reg) __arm_rsr64(#reg)
+#else
+#error "No MRS wrapper available for current compiler implemented."
+#endif
+
 namespace xe {
 namespace cpu {
 namespace backend {
