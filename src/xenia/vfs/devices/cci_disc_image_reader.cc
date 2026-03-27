@@ -284,13 +284,13 @@ bool CciDiscImageReader::ReadSectorFromSlice(Slice& slice,
 
   // XboxToolkit CCISectorDecoder only: ReadByte (padding), then Read(..., size)
   // with size = index span. LZ4 input length is index_span - (padding + 1).
-  const int pad_byte = fgetc(file);
-  if (pad_byte == EOF) {
+  uint8_t pad_raw;
+  if (fread(&pad_raw, 1, 1, file) != 1) {
     CciSectorError(global_sector, slice.path, local_sector, pos, next_pos,
-                   index_span, lz4_compressed, -1, 0, 0, "padding EOF");
+                   index_span, lz4_compressed, -1, 0, 0, "padding read");
     return false;
   }
-  padding = pad_byte;
+  padding = static_cast<int>(pad_raw);
 
   const size_t max_read = static_cast<size_t>(index_span);
   std::vector<uint8_t> buf(max_read);
