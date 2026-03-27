@@ -40,10 +40,6 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
                           uint32_t routine, uint32_t routine_arg, bool resume) {
   using xe::chrono::WinSystemClock;
   using xe::chrono::XSystemClock;
-  // Caller is checking for STATUS_TIMER_RESUME_IGNORED.
-  if (resume) {
-    return X_STATUS_TIMER_RESUME_IGNORED;
-  }
 
   std::lock_guard<std::mutex> lock(timer_lock_);
 
@@ -90,6 +86,11 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
   } else {
     result = timer_->SetRepeatingAt(
         due_tp, std::chrono::milliseconds(period_ms), std::move(callback));
+  }
+
+  if (resume) {
+    XThread::SetLastError(X_ERROR_NOT_SUPPORTED);
+    return X_STATUS_TIMER_RESUME_IGNORED;
   }
 
   return result ? X_STATUS_SUCCESS : X_STATUS_UNSUCCESSFUL;

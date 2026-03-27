@@ -899,6 +899,10 @@ dword_result_t NtSetTimerEx_entry(dword_t timer_handle, lpqword_t due_time_ptr,
   assert_true(mode == 1);
   assert_true(!unk_zero);
 
+  if (unk_zero) {
+    XELOGI("NtSetTimerEx: unk_zero is set!");
+  }
+
   uint64_t due_time = *due_time_ptr;
 
   X_STATUS result = X_STATUS_SUCCESS;
