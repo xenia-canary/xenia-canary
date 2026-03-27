@@ -2,8 +2,8 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright (c) Xenia contributors. All rights reserved.                       *
- * Released under the BSD license - see LICENSE in the root for more details. *
+ * Copyright (c) Xenia contributors. All rights reserved.  * Released under the
+ * BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  *
  * CCI (Cerbios Compressed Image) reader. Format matches Team Resurgent /

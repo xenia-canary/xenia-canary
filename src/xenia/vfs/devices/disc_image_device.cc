@@ -209,8 +209,8 @@ bool DiscImageDevice::ReadEntry(ParseState* state, const uint8_t* buffer,
     name = ansi_name;
   }
 
-  auto entry = DiscImageEntry::Create(
-      this, parent, name, mmap_ ? mmap_.get() : nullptr);
+  auto entry =
+      DiscImageEntry::Create(this, parent, name, mmap_ ? mmap_.get() : nullptr);
   entry->attributes_ = attributes | kFileAttributeReadOnly;
   entry->size_ = length;
   entry->allocation_size_ = xe::round_up(length, bytes_per_sector());

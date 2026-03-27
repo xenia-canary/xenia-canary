@@ -2,8 +2,8 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright (c) Xenia contributors. All rights reserved.                       *
- * Released under the BSD license - see LICENSE in the root for more details. *
+ * Copyright (c) Xenia contributors. All rights reserved.  * Released under the
+ * BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
 
@@ -86,7 +86,8 @@ std::vector<std::filesystem::path> CciDiscImageReader::CollectSlices(
     }
     const auto stem2 = p2.stem();
     const auto& mid = stem2.extension().native();
-    // Match .NET search pattern "{base}.?{ext}": one character between base and ext.
+    // Match .NET search pattern "{base}.?{ext}": one character between base and
+    // ext.
     if (mid.size() != 2 || mid[0] != '.') {
       continue;
     }
@@ -119,7 +120,8 @@ void CciDiscImageReader::Close() {
   logical_size_ = 0;
 }
 
-bool CciDiscImageReader::Open(const std::vector<std::filesystem::path>& slice_paths) {
+bool CciDiscImageReader::Open(
+    const std::vector<std::filesystem::path>& slice_paths) {
   Close();
   {
     std::lock_guard<std::mutex> lock(cci_err_mu);
@@ -220,7 +222,8 @@ bool CciDiscImageReader::Open(const std::vector<std::filesystem::path>& slice_pa
   return true;
 }
 
-bool CciDiscImageReader::ReadSectorFromSlice(Slice& slice, uint32_t local_sector,
+bool CciDiscImageReader::ReadSectorFromSlice(Slice& slice,
+                                             uint32_t local_sector,
                                              uint64_t global_sector,
                                              uint8_t* out_sector) {
   std::lock_guard<std::mutex> lock(io_mutex_);
@@ -269,10 +272,9 @@ bool CciDiscImageReader::ReadSectorFromSlice(Slice& slice, uint32_t local_sector
     if (src_len <= 0) {
       return false;
     }
-    const int r =
-        LZ4_decompress_safe(static_cast<const char*>(src),
-                            reinterpret_cast<char*>(out_sector), src_len,
-                            static_cast<int>(kSectorSize));
+    const int r = LZ4_decompress_safe(static_cast<const char*>(src),
+                                      reinterpret_cast<char*>(out_sector),
+                                      src_len, static_cast<int>(kSectorSize));
     return r == static_cast<int>(kSectorSize);
   };
 
