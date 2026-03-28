@@ -122,7 +122,7 @@ jobs:
           # Windows
           if [ -d "artifacts/windows/xenia_canary" ]; then
             cd artifacts/windows/xenia_canary
-            zip -r ../../../release_assets/xenia_canary_windows.zip . -x "*.pdb"
+            zip -r ../../../release_assets/xenia_canary_windows_x86_64.zip . -x "*.pdb"
             cd ../../..
           fi
 
@@ -134,8 +134,8 @@ jobs:
           fi
 
           # Linux AppImage
-          if [ -f "artifacts/linux/xenia_canary_linux.AppImage" ]; then
-            cp artifacts/linux/xenia_canary_linux.AppImage release_assets/
+          if [ -f "artifacts/linux/xenia_canary_linux_x86_64.AppImage" ]; then
+            cp artifacts/linux/xenia_canary_linux_x86_64.AppImage release_assets/
           fi
 
           # macOS (uncomment when enabled)
