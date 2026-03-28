@@ -84,7 +84,7 @@ jobs:
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_windows
+          name: xenia_canary_windows_x86_64
           path: artifacts/windows/xenia_canary
 
       - name: Download Windows ARM64 artifacts
@@ -97,7 +97,7 @@ jobs:
       - name: Download Linux artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_linux
+          name: xenia_canary_linux_x86_64
           path: artifacts/linux
 
       # Uncomment when platforms are enabled:

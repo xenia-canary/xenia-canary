@@ -86,7 +86,7 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_windows
+          name: xenia_canary_windows_x86_64
           path: artifacts\xenia_canary
           if-no-files-found: error
           retention-days: 7

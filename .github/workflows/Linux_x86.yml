@@ -150,7 +150,7 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_linux
+          name: xenia_canary_linux_x86_64
           path: artifacts/release
           if-no-files-found: error
           retention-days: 7
