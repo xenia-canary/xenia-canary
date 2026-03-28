@@ -69,7 +69,6 @@ struct ExportTag {
 typedef void (*xe_kernel_export_shim_fn)(void*, void*);
 
 typedef void (*ExportTrampoline)(ppc::PPCContext* ppc_context);
-#pragma pack(push, 1)
 class Export {
  public:
   enum class Type {
@@ -113,7 +112,6 @@ class Export {
                                                  : Type::kFunction;
   }
 };
-#pragma pack(pop)
 class ExportResolver {
  public:
   class Table {

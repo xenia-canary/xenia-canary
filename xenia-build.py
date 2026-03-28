@@ -95,11 +95,10 @@ class ResultStatus(enum.Enum):
     FAILURE = enum.auto()
 
 def print_status(status: ResultStatus):
-    match status:
-        case ResultStatus.SUCCESS:
-            print(f"{bcolors.OKCYAN}Success!{bcolors.ENDC}")
-        case ResultStatus.FAILURE:
-            print(f"{bcolors.FAIL}Error!{bcolors.ENDC}")
+    if status == ResultStatus.SUCCESS:
+        print(f"{bcolors.OKCYAN}Success!{bcolors.ENDC}")
+    elif status == ResultStatus.FAILURE:
+        print(f"{bcolors.FAIL}Error!{bcolors.ENDC}")
 
 
 # Detect if building on Android via Termux.
@@ -320,7 +319,7 @@ def main():
         print_warning("The source tree is unversioned. Version info will be omitted from all binaries!\n")
 
     # Check python version.
-    python_minimum_ver = 3,10
+    python_minimum_ver = 3,6
     if not sys.version_info[:2] >= (python_minimum_ver[0], python_minimum_ver[1]) or not sys.maxsize > 2**32:
         print_error(f"Python {python_minimum_ver[0]}.{python_minimum_ver[1]}+ 64-bit must be installed and on PATH")
         sys.exit(1)

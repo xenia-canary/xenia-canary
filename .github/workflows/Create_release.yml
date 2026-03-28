@@ -97,8 +97,8 @@ jobs:
       - name: Download Linux artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_linux.tar.xz
-          path: artifacts
+          name: xenia_canary_linux
+          path: artifacts/linux
 
       # Uncomment when platforms are enabled:
       # - name: Download macOS artifacts
@@ -133,9 +133,9 @@ jobs:
             cd ../../..
           fi
 
-          # Linux (already tar.gz)
-          if [ -f "artifacts/xenia_canary_linux.tar.xz" ]; then
-            cp artifacts/xenia_canary_linux.tar.xz release_assets/
+          # Linux AppImage
+          if [ -f "artifacts/linux/xenia_canary_linux.AppImage" ]; then
+            cp artifacts/linux/xenia_canary_linux.AppImage release_assets/
           fi
 
           # macOS (uncomment when enabled)
@@ -175,6 +175,7 @@ jobs:
           else
             gh release create "${TAG}" \
               --repo "${REPO}" \
+              --target "${{ inputs.tag }}" \
               --title "${TITLE}" \
               --notes-file release_notes.md \
               --latest \

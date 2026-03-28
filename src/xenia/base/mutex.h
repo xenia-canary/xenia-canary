@@ -15,7 +15,7 @@
 #include "platform.h"
 #if XE_PLATFORM_WIN32
 #include "platform_win.h"
-#elif XE_PLATFORM_LINUX
+#else
 #include <sys/types.h>
 #endif
 #include "memory.h"

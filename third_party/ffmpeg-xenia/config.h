@@ -11,8 +11,13 @@
 #define FFMPEG_LICENSE "LGPL version 2.1 or later"
 #define CONFIG_THIS_YEAR 2021
 #define av_restrict restrict
+#ifdef __APPLE__
+#define EXTERN_PREFIX "_"
+#define EXTERN_ASM _
+#else
 #define EXTERN_PREFIX ""
 #define EXTERN_ASM
+#endif
 #define BUILDSUF ""
 #define HAVE_MMX2 HAVE_MMXEXT
 #define SWS_MAX_FILTER_SIZE 256
@@ -292,7 +297,11 @@
   #define HAVE_TERMIOS_H 1
   #define HAVE_SEM_TIMEDWAIT 1
   #define HAVE_SYNC_VAL_COMPARE_AND_SWAP 1
+#ifdef __APPLE__
+  #define HAVE_SECTION_DATA_REL_RO 0
+#else
   #define HAVE_SECTION_DATA_REL_RO 1
+#endif
   #define HAVE_CLOCK_GETTIME 1
   #define HAVE_FCNTL 1
   #define HAVE_GETADDRINFO 1
@@ -351,7 +360,11 @@
 #define HAVE_THREADS 1
 #define HAVE_ACCESS 1
 #define HAVE_ISATTY 1
+#ifdef __APPLE__
+#define HAVE_MALLOC_H 0
+#else
 #define HAVE_MALLOC_H 1
+#endif
 #define HAVE_PRAGMA_DEPRECATED 1
 
 /* Math functions */

@@ -121,6 +121,12 @@ if(WIN32)
     discord-rpc/src/connection_win.cpp
     discord-rpc/src/discord_register_win.cpp
   )
+elseif(APPLE)
+  target_sources(discord-rpc PRIVATE
+    discord-rpc/src/connection_unix.cpp
+    discord-rpc/src/discord_register_osx.m
+  )
+  target_link_libraries(discord-rpc PRIVATE "-framework AppKit")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(discord-rpc PRIVATE
     discord-rpc/src/connection_unix.cpp
@@ -138,19 +144,21 @@ add_library(fmt STATIC
 target_include_directories(fmt PUBLIC fmt/include)
 
 # ==============================================================================
-# glslang-spirv
+# glslang-spirv (not needed on macOS — no Vulkan/SPIR-V backend)
 # ==============================================================================
-file(GLOB _glslang_spirv_cpp "glslang/SPIRV/*.cpp")
-file(GLOB _glslang_spirv_h "glslang/SPIRV/*.h")
-file(GLOB _glslang_spirv_hpp "glslang/SPIRV/*.hpp11")
-list(FILTER _glslang_spirv_cpp EXCLUDE REGEX "GlslangToSpv\\.cpp$")
-add_library(glslang-spirv STATIC
-  ${_glslang_spirv_cpp}
-  ${_glslang_spirv_h}
-  ${_glslang_spirv_hpp}
-  glslang/glslang/Include/visibility.h
-)
-target_include_directories(glslang-spirv PUBLIC glslang)
+if(NOT APPLE)
+  file(GLOB _glslang_spirv_cpp "glslang/SPIRV/*.cpp")
+  file(GLOB _glslang_spirv_h "glslang/SPIRV/*.h")
+  file(GLOB _glslang_spirv_hpp "glslang/SPIRV/*.hpp11")
+  list(FILTER _glslang_spirv_cpp EXCLUDE REGEX "GlslangToSpv\\.cpp$")
+  add_library(glslang-spirv STATIC
+    ${_glslang_spirv_cpp}
+    ${_glslang_spirv_h}
+    ${_glslang_spirv_hpp}
+    glslang/glslang/Include/visibility.h
+  )
+  target_include_directories(glslang-spirv PUBLIC glslang)
+endif()
 
 # ==============================================================================
 # imgui
@@ -228,6 +236,7 @@ target_include_directories(xxhash PUBLIC xxhash)
 # zstd
 # ==============================================================================
 file(GLOB_RECURSE _zstd_common "zstd/lib/common/*.c" "zstd/lib/common/*.h")
+list(FILTER _zstd_common EXCLUDE REGEX "threading\\.c$")
 file(GLOB_RECURSE _zstd_compress "zstd/lib/compress/*.c" "zstd/lib/compress/*.h")
 file(GLOB_RECURSE _zstd_decompress "zstd/lib/decompress/*.c" "zstd/lib/decompress/*.h")
 add_library(zstd STATIC
@@ -241,7 +250,10 @@ target_compile_definitions(zstd PRIVATE
   XXH_NAMESPACE=ZSTD_
   ZSTD_LEGACY_SUPPORT=0
 )
-if(NOT MSVC)
+if(XE_TARGET_X86_64 AND NOT MSVC)
+  enable_language(ASM)
+  target_sources(zstd PRIVATE zstd/lib/decompress/huf_decompress_amd64.S)
+else()
   target_compile_definitions(zstd PRIVATE ZSTD_DISABLE_ASM)
 endif()
 
@@ -285,14 +297,23 @@ file(GLOB _zlibng_c "zlib-ng/*.c")
 file(GLOB _zlibng_generic "zlib-ng/arch/generic/*.c")
 if(XE_TARGET_AARCH64)
   file(GLOB _zlibng_arch "zlib-ng/arch/arm/*.c")
+  list(FILTER _zlibng_arch EXCLUDE REGEX "armv6")
   add_library(zlib-ng STATIC
     ${_zlibng_c}
     ${_zlibng_arch}
     ${_zlibng_generic}
   )
   target_compile_definitions(zlib-ng PRIVATE
+    ARM_FEATURES
+    ARM_NEON
+    ARM_NEON_HASLD4
+    ARM_ACLE
+    HAVE_ARM_ACLE_H
     WITH_GZFILEOP
   )
+  if(NOT MSVC)
+    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL)
+  endif()
 else()
   file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
   add_library(zlib-ng STATIC
@@ -303,34 +324,36 @@ else()
   target_compile_definitions(zlib-ng PRIVATE
     X86_FEATURES
     X86_HAVE_XSAVE_INTRIN
+    X86_SSE2
     X86_SSSE3
     X86_SSE42
+    X86_AVX2
+    X86_AVX512
+    X86_AVX512VNNI
     WITH_GZFILEOP
   )
-  if(WIN32)
-    target_compile_definitions(zlib-ng PRIVATE
-      X86_SSE2
-      X86_AVX2
-      X86_AVX512
-      X86_AVX512VNNI
-      X86_PCLMULQDQ_CRC
-      X86_VPCLMULQDQ_CRC
+  if(NOT MSVC)
+    # GCC/Clang have native __builtin_ctz/__builtin_ctzll (MSVC gets these
+    # from fallback_builtins.h). Defining these enables optimized compare256
+    # and longest_match codepaths.
+    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL)
+    # GCC/Clang need per-file ISA flags; MSVC handles this via runtime dispatch
+    set_source_files_properties(
+      zlib-ng/arch/x86/adler32_avx2.c
+      zlib-ng/arch/x86/chunkset_avx2.c
+      zlib-ng/arch/x86/compare256_avx2.c
+      zlib-ng/arch/x86/slide_hash_avx2.c
+      PROPERTIES COMPILE_OPTIONS "-mavx2;-mbmi2"
     )
-  else()
-    # Remove AVX2/AVX512 files on non-Windows
-    set(_zlibng_exclude_patterns
-      "adler32_avx2" "adler32_avx512" "adler32_avx512_vnni"
-      "chunkset_avx2" "compare256_avx2"
-      "crc32_pclmulqdq" "crc32_vpclmulqdq"
-      "slide_hash_avx2"
+    set_source_files_properties(
+      zlib-ng/arch/x86/adler32_avx512.c
+      zlib-ng/arch/x86/chunkset_avx512.c
+      PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512dq;-mavx512vl;-mavx512bw;-mbmi2"
     )
-    foreach(_pat ${_zlibng_exclude_patterns})
-      list(FILTER _zlibng_x86 EXCLUDE REGEX "${_pat}")
-    endforeach()
-    # Re-set sources without excluded files
-    get_target_property(_zlibng_srcs zlib-ng SOURCES)
-    set_target_properties(zlib-ng PROPERTIES SOURCES "")
-    target_sources(zlib-ng PRIVATE ${_zlibng_c} ${_zlibng_x86} ${_zlibng_generic})
+    set_source_files_properties(
+      zlib-ng/arch/x86/adler32_avx512_vnni.c
+      PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512dq;-mavx512vl;-mavx512bw;-mavx512vnni;-mbmi2"
+    )
   endif()
 endif()
 target_include_directories(zlib-ng PUBLIC zlib-ng)
@@ -426,7 +449,13 @@ if(WIN32)
   )
   target_include_directories(SDL2 PUBLIC SDL2/include)
   target_link_libraries(SDL2 PRIVATE setupapi winmm imm32 version)
-else()
+elseif(APPLE)
+  # Use system SDL2 framework on macOS
+  add_library(SDL2 INTERFACE)
+  find_library(SDL2_LIBRARY SDL2 REQUIRED)
+  target_include_directories(SDL2 INTERFACE "${SDL2_LIBRARY}/Headers")
+  target_link_libraries(SDL2 INTERFACE "${SDL2_LIBRARY}")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Use system SDL2 on Linux
   add_library(SDL2 INTERFACE)
   find_package(PkgConfig REQUIRED)
@@ -749,7 +778,6 @@ if(XE_TARGET_AARCH64)
     xe_add_gas_sources(libavcodec
       FFmpeg/libavcodec/aarch64/idctdsp_neon.S
       FFmpeg/libavcodec/aarch64/mpegaudiodsp_neon.S
-      FFmpeg/libavcodec/aarch64/neon.S
       FFmpeg/libavcodec/aarch64/simple_idct_neon.S
     )
   endif()
@@ -772,7 +800,6 @@ add_library(libavformat STATIC
   FFmpeg/libavformat/metadata.c
   FFmpeg/libavformat/mux.c
   FFmpeg/libavformat/options.c
-  FFmpeg/libavformat/os_support.c
   FFmpeg/libavformat/protocols.c
   FFmpeg/libavformat/riff.c
   FFmpeg/libavformat/sdp.c

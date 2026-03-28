@@ -11,6 +11,7 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
+#include "xenia/xbox.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -22,6 +23,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if XE_PLATFORM_MAC
+#include <limits.h>
+#include <mach-o/dyld.h>
+#endif
 
 namespace xe {
 
@@ -42,10 +47,26 @@ std::filesystem::path to_path(const std::u16string_view source) {
 namespace filesystem {
 
 std::filesystem::path GetExecutablePath() {
+#if XE_PLATFORM_MAC
+  char path[PATH_MAX];
+  uint32_t size = sizeof(path);
+  if (_NSGetExecutablePath(path, &size) == 0) {
+    char real_path[PATH_MAX];
+    if (realpath(path, real_path)) {
+      return std::string(real_path);
+    }
+    return std::string(path);
+  }
+  return std::string();
+#else
   char buff[FILENAME_MAX] = "";
-  readlink("/proc/self/exe", buff, FILENAME_MAX);
-  std::string s(buff);
-  return s;
+  ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff) - 1);
+  if (len != -1) {
+    buff[len] = '\0';
+    return std::string(buff);
+  }
+  return std::string();
+#endif
 }
 
 std::filesystem::path GetExecutableFolder() {
@@ -80,10 +101,10 @@ FILE* OpenFile(const std::filesystem::path& path, const std::string_view mode) {
 }
 
 bool Seek(FILE* file, int64_t offset, int origin) {
-  return fseeko64(file, off64_t(offset), origin) == 0;
+  return fseeko(file, offset, origin) == 0;
 }
 
-int64_t Tell(FILE* file) { return int64_t(ftello64(file)); }
+int64_t Tell(FILE* file) { return int64_t(ftello(file)); }
 
 bool TruncateStdioFile(FILE* file, uint64_t length) {
   if (fflush(file)) {
@@ -93,7 +114,7 @@ bool TruncateStdioFile(FILE* file, uint64_t length) {
   if (position < 0) {
     return false;
   }
-  if (ftruncate64(fileno(file), off64_t(length))) {
+  if (ftruncate(fileno(file), length)) {
     return false;
   }
   if (uint64_t(position) > length) {
@@ -104,19 +125,11 @@ bool TruncateStdioFile(FILE* file, uint64_t length) {
   return true;
 }
 
-static int removeCallback(const char* fpath, const struct stat* sb,
-                          int typeflag, struct FTW* ftwbuf) {
-  int rv = remove(fpath);
-  return rv;
-}
-
 static uint64_t convertUnixtimeToWinFiletime(time_t unixtime) {
-  // Linux uses number of seconds since 1/1/1970, and Windows uses
-  // number of nanoseconds since 1/1/1601
-  // so we convert linux time to nanoseconds and then add the number of
-  // nanoseconds from 1601 to 1970
-  // see https://msdn.microsoft.com/en-us/library/ms724228
-  uint64_t filetime = (unixtime * 10000000) + 116444736000000000;
+  // Unix uses seconds since 1/1/1970, Windows uses 100ns intervals since
+  // 1/1/1601. Convert and add the epoch difference.
+  // See https://msdn.microsoft.com/en-us/library/ms724228
+  uint64_t filetime = (uint64_t(unixtime) * 10000000) + 116444736000000000ULL;
   return filetime;
 }
 
@@ -140,14 +153,24 @@ class PosixFileHandle : public FileHandle {
   bool Read(size_t file_offset, void* buffer, size_t buffer_length,
             size_t* out_bytes_read) override {
     ssize_t out = pread(handle_, buffer, buffer_length, file_offset);
-    *out_bytes_read = out;
-    return out >= 0 ? true : false;
+    if (out >= 0) {
+      *out_bytes_read = out;
+      return true;
+    } else {
+      *out_bytes_read = 0;
+      return false;
+    }
   }
   bool Write(size_t file_offset, const void* buffer, size_t buffer_length,
              size_t* out_bytes_written) override {
     ssize_t out = pwrite(handle_, buffer, buffer_length, file_offset);
-    *out_bytes_written = out;
-    return out >= 0 ? true : false;
+    if (out >= 0) {
+      *out_bytes_written = out;
+      return true;
+    } else {
+      *out_bytes_written = 0;
+      return false;
+    }
   }
   bool SetLength(size_t length) override {
     return ftruncate(handle_, length) >= 0 ? true : false;
@@ -248,7 +271,17 @@ std::vector<FileInfo> ListFiles(const std::filesystem::path& path) {
 }
 
 bool SetAttributes(const std::filesystem::path& path, uint64_t attributes) {
-  return false;
+  struct stat st;
+  if (stat(path.c_str(), &st) != 0) {
+    return false;
+  }
+  mode_t mode = st.st_mode;
+  if (attributes & X_FILE_ATTRIBUTE_READONLY) {
+    mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
+  } else {
+    mode |= S_IWUSR;
+  }
+  return chmod(path.c_str(), mode) == 0;
 }
 
 }  // namespace filesystem

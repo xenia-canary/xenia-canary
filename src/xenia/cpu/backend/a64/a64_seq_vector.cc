@@ -852,8 +852,7 @@ struct VECTOR_DENORMFLUSH
     // Mask: exponent = bits 30:23 of each float.
     // If (val & 0x7F800000) == 0 then it's zero or denormal.
     // For denormals (mantissa != 0 but exponent == 0), replace with sign | 0.
-    e.mov(e.w0, static_cast<uint64_t>(0x7F800000u));
-    e.dup(VReg(2).s4, e.w0);
+    LoadV128Const(e, 2, vec128i(0x7F800000u), 0);
     e.and_(VReg(0).b16, VReg(s).b16, VReg(2).b16);
     // v0 = exponent bits. Compare with zero.
     e.cmeq(VReg(0).s4, VReg(0).s4, 0);
@@ -1140,8 +1139,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // fmaxnm/fminnm: NaN operand returns the non-NaN value (pack NaN as zero).
     e.fmov(VReg(0).s4, 3.0f);
     e.fmaxnm(VReg(d).s4, VReg(s).s4, VReg(0).s4);
-    e.mov(e.w0, 0x404000FFu);  // 3.0f + 255*2^-22
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x404000FFu), 0);  // 3.0f + 255*2^-22
     e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL: extract low byte from each lane, reorder RGBA->ARGB in lane 3.
     // Control: bytes 0-11=0xFF (->0), bytes 12-15={0x08,0x04,0x00,0x0C}
@@ -1156,11 +1154,9 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
     // Clamp to [PackSHORT_Min, PackSHORT_Max].
-    e.mov(e.w0, 0x403F8001u);
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x403F8001u), 0);
     e.fmaxnm(VReg(d).s4, VReg(s).s4, VReg(0).s4);
-    e.mov(e.w0, 0x40407FFFu);
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x40407FFFu), 0);
     e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL: extract low 2 bytes from lanes 0,1 -> pack into lane 3.
     // TBL ctrl for PACK_SHORT_2: bytes 12-15={0x04,0x05,0x00,0x01}, rest=0xFF
@@ -1174,11 +1170,9 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
-    e.mov(e.w0, 0x403F8001u);
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x403F8001u), 0);
     e.fmaxnm(VReg(d).s4, VReg(s).s4, VReg(0).s4);
-    e.mov(e.w0, 0x40407FFFu);
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x40407FFFu), 0);
     e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL ctrl for PACK_SHORT_4: bytes 8-11={0x04,0x05,0x00,0x01},
     // 12-15={0x0C,0x0D,0x08,0x09}
@@ -1208,8 +1202,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
 
     // Normal path: rebias exponent and shift.
     // result = abs + 0xC8000000 (subtract 112 from float exponent, unsigned)
-    e.mov(e.w0, 0xC8000000u);
-    e.dup(VReg(2).s4, e.w0);
+    LoadV128Const(e, 2, vec128i(0xC8000000u), 0);
     e.add(VReg(2).s4, VReg(0).s4, VReg(2).s4);  // v2 = rebiased
 
     if (round_to_even) {
@@ -1217,28 +1210,24 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       e.ushr(VReg(3).s4, VReg(2).s4, 13);
       e.movi(VReg(1).s4, 1);
       e.and_(VReg(3).b16, VReg(3).b16, VReg(1).b16);  // (result>>13)&1
-      e.mov(e.w0, 0xFFFu);
-      e.dup(VReg(1).s4, e.w0);
+      LoadV128Const(e, 1, vec128i(0xFFFu), 0);
       e.add(VReg(3).s4, VReg(3).s4, VReg(1).s4);  // 0xFFF + bit
       e.add(VReg(2).s4, VReg(2).s4, VReg(3).s4);  // rounded
     }
 
     // Shift and mask to 15 bits.
     e.ushr(VReg(2).s4, VReg(2).s4, 13);
-    e.mov(e.w0, 0x7FFFu);
-    e.dup(VReg(3).s4, e.w0);
+    LoadV128Const(e, 3, vec128i(0x7FFFu), 0);
     e.and_(VReg(2).b16, VReg(2).b16, VReg(3).b16);  // v2 = normal result
 
     // Saturation: where abs >= 0x47FFE000, force to 0x7FFF.
     // v3 already holds 0x7FFF splat = saturation value.
-    e.mov(e.w0, 0x47FFE000u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x47FFE000u), 0);
     e.cmhs(VReg(1).s4, VReg(0).s4, VReg(1).s4);    // v1 = sat mask
     e.bsl(VReg(1).b16, VReg(3).b16, VReg(2).b16);  // v1 = sat?7FFF:normal
 
     // Flush: where abs < 0x38800000, force to 0.
-    e.mov(e.w0, 0x38800000u);
-    e.dup(VReg(2).s4, e.w0);
+    LoadV128Const(e, 2, vec128i(0x38800000u), 0);
     e.cmhi(VReg(2).s4, VReg(2).s4, VReg(0).s4);    // v2 = small mask
     e.bic(VReg(1).b16, VReg(1).b16, VReg(2).b16);  // zero where small
 
@@ -1525,14 +1514,12 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
   static void EmitXenosHalfToFloat4(A64Emitter& e, int dest) {
     // v0 = zero-extended halfs (16-bit values in 32-bit lanes).
     // abs = v0 & 0x7FFF
-    e.mov(e.w0, 0x7FFFu);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x7FFFu), 0);
     e.and_(VReg(2).b16, VReg(0).b16, VReg(1).b16);  // v2 = abs
 
     // value = (abs << 13) + 0x38000000  (bias adjustment: 112 << 23)
     e.shl(VReg(1).s4, VReg(2).s4, 13);
-    e.mov(e.w0, 0x38000000u);
-    e.dup(VReg(3).s4, e.w0);
+    LoadV128Const(e, 3, vec128i(0x38000000u), 0);
     e.add(VReg(1).s4, VReg(1).s4, VReg(3).s4);  // v1 = biased value
 
     // sign = (v0 >> 15) << 31
@@ -1598,11 +1585,9 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
   // encoding), replace it with QNaN 0x7FC00000.  Result in v_dest.
   // Clobbers v0-v2, w0.
   static void EmitMagicFloatOverflowCheck(A64Emitter& e, int dest) {
-    e.mov(e.w0, 0x403F8000u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x403F8000u), 0);
     e.cmeq(VReg(1).s4, VReg(0).s4, VReg(1).s4);
-    e.mov(e.w0, 0x7FC00000u);
-    e.dup(VReg(2).s4, e.w0);
+    LoadV128Const(e, 2, vec128i(0x7FC00000u), 0);
     e.bsl(VReg(1).b16, VReg(2).b16, VReg(0).b16);
     if (dest != 1) {
       e.mov(VReg(dest).b16, VReg(1).b16);
@@ -1625,8 +1610,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.ext(VReg(0).b16, VReg(s).b16, VReg(s).b16, 12);
     e.sxtl(VReg(0).s4, VReg(0).h4);
     // v0 = {sext(h[6])=y, sext(h[7])=x, junk, junk}
-    e.mov(e.w0, 0x40400000u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x40400000u), 0);
     e.add(VReg(0).s4, VReg(0).s4, VReg(1).s4);
     // Swap low pair to get {magic+x, magic+y, ...}
     e.rev64(VReg(0).s4, VReg(0).s4);
@@ -1651,8 +1635,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     int d = i.dest.reg().getIdx();
     // Sign-extend upper halfs: sxtl2 h[4..7] → s[0..3] = {w, z, y, x}
     e.sxtl2(VReg(0).s4, VReg(s).h8);
-    e.mov(e.w0, 0x40400000u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x40400000u), 0);
     e.add(VReg(0).s4, VReg(0).s4, VReg(1).s4);
     // Reorder {w,z,y,x} → {x,y,z,w}: rev64 then swap halves.
     e.rev64(VReg(0).s4, VReg(0).s4);                  // {z,w,x,y}
@@ -1706,11 +1689,9 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
 
     // Overflow check: XYZ == 0x403FFE00 → QNaN (0x7FC00000).
     // W result (0x3F800000..0x3F800003) never matches, so splat is safe.
-    e.mov(e.w0, 0x403FFE00u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x403FFE00u), 0);
     e.cmeq(VReg(1).s4, VReg(0).s4, VReg(1).s4);
-    e.mov(e.w0, 0x7FC00000u);
-    e.dup(VReg(2).s4, e.w0);
+    LoadV128Const(e, 2, vec128i(0x7FC00000u), 0);
     e.bsl(VReg(1).b16, VReg(2).b16, VReg(0).b16);
     if (d != 1) {
       e.mov(VReg(d).b16, VReg(1).b16);
@@ -1758,11 +1739,9 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.ins(VReg(d).s4[3], e.w4);
 
     // Overflow: XYZ == 0x40380000 → QNaN.  W can't match.
-    e.mov(e.w0, 0x40380000u);
-    e.dup(VReg(0).s4, e.w0);
+    LoadV128Const(e, 0, vec128i(0x40380000u), 0);
     e.cmeq(VReg(0).s4, VReg(d).s4, VReg(0).s4);
-    e.mov(e.w0, 0x7FC00000u);
-    e.dup(VReg(1).s4, e.w0);
+    LoadV128Const(e, 1, vec128i(0x7FC00000u), 0);
     e.bsl(VReg(0).b16, VReg(1).b16, VReg(d).b16);
     e.mov(VReg(d).b16, VReg(0).b16);
   }

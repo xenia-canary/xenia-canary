@@ -1763,8 +1763,8 @@ void TraceViewer::DrawStateUI() {
             regs.GetVertexFetch(vertex_binding.fetch_constant);
         assert_true(fetch.endian == xenos::Endian::k8in32);
         char tree_root_id[32];
-        sprintf(tree_root_id, "#vertices_root_%d",
-                vertex_binding.fetch_constant);
+        snprintf(tree_root_id, sizeof(tree_root_id), "#vertices_root_%d",
+                 vertex_binding.fetch_constant);
         if (ImGui::TreeNode(tree_root_id, "vf%d: 0x%.8X (%db), %s",
                             vertex_binding.fetch_constant, fetch.address << 2,
                             fetch.size * 4,

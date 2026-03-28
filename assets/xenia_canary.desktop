@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Xenia Canary
+GenericName=Xbox 360 Emulator
+Comment=Xbox 360 Research Emulator
+Exec=xenia_canary %f
+Icon=xenia_canary
+Terminal=false
+Categories=Game;Emulator;
+MimeType=application/x-xbox360-executable;application/x-xbox360-iso;
+StartupNotify=true
+StartupWMClass=xenia_canary

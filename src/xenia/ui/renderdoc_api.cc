@@ -12,10 +12,10 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 
-#if XE_PLATFORM_LINUX
-#include <dlfcn.h>
-#elif XE_PLATFORM_WIN32
+#if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
+#else
+#include <dlfcn.h>
 #endif
 
 namespace xe {
@@ -29,7 +29,14 @@ std::unique_ptr<RenderDocAPI> RenderDocAPI::CreateIfConnected() {
   // The RenderDoc library should already be loaded into the process if
   // RenderDoc is attached - this is why RTLD_NOLOAD or GetModuleHandle instead
   // of LoadLibrary.
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_WIN32
+  renderdoc_api->library_ = GetModuleHandleW(L"renderdoc.dll");
+  if (!renderdoc_api->library_) {
+    return nullptr;
+  }
+  get_api = pRENDERDOC_GetAPI(
+      GetProcAddress(renderdoc_api->library_, "RENDERDOC_GetAPI"));
+#else
 #if XE_PLATFORM_ANDROID
   const char* const library_name = "libVkLayer_GLES_RenderDoc.so";
 #else
@@ -41,13 +48,6 @@ std::unique_ptr<RenderDocAPI> RenderDocAPI::CreateIfConnected() {
   }
   get_api =
       pRENDERDOC_GetAPI(dlsym(renderdoc_api->library_, "RENDERDOC_GetAPI"));
-#elif XE_PLATFORM_WIN32
-  renderdoc_api->library_ = GetModuleHandleW(L"renderdoc.dll");
-  if (!renderdoc_api->library_) {
-    return nullptr;
-  }
-  get_api = pRENDERDOC_GetAPI(
-      GetProcAddress(renderdoc_api->library_, "RENDERDOC_GetAPI"));
 #endif
 
   // get_api will be null if RenderDoc is not connected, or the API isn't
@@ -65,7 +65,7 @@ std::unique_ptr<RenderDocAPI> RenderDocAPI::CreateIfConnected() {
 }
 
 RenderDocAPI::~RenderDocAPI() {
-#if XE_PLATFORM_LINUX
+#if !XE_PLATFORM_WIN32
   if (library_) {
     dlclose(library_);
   }

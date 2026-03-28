@@ -662,7 +662,7 @@ HostToGuestThunk X64HelperEmitter::EmitHostToGuestThunk() {
   mov(rdx, qword[rsp + 8 * 2]);
   mov(r8, qword[rsp + 8 * 3]);
   ret();
-#elif XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#else
   // System-V ABI args:
   // rdi = target
   // rsi = arg0 (context)
@@ -704,8 +704,6 @@ HostToGuestThunk X64HelperEmitter::EmitHostToGuestThunk() {
 
   add(rsp, stack_size);
   ret();
-#else
-  assert_always("Unknown platform ABI in host to guest thunk!");
 #endif
 
   code_offsets.tail = getSize();
@@ -761,7 +759,7 @@ GuestToHostThunk X64HelperEmitter::EmitGuestToHostThunk() {
 
   add(rsp, stack_size);
   ret();
-#elif XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#else
   // This function is being called using the Microsoft ABI from CallNative
   // rcx = target function
   // rdx = arg0
@@ -812,8 +810,6 @@ GuestToHostThunk X64HelperEmitter::EmitGuestToHostThunk() {
 
   add(rsp, stack_size);
   ret();
-#else
-  assert_always("Unknown platform ABI in guest to host thunk!")
 #endif
 
   code_offsets.tail = getSize();
@@ -867,7 +863,7 @@ ResolveFunctionThunk X64HelperEmitter::EmitResolveFunctionThunk() {
 
   add(rsp, stack_size);
   jmp(rax);
-#elif XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#else
   // Function is called with the following params:
   // ebx = target PPC address
   // rsi = context
@@ -906,8 +902,6 @@ ResolveFunctionThunk X64HelperEmitter::EmitResolveFunctionThunk() {
 
   add(rsp, stack_size);
   jmp(rax);
-#else
-  assert_always("Unknown platform ABI in resolve function!");
 #endif
 
   code_offsets.tail = getSize();

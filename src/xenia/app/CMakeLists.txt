@@ -58,13 +58,11 @@ target_link_libraries(xenia-app PRIVATE
   xenia-cpu
   xenia-gpu
   xenia-gpu-null
-  xenia-gpu-vulkan
   xenia-hid
   xenia-hid-nop
   xenia-kernel
   xenia-patcher
   xenia-ui
-  xenia-ui-vulkan
   xenia-vfs
   # Third-party
   aes_128
@@ -72,7 +70,6 @@ target_link_libraries(xenia-app PRIVATE
   fmt
   dxbc
   discord-rpc
-  glslang-spirv
   imgui
   libavcodec
   libavutil
@@ -80,6 +77,15 @@ target_link_libraries(xenia-app PRIVATE
   snappy
   xxhash
 )
+
+# Vulkan/SPIR-V backends (not macOS)
+if(NOT APPLE)
+  target_link_libraries(xenia-app PRIVATE
+    xenia-gpu-vulkan
+    xenia-ui-vulkan
+    glslang-spirv
+  )
+endif()
 
 # Non-Android specific (always true for Windows/Linux)
 target_link_libraries(xenia-app PRIVATE

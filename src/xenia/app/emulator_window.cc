@@ -305,6 +305,14 @@ void EmulatorWindow::EmulatorWindowListener::OnMouseUp(ui::MouseEvent& e) {
 
 void EmulatorWindow::EmulatorWindowListener::OnUsbDeviceChanged(
     bool is_arrival) {
+  if (!emulator_window_.emulator()) {
+    return;
+  }
+
+  if (!emulator_window_.emulator()->input_system()) {
+    return;
+  }
+
   auto* portal = emulator_window_.emulator()->input_system()->GetPortal();
   if (!portal) {
     return;

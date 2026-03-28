@@ -909,7 +909,7 @@ struct ATOMIC_EXCHANGE_I8
     }
 
     if (e.IsFeatureEnabled(kA64EmitLSE)) {
-      e.swpalb(i.dest, e.w0, ptr(e.x4));
+      e.swpalb(e.w0, i.dest, ptr(e.x4));
       return;
     }
 
@@ -938,7 +938,7 @@ struct ATOMIC_EXCHANGE_I16
     }
 
     if (e.IsFeatureEnabled(kA64EmitLSE)) {
-      e.swpalh(i.dest, e.w0, ptr(e.x4));
+      e.swpalh(e.w0, i.dest, ptr(e.x4));
       return;
     }
 
@@ -968,7 +968,7 @@ struct ATOMIC_EXCHANGE_I32
     }
 
     if (e.IsFeatureEnabled(kA64EmitLSE)) {
-      e.swpal(i.dest, e.w0, ptr(e.x4));
+      e.swpal(e.w0, i.dest, ptr(e.x4));
       return;
     }
 

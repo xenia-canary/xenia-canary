@@ -26,7 +26,14 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #undef _CRT_SECURE_NO_WARNINGS
 #undef _CRT_NONSTDC_NO_DEPRECATE
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include "third_party/stb/stb_image_write.h"
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 DEFINE_path(target_trace_file, "", "Specifies the trace file to load.", "GPU");
 DEFINE_path(trace_dump_path, "", "Output path for dumped files.", "GPU");

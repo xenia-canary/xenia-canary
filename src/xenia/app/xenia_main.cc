@@ -48,7 +48,9 @@
 
 // Available graphics systems:
 #include "xenia/gpu/null/null_graphics_system.h"
+#if !XE_PLATFORM_MAC
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
+#endif
 #if XE_PLATFORM_WIN32
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #endif  // XE_PLATFORM_WIN32
@@ -401,7 +403,9 @@ std::unique_ptr<gpu::GraphicsSystem> EmulatorApp::CreateGraphicsSystem() {
 #if XE_PLATFORM_WIN32
   factory.Add<gpu::d3d12::D3D12GraphicsSystem>("d3d12");
 #endif  // XE_PLATFORM_WIN32
+#if !XE_PLATFORM_MAC
   factory.Add<gpu::vulkan::VulkanGraphicsSystem>("vulkan");
+#endif
   std::unique_ptr<gpu::GraphicsSystem> gpu_implementation =
       factory.Create(gpu_implementation_name);
   if (!gpu_implementation) {
@@ -475,12 +479,9 @@ bool EmulatorApp::OnInitialize() {
     if (!cvars::portable &&
         !std::filesystem::exists(storage_root / "portable.txt")) {
       storage_root = xe::filesystem::GetUserFolder();
-#if defined(XE_PLATFORM_WIN32) || defined(XE_PLATFORM_LINUX)
-      storage_root = storage_root / "Xenia";
+#if XE_PLATFORM_ANDROID
+      // TODO(Triang3l): Point to the app's external storage "files" directory.
 #else
-      // TODO(Triang3l): Point to the app's external storage "files" directory
-      // on Android.
-#warning Unhandled platform for the data root.
       storage_root = storage_root / "Xenia";
 #endif
     }

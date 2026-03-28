@@ -30,16 +30,38 @@ jobs:
           path: ~/vulkan-sdk
           key: ${{ runner.os }}-vulkan-sdk-latest
 
+      - name: Cache linuxdeploy tools
+        id: cache-linuxdeploy
+        uses: actions/cache@v5
+        with:
+          path: ~/linuxdeploy
+          key: ${{ runner.os }}-linuxdeploy-tools
+
       - name: Setup build environment
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           sudo apt-add-repository "deb http://apt.llvm.org/${{ env.UBUNTU_BASE }}/ llvm-toolchain-${{ env.UBUNTU_BASE }}-${{ env.LLVM_VERSION }} main"
           sudo apt-get -y update
-          sudo apt-get -y install mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libgtk-3-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-${{ env.LLVM_VERSION }} lld-${{ env.LLVM_VERSION }} ninja-build cmake spirv-tools
+          sudo apt-get -y install mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libgtk-3-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-${{ env.LLVM_VERSION }} lld-${{ env.LLVM_VERSION }} ninja-build cmake spirv-tools libfuse2
 
-          # Pin clang to the correct version
-          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-${{ env.LLVM_VERSION }}   200
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.LLVM_VERSION }} 200
+          # Pin LLVM tools to the correct version so system ar/ranlib/lld
+          # don't use the older LLVM 17 gold plugin with clang-20 LTO bitcode
+          sudo update-alternatives --install /usr/bin/clang      clang      /usr/bin/clang-${{ env.LLVM_VERSION }}      200
+          sudo update-alternatives --install /usr/bin/clang++    clang++    /usr/bin/clang++-${{ env.LLVM_VERSION }}    200
+          sudo update-alternatives --install /usr/bin/lld        lld        /usr/bin/lld-${{ env.LLVM_VERSION }}        200
+          sudo update-alternatives --install /usr/bin/ld.lld     ld.lld     /usr/bin/ld.lld-${{ env.LLVM_VERSION }}     200
+          sudo update-alternatives --install /usr/bin/llvm-ar    llvm-ar    /usr/bin/llvm-ar-${{ env.LLVM_VERSION }}    200
+          sudo update-alternatives --install /usr/bin/llvm-ranlib llvm-ranlib /usr/bin/llvm-ranlib-${{ env.LLVM_VERSION }} 200
+          sudo update-alternatives --install /usr/bin/llvm-nm    llvm-nm    /usr/bin/llvm-nm-${{ env.LLVM_VERSION }}    200
+
+          # Download linuxdeploy tools if not cached
+          if [ '${{ steps.cache-linuxdeploy.outputs.cache-hit }}' != 'true' ]; then
+            mkdir -p ~/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy
+            chmod +x ~/linuxdeploy/linuxdeploy
+          fi
+          echo "$HOME/linuxdeploy" >> $GITHUB_PATH
+
       - name: Install Vulkan SDK
         run: |
           # Install Vulkan SDK
@@ -71,7 +93,7 @@ jobs:
           CXX: clang++-${{ env.LLVM_VERSION }}
         run: ./xenia-build.py build --config=Release
 
-      - name: Prepare artifacts
+      - name: Prepare AppImage
         id: prepare_artifacts
         run: |
           binary=build/bin/Linux/Release/xenia_canary
@@ -80,15 +102,55 @@ jobs:
             exit 1
           fi
           chmod +x $binary
-          mkdir -p artifacts
-          XZ_OPT=-e9 tar cJvpf artifacts/xenia_canary_linux.tar.xz --transform='s|build/bin/Linux/Release/||' $binary LICENSE
+
+          # Set up AppDir structure
+          APPDIR=artifacts/xenia_canary
+          mkdir -p $APPDIR/usr/bin
+          mkdir -p $APPDIR/usr/share/icons/hicolor/16x16/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/32x32/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/48x48/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/64x64/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/128x128/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/256x256/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/512x512/apps
+          mkdir -p $APPDIR/usr/share/icons/hicolor/1024x1024/apps
+
+          # Install icons
+          cp assets/icon/16.png   $APPDIR/usr/share/icons/hicolor/16x16/apps/xenia_canary.png
+          cp assets/icon/32.png   $APPDIR/usr/share/icons/hicolor/32x32/apps/xenia_canary.png
+          cp assets/icon/48.png   $APPDIR/usr/share/icons/hicolor/48x48/apps/xenia_canary.png
+          cp assets/icon/64.png   $APPDIR/usr/share/icons/hicolor/64x64/apps/xenia_canary.png
+          cp assets/icon/128.png  $APPDIR/usr/share/icons/hicolor/128x128/apps/xenia_canary.png
+          cp assets/icon/256.png  $APPDIR/usr/share/icons/hicolor/256x256/apps/xenia_canary.png
+          cp assets/icon/512.png  $APPDIR/usr/share/icons/hicolor/512x512/apps/xenia_canary.png
+          cp assets/icon/1024.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/xenia_canary.png
+
+          # Copy any extra runtime data directories alongside the binary
+          find build/bin/Linux/Release -maxdepth 1 -type d ! -name Release -exec cp -r {} $APPDIR/usr/bin/ \;
+
+          # Build AppImage with linuxdeploy (requires absolute paths)
+          linuxdeploy --appdir $APPDIR \
+            --executable $binary \
+            --desktop-file $GITHUB_WORKSPACE/assets/xenia_canary.desktop \
+            --icon-file $GITHUB_WORKSPACE/assets/icon/256.png \
+            --output appimage
+
+          # Find the generated AppImage and move to release directory
+          appimage_file=$(ls -1 *.AppImage | head -n1)
+          if [ -z "$appimage_file" ]; then
+            echo "::error::AppImage file not found after linuxdeploy"
+            exit 1
+          fi
+
+          mkdir -p artifacts/release
+          mv "$appimage_file" artifacts/release/xenia_canary_linux.AppImage
+          chmod +x artifacts/release/xenia_canary_linux.AppImage
 
       - name: Upload Xenia Canary artifact
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_linux.tar.xz
-          path: artifacts
+          name: xenia_canary_linux
+          path: artifacts/release
           if-no-files-found: error
           retention-days: 7
-          archive: false

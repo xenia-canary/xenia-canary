@@ -244,7 +244,7 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
       } else {
         return X_STATUS_THREAD_IS_TERMINATING;
       }
-#elif XE_PLATFORM_LINUX
+#else
       // Handle self-suspension specially to avoid deadlock.
       if (!thread->guest_object<X_KTHREAD>()->terminated) {
         bool is_self_suspend =
@@ -261,8 +261,6 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
       } else {
         return X_STATUS_THREAD_IS_TERMINATING;
       }
-#else
-#error "Unsupported platform"
 #endif
     } else {
       return X_STATUS_OBJECT_TYPE_MISMATCH;

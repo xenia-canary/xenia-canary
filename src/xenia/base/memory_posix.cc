@@ -146,7 +146,9 @@ void* AllocFixed(void* base_address, size_t length,
       }
       return nullptr;
     }
+#ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#endif
   }
 
   void* result = mmap(base_address, length, prot, flags, -1, 0);
@@ -296,7 +298,7 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
   if (ret < 0) {
     return kFileMappingHandleInvalid;
   }
-  if (ftruncate64(ret, length) < 0) {
+  if (ftruncate(ret, length) < 0) {
     close(ret);
     shm_unlink(full_path.c_str());
     return kFileMappingHandleInvalid;
@@ -335,7 +337,9 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
 
   int flags = MAP_SHARED;
   if (base_address != nullptr) {
+#ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#endif
   }
 
   void* result = mmap(base_address, length, prot, flags, handle, file_offset);

@@ -43,10 +43,97 @@ inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
   e.msr(3, 3, 4, 4, 0, e.x13);
 }
 
+// Try to see if the provided 64-bit value can be compressed into an 8-bit
+// value for the movi instruction.
+// The 8-bit immediate "a:b:c:d:e:f:g:h" maps to the 64-bit value:
+// "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffffgggggggghhhhhhhh"
+inline bool TryMovi64Imm(uint64_t value, uint8_t& imm8) {
+  // Common cases
+  if (value == 0) {
+    // 00000...
+    imm8 = 0;
+    return true;
+  } else if (value == ~uint64_t(0)) {
+    // 11111...
+    imm8 = 0xFF;
+    return true;
+  }
+  uint8_t compressed = 0;
+  for (int shift = 0; shift < 8; ++shift) {
+    const uint8_t shift_u8 = static_cast<uint8_t>(value >> (shift * 8));
+    if (shift_u8 == 0xFF || shift_u8 == 0) {
+      compressed |= (shift_u8 == 0xFF) << shift;
+    } else {
+      return false;
+    }
+  }
+  imm8 = compressed;
+  return true;
+}
+
+// Try to see if the provided double value can be compressed into an 8-bit value
+// for the fmov instruction. Returns false if the value cannot be represented
+// abcdefgh
+//    V
+// aBbbbbbc defgh000 00000000 00000000
+// B = NOT(b)
+constexpr bool IsFmov32Imm(float f32) {
+  const uint32_t u32 = std::bit_cast<uint32_t, float>(f32);
+  const uint32_t sign = (u32 >> 31) & 1;
+  int32_t exp = ((u32 >> 23) & 0xff) - 127;
+  int64_t mantissa = u32 & 0x7fffff;
+
+  // Too many mantissa bits
+  if (mantissa & 0x7ffff) {
+    return false;
+  }
+  // Too many exp bits
+  if (exp < -3 || exp > 4) {
+    return false;
+  }
+
+  // mantissa = (16 + e:f:g:h) / 16.
+  mantissa >>= 19;
+  if ((mantissa & 0b1111) != mantissa) {
+    return false;
+  }
+
+  return true;
+}
+
+// Try to see if the provided double value can be compressed into an 8-bit value
+// for the fmov instruction. Returns false if the value cannot be represented
+// abcdefgh
+//    V
+// aBbbbbbb bbcdefgh 00000000 00000000 00000000 00000000 00000000 00000000
+// B = NOT(b)
+constexpr bool IsFmov64Imm(double f64) {
+  const uint64_t u64 = std::bit_cast<uint64_t, double>(f64);
+  int32_t exp = ((u64 >> 52) & 0x7ff) - 1023;
+  int64_t mantissa = u64 & 0xfffffffffffffULL;
+
+  // Too many mantissa bits
+  if (mantissa & 0xffffffffffffULL) {
+    return false;
+  }
+  // Too many exp bits
+  if (exp < -3 || exp > 4) {
+    return false;
+  }
+
+  // mantissa = (16 + e:f:g:h) / 16.
+  mantissa >>= 48;
+  if ((mantissa & 0b1111) != mantissa) {
+    return false;
+  }
+  return true;
+}
+
 // Load a compile-time vec128_t constant into a NEON register.
 // May clobber the provided GPR scratch-register
 inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val,
                           int gpr_scratch_idx = 0) {
+  // Fast common cases
   if (!val.low && !val.high) {
     // 0000...
     e.movi(VReg2D(vreg_idx), 0);
@@ -55,75 +142,103 @@ inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val,
     // 1111...
     e.movi(VReg2D(vreg_idx), ~0ULL);
     return;
-  } else {
-    bool all_equal_u8 = true;
-    const uint8_t splat_u8 = val.u8[0];
-    for (unsigned i = 1; i < 16; ++i) {
-      if (val.u8[i] != splat_u8) {
-        all_equal_u8 = false;
-        break;
-      }
-    }
-    if (all_equal_u8) {
-      e.movi(VReg(vreg_idx).b16, static_cast<uint8_t>(splat_u8));
-      return;
-    }
-
-    bool all_equal_u16 = true;
-    const uint16_t splat_u16 = val.u16[0];
-    for (unsigned i = 1; i < 8; ++i) {
-      if (val.u16[i] != splat_u16) {
-        all_equal_u16 = false;
-        break;
-      }
-    }
-    if (all_equal_u16) {
-      if ((splat_u16 & 0xFF'00) == 0) {
-        e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16));
-      } else if ((splat_u16 & 0x00'FF) == 0) {
-        e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16 >> 8), LSL, 8);
-      } else {
-        e.movz(WReg(gpr_scratch_idx), splat_u16);
-        e.dup(VReg(vreg_idx).h8, WReg(gpr_scratch_idx));
-      }
-      return;
-    }
-
-    bool all_equal_u32 = true;
-    const uint32_t splat_u32 = val.u32[0];
-    for (unsigned i = 1; i < 4; ++i) {
-      if (val.u32[i] != splat_u32) {
-        all_equal_u32 = false;
-        break;
-      }
-    }
-    if (all_equal_u32) {
-      if ((splat_u32 & 0xFF'FF'FF'00) == 0) {
-        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32));
-      } else if ((splat_u32 & 0xFF'FF'00'FF) == 0) {
-        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 8), LSL, 8);
-      } else if ((splat_u32 & 0xFF'00'FF'FF) == 0) {
-        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 16), LSL,
-               16);
-      } else if ((splat_u32 & 0x00'FF'FF'FF) == 0) {
-        e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 24), LSL,
-               24);
-      } else {
-        e.mov(WReg(gpr_scratch_idx), splat_u32);
-        e.dup(VReg(vreg_idx).s4, WReg(gpr_scratch_idx));
-      }
-      return;
-    }
-
-    const bool all_equal_u64 = val.low == val.high;
-    const uint64_t splat_u64 = val.u64[0];
-    if (all_equal_u64) {
-      e.mov(XReg(gpr_scratch_idx), splat_u64);
-      e.dup(VReg(vreg_idx).d2, XReg(gpr_scratch_idx));
-      return;
-    }
   }
 
+  // Element splats
+  bool all_equal_u8 = true;
+  const uint8_t splat_u8 = val.u8[0];
+  for (unsigned i = 1; i < 16; ++i) {
+    if (val.u8[i] != splat_u8) {
+      all_equal_u8 = false;
+      break;
+    }
+  }
+  if (all_equal_u8) {
+    e.movi(VReg(vreg_idx).b16, static_cast<uint8_t>(splat_u8));
+    return;
+  }
+
+  bool all_equal_u16 = true;
+  const uint16_t splat_u16 = val.u16[0];
+  for (unsigned i = 1; i < 8; ++i) {
+    if (val.u16[i] != splat_u16) {
+      all_equal_u16 = false;
+      break;
+    }
+  }
+  if (all_equal_u16) {
+    if ((splat_u16 & 0xFF'00) == 0) {
+      e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16 >> 0), LSL, 0);
+    } else if ((splat_u16 & 0x00'FF) == 0) {
+      e.movi(VReg(vreg_idx).h8, static_cast<uint8_t>(splat_u16 >> 8), LSL, 8);
+    } else if ((splat_u16 & 0xFF'00) == 0xFF'00) {
+      e.mvni(VReg(vreg_idx).h8, ~static_cast<uint8_t>(splat_u16 >> 0) & 0xFF,
+             LSL, 0);
+    } else if ((splat_u16 & 0x00'FF) == 0x00'FF) {
+      e.mvni(VReg(vreg_idx).h8, ~static_cast<uint8_t>(splat_u16 >> 8) & 0xFF,
+             LSL, 8);
+    } else {
+      e.movz(WReg(gpr_scratch_idx), splat_u16, 0);
+      e.dup(VReg(vreg_idx).h8, WReg(gpr_scratch_idx));
+    }
+    return;
+  }
+
+  bool all_equal_u32 = true;
+  const uint32_t splat_u32 = val.u32[0];
+  const float splat_f32 = val.f32[0];
+  for (unsigned i = 1; i < 4; ++i) {
+    if (val.u32[i] != splat_u32) {
+      all_equal_u32 = false;
+      break;
+    }
+  }
+  if (all_equal_u32) {
+    if ((splat_u32 & 0xFF'FF'FF'00) == 0) {
+      e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 0), LSL, 0);
+    } else if ((splat_u32 & 0xFF'FF'00'FF) == 0) {
+      e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 8), LSL, 8);
+    } else if ((splat_u32 & 0xFF'00'FF'FF) == 0) {
+      e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 16), LSL, 16);
+    } else if ((splat_u32 & 0x00'FF'FF'FF) == 0) {
+      e.movi(VReg(vreg_idx).s4, static_cast<uint8_t>(splat_u32 >> 24), LSL, 24);
+    } else if ((splat_u32 & 0xFF'FF'FF'00) == 0xFF'FF'FF'00) {
+      e.mvni(VReg(vreg_idx).s4, ~static_cast<uint8_t>(splat_u32 >> 0) & 0xFF,
+             LSL, 0);
+    } else if ((splat_u32 & 0xFF'FF'00'FF) == 0xFF'FF'00'FF) {
+      e.mvni(VReg(vreg_idx).s4, ~static_cast<uint8_t>(splat_u32 >> 8) & 0xFF,
+             LSL, 8);
+    } else if ((splat_u32 & 0xFF'00'FF'FF) == 0xFF'00'FF'FF) {
+      e.mvni(VReg(vreg_idx).s4, ~static_cast<uint8_t>(splat_u32 >> 16) & 0xFF,
+             LSL, 16);
+    } else if ((splat_u32 & 0x00'FF'FF'FF) == 0x00'FF'FF'FF) {
+      e.mvni(VReg(vreg_idx).s4, ~static_cast<uint8_t>(splat_u32 >> 24) & 0xFF,
+             LSL, 24);
+    } else if (IsFmov32Imm(splat_f32)) {
+      e.fmov(VReg(vreg_idx).s4, splat_f32);
+    } else {
+      e.mov(WReg(gpr_scratch_idx), splat_u32);
+      e.dup(VReg(vreg_idx).s4, WReg(gpr_scratch_idx));
+    }
+    return;
+  }
+
+  const bool all_equal_u64 = val.low == val.high;
+  const uint64_t splat_u64 = val.u64[0];
+  const double splat_f64 = val.f64[0];
+  if (all_equal_u64) {
+    if (uint8_t movi_imm; TryMovi64Imm(val.low, movi_imm)) {
+      e.movi(VReg2D(vreg_idx), movi_imm);
+    } else if (IsFmov64Imm(splat_f64)) {
+      e.fmov(VReg(vreg_idx).d2, splat_f64);
+    } else {
+      e.mov(XReg(gpr_scratch_idx), splat_u64);
+      e.dup(VReg(vreg_idx).d2, XReg(gpr_scratch_idx));
+    }
+    return;
+  }
+
+  // Fallback
   e.mov(XReg(gpr_scratch_idx), val.low);
   e.fmov(DReg(vreg_idx), XReg(gpr_scratch_idx));
   e.mov(XReg(gpr_scratch_idx), val.high);

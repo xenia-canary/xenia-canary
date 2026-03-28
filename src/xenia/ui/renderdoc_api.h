@@ -37,10 +37,10 @@ class RenderDocAPI {
  private:
   explicit RenderDocAPI() = default;
 
-#if XE_PLATFORM_LINUX
-  void* library_ = nullptr;
-#elif XE_PLATFORM_WIN32
+#if XE_PLATFORM_WIN32
   HMODULE library_ = nullptr;
+#else
+  void* library_ = nullptr;
 #endif
 
   const RENDERDOC_API_1_0_0* api_1_0_0_ = nullptr;

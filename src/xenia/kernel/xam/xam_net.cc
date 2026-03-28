@@ -23,10 +23,11 @@
 // NOTE: must be included last as it expects windows.h to already be included.
 #define _WINSOCK_DEPRECATED_NO_WARNINGS  // inet_addr
 #include <winsock2.h>                    // NOLINT(build/include_order)
-#elif XE_PLATFORM_LINUX
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #endif
 

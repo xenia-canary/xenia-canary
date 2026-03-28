@@ -74,7 +74,7 @@ inline void atomic_store_release(uint32_t new_value, volatile uint32_t* value) {
   _InterlockedExchange(reinterpret_cast<volatile long*>(value), new_value);
 }
 
-#elif XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#else
 
 inline int32_t atomic_inc(volatile int32_t* value) {
   return __sync_add_and_fetch(value, 1);
@@ -132,10 +132,6 @@ inline bool atomic_cas(int64_t old_value, int64_t new_value,
   return __sync_bool_compare_and_swap(
       reinterpret_cast<volatile int64_t*>(value), old_value, new_value);
 }
-
-#else
-
-#error No atomic primitives defined for this platform/cpu combination.
 
 #endif  // XE_PLATFORM
 
