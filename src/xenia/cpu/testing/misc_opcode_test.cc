@@ -13,9 +13,12 @@
 
 #include "xenia/cpu/testing/util.h"
 
+#include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <thread>
 
 using namespace xe;
 using namespace xe::cpu;
@@ -352,6 +355,125 @@ TEST_CASE("RESERVED_LOAD_STORE_I32", "[atomic]") {
         REQUIRE(ctx->r[5] == 1);                          // store succeeded
         REQUIRE(*host_ptr == 43);                         // incremented
       });
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_LOAD_STORE_I64", "[atomic]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto loaded = b.LoadWithReserve(addr, INT64_TYPE);
+    StoreGPR(b, 3, loaded);
+    auto new_val = b.Add(loaded, b.LoadConstantInt64(1));
+    auto success = b.StoreWithReserve(addr, new_val, INT64_TYPE);
+    StoreGPR(b, 5, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(8);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint64_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  test.Run(
+      [&](PPCContext* ctx) {
+        *host_ptr = 100;
+        ctx->r[4] = guest_addr;
+      },
+      [&](PPCContext* ctx) {
+        REQUIRE(ctx->r[3] == 100);  // loaded value
+        REQUIRE(ctx->r[5] == 1);    // store succeeded
+        REQUIRE(*host_ptr == 101);  // incremented
+      });
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_STORE_I32_NO_RESERVATION", "[atomic]") {
+  // StoreWithReserve without a preceding LoadWithReserve must fail (return 0).
+  // Run with a timeout: the bug this catches produces an infinite loop.
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto val = b.Truncate(LoadGPR(b, 5), INT32_TYPE);
+    auto success = b.StoreWithReserve(addr, val, INT32_TYPE);
+    StoreGPR(b, 3, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(4);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint32_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  std::atomic<bool> completed{false};
+  std::thread worker([&]() {
+    test.Run(
+        [&](PPCContext* ctx) {
+          *host_ptr = 42;
+          ctx->r[4] = guest_addr;
+          ctx->r[5] = 99;
+        },
+        [&](PPCContext* ctx) {
+          CHECK(ctx->r[3] == 0);   // store must fail
+          CHECK(*host_ptr == 42);  // memory unchanged
+        });
+    completed.store(true);
+  });
+  worker.detach();
+
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!completed.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!completed.load()) {
+    // Detached thread is stuck in JIT'd code — can't unwind safely.
+    FAIL("Timed out: no-reservation path likely has an infinite loop");
+    std::_Exit(1);
+  }
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_STORE_I64_NO_RESERVATION", "[atomic]") {
+  // Run with a timeout: the bug this catches produces an infinite loop.
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto val = LoadGPR(b, 5);
+    auto success = b.StoreWithReserve(addr, val, INT64_TYPE);
+    StoreGPR(b, 3, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(8);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint64_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  std::atomic<bool> completed{false};
+  std::thread worker([&]() {
+    test.Run(
+        [&](PPCContext* ctx) {
+          *host_ptr = 42;
+          ctx->r[4] = guest_addr;
+          ctx->r[5] = 99;
+        },
+        [&](PPCContext* ctx) {
+          CHECK(ctx->r[3] == 0);   // store must fail
+          CHECK(*host_ptr == 42);  // memory unchanged
+        });
+    completed.store(true);
+  });
+  worker.detach();
+
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!completed.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!completed.load()) {
+    // Detached thread is stuck in JIT'd code — can't unwind safely.
+    FAIL("Timed out: no-reservation path likely has an infinite loop");
+    std::_Exit(1);
+  }
 
   test.memory->SystemHeapFree(guest_addr);
 }

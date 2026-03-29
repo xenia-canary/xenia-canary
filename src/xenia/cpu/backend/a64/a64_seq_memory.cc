@@ -1199,23 +1199,23 @@ struct RESERVED_STORE_I32
       e.casal(e.w5, e.w6, ptr(e.x4));
       e.cmp(e.w5, e.w0);
       e.cset(i.dest, Xbyak_aarch64::EQ);
-      return;
+      e.b(done);
+    } else {
+      // LDXR/STXR loop.
+      auto& cas_loop = e.NewCachedLabel();
+      auto& cas_fail = e.NewCachedLabel();
+      e.L(cas_loop);
+      e.ldaxr(e.w7, ptr(e.x4));
+      e.cmp(e.w7, e.w5);
+      e.b(Xbyak_aarch64::NE, cas_fail);
+      e.stlxr(e.w7, e.w6, ptr(e.x4));
+      e.cbnz(e.w7, cas_loop);
+      // Success.
+      e.mov(i.dest, 1);
+      e.b(done);
+      e.L(cas_fail);
+      e.clrex(15);
     }
-
-    // LDXR/STXR loop.
-    auto& cas_loop = e.NewCachedLabel();
-    auto& cas_fail = e.NewCachedLabel();
-    e.L(cas_loop);
-    e.ldaxr(e.w7, ptr(e.x4));
-    e.cmp(e.w7, e.w5);
-    e.b(Xbyak_aarch64::NE, cas_fail);
-    e.stlxr(e.w7, e.w6, ptr(e.x4));
-    e.cbnz(e.w7, cas_loop);
-    // Success.
-    e.mov(i.dest, 1);
-    e.b(done);
-    e.L(cas_fail);
-    e.clrex(15);
     e.L(no_reserve);
     e.mov(i.dest, 0);
     e.L(done);
@@ -1256,21 +1256,21 @@ struct RESERVED_STORE_I64
       e.casal(e.x5, e.x6, ptr(e.x4));
       e.cmp(e.x5, e.x0);
       e.cset(i.dest, Xbyak_aarch64::EQ);
-      return;
+      e.b(done);
+    } else {
+      auto& cas_loop = e.NewCachedLabel();
+      auto& cas_fail = e.NewCachedLabel();
+      e.L(cas_loop);
+      e.ldaxr(e.x7, ptr(e.x4));
+      e.cmp(e.x7, e.x5);
+      e.b(Xbyak_aarch64::NE, cas_fail);
+      e.stlxr(e.w7, e.x6, ptr(e.x4));
+      e.cbnz(e.w7, cas_loop);
+      e.mov(i.dest, 1);
+      e.b(done);
+      e.L(cas_fail);
+      e.clrex(15);
     }
-
-    auto& cas_loop = e.NewCachedLabel();
-    auto& cas_fail = e.NewCachedLabel();
-    e.L(cas_loop);
-    e.ldaxr(e.x7, ptr(e.x4));
-    e.cmp(e.x7, e.x5);
-    e.b(Xbyak_aarch64::NE, cas_fail);
-    e.stlxr(e.w7, e.x6, ptr(e.x4));
-    e.cbnz(e.w7, cas_loop);
-    e.mov(i.dest, 1);
-    e.b(done);
-    e.L(cas_fail);
-    e.clrex(15);
     e.L(no_reserve);
     e.mov(i.dest, 0);
     e.L(done);
