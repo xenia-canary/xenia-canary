@@ -370,6 +370,10 @@ const std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
     const std::filesystem::path& path, const std::string_view mount_path) {
   // Must check if the type has changed e.g. XamSwapDisc
   switch (GetFileSignature(path)) {
+    case FileSignatureType::XEX0:
+    case FileSignatureType::XEXQ:
+    case FileSignatureType::XEXH:
+    case FileSignatureType::XEXP:
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {
@@ -389,6 +393,7 @@ const std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
     case FileSignatureType::ZAR: {
       return std::make_unique<vfs::DiscZarchiveDevice>(mount_path, path);
     } break;
+    case FileSignatureType::XBE:
     case FileSignatureType::EXE:
     case FileSignatureType::Unknown:
     default:
@@ -488,6 +493,14 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
   fclose(file);
 
   switch (magic_value) {
+    case xe::cpu::kXEX0Signature:
+      return FileSignatureType::XEX0;
+    case xe::cpu::kXEXQSignature:
+      return FileSignatureType::XEXQ;
+    case xe::cpu::kXEXHSignature:
+      return FileSignatureType::XEXH;
+    case xe::cpu::kXEXPSignature:
+      return FileSignatureType::XEXP;
     case xe::cpu::kXEX1Signature:
       return FileSignatureType::XEX1;
     case xe::cpu::kXEX2Signature:
@@ -500,6 +513,8 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
       return FileSignatureType::PIRS;
     case xe::vfs::kXSFSignature:
       return FileSignatureType::XISO;
+    case xe::cpu::kXBESignature:
+      return FileSignatureType::XBE;
     case xe::cpu::kElfSignature:
       return FileSignatureType::ELF;
     default:
@@ -542,6 +557,10 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
   X_STATUS mount_result = X_STATUS_SUCCESS;
 
   switch (GetFileSignature(path)) {
+    case FileSignatureType::XEX0:
+    case FileSignatureType::XEXQ:
+    case FileSignatureType::XEXH:
+    case FileSignatureType::XEXP:
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {
@@ -557,6 +576,10 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     case FileSignatureType::XISO: {
       mount_result = MountPath(path, "\\Device\\Cdrom0");
       return mount_result ? mount_result : LaunchDiscImage(path);
+    } break;
+    case FileSignatureType::XBE: {
+      XELOGE("OG Xbox games are not supported");
+      return X_STATUS_NOT_SUPPORTED;
     } break;
     case FileSignatureType::ZAR: {
       mount_result = MountPath(path, "\\Device\\Cdrom0");
