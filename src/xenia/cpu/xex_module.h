@@ -25,9 +25,14 @@ class KernelState;
 namespace xe {
 namespace cpu {
 
+constexpr fourcc_t kXEX0Signature = make_fourcc("XEX0");
+constexpr fourcc_t kXEXQSignature = make_fourcc("XEX?");
+constexpr fourcc_t kXEXHSignature = make_fourcc("XEX-");
+constexpr fourcc_t kXEXPSignature = make_fourcc("XEX%");
 constexpr fourcc_t kXEX1Signature = make_fourcc("XEX1");
 constexpr fourcc_t kXEX2Signature = make_fourcc("XEX2");
 constexpr fourcc_t kElfSignature = make_fourcc(0x7F, 'E', 'L', 'F');
+constexpr fourcc_t kXBESignature = make_fourcc("XBEH");
 
 class Runtime;
 struct InfoCacheFlags {
@@ -115,6 +120,10 @@ class XexModule : public xe::cpu::Module {
   };
   enum XexFormat {
     kFormatUnknown,
+    kFormatXex0,
+    kFormatXexQ,  // ?
+    kFormatXexH,  // -
+    kFormatXexP,  // %
     kFormatXex1,
     kFormatXex2,
   };

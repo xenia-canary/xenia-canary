@@ -54,6 +54,9 @@ DECLARE_bool(disable_context_promotion);
 static constexpr uint8_t xe_xex1_retail_key[16] = {
     0xA2, 0x6C, 0x10, 0xF7, 0x1F, 0xD9, 0x35, 0xE9,
     0x8B, 0x99, 0x92, 0x2C, 0xE9, 0x32, 0x15, 0x72};
+static constexpr uint8_t xe_xex1_devkit_key[16] = {
+    0xA8, 0xB0, 0x05, 0x12, 0xED, 0xE3, 0x63, 0x8D,
+    0xC6, 0x58, 0xB3, 0x10, 0x1F, 0x9F, 0x50, 0xD1};
 static constexpr uint8_t xe_xex2_retail_key[16] = {
     0x20, 0xB1, 0x85, 0xA5, 0x9D, 0x28, 0xFD, 0xC3,
     0x40, 0x58, 0x3F, 0xBB, 0x08, 0x96, 0xBF, 0x91};
@@ -884,32 +887,37 @@ int XexModule::ReadPEHeaders() {
 }
 
 void XexModule::ReadSecurityInfo() {
-  if (xex_format_ == kFormatXex1) {
-    const xex1_security_info* xex1_sec_info =
-        reinterpret_cast<const xex1_security_info*>(
-            GetSecurityInfo(xex_header()));
+  switch (xex_format_) {
+    case kFormatXex1: {
+      const xex1_security_info* xex1_sec_info =
+          reinterpret_cast<const xex1_security_info*>(
+              GetSecurityInfo(xex_header()));
 
-    security_info_.rsa_signature = xex1_sec_info->rsa_signature;
-    security_info_.aes_key = xex1_sec_info->aes_key;
-    security_info_.image_size = xex1_sec_info->image_size;
-    security_info_.image_flags = xex1_sec_info->image_flags;
-    security_info_.export_table = xex1_sec_info->export_table;
-    security_info_.load_address = xex1_sec_info->load_address;
-    security_info_.page_descriptor_count = xex1_sec_info->page_descriptor_count;
-    security_info_.page_descriptors = xex1_sec_info->page_descriptors;
-  } else if (xex_format_ == kFormatXex2) {
-    const xex2_security_info* xex2_sec_info =
-        reinterpret_cast<const xex2_security_info*>(
-            GetSecurityInfo(xex_header()));
+      security_info_.rsa_signature = xex1_sec_info->rsa_signature;
+      security_info_.aes_key = xex1_sec_info->aes_key;
+      security_info_.image_size = xex1_sec_info->image_size;
+      security_info_.image_flags = xex1_sec_info->image_flags;
+      security_info_.export_table = xex1_sec_info->export_table;
+      security_info_.load_address = xex1_sec_info->load_address;
+      security_info_.page_descriptor_count =
+          xex1_sec_info->page_descriptor_count;
+      security_info_.page_descriptors = xex1_sec_info->page_descriptors;
+    } break;
+    case kFormatXex2: {
+      const xex2_security_info* xex2_sec_info =
+          reinterpret_cast<const xex2_security_info*>(
+              GetSecurityInfo(xex_header()));
 
-    security_info_.rsa_signature = xex2_sec_info->rsa_signature;
-    security_info_.aes_key = xex2_sec_info->aes_key;
-    security_info_.image_size = xex2_sec_info->image_size;
-    security_info_.image_flags = xex2_sec_info->image_flags;
-    security_info_.export_table = xex2_sec_info->export_table;
-    security_info_.load_address = xex2_sec_info->load_address;
-    security_info_.page_descriptor_count = xex2_sec_info->page_descriptor_count;
-    security_info_.page_descriptors = xex2_sec_info->page_descriptors;
+      security_info_.rsa_signature = xex2_sec_info->rsa_signature;
+      security_info_.aes_key = xex2_sec_info->aes_key;
+      security_info_.image_size = xex2_sec_info->image_size;
+      security_info_.image_flags = xex2_sec_info->image_flags;
+      security_info_.export_table = xex2_sec_info->export_table;
+      security_info_.load_address = xex2_sec_info->load_address;
+      security_info_.page_descriptor_count =
+          xex2_sec_info->page_descriptor_count;
+      security_info_.page_descriptors = xex2_sec_info->page_descriptors;
+    } break;
   }
 }
 
@@ -917,12 +925,32 @@ bool XexModule::Load(const std::string_view name, const std::string_view path,
                      const void* xex_addr, size_t xex_length) {
   auto src_header = reinterpret_cast<const xex2_header*>(xex_addr);
 
-  if (src_header->magic == kXEX1Signature) {
-    xex_format_ = kFormatXex1;
-  } else if (src_header->magic == kXEX2Signature) {
-    xex_format_ = kFormatXex2;
-  } else {
-    return false;
+  switch (src_header->magic) {
+    case kXEX0Signature:
+      XELOGE("XEX0 format not supported");
+      return false;
+      break;
+    case kXEXQSignature:
+      XELOGE("XEX? format not supported");
+      return false;
+      break;
+    case kXEXHSignature:
+      XELOGE("XEX- format not supported");
+      return false;
+      break;
+    case kXEXPSignature:
+      XELOGE("XEX% format not supported");
+      return false;
+      break;
+    case kXEX1Signature:
+      xex_format_ = kFormatXex1;
+      break;
+    case kXEX2Signature:
+      xex_format_ = kFormatXex2;
+      break;
+    default:
+      XELOGE("XEX format not supported");
+      return false;
   }
 
   assert_false(loaded_);
@@ -958,13 +986,23 @@ bool XexModule::Load(const std::string_view name, const std::string_view path,
 
     result_code = ReadImage(xex_addr, xex_length, xe_xex2_devkit_key);
     if (result_code) {
-      XELOGE("XEX load failed with code {}, trying with xex1 encryption key...",
-             result_code);
+      XELOGE(
+          "XEX load failed with code {}, trying with xex1 retail encryption "
+          "key...",
+          result_code);
 
       result_code = ReadImage(xex_addr, xex_length, xe_xex1_retail_key);
       if (result_code) {
-        XELOGE("XEX load failed with code {}", result_code);
-        return false;
+        XELOGE(
+            "XEX load failed with code {}, trying with xex1 devkit encryption "
+            "key...",
+            result_code);
+
+        result_code = ReadImage(xex_addr, xex_length, xe_xex1_devkit_key);
+        if (result_code) {
+          XELOGE("XEX load failed with code {}", result_code);
+          return false;
+        }
       }
     }
   }

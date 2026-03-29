@@ -794,7 +794,7 @@ struct xex2_security_info {
   xe::be<uint32_t> header_size;              // 0x0
   xe::be<uint32_t> image_size;               // 0x4
   char rsa_signature[0x100];                 // 0x8
-  xe::be<uint32_t> unk_108;                  // 0x108 unk length
+  xe::be<uint32_t> info_size;                // 0x108
   xe::be<xex2_image_flags> image_flags;      // 0x10C
   xe::be<uint32_t> load_address;             // 0x110
   char section_digest[0x14];                 // 0x114
