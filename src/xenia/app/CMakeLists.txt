@@ -128,3 +128,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 xe_target_defaults(xenia-app)
+
+if(APPLE)
+  add_custom_command(TARGET xenia-app POST_BUILD
+    COMMAND codesign -s - --entitlements
+            ${CMAKE_CURRENT_SOURCE_DIR}/xenia.entitlements --force
+            $<TARGET_FILE:xenia-app>
+    COMMENT "Ad-hoc signing xenia_canary with JIT entitlements"
+  )
+endif()
