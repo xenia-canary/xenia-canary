@@ -786,6 +786,9 @@ target_include_directories(libavcodec PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/FFmpeg/libavcodec
 )
 target_link_libraries(libavcodec PRIVATE libavutil)
+if(APPLE)
+  target_link_libraries(libavcodec PRIVATE iconv)
+endif()
 ffmpeg_common(libavcodec)
 
 # --- libavformat ---

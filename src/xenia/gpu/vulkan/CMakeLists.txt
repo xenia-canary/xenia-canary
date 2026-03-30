@@ -18,9 +18,9 @@ if(XENIA_BUILD_MISC)
   if(WIN32)
     target_sources(xenia-gpu-vulkan-trace-viewer PRIVATE
       ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_win.cc)
-  else()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(xenia-gpu-vulkan-trace-viewer PRIVATE
-      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_posix.cc)
+      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_linux.cc)
   endif()
   target_include_directories(xenia-gpu-vulkan-trace-viewer PRIVATE
     ${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include

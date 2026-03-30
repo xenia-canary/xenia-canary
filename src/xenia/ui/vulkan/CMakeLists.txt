@@ -16,9 +16,9 @@ if(XENIA_BUILD_MISC)
     set_target_properties(xenia-ui-window-vulkan-demo PROPERTIES WIN32_EXECUTABLE TRUE)
     target_sources(xenia-ui-window-vulkan-demo PRIVATE
       ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_win.cc)
-  else()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(xenia-ui-window-vulkan-demo PRIVATE
-      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_posix.cc)
+      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_linux.cc)
   endif()
   target_sources(xenia-ui-window-vulkan-demo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../window_demo.cc
