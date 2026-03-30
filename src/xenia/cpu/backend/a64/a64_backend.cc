@@ -23,6 +23,9 @@
 #if XE_ARCH_ARM64 && XE_COMPILER_MSVC
 #include <intrin.h>
 #endif
+#if XE_PLATFORM_MAC
+#include <pthread.h>
+#endif
 #include "xenia/cpu/backend/a64/a64_assembler.h"
 #include "xenia/cpu/backend/a64/a64_code_cache.h"
 #include "xenia/cpu/backend/a64/a64_emitter.h"
@@ -764,9 +767,15 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
   uint8_t* write_pos =
       &guest_trampoline_memory_[kGuestTrampolineSize * new_index];
 
+#if XE_PLATFORM_MAC
+  pthread_jit_write_protect_np(0);
+#endif
   BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
                        userdata2,
                        reinterpret_cast<void*>(guest_to_host_thunk_));
+#if XE_PLATFORM_MAC
+  pthread_jit_write_protect_np(1);
+#endif
 
   // Flush instruction cache for the new trampoline code.
 #if XE_PLATFORM_WIN32
