@@ -285,8 +285,12 @@ class PhysicalHeap : public BaseHeap {
   uint32_t GetPhysicalAddress(uint32_t address) const;
 
   uint32_t SystemPagenumToGuestPagenum(uint32_t num) const {
-    return ((num << system_page_shift_) - host_address_offset()) >>
-           page_size_shift_;
+    uint32_t system_base = num << system_page_shift_;
+    uint32_t offset = host_address_offset();
+    if (system_base < offset) {
+      return 0;
+    }
+    return (system_base - offset) >> page_size_shift_;
   }
 
   uint32_t GuestPagenumToSystemPagenum(uint32_t num) {
@@ -543,6 +547,9 @@ class Memory {
                                          void* context);
 
  private:
+#if XE_PLATFORM_MAC
+  int MapViewsMac();
+#endif
   int MapViews(uint8_t* mapping_base);
   void UnmapViews();
 
