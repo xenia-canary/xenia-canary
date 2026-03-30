@@ -34,7 +34,7 @@ if(WIN32)
 elseif(APPLE)
   target_sources(xenia-app PRIVATE
     ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
-    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_mac.mm
+    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_mac.cc
   )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(xenia-app PRIVATE

@@ -2136,6 +2136,10 @@ std::string EmulatorWindow::CanonicalizeFileExtension(
 
 xe::X_STATUS EmulatorWindow::RunTitle(
     const std::filesystem::path& path_to_file) {
+  if (!emulator_initialized_) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
   std::error_code ec = {};
   bool titleExists = std::filesystem::exists(path_to_file, ec);
 
