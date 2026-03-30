@@ -19,6 +19,9 @@
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 #endif
+#if XE_PLATFORM_MAC
+#include <pthread.h>
+#endif
 
 namespace xe {
 namespace cpu {
@@ -62,6 +65,15 @@ bool A64CodeCache::Initialize() {
     return false;
   }
 
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  // macOS ARM64 cannot execute from shared memory. Use private MAP_JIT memory
+  // and toggle W^X per-thread with pthread_jit_write_protect_np.
+  generated_code_execute_base_ = reinterpret_cast<uint8_t*>(
+      xe::memory::AllocFixed(nullptr, kGeneratedCodeSize,
+                             xe::memory::AllocationType::kReserveCommit,
+                             xe::memory::PageAccess::kExecuteReadWrite));
+  generated_code_write_base_ = generated_code_execute_base_;
+#else
   // Map execute and write views at OS-chosen addresses.
   if (xe::memory::IsWritableExecutableMemoryPreferred()) {
     generated_code_execute_base_ = reinterpret_cast<uint8_t*>(
@@ -76,6 +88,7 @@ bool A64CodeCache::Initialize() {
         xe::memory::MapFileView(mapping_, nullptr, kGeneratedCodeSize,
                                 xe::memory::PageAccess::kReadWrite, 0));
   }
+#endif
   if (!generated_code_execute_base_ || !generated_code_write_base_) {
     XELOGE("A64CodeCache: unable to map code cache views (dynamic)");
     return false;
@@ -196,6 +209,18 @@ void A64CodeCache::FlushCodeRange(void* address, size_t size) {
   __builtin___clear_cache(
       reinterpret_cast<char*>(address),
       reinterpret_cast<char*>(static_cast<uint8_t*>(address) + size));
+#endif
+}
+
+void A64CodeCache::BeginCodeWrite() {
+#if XE_PLATFORM_MAC
+  pthread_jit_write_protect_np(0);
+#endif
+}
+
+void A64CodeCache::EndCodeWrite() {
+#if XE_PLATFORM_MAC
+  pthread_jit_write_protect_np(1);
 #endif
 }
 

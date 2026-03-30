@@ -185,13 +185,15 @@ class CodeCacheBase : public CodeCache {
       // Commit memory if needed.
       EnsureCommitted(high_mark);
 
-      // Copy code.
+      // Copy code (derived class may need to toggle W^X).
+      self().BeginCodeWrite();
       std::memcpy(code_write_address, machine_code, func_info.code_size.total);
 
       // Fill unused tail/unwind gap with arch-specific trap instructions.
       self().FillCode(
           tail_write_address,
           static_cast<size_t>(end_write_address - tail_write_address));
+      self().EndCodeWrite();
 
       // Flush I-cache for code and fill regions.
       self().FlushCodeRange(code_write_address, func_info.code_size.total);
@@ -225,7 +227,9 @@ class CodeCacheBase : public CodeCache {
       high_mark = generated_code_offset_;
     }
     EnsureCommitted(high_mark);
+    self().BeginCodeWrite();
     std::memcpy(data_address, data, length);
+    self().EndCodeWrite();
     return uint32_t(uintptr_t(data_address));
   }
 

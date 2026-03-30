@@ -62,6 +62,8 @@ class A64CodeCache : public CodeCacheBase<A64CodeCache> {
   // CRTP hooks for CodeCacheBase.
   void FillCode(void* write_address, size_t size);
   void FlushCodeRange(void* address, size_t size);
+  void BeginCodeWrite();
+  void EndCodeWrite();
 
   // Virtual for platform-specific overrides (_win.cc / _posix.cc).
   virtual UnwindReservation RequestUnwindReservation(uint8_t* entry_address) {

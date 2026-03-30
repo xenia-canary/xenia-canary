@@ -32,6 +32,8 @@ class X64CodeCache : public CodeCacheBase<X64CodeCache> {
   // CRTP hooks for CodeCacheBase.
   void FillCode(void* write_address, size_t size);
   void FlushCodeRange(void* address, size_t size);
+  void BeginCodeWrite() {}
+  void EndCodeWrite() {}
   void OnCodePlaced(uint32_t guest_address, GuestFunction* function_info,
                     void* code_execute_address, size_t code_size);
 
