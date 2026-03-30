@@ -185,14 +185,21 @@ class CodeCacheBase : public CodeCache {
       // Commit memory if needed.
       EnsureCommitted(high_mark);
 
-      // Copy code (derived class may need to toggle W^X).
+      // Toggle W^X for all writes to the code cache (code, fill, unwind).
       self().BeginCodeWrite();
+
+      // Copy code.
       std::memcpy(code_write_address, machine_code, func_info.code_size.total);
 
       // Fill unused tail/unwind gap with arch-specific trap instructions.
       self().FillCode(
           tail_write_address,
           static_cast<size_t>(end_write_address - tail_write_address));
+
+      // Platform-specific unwind registration (writes into code cache).
+      self().PlaceCode(guest_address, machine_code, func_info,
+                       code_execute_address, unwind_reservation);
+
       self().EndCodeWrite();
 
       // Flush I-cache for code and fill regions.
@@ -202,10 +209,6 @@ class CodeCacheBase : public CodeCache {
             tail_write_address,
             static_cast<size_t>(end_write_address - tail_write_address));
       }
-
-      // Platform-specific unwind registration.
-      self().PlaceCode(guest_address, machine_code, func_info,
-                       code_execute_address, unwind_reservation);
     }
 
     // Post-placement hook (e.g. VTune notification).
