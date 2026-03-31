@@ -485,20 +485,21 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
   if (base_address != nullptr) {
 #ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#else
+    flags |= MAP_FIXED;
 #endif
   }
 
   void* result = mmap(base_address, length, prot, flags, handle, file_offset);
 
-  if (result != MAP_FAILED) {
-    std::lock_guard guard(g_mapped_file_ranges_mutex);
-    mapped_file_ranges.push_back(
-        {reinterpret_cast<uintptr_t>(result),
-         reinterpret_cast<uintptr_t>(result) + length});
-    return result;
+  if (result == MAP_FAILED) {
+    return nullptr;
   }
 
-  return nullptr;
+  std::lock_guard guard(g_mapped_file_ranges_mutex);
+  mapped_file_ranges.push_back({reinterpret_cast<uintptr_t>(result),
+                                reinterpret_cast<uintptr_t>(result) + length});
+  return result;
 }
 
 bool UnmapFileView(FileMappingHandle handle, void* base_address,

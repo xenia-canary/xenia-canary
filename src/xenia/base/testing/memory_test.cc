@@ -521,10 +521,14 @@ TEST_CASE("map_view", "[virtual_memory_mapping]") {
       path, length, xe::memory::PageAccess::kReadWrite, true);
   REQUIRE(memory != xe::memory::kFileMappingHandleInvalid);
 
-  uintptr_t address = 0x100000000;
-  auto view =
-      xe::memory::MapFileView(memory, reinterpret_cast<void*>(address), length,
-                              xe::memory::PageAccess::kReadWrite, 0);
+  auto reserved = xe::memory::AllocFixed(nullptr, length,
+                                         xe::memory::AllocationType::kReserve,
+                                         xe::memory::PageAccess::kNoAccess);
+  REQUIRE(reserved != nullptr);
+  auto address = reinterpret_cast<uintptr_t>(reserved);
+
+  auto view = xe::memory::MapFileView(memory, reserved, length,
+                                      xe::memory::PageAccess::kReadWrite, 0);
   REQUIRE(reinterpret_cast<uintptr_t>(view) == address);
 
   xe::memory::UnmapFileView(memory, reinterpret_cast<void*>(address), length);
@@ -538,10 +542,14 @@ TEST_CASE("read_write_view", "[virtual_memory_mapping]") {
       path, length, xe::memory::PageAccess::kReadWrite, true);
   REQUIRE(memory != xe::memory::kFileMappingHandleInvalid);
 
-  uintptr_t address = 0x100000000;
-  auto view =
-      xe::memory::MapFileView(memory, reinterpret_cast<void*>(address), length,
-                              xe::memory::PageAccess::kReadWrite, 0);
+  auto reserved = xe::memory::AllocFixed(nullptr, length,
+                                         xe::memory::AllocationType::kReserve,
+                                         xe::memory::PageAccess::kNoAccess);
+  REQUIRE(reserved != nullptr);
+  auto address = reinterpret_cast<uintptr_t>(reserved);
+
+  auto view = xe::memory::MapFileView(memory, reserved, length,
+                                      xe::memory::PageAccess::kReadWrite, 0);
   REQUIRE(reinterpret_cast<uintptr_t>(view) == address);
 
   for (uint32_t i = 0; i < length; i += sizeof(uint8_t)) {
