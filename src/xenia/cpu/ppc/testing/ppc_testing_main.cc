@@ -35,7 +35,7 @@
 
 #if XE_COMPILER_MSVC
 #include "xenia/base/platform_win.h"
-#else
+#elif !XE_PLATFORM_MAC
 #include <sys/wait.h>
 #include <unistd.h>
 #endif  // XE_COMPILER_MSVC
@@ -488,7 +488,7 @@ int filter(unsigned int code) {
 }
 #endif  // XE_COMPILER_MSVC
 
-#if !XE_COMPILER_MSVC
+#if !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 // Run test in isolated child process to catch crashes
 enum class TestResult {
   kPassed,
@@ -587,7 +587,7 @@ TestResult RunTestInChildProcess(TestSuite& test_suite, TestCase& test_case) {
   fflush(stderr);
   return TestResult::kFailed;
 }
-#endif  // !XE_COMPILER_MSVC
+#endif  // !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 
 void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
                       TestCase& test_case, int& failed_count,
@@ -610,6 +610,22 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
   } catch (const std::exception& e) {
     fprintf(stderr, "  [%s] CRASHED (C++ exception: %s)\n",
             test_case.name.c_str(), e.what());
+    fflush(stderr);
+    ++failed_count;
+  }
+#elif XE_PLATFORM_MAC
+  // On macOS, run directly — fork is expensive and unnecessary with
+  // the serial execution path.
+  if (!runner.Setup(test_suite)) {
+    fprintf(stderr, "  [%s] FAILED SETUP\n", test_case.name.c_str());
+    fflush(stderr);
+    ++failed_count;
+    return;
+  }
+  if (runner.Run(test_case)) {
+    ++passed_count;
+  } else {
+    fprintf(stderr, "  [%s] FAILED\n", test_case.name.c_str());
     fflush(stderr);
     ++failed_count;
   }
@@ -705,8 +721,8 @@ bool RunTests(const std::vector<std::string>& test_names) {
 
   auto start_time = std::chrono::steady_clock::now();
 
-#if XE_COMPILER_MSVC
-  // On Windows, run tests serially grouped by suite
+#if XE_COMPILER_MSVC || XE_PLATFORM_MAC
+  // On Windows/macOS, run tests serially grouped by suite
   TestRunner runner;
   int suite_index = 0;
   int suite_total = 0;
