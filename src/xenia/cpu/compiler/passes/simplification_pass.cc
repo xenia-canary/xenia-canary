@@ -568,6 +568,10 @@ bool SimplificationPass::TryHandleANDROLORSHLSeq(hir::Instr* i,
 bool SimplificationPass::CheckAnd(hir::Instr* i, hir::HIRBuilder* builder) {
 retry_and_simplification:
 
+  if (SimplifyAndNot(i, builder)) {
+    return true;
+  }
+
   auto [constant_value, variable_value] = i->BinaryValueArrangeAsConstAndVar();
   if (!constant_value) {
     // added this for srawi
@@ -1244,6 +1248,38 @@ bool SimplificationPass::SimplifyAddArith(hir::Instr* i,
   if (SimplifyAddToSelf(i, builder)) {
     return true;
   }
+  return false;
+}
+
+bool SimplificationPass::SimplifyAndNot(hir::Instr* i,
+                                        hir::HIRBuilder* builder) {
+  // check if either of the 2 AND operands has just used NOT and fold into
+  // an AND_NOT opcode
+  Value* src1 = i->src1.value;
+  Value* src2 = i->src2.value;
+
+  Instr* def1 = src1->def;
+  Instr* def2 = src2->def;
+  if (!def1 || !def2) return false;
+
+  // Bypass the NOT from an incoming operand and combine it into AND_NOT.
+  // If the original NOT does not have any further uses, then the
+  // dead-code-elimination pass will delete it. Otherwise, if it still has uses,
+  // then there will still be a NOT operation.
+  if (def2->opcode == &OPCODE_NOT_info) {
+    // Fold src2's NOT into AND_NOT
+    i->Replace(&OPCODE_AND_NOT_info, 0);
+    i->set_src1(src1);
+    i->set_src2(def2->src1.value);
+    return true;
+  } else if (def1->opcode == &OPCODE_NOT_info) {
+    // Swap operands and fold src1's NOT into AND_NOT
+    i->Replace(&OPCODE_AND_NOT_info, 0);
+    i->set_src1(src2);
+    i->set_src2(def1->src1.value);
+    return true;
+  }
+
   return false;
 }
 
