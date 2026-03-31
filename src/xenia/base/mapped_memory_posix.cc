@@ -63,6 +63,17 @@ class PosixMappedMemory : public MappedMemory {
       return nullptr;
     }
 
+    // POSIX mmap does not auto-extend the file like Windows
+    // CreateFileMapping. Extend if needed so accesses beyond the current
+    // file size don't cause SIGBUS / KERN_MEMORY_ERROR.
+    if (mode == Mode::kReadWrite &&
+        static_cast<uint64_t>(offset + map_length) > file_size) {
+      if (ftruncate(file_descriptor, offset + map_length) < 0) {
+        close(file_descriptor);
+        return nullptr;
+      }
+    }
+
     void* data =
         mmap(0, map_length, protection, MAP_SHARED, file_descriptor, offset);
     if (data == MAP_FAILED) {
