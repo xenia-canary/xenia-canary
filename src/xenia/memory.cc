@@ -1679,7 +1679,10 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment,
 
   // Allocate from parent heap (gets our physical address in 0-512mb).
   uint32_t parent_heap_start = GetPhysicalAddress(heap_base_);
-  uint32_t parent_heap_end = GetPhysicalAddress(heap_base_ + (heap_size_ - 1));
+  // Reduce parent range by host_address_offset_ so that the parent's
+  // alignment rounding can't place allocations past the child heap boundary.
+  uint32_t parent_heap_end =
+      GetPhysicalAddress(heap_base_ + (heap_size_ - 1)) - host_address_offset_;
   uint32_t parent_address;
   if (!parent_heap_->AllocRange(parent_heap_start, parent_heap_end, size,
                                 alignment, allocation_type, protect, top_down,
@@ -1771,7 +1774,10 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   low_address = std::max(heap_base_, low_address);
   high_address = std::min(heap_base_ + (heap_size_ - 1), high_address);
   uint32_t parent_low_address = GetPhysicalAddress(low_address);
-  uint32_t parent_high_address = GetPhysicalAddress(high_address);
+  // Reduce parent range by host_address_offset_ so that the parent's
+  // alignment rounding can't place allocations past the child heap boundary.
+  uint32_t parent_high_address =
+      GetPhysicalAddress(high_address) - host_address_offset_;
   uint32_t parent_address;
   if (!parent_heap_->AllocRange(parent_low_address, parent_high_address, size,
                                 alignment, allocation_type, protect, top_down,
