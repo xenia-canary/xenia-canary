@@ -491,8 +491,100 @@ TEST_CASE("ATOMIC_COMPARE_EXCHANGE_I32", "[atomic]") {
 // ============================================================================
 // AND_NOT — bitwise AND with complement of second operand
 // ============================================================================
+TEST_CASE("AND_NOT_I8", "[bitwise]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreGPR(b, 2,
+             b.ZeroExtend(b.And(b.Truncate(LoadGPR(b, 4), INT8_TYPE),
+                                b.Not(b.Truncate(LoadGPR(b, 5), INT8_TYPE))),
+                          INT64_TYPE));
+    StoreGPR(b, 3,
+             b.ZeroExtend(b.AndNot(b.Truncate(LoadGPR(b, 4), INT8_TYPE),
+                                   b.Truncate(LoadGPR(b, 5), INT8_TYPE)),
+                          INT64_TYPE));
+    b.Return();
+  });
+  // result = src1 & ~src2
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xFF;
+        ctx->r[5] = 0x0F;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0xF0);
+      });
+  // All bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xAA;
+        ctx->r[5] = 0xFF;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x00);
+      });
+  // No bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0x12;
+        ctx->r[5] = 0x00;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x12);
+      });
+}
+
+TEST_CASE("AND_NOT_I16", "[bitwise]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreGPR(b, 2,
+             b.ZeroExtend(b.And(b.Truncate(LoadGPR(b, 4), INT16_TYPE),
+                                b.Not(b.Truncate(LoadGPR(b, 5), INT16_TYPE))),
+                          INT64_TYPE));
+    StoreGPR(b, 3,
+             b.ZeroExtend(b.AndNot(b.Truncate(LoadGPR(b, 4), INT16_TYPE),
+                                   b.Truncate(LoadGPR(b, 5), INT16_TYPE)),
+                          INT64_TYPE));
+    b.Return();
+  });
+  // result = src1 & ~src2
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xFF00;
+        ctx->r[5] = 0x0F0F;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0xF000);
+      });
+  // All bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xAAAA;
+        ctx->r[5] = 0xFFFF;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x0000);
+      });
+  // No bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0x1234;
+        ctx->r[5] = 0x0000;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x1234);
+      });
+}
+
 TEST_CASE("AND_NOT_I32", "[bitwise]") {
   TestFunction test([](HIRBuilder& b) {
+    StoreGPR(b, 2,
+             b.ZeroExtend(b.And(b.Truncate(LoadGPR(b, 4), INT32_TYPE),
+                                b.Not(b.Truncate(LoadGPR(b, 5), INT32_TYPE))),
+                          INT64_TYPE));
     StoreGPR(b, 3,
              b.ZeroExtend(b.AndNot(b.Truncate(LoadGPR(b, 4), INT32_TYPE),
                                    b.Truncate(LoadGPR(b, 5), INT32_TYPE)),
@@ -506,6 +598,7 @@ TEST_CASE("AND_NOT_I32", "[bitwise]") {
         ctx->r[5] = 0x0F0F0F0F;
       },
       [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
         REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0xF000F000);
       });
   // All bits masked out.
@@ -515,6 +608,7 @@ TEST_CASE("AND_NOT_I32", "[bitwise]") {
         ctx->r[5] = 0xFFFFFFFF;
       },
       [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
         REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x00000000);
       });
   // No bits masked out.
@@ -524,7 +618,84 @@ TEST_CASE("AND_NOT_I32", "[bitwise]") {
         ctx->r[5] = 0x00000000;
       },
       [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
         REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0x12345678);
+      });
+}
+
+TEST_CASE("AND_NOT_I64", "[bitwise]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreGPR(b, 2, b.And(LoadGPR(b, 4), b.Not(LoadGPR(b, 5))));
+    StoreGPR(b, 3, b.AndNot(LoadGPR(b, 4), LoadGPR(b, 5)));
+    b.Return();
+  });
+  // result = src1 & ~src2
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xFF00FF00FF00FF00;
+        ctx->r[5] = 0x0F0F0F0F0F0F0F0F;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(ctx->r[3] == 0xF000F000F000F000);
+      });
+  // All bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0xAAAAAAAAAAAAAAAA;
+        ctx->r[5] = 0xFFFFFFFFFFFFFFFF;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(ctx->r[3] == 0x0000000000000000);
+      });
+  // No bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[4] = 0x1234567812345678;
+        ctx->r[5] = 0x0000000000000000;
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->r[2] == ctx->r[3]);
+        REQUIRE(ctx->r[3] == 0x1234567812345678);
+      });
+}
+
+TEST_CASE("AND_NOT_V128", "[bitwise]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreVR(b, 2, b.And(LoadVR(b, 4), b.Not(LoadVR(b, 5))));
+    StoreVR(b, 3, b.AndNot(LoadVR(b, 4), LoadVR(b, 5)));
+    b.Return();
+  });
+  // result = src1 & ~src2
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] = vec128s(0xFF00);
+        ctx->v[5] = vec128s(0x0F0F);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[2] == ctx->v[3]);
+        REQUIRE(ctx->v[3] == vec128s(0xF000));
+      });
+  // All bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] = vec128b(0xAA);
+        ctx->v[5] = vec128b(0xFF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[2] == ctx->v[3]);
+        REQUIRE(ctx->v[3] == vec128b(0x00));
+      });
+  // No bits masked out.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] = vec128i(0x12345678);
+        ctx->v[5] = vec128i(0x00000000);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[2] == ctx->v[3]);
+        REQUIRE(ctx->v[3] == vec128i(0x12345678));
       });
 }
 

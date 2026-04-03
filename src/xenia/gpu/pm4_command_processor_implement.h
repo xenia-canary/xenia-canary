@@ -29,7 +29,7 @@ void COMMAND_PROCESSOR::ExecuteIndirectBuffer(uint32_t ptr,
         // Return up a level if we encounter a bad packet.
         XELOGE("**** INDIRECT RINGBUFFER: Failed to execute packet.");
         assert_always();
-        // break;
+        break;
       }
     } while (reader_.read_count());
 

@@ -242,6 +242,49 @@ TEST_CASE("STORE_F64_CONSTANT_BYTE_SWAP", "[instr]") {
 }
 
 // =============================================================================
+// MEMSET — constant size
+// =============================================================================
+TEST_CASE("MEMSET_32_ZERO", "[instr]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    b.Memset(addr, b.LoadZeroInt8(), b.LoadConstantInt64(32));
+    b.Return();
+  });
+  test.Run(
+      [&test](PPCContext* ctx) {
+        uint32_t addr = test.memory->SystemHeapAlloc(32, 32);
+        ctx->r[4] = addr;
+      },
+      [&test](PPCContext* ctx) {
+        auto* host =
+            test.memory->TranslateVirtual(static_cast<uint32_t>(ctx->r[4]));
+        const uint8_t result[32] = {};
+        REQUIRE(std::memcmp(result, host, 32) == 0);
+        test.memory->SystemHeapFree(static_cast<uint32_t>(ctx->r[4]));
+      });
+}
+
+TEST_CASE("MEMSET_128_ZERO", "[instr]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    b.Memset(addr, b.LoadZeroInt8(), b.LoadConstantInt64(128));
+    b.Return();
+  });
+  test.Run(
+      [&test](PPCContext* ctx) {
+        uint32_t addr = test.memory->SystemHeapAlloc(128, 128);
+        ctx->r[4] = addr;
+      },
+      [&test](PPCContext* ctx) {
+        auto* host =
+            test.memory->TranslateVirtual(static_cast<uint32_t>(ctx->r[4]));
+        const uint8_t result[128] = {};
+        REQUIRE(std::memcmp(result, host, 128) == 0);
+        test.memory->SystemHeapFree(static_cast<uint32_t>(ctx->r[4]));
+      });
+}
+
+// =============================================================================
 // LOAD_F32 / LOAD_F64 byte-swap (entirely unimplemented on x64)
 // =============================================================================
 TEST_CASE("LOAD_F32_BYTE_SWAP", "[instr]") {

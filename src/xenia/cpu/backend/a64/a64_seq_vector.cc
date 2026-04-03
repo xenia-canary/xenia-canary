@@ -415,7 +415,9 @@ struct VECTOR_MAX
         e.fmax(VReg(2).s4, VReg(s1).s4, VReg(s2).s4);
       }
       FixupVmxMaxMinNan(e);
-      FlushDenormals_V128(e, 2, 0, 1);
+      if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
+        FlushDenormals_V128(e, 2, 0, 1);
+      }
       e.mov(VReg(i.dest.reg().getIdx()).b16, VReg(2).b16);
     });
   }
@@ -1013,20 +1015,35 @@ struct SWIZZLE
       uint8_t swizzle_mask = static_cast<uint8_t>(i.src2.value);
       int s = SrcVReg(e, i.src1, 0);
       int d = i.dest.reg().getIdx();
-      // Build TBL control for dword swizzle.
-      // swizzle_mask bits [1:0]=X(PPC word 0), [3:2]=Y, [5:4]=Z, [7:6]=W.
-      // PPC word i = NEON element s[i] (direct mapping).
-      uint8_t ctrl[16];
-      for (int idx = 0; idx < 4; idx++) {
-        uint8_t src_dw = (swizzle_mask >> (idx * 2)) & 0x3;
-        for (int b = 0; b < 4; b++) {
-          ctrl[idx * 4 + b] = src_dw * 4 + b;
+      // swizzle_mask bits [1:0]=word0 src, [3:2]=word1, [5:4]=word2,
+      // [7:6]=word3. Fast paths for common patterns.
+      uint8_t w0 = (swizzle_mask >> 0) & 0x3;
+      uint8_t w1 = (swizzle_mask >> 2) & 0x3;
+      uint8_t w2 = (swizzle_mask >> 4) & 0x3;
+      uint8_t w3 = (swizzle_mask >> 6) & 0x3;
+      if (w0 == 0 && w1 == 1 && w2 == 2 && w3 == 3) {
+        // Identity.
+        if (d != s) e.mov(VReg(d).b16, VReg(s).b16);
+      } else if (w0 == w1 && w1 == w2 && w2 == w3) {
+        // Broadcast single lane.
+        e.dup(VReg(d).s4, VReg(s).s4[w0]);
+      } else if (w0 == 1 && w1 == 0 && w2 == 3 && w3 == 2) {
+        // Swap pairs within 64-bit halves.
+        e.rev64(VReg(d).s4, VReg(s).s4);
+      } else {
+        // General case: TBL.
+        uint8_t ctrl[16];
+        for (int idx = 0; idx < 4; idx++) {
+          uint8_t src_dw = (swizzle_mask >> (idx * 2)) & 0x3;
+          for (int b = 0; b < 4; b++) {
+            ctrl[idx * 4 + b] = src_dw * 4 + b;
+          }
         }
+        vec128_t ctrl_vec;
+        std::memcpy(&ctrl_vec, ctrl, 16);
+        LoadV128Const(e, 2, ctrl_vec);
+        e.tbl(VReg(d).b16, VReg(s).b16, 1, VReg(2).b16);
       }
-      vec128_t ctrl_vec;
-      std::memcpy(&ctrl_vec, ctrl, 16);
-      LoadV128Const(e, 2, ctrl_vec);
-      e.tbl(VReg(d).b16, VReg(s).b16, 1, VReg(2).b16);
     } else {
       e.DebugBreak();
     }
@@ -1046,9 +1063,8 @@ struct LOAD_VECTOR_SHL_I8
     //   {3,2,1,0, 7,6,5,4, 11,10,9,8, 15,14,13,12}
     e.mov(e.x0, static_cast<uint64_t>(0x0405060700010203ull));
     e.mov(e.x1, static_cast<uint64_t>(0x0C0D0E0F08090A0Bull));
-    e.stp(e.x0, e.x1,
-          ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-    e.ldr(QReg(d), ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+    e.fmov(Xbyak_aarch64::DReg(d), e.x0);
+    e.ins(VReg(d).d2[1], e.x1);
     // Add shift amount (splatted).
     if (i.src1.is_constant) {
       if (i.src1.constant() != 0) {
@@ -1075,9 +1091,8 @@ struct LOAD_VECTOR_SHR_I8
     //   {19,18,17,16, 23,22,21,20, 27,26,25,24, 31,30,29,28}
     e.mov(e.x0, static_cast<uint64_t>(0x1415161710111213ull));
     e.mov(e.x1, static_cast<uint64_t>(0x1C1D1E1F18191A1Bull));
-    e.stp(e.x0, e.x1,
-          ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
-    e.ldr(QReg(d), ptr(e.sp, static_cast<int32_t>(StackLayout::GUEST_SCRATCH)));
+    e.fmov(Xbyak_aarch64::DReg(d), e.x0);
+    e.ins(VReg(d).d2[1], e.x1);
     // Subtract shift amount (splatted).
     if (i.src1.is_constant) {
       if (i.src1.constant() != 0) {

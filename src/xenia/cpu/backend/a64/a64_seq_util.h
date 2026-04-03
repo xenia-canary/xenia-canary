@@ -19,6 +19,17 @@
 
 #include "xbyak_aarch64.h"
 
+#if XE_COMPILER_MSVC
+#include <intrin.h>
+constexpr uint32_t DCZID_EL0 = ARM64_SYSREG(0b11, 0b011, 0b0000, 0b0000, 0b111);
+#define xe_cpu_mrs(reg) _ReadStatusReg(reg)
+#elif XE_COMPILER_CLANG || XE_COMPILER_GNUC
+#include <arm_acle.h>
+#define xe_cpu_mrs(reg) __arm_rsr64(#reg)
+#else
+#error "No MRS wrapper available for current compiler implemented."
+#endif
+
 namespace xe {
 namespace cpu {
 namespace backend {
@@ -31,16 +42,13 @@ using Xbyak_aarch64::XReg;
 
 template <typename Fn>
 inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
-  // VMX vector FP uses its own cached FPCR state in the backend context. Save
-  // and restore around each VMX op so vector code doesn't leak FPCR changes
-  // into later scalar instructions.
-  e.mrs(e.x13, 3, 3, 4, 4, 0);
-  e.ldr(e.w15, Xbyak_aarch64::ptr(e.GetBackendCtxReg(),
-                                  static_cast<uint32_t>(
-                                      offsetof(A64BackendContext, fpcr_vmx))));
-  e.msr(3, 3, 4, 4, 0, e.x15);
+  // Enter VMX FPCR mode using tracked lazy switching.  If the emitter
+  // is already in VMX mode (e.g. consecutive VMX ops in the same basic
+  // block) this is a no-op — no system register access at all.
+  // FPU mode is restored at block boundaries and calls via ForgetFpcrMode,
+  // or on demand by scalar FP sequences via ChangeFpcrMode(Fpu).
+  e.ChangeFpcrMode(FPCRMode::Vmx);
   emit_op();
-  e.msr(3, 3, 4, 4, 0, e.x13);
 }
 
 // Try to see if the provided 64-bit value can be compressed into an 8-bit
@@ -355,8 +363,11 @@ inline void PrepareVmxFpSources(A64Emitter& e, const T1& op1, const T2& op2,
   // Copy to scratch v0/v1 so we don't modify live allocated registers.
   if (s1 != 0) e.mov(VReg(0).b16, VReg(s1).b16);
   if (s2 != 1) e.mov(VReg(1).b16, VReg(s2).b16);
-  FlushDenormals_V128(e, 0);
-  FlushDenormals_V128(e, 1);
+  // Flush denormal inputs in software only if FPCR.FZ doesn't handle it.
+  if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
+    FlushDenormals_V128(e, 0);
+    FlushDenormals_V128(e, 1);
+  }
   out_s1 = 0;
   out_s2 = 1;
 }
@@ -539,8 +550,12 @@ inline void EmitVmxFpBinOp_V128(A64Emitter& e, int dest_idx, const T1& src1,
     // PPC NaN propagation fixup (fast-path skip when no NaN).
     FixupVmxNan_V128(e);
 
-    // Flush output denormals.
-    FlushDenormals_V128(e, 2, 0, 1);
+    // Flush output denormals. FPCR.FZ guarantees output flushing per the
+    // ARM spec, so skip when FZ is known to also handle inputs (implying
+    // the core fully supports FZ denormal handling).
+    if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
+      FlushDenormals_V128(e, 2, 0, 1);
+    }
 
     // Move to dest.
     e.mov(VReg(dest_idx).b16, VReg(2).b16);

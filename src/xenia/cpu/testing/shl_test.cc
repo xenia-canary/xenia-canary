@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/testing/util.h"
 
+using namespace xe;
 using namespace xe::cpu::hir;
 using namespace xe::cpu;
 using namespace xe::cpu::testing;
@@ -230,5 +231,52 @@ TEST_CASE("SHL_I64", "[instr]") {
       [](PPCContext* ctx) {
         auto result = static_cast<uint64_t>(ctx->r[3]);
         REQUIRE(result == 0x8000000000000000ull);
+      });
+}
+
+TEST_CASE("SHL_V128", "[instr]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreVR(b, 3, b.Shl(LoadVR(b, 4), b.Truncate(LoadGPR(b, 1), INT8_TYPE)));
+    b.Return();
+  });
+  // Shift by 0 — identity.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[1] = 0;
+        ctx->v[4] = vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] ==
+                vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF));
+      });
+  // Shift by 1 — MSB of each word carries into LSB of the previous word.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[1] = 1;
+        ctx->v[4] = vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] ==
+                vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE));
+      });
+  // Shift by 4 — verify carry propagation across word boundaries.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[1] = 4;
+        ctx->v[4] = vec128i(0x01234567, 0x89ABCDEF, 0x01234567, 0x89ABCDEF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] ==
+                vec128i(0x12345678, 0x9ABCDEF0, 0x12345678, 0x9ABCDEF0));
+      });
+  // Shift by 8 — masked to 0, identity.
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->r[1] = 8;
+        ctx->v[4] = vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] ==
+                vec128i(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF));
       });
 }

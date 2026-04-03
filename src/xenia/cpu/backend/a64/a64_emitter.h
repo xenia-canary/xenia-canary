@@ -138,7 +138,12 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   static void HandleStackpointOverflowError(ppc::PPCContext* context);
 
-  void ForgetFpcrMode() { fpcr_mode_ = FPCRMode::Unknown; }
+  void ForgetFpcrMode() {
+    if (fpcr_mode_ == FPCRMode::Vmx) {
+      ChangeFpcrMode(FPCRMode::Fpu);
+    }
+    fpcr_mode_ = FPCRMode::Unknown;
+  }
   bool ChangeFpcrMode(FPCRMode new_mode, bool already_set = false);
   bool IsFeatureEnabled(uint64_t feature_flag) const {
     return (feature_flags_ & feature_flag) == feature_flag;

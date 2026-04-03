@@ -22,7 +22,7 @@ using namespace xe::literals;
 
 class Arena {
  public:
-  explicit Arena(size_t chunk_size = 4_MiB);
+  explicit Arena(size_t chunk_size = 8_MiB);
   ~Arena();
 
   void Reset();

@@ -498,18 +498,15 @@ bool A64Emitter::ChangeFpcrMode(FPCRMode new_mode, bool already_set) {
   }
   fpcr_mode_ = new_mode;
   if (!already_set) {
-    // Read current FPCR.
-    mrs(x0, 3, 3, 4, 4, 0);  // mrs x0, FPCR
+    // Load the pre-computed FPCR value from the backend context.
+    // This avoids an expensive MRS + read-modify-write cycle.
+    auto bctx = GetBackendCtxReg();
     if (new_mode == FPCRMode::Vmx) {
-      // VMX mode: set FZ (bit 24) for flush-to-zero.
-      // Do NOT set DN (bit 25) — PPC preserves NaN payloads.
-      mov(x17, ~static_cast<uint64_t>(1u << 25));
-      and_(x0, x0, x17);
-      orr(x0, x0, static_cast<uint64_t>(1u << 24));
+      ldr(w0, Xbyak_aarch64::ptr(bctx, static_cast<uint32_t>(offsetof(
+                                           A64BackendContext, fpcr_vmx))));
     } else {
-      // FPU mode: clear FZ and DN for IEEE-compliant behavior.
-      mov(x17, ~static_cast<uint64_t>(3u << 24));
-      and_(x0, x0, x17);
+      ldr(w0, Xbyak_aarch64::ptr(bctx, static_cast<uint32_t>(offsetof(
+                                           A64BackendContext, fpcr_fpu))));
     }
     msr(3, 3, 4, 4, 0, x0);  // msr FPCR, x0
   }

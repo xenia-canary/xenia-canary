@@ -13,9 +13,12 @@
 
 #include "xenia/cpu/testing/util.h"
 
+#include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <thread>
 
 using namespace xe;
 using namespace xe::cpu;
@@ -288,6 +291,90 @@ TEST_CASE("RSQRT_F32", "[arithmetic]") {
 }
 
 // ============================================================================
+// RSQRT F64 — PPC frsqrte (lookup table estimate)
+// ============================================================================
+TEST_CASE("RSQRT_F64", "[arithmetic]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto rsqrt = b.RSqrt(LoadFPR(b, 4));
+    StoreFPR(b, 3, rsqrt);
+    b.Return();
+  });
+  // rsqrt(1.0) — table gives an estimate near 1.0
+  test.Run([](PPCContext* ctx) { ctx->f[4] = 1.0; },
+           [](PPCContext* ctx) {
+             // PPC frsqrte returns a table-based estimate, not exact 1.0.
+             // Verify it's in the right ballpark (within ~3% of 1.0).
+             REQUIRE(ctx->f[3] > 0.96);
+             REQUIRE(ctx->f[3] < 1.04);
+           });
+  // rsqrt(4.0) — estimate near 0.5
+  test.Run([](PPCContext* ctx) { ctx->f[4] = 4.0; },
+           [](PPCContext* ctx) {
+             REQUIRE(ctx->f[3] > 0.48);
+             REQUIRE(ctx->f[3] < 0.52);
+           });
+  // rsqrt(+0.0) → +Inf
+  test.Run([](PPCContext* ctx) { ctx->f[4] = 0.0; },
+           [](PPCContext* ctx) {
+             REQUIRE(std::isinf(ctx->f[3]));
+             REQUIRE(ctx->f[3] > 0);
+           });
+  // rsqrt(negative) → QNaN
+  test.Run([](PPCContext* ctx) { ctx->f[4] = -1.0; },
+           [](PPCContext* ctx) { REQUIRE(std::isnan(ctx->f[3])); });
+}
+
+// ============================================================================
+// RSQRT V128 — PPC vrsqrtefp (per-lane lookup table estimate)
+// ============================================================================
+TEST_CASE("RSQRT_V128", "[vector]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreVR(b, 3, b.RSqrt(LoadVR(b, 4)));
+    b.Return();
+  });
+  // Normal positive values: estimates should be in the right ballpark.
+  test.Run(
+      [](PPCContext* ctx) { ctx->v[4] = vec128f(1.0f, 4.0f, 16.0f, 100.0f); },
+      [](PPCContext* ctx) {
+        auto r = ctx->v[3];
+        float r0, r1, r2, r3;
+        std::memcpy(&r0, &r.u32[0], 4);
+        std::memcpy(&r1, &r.u32[1], 4);
+        std::memcpy(&r2, &r.u32[2], 4);
+        std::memcpy(&r3, &r.u32[3], 4);
+        // rsqrt(1) ≈ 1.0, rsqrt(4) ≈ 0.5, rsqrt(16) ≈ 0.25, rsqrt(100) ≈ 0.1
+        REQUIRE(r0 > 0.9f);
+        REQUIRE(r0 < 1.1f);
+        REQUIRE(r1 > 0.45f);
+        REQUIRE(r1 < 0.55f);
+        REQUIRE(r2 > 0.22f);
+        REQUIRE(r2 < 0.28f);
+        REQUIRE(r3 > 0.08f);
+        REQUIRE(r3 < 0.12f);
+      });
+  // +0 → +Inf
+  test.Run([](PPCContext* ctx) { ctx->v[4] = vec128f(0.0f, 0.0f, 0.0f, 0.0f); },
+           [](PPCContext* ctx) {
+             auto r = ctx->v[3];
+             float r0;
+             std::memcpy(&r0, &r.u32[0], 4);
+             REQUIRE(std::isinf(r0));
+             REQUIRE(r0 > 0);
+           });
+  // Negative → QNaN
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] = vec128f(-1.0f, -4.0f, -16.0f, -100.0f);
+      },
+      [](PPCContext* ctx) {
+        auto r = ctx->v[3];
+        float r0;
+        std::memcpy(&r0, &r.u32[0], 4);
+        REQUIRE(std::isnan(r0));
+      });
+}
+
+// ============================================================================
 // VECTOR_AVERAGE I8 — rounding halving add: (a+b+1)>>1
 // ============================================================================
 TEST_CASE("VECTOR_AVERAGE_UNSIGNED_I8", "[vector]") {
@@ -352,6 +439,125 @@ TEST_CASE("RESERVED_LOAD_STORE_I32", "[atomic]") {
         REQUIRE(ctx->r[5] == 1);                          // store succeeded
         REQUIRE(*host_ptr == 43);                         // incremented
       });
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_LOAD_STORE_I64", "[atomic]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto loaded = b.LoadWithReserve(addr, INT64_TYPE);
+    StoreGPR(b, 3, loaded);
+    auto new_val = b.Add(loaded, b.LoadConstantInt64(1));
+    auto success = b.StoreWithReserve(addr, new_val, INT64_TYPE);
+    StoreGPR(b, 5, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(8);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint64_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  test.Run(
+      [&](PPCContext* ctx) {
+        *host_ptr = 100;
+        ctx->r[4] = guest_addr;
+      },
+      [&](PPCContext* ctx) {
+        REQUIRE(ctx->r[3] == 100);  // loaded value
+        REQUIRE(ctx->r[5] == 1);    // store succeeded
+        REQUIRE(*host_ptr == 101);  // incremented
+      });
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_STORE_I32_NO_RESERVATION", "[atomic]") {
+  // StoreWithReserve without a preceding LoadWithReserve must fail (return 0).
+  // Run with a timeout: the bug this catches produces an infinite loop.
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto val = b.Truncate(LoadGPR(b, 5), INT32_TYPE);
+    auto success = b.StoreWithReserve(addr, val, INT32_TYPE);
+    StoreGPR(b, 3, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(4);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint32_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  std::atomic<bool> completed{false};
+  std::thread worker([&]() {
+    test.Run(
+        [&](PPCContext* ctx) {
+          *host_ptr = 42;
+          ctx->r[4] = guest_addr;
+          ctx->r[5] = 99;
+        },
+        [&](PPCContext* ctx) {
+          CHECK(ctx->r[3] == 0);   // store must fail
+          CHECK(*host_ptr == 42);  // memory unchanged
+        });
+    completed.store(true);
+  });
+  worker.detach();
+
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!completed.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!completed.load()) {
+    // Detached thread is stuck in JIT'd code — can't unwind safely.
+    FAIL("Timed out: no-reservation path likely has an infinite loop");
+    std::_Exit(1);
+  }
+
+  test.memory->SystemHeapFree(guest_addr);
+}
+
+TEST_CASE("RESERVED_STORE_I64_NO_RESERVATION", "[atomic]") {
+  // Run with a timeout: the bug this catches produces an infinite loop.
+  TestFunction test([](HIRBuilder& b) {
+    auto addr = LoadGPR(b, 4);
+    auto val = LoadGPR(b, 5);
+    auto success = b.StoreWithReserve(addr, val, INT64_TYPE);
+    StoreGPR(b, 3, b.ZeroExtend(success, INT64_TYPE));
+    b.Return();
+  });
+
+  uint32_t guest_addr = test.memory->SystemHeapAlloc(8);
+  REQUIRE(guest_addr != 0);
+  auto* host_ptr =
+      reinterpret_cast<uint64_t*>(test.memory->TranslateVirtual(guest_addr));
+
+  std::atomic<bool> completed{false};
+  std::thread worker([&]() {
+    test.Run(
+        [&](PPCContext* ctx) {
+          *host_ptr = 42;
+          ctx->r[4] = guest_addr;
+          ctx->r[5] = 99;
+        },
+        [&](PPCContext* ctx) {
+          CHECK(ctx->r[3] == 0);   // store must fail
+          CHECK(*host_ptr == 42);  // memory unchanged
+        });
+    completed.store(true);
+  });
+  worker.detach();
+
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!completed.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!completed.load()) {
+    // Detached thread is stuck in JIT'd code — can't unwind safely.
+    FAIL("Timed out: no-reservation path likely has an infinite loop");
+    std::_Exit(1);
+  }
 
   test.memory->SystemHeapFree(guest_addr);
 }
