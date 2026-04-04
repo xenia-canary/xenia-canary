@@ -977,10 +977,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
       register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR]);
   // 0xFFFFFEED is written to this two locations by D3D only on D3DISSUE_END
   // and used to detect a finished query.
-  bool is_end_via_z_pass = pSampleCounts->ZPass_A == kQueryFinished &&
+  bool is_end_via_z_pass = pSampleCounts->ZPass_A == kQueryFinished ||
                            pSampleCounts->ZPass_B == kQueryFinished;
   // Older versions of D3D also checks for ZFail (4D5307D5).
-  bool is_end_via_z_fail = pSampleCounts->ZFail_A == kQueryFinished &&
+  bool is_end_via_z_fail = pSampleCounts->ZFail_A == kQueryFinished ||
                            pSampleCounts->ZFail_B == kQueryFinished;
   std::memset(pSampleCounts, 0, sizeof(xe_gpu_depth_sample_counts));
 
