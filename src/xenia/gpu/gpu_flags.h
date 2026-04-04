@@ -26,6 +26,8 @@ DECLARE_bool(non_seamless_cube_map);
 
 DECLARE_bool(half_pixel_offset);
 
+DECLARE_bool(query_occlusion_batched);
+
 DECLARE_int32(query_occlusion_sample_lower_threshold);
 
 DECLARE_int32(query_occlusion_sample_upper_threshold);
