@@ -1,0 +1,14 @@
+--- a/third_party/capstone/windows/winkernel_mm.h
++++ b/third_party/capstone/windows/winkernel_mm.h
+@@ -8,7 +8,11 @@
+ extern "C" {
+ #endif
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ void CAPSTONE_API cs_winkernel_free(void *ptr);
+ void * CAPSTONE_API cs_winkernel_malloc(size_t size);
