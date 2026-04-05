@@ -1,0 +1,15 @@
+--- a/third_party/zstd/examples/simple_compression.c
++++ b/third_party/zstd/examples/simple_compression.c
+@@ -11,7 +11,11 @@
+ #include <stdio.h>     // printf
+ #include <stdlib.h>    // free
+ #include <string.h>    // strlen, strcat, memset
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include "common.h"    // Helper functions, CHECK(), and CHECK_ZSTD()
+ 
+ static void compress_orDie(const char* fname, const char* oname)
