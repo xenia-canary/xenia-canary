@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/AArch64/AArch64InstPrinter.h
++++ b/third_party/capstone/arch/AArch64/AArch64InstPrinter.h
+@@ -30,7 +30,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "AArch64Mapping.h"
+ 
