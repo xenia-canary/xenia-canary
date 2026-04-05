@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool.c
++++ b/third_party/capstone/cstool/cstool.c
+@@ -6,7 +6,11 @@
+ #include <errno.h>
+ #include "getopt.h"
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ #ifdef CAPSTONE_AARCH64_COMPAT_HEADER
