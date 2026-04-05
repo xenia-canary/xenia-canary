@@ -23,10 +23,12 @@ DEFINE_bool(d3d12_break_on_error, false,
             "Break on Direct3D 12 validation errors.", "D3D12");
 DEFINE_bool(d3d12_break_on_warning, false,
             "Break on Direct3D 12 validation warnings.", "D3D12");
-DEFINE_int32(d3d12_adapter, -1,
-             "Index of the DXGI adapter to use. "
-             "-1 for any physical adapter, -2 for WARP software rendering.",
-             "D3D12");
+DEFINE_int32(
+    d3d12_adapter, -1,
+    "Index of the DXGI adapter to use. "
+    "-1 for any physical adapter, -2 for WARP software rendering (not "
+    "recommended in most cases, as it can lead to terrible performance).",
+    "D3D12");
 DEFINE_int32(
     d3d12_queue_priority, 1,
     "Graphics (direct) command queue scheduling priority, 0 - normal, 1 - "
