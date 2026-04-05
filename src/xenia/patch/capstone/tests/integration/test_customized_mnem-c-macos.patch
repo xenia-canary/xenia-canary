@@ -1,0 +1,18 @@
+--- a/third_party/capstone/tests/integration/test_customized_mnem.c
++++ b/third_party/capstone/tests/integration/test_customized_mnem.c
+@@ -7,8 +7,14 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
+-#include <capstone/platform.h>
++
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#include "capstone/platform.h"
++#else
+ #include <capstone/capstone.h>
++#include <capstone/platform.h>
++#endif
+ 
+ #define X86_CODE32 "\x75\x01"
+ 
