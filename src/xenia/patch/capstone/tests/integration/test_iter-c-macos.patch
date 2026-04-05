@@ -1,0 +1,16 @@
+--- a/third_party/capstone/tests/integration/test_iter.c
++++ b/third_party/capstone/tests/integration/test_iter.c
+@@ -5,8 +5,13 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#include "capstone/capstone.h"
++#else
+ #include <capstone/platform.h>
+ #include <capstone/capstone.h>
++#endif
+ 
+ struct platform {
+ 	cs_arch arch;
