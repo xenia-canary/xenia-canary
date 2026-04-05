@@ -1,0 +1,16 @@
+--- a/third_party/capstone/cstool/cstool_xtensa.c
++++ b/third_party/capstone/cstool/cstool_xtensa.c
+@@ -2,8 +2,13 @@
+ /* By billow <billow.fun@gmail.com>, 2024 */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#include "capstone/xtensa.h"
++#else
+ #include <capstone/capstone.h>
+ #include <capstone/xtensa.h>
++#endif
+ 
+ static const char *xtensa_insn_form_strs[] = {
+ 	[XTENSA_INSN_FORM_INVALID] = "XTENSA_INSN_FORM_INVALID",
