@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/HPPA/HPPAInstPrinter.h
++++ b/third_party/capstone/arch/HPPA/HPPAInstPrinter.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_HPPAINSTPRINTER_H
+ #define CS_HPPAINSTPRINTER_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "../../MCInst.h"
+ #include "../../SStream.h"
