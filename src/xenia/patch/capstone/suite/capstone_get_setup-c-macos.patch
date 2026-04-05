@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/capstone_get_setup.c
++++ b/third_party/capstone/suite/capstone_get_setup.c
+@@ -12,7 +12,11 @@
+ */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ int main()
+ {
