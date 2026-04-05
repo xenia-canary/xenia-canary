@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/BPF/BPFInstPrinter.h
++++ b/third_party/capstone/arch/BPF/BPFInstPrinter.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_BPFINSTPRINTER_H
+ #define CS_BPFINSTPRINTER_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "../../MCInst.h"
+ #include "../../SStream.h"
