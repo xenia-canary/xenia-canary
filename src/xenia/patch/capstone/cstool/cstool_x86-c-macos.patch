@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_x86.c
++++ b/third_party/capstone/cstool/cstool_x86.c
+@@ -3,7 +3,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_string_hex(const char *comment, unsigned char *str, size_t len);
