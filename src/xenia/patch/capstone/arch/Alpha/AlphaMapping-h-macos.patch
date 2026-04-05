@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/Alpha/AlphaMapping.h
++++ b/third_party/capstone/arch/Alpha/AlphaMapping.h
+@@ -7,7 +7,11 @@
+ #include "../../MCDisassembler.h"
+ #include "../../MCInst.h"
+ #include "../../SStream.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ // unsigned int Alpha_map_insn_id(cs_struct *h, unsigned int id);
+ 
