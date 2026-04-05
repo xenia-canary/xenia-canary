@@ -1,0 +1,15 @@
+--- a/third_party/zstd/examples/dictionary_compression.c
++++ b/third_party/zstd/examples/dictionary_compression.c
+@@ -20,7 +20,11 @@
+ #include <stdio.h>     // printf
+ #include <stdlib.h>    // free
+ #include <string.h>    // memset, strcat
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include "common.h"    // Helper functions, CHECK(), and CHECK_ZSTD()
+ 
+ /* createDict() :
