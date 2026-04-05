@@ -1,0 +1,14 @@
+--- a/third_party/zstd/tests/regression/config.h
++++ b/third_party/zstd/tests/regression/config.h
+@@ -14,7 +14,11 @@
+ #include <stddef.h>
+ 
+ #define ZSTD_STATIC_LINKING_ONLY
++#ifdef __APPLE__
++#include "zstd.h"
++#else
+ #include <zstd.h>
++#endif
+ 
+ #include "data.h"
+ 
