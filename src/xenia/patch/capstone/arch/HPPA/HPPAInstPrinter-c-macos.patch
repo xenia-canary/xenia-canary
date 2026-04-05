@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/HPPA/HPPAInstPrinter.c
++++ b/third_party/capstone/arch/HPPA/HPPAInstPrinter.c
+@@ -3,7 +3,11 @@
+ 
+ #ifdef CAPSTONE_HAS_HPPA
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include "../../Mapping.h"
+ #include "../../utils.h"
+ 
