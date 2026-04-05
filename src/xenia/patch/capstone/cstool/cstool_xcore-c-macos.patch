@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_xcore.c
++++ b/third_party/capstone/cstool/cstool_xcore.c
+@@ -2,7 +2,11 @@
+ /* By Nguyen Anh Quynh <aquynh@gmail.com>, 2013-2014 */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_insn_detail_xcore(csh handle, cs_insn *ins)
