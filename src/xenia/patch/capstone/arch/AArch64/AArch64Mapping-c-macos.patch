@@ -1,0 +1,26 @@
+--- a/third_party/capstone/arch/AArch64/AArch64Mapping.c
++++ b/third_party/capstone/arch/AArch64/AArch64Mapping.c
+@@ -323,7 +323,11 @@ static bool AArch64_check_post_index_am(const MCInst *MI, const SStream *OS)
+ 	SStream pattern = { 0 };
+ 	SStream_concat(&pattern, membase);
+ 	SStream_concat(&pattern, "], ");
++#ifdef __APPLE__
++	printInt32Bang(&pattern, (int32_t)memdisp);
++#else
+ 	printInt32Bang(&pattern, memdisp);
++#endif
+ 	return strstr(OS->buffer, pattern.buffer) != NULL;
+ }
+ 
+@@ -1402,7 +1406,11 @@ void AArch64_add_cs_detail_0(MCInst *MI, aarch64_op_group op_group,
+ 	}
+ 	case AArch64_OP_GROUP_AMNoIndex: {
+ 		AArch64_set_detail_op_mem(MI, OpNum,
++#ifdef __APPLE__
++					  (unsigned int)MCInst_getOpVal(MI, OpNum));
++#else
+ 					  MCInst_getOpVal(MI, OpNum));
++#endif
+ 		break;
+ 	}
+ 	case AArch64_OP_GROUP_ArithExtend: {
