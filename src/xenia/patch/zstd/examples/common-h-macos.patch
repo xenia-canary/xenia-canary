@@ -1,0 +1,14 @@
+--- a/third_party/zstd/examples/common.h
++++ b/third_party/zstd/examples/common.h
+@@ -19,7 +19,11 @@
+ #include <string.h>    // strerror
+ #include <errno.h>     // errno
+ #include <sys/stat.h>  // stat
++#ifdef __APPLE__
++#include "zstd.h"
++#else
+ #include <zstd.h>
++#endif
+ 
+ 
+ /* UNUSED_ATTR tells the compiler it is okay if the function is unused. */
