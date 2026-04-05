@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/ARM/ARMBaseInfo.c
++++ b/third_party/capstone/arch/ARM/ARMBaseInfo.c
+@@ -24,7 +24,11 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "ARMBaseInfo.h"
+ #include "../../utils.h"
