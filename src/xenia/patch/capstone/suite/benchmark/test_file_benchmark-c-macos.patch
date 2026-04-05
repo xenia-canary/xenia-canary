@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/benchmark/test_file_benchmark.c
++++ b/third_party/capstone/suite/benchmark/test_file_benchmark.c
+@@ -1,7 +1,11 @@
+ // Modified from https://github.com/athre0z/disas-bench
+ 
+ #include "./load_bin.inc"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ 
+ int main(int argc, char* argv[])
