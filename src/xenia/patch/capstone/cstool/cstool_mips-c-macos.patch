@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_mips.c
++++ b/third_party/capstone/cstool/cstool_mips.c
+@@ -4,7 +4,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_insn_detail_mips(csh handle, cs_insn *ins)
