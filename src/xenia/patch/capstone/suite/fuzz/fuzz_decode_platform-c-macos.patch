@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/fuzz/fuzz_decode_platform.c
++++ b/third_party/capstone/suite/fuzz/fuzz_decode_platform.c
+@@ -4,7 +4,11 @@
+ #include <stdio.h>
+ #include <inttypes.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "platform.h"
+ 
