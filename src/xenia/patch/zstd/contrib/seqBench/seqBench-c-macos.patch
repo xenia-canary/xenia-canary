@@ -1,0 +1,12 @@
+--- a/third_party/zstd/contrib/seqBench/seqBench.c
++++ b/third_party/zstd/contrib/seqBench/seqBench.c
+@@ -1,5 +1,9 @@
+ #define ZSTD_STATIC_LINKING_ONLY
++#ifdef __APPLE__
++#include "zstd.h"
++#else
+ #include <zstd.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <assert.h>
