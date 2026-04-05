@@ -1,0 +1,26 @@
+--- a/third_party/capstone/MCInstPrinter.c
++++ b/third_party/capstone/MCInstPrinter.c
+@@ -3,7 +3,11 @@
+ 
+ #include "MCInstPrinter.h"
+ #include "cs_priv.h"
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ extern bool ARM_getFeatureBits(unsigned int mode, unsigned int feature);
+ extern bool PPC_getFeatureBits(unsigned int mode, unsigned int feature);
+@@ -210,7 +214,11 @@ unsigned int binsearch_IndexTypeEncoding(const struct IndexType *index, size_t s
+ 			// and return the first one.
+ 			while (m > 0 && encoding == index[m - 1].encoding)
+ 				--m;
++#ifdef __APPLE__
++			return (unsigned int)m;
++#else
+ 			return m;
++#endif
+ 		}
+ 
+ 		if (encoding < index[m].encoding)
