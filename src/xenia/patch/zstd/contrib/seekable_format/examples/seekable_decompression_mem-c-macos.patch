@@ -1,0 +1,15 @@
+--- a/third_party/zstd/contrib/seekable_format/examples/seekable_decompression_mem.c
++++ b/third_party/zstd/contrib/seekable_format/examples/seekable_decompression_mem.c
+@@ -13,7 +13,11 @@
+ #include <string.h>    // strerror
+ #include <errno.h>     // errno
+ #define ZSTD_STATIC_LINKING_ONLY
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include <zstd_errors.h>
+ 
+ #include "zstd_seekable.h"
