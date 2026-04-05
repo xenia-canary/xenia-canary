@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/AArch64/AArch64BaseInfo.c
++++ b/third_party/capstone/arch/AArch64/AArch64BaseInfo.c
+@@ -23,7 +23,11 @@
+ // This file provides basic encoding and assembly information for AArch64.
+ //
+ //===----------------------------------------------------------------------===//
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
