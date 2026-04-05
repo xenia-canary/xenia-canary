@@ -1,0 +1,16 @@
+diff --git a/third_party/capstone/cstool/cstool_mos65xx.c b/third_party/capstone/cstool/cstool_mos65xx.c
+index 6791fdd0..dfab3f08 100644
+--- a/third_party/capstone/cstool/cstool_mos65xx.c
++++ b/third_party/capstone/cstool/cstool_mos65xx.c
+@@ -1,7 +1,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ static const char *get_am_name(mos65xx_address_mode mode)
