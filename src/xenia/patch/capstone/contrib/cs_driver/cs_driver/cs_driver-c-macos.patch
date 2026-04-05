@@ -1,0 +1,14 @@
+--- a/third_party/capstone/contrib/cs_driver/cs_driver/cs_driver.c
++++ b/third_party/capstone/contrib/cs_driver/cs_driver/cs_driver.c
+@@ -19,7 +19,11 @@
+ // Capstone.
+ 
+ #include <ntddk.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ // 'conversion' : from function pointer 'type1' to data pointer 'type2'
+ #pragma warning(disable : 4054)
