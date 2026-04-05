@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_powerpc.c
++++ b/third_party/capstone/cstool/cstool_powerpc.c
+@@ -3,7 +3,11 @@
+ 
+ #include <stdio.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "capstone/ppc.h"
+ #include "cstool.h"
+ 
