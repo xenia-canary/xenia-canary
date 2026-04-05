@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/benchmark/test_iter_benchmark.c
++++ b/third_party/capstone/suite/benchmark/test_iter_benchmark.c
+@@ -6,7 +6,11 @@
+ #include <time.h>
+ 
+ #include <capstone/platform.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ static void test()
+ {
