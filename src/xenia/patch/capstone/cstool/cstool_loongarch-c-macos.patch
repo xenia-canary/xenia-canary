@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_loongarch.c
++++ b/third_party/capstone/cstool/cstool_loongarch.c
+@@ -3,7 +3,11 @@
+ /*    Jiajie Chen <c@jia.je>, 2013-2024 */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_insn_detail_loongarch(csh handle, cs_insn *ins)
