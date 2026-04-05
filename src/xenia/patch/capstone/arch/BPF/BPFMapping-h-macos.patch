@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/BPF/BPFMapping.h
++++ b/third_party/capstone/arch/BPF/BPFMapping.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_BPFMAPPING_H
+ #define CS_BPFMAPPING_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "../../cs_priv.h"
+ 
