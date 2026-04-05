@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/fuzz/fuzz_diff.c
++++ b/third_party/capstone/suite/fuzz/fuzz_diff.c
+@@ -4,7 +4,11 @@
+ #include <inttypes.h>
+ #include <assert.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ 
+ struct platform {
