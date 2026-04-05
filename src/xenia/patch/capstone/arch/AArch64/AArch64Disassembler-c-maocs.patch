@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/AArch64/AArch64Disassembler.c
++++ b/third_party/capstone/arch/AArch64/AArch64Disassembler.c
+@@ -26,7 +26,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../MCFixedLenDisassembler.h"
+ #include "../../MCInst.h"
