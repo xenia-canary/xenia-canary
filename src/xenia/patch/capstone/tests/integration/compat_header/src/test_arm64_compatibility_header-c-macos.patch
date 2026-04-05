@@ -1,0 +1,14 @@
+--- a/third_party/capstone/tests/integration/compat_header/src/test_arm64_compatibility_header.c
++++ b/third_party/capstone/tests/integration/compat_header/src/test_arm64_compatibility_header.c
+@@ -6,7 +6,11 @@
+ 
+ #define CAPSTONE_ARM_COMPAT_HEADER
+ #define CAPSTONE_AARCH64_COMPAT_HEADER
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ int arm64(void)
+ {
