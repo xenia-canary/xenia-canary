@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/EVM/EVMMapping.h
++++ b/third_party/capstone/arch/EVM/EVMMapping.h
+@@ -1,7 +1,11 @@
+ /* Capstone Disassembly Engine */
+ /* By Nguyen Anh Quynh, 2018 */
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ void EVM_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id);
+ const char *EVM_insn_name(csh handle, unsigned int id);
