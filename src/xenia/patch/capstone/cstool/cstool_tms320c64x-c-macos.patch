@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_tms320c64x.c
++++ b/third_party/capstone/cstool/cstool_tms320c64x.c
+@@ -2,7 +2,11 @@
+ /* By Fotis Loukos <me@fotisl.com>, 2017 */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_insn_detail_tms320c64x(csh handle, cs_insn *ins)
