@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_sh.c
++++ b/third_party/capstone/cstool/cstool_sh.c
+@@ -5,7 +5,11 @@
+ //
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ static const char* s_addressing_modes[] = {
