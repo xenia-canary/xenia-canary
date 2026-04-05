@@ -1,0 +1,15 @@
+--- a/third_party/zstd/examples/streaming_memory_usage.c
++++ b/third_party/zstd/examples/streaming_memory_usage.c
+@@ -18,7 +18,11 @@
+ /*===   Dependencies   ===*/
+ #include <stdio.h>     // printf
+ #define ZSTD_STATIC_LINKING_ONLY
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include "common.h"    // Helper functions, CHECK(), and CHECK_ZSTD()
+ 
+ 
