@@ -1,0 +1,15 @@
+--- a/third_party/capstone/cstool/cstool_bpf.c
++++ b/third_party/capstone/cstool/cstool_bpf.c
+@@ -1,7 +1,12 @@
+ #include <stdio.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#include "capstone/platform.h"
++#else
+ #include <capstone/capstone.h>
+ #include <capstone/platform.h>
++#endif
+ #include "cstool.h"
+ 
+ static const char * ext_name[] = {
