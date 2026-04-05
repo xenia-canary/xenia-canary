@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_evm.c
++++ b/third_party/capstone/cstool/cstool_evm.c
+@@ -1,7 +1,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ void print_insn_detail_evm(csh handle, cs_insn *ins)
