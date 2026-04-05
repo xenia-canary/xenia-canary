@@ -1,0 +1,15 @@
+--- a/third_party/zstd/examples/simple_decompression.c
++++ b/third_party/zstd/examples/simple_decompression.c
+@@ -10,7 +10,11 @@
+ 
+ #include <stdio.h>     // printf
+ #include <stdlib.h>    // free
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include "common.h"    // Helper functions, CHECK(), and CHECK_ZSTD()
+ 
+ static void decompress(const char* fname)
