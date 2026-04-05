@@ -41,6 +41,125 @@ namespace xe {
 namespace hid {
 namespace winkey {
 
+static uint8_t VirtualKeyToHIDUsage(UINT vk) {
+  // Letters: contiguous in both VK and HID space
+  if (vk >= 'A' && vk <= 'Z') {
+    return vk - 'A' + 0x04;
+  }
+
+  // Digits 1-9 (0 is irregular: 0x27)
+  if (vk >= '1' && vk <= '9') {
+    return vk - '1' + 0x1E;
+  }
+
+  // F1-F12
+  if (vk >= VK_F1 && vk <= VK_F12) {
+    return vk - VK_F1 + 0x3A;
+  }
+
+  // F13-F24
+  if (vk >= VK_F13 && vk <= VK_F24) {
+    return vk - VK_F13 + 0x68;
+  }
+
+  // Numpad 1-9 (0 is irregular: 0x62)
+  if (vk >= VK_NUMPAD1 && vk <= VK_NUMPAD9) {
+    return vk - VK_NUMPAD1 + 0x59;
+  }
+
+  // Modifiers (Left side starts at 0xE0, Right at 0xE4)
+  if (vk >= VK_LCONTROL && vk <= VK_LWIN) {
+    return vk - VK_LCONTROL + 0xE0;
+  }
+  if (vk >= VK_RCONTROL && vk <= VK_RWIN) {
+    return vk - VK_RCONTROL + 0xE4;
+  }
+
+  switch (vk) {
+    case '0':
+      return 0x27;
+    case VK_RETURN:
+      return 0x28;
+    case VK_ESCAPE:
+      return 0x29;
+    case VK_BACK:
+      return 0x2A;
+    case VK_TAB:
+      return 0x2B;
+    case VK_SPACE:
+      return 0x2C;
+    case VK_OEM_MINUS:
+      return 0x2D;
+    case VK_OEM_PLUS:
+      return 0x2E;
+    case VK_OEM_4:
+      return 0x2F;
+    case VK_OEM_6:
+      return 0x30;
+    case VK_OEM_5:
+      return 0x31;
+    case VK_OEM_1:
+      return 0x33;
+    case VK_OEM_7:
+      return 0x34;
+    case VK_OEM_3:
+      return 0x35;
+    case VK_OEM_COMMA:
+      return 0x36;
+    case VK_OEM_PERIOD:
+      return 0x37;
+    case VK_OEM_2:
+      return 0x38;
+    case VK_CAPITAL:
+      return 0x39;
+    case VK_SNAPSHOT:
+      return 0x46;
+    case VK_SCROLL:
+      return 0x47;
+    case VK_PAUSE:
+      return 0x48;
+    case VK_INSERT:
+      return 0x49;
+    case VK_HOME:
+      return 0x4A;
+    case VK_PRIOR:
+      return 0x4B;
+    case VK_DELETE:
+      return 0x4C;
+    case VK_END:
+      return 0x4D;
+    case VK_NEXT:
+      return 0x4E;
+    case VK_RIGHT:
+      return 0x4F;
+    case VK_LEFT:
+      return 0x50;
+    case VK_DOWN:
+      return 0x51;
+    case VK_UP:
+      return 0x52;
+    case VK_NUMLOCK:
+      return 0x53;
+    case VK_DIVIDE:
+      return 0x54;
+    case VK_MULTIPLY:
+      return 0x55;
+    case VK_SUBTRACT:
+      return 0x56;
+    case VK_ADD:
+      return 0x57;
+    case VK_NUMPAD0:
+      return 0x62;
+    case VK_DECIMAL:
+      return 0x63;
+    case VK_APPS:
+      return 0x65;
+    default:
+      break;
+  }
+  return 0x00;
+}
+
 bool static IsPassthroughEnabled() {
   return static_cast<KeyboardMode>(cvars::keyboard_mode) ==
          KeyboardMode::Passthrough;
@@ -344,10 +463,12 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
     }
 
     if (IsPassthroughEnabled()) {
+      const UINT vk = static_cast<UINT>(xinput_virtual_key);
+      hid_code = VirtualKeyToHIDUsage(vk);
       if (GetKeyboardState(key_map_)) {
+        const UINT sc = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
         WCHAR buf;
-        if (ToUnicode(uint8_t(xinput_virtual_key), 0, key_map_, &buf, 1, 0) ==
-            1) {
+        if (ToUnicode(vk, sc, key_map_, &buf, 1, 0) == 1) {
           keystroke_flags |= 0x1000;  // XINPUT_KEYSTROKE_VALIDUNICODE
           unicode = buf;
         }
