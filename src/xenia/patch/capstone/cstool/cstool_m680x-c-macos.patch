@@ -1,0 +1,14 @@
+--- a/third_party/capstone/cstool/cstool_m680x.c
++++ b/third_party/capstone/cstool/cstool_m680x.c
+@@ -2,7 +2,11 @@
+ /* M680X Backend by Wolfgang Schwotzer <wolfgang.schwotzer@gmx.net> 2017 */
+ 
+ #include <stdio.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "cstool.h"
+ 
+ static const char *s_access[] = {
