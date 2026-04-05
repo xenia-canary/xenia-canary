@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/ARM/ARMAddressingModes.h
++++ b/third_party/capstone/arch/ARM/ARMAddressingModes.h
+@@ -28,7 +28,11 @@
+ #define CS_ARM_ADDRESSINGMODES_H
+ 
+ #include "../../cs_priv.h"
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include <assert.h>
+ #include "../../MathExtras.h"
