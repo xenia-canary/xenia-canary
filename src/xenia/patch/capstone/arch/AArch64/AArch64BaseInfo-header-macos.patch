@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/AArch64/AArch64BaseInfo.h
++++ b/third_party/capstone/arch/AArch64/AArch64BaseInfo.h
+@@ -32,7 +32,11 @@
+ 
+ // FIXME: Is it easiest to fix this layering violation by moving the .inc
+ // #includes from AArch64MCTargetDesc.h to here?
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
