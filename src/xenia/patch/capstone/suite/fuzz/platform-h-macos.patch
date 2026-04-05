@@ -1,0 +1,16 @@
+diff --git a/third_party/capstone/suite/fuzz/platform.h b/third_party/capstone/suite/fuzz/platform.h
+index 29e03f98..f5c7b740 100644
+--- a/third_party/capstone/suite/fuzz/platform.h
++++ b/third_party/capstone/suite/fuzz/platform.h
+@@ -1,7 +1,11 @@
+ #ifndef CS_FUZZ_PLATFORM_H
+ #define CS_FUZZ_PLATFORM_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ struct platform {
+     cs_arch arch;
