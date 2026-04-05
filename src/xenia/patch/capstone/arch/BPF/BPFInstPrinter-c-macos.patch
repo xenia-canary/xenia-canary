@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/BPF/BPFInstPrinter.c
++++ b/third_party/capstone/arch/BPF/BPFInstPrinter.c
+@@ -1,7 +1,11 @@
+ /* Capstone Disassembly Engine */
+ /* BPF Backend by david942j <david942j@gmail.com>, 2019 */
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "BPFConstants.h"
+ #include "BPFInstPrinter.h"
