@@ -1,0 +1,23 @@
+--- a/third_party/zlib-ng/arch/x86/chunkset_avx512.c
++++ b/third_party/zlib-ng/arch/x86/chunkset_avx512.c
+@@ -8,6 +8,11 @@
+ 
+ #include "avx2_tables.h"
+ #include <immintrin.h>
++
++#pragma GCC target("avx512f,avx512bw")
++#if defined(__clang__)
++#pragma clang attribute push(__attribute__((target("avx512f,avx512bw"))), apply_to=function)
++#endif
+ #include "x86_intrins.h"
+ 
+ typedef __m256i chunk_t;
+@@ -179,4 +184,8 @@
+ 
+ #include "inffast_tpl.h"
+ 
++#if defined(__clang__)
++#pragma clang attribute pop
+ #endif
++
++#endif
