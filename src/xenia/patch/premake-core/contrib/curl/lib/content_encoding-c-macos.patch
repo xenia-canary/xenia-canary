@@ -1,0 +1,15 @@
+--- a/third_party/premake-core/contrib/curl/lib/content_encoding.c
++++ b/third_party/premake-core/contrib/curl/lib/content_encoding.c
+@@ -45,8 +45,12 @@
+ #endif
+ 
+ #ifdef HAVE_ZSTD
++#ifdef __APPLE__
++#include "zstd.h"
++#else
+ #include <zstd.h>
+ #endif
++#endif
+ 
+ #include "sendf.h"
+ #include "http.h"
