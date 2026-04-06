@@ -1,0 +1,15 @@
+--- a/third_party/premake-core/contrib/curl/lib/version.c
++++ b/third_party/premake-core/contrib/curl/lib/version.c
+@@ -75,8 +75,12 @@
+ #endif
+ 
+ #ifdef HAVE_ZSTD
++#ifdef __APPLE__
++#include "zstd.h"
++#else
+ #include <zstd.h>
+ #endif
++#endif
+ 
+ #ifdef USE_GSASL
+ #include <gsasl.h>
