@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/src/test_detail_m68k.c
++++ b/third_party/capstone/suite/cstest/src/test_detail_m68k.c
+@@ -4,7 +4,11 @@
+ #include "capstone/m68k.h"
+ #include "test_compare.h"
+ #include "test_detail_m68k.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include <stdio.h>
+ #include <string.h>
+ 
