@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/src/test_detail_loongarch.c
++++ b/third_party/capstone/suite/cstest/src/test_detail_loongarch.c
+@@ -3,7 +3,11 @@
+ 
+ #include "test_compare.h"
+ #include "test_detail_loongarch.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include <stdio.h>
+ #include <string.h>
+ 
