@@ -1,0 +1,22 @@
+--- a/third_party/imgui/imstb_truetype.h
++++ b/third_party/imgui/imstb_truetype.h
+@@ -2841,7 +2841,8 @@ static stbtt__active_edge *stbtt__new_active(stbtt__hheap *hh, stbtt__edge *e, i
+ {
+    stbtt__active_edge *z = (stbtt__active_edge *) stbtt__hheap_alloc(hh, sizeof(*z), userdata);
+    float dxdy = (e->x1 - e->x0) / (e->y1 - e->y0);
+-   STBTT_assert(z != NULL);
++   // Allocation failure is handled by returning null and skipping this edge.
++   // Asserting here aborts on malformed/pathological fonts in debug builds.
+    if (!z) return z;
+ 
+    // round dx down to avoid overshooting
+@@ -2863,7 +2864,8 @@ static stbtt__active_edge *stbtt__new_active(stbtt__hheap *hh, stbtt__edge *e, i
+ {
+    stbtt__active_edge *z = (stbtt__active_edge *) stbtt__hheap_alloc(hh, sizeof(*z), userdata);
+    float dxdy = (e->x1 - e->x0) / (e->y1 - e->y0);
+-   STBTT_assert(z != NULL);
++   // Allocation failure is handled by returning null and skipping this edge.
++   // Asserting here aborts on malformed/pathological fonts in debug builds.
+    //STBTT_assert(e->y0 <= start_point);
+    if (!z) return z;
+    z->fdx = dxdy;
