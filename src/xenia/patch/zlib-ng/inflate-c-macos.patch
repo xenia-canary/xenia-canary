@@ -1,0 +1,62 @@
+--- a/third_party/zlib-ng/inflate.c
++++ b/third_party/zlib-ng/inflate.c
+@@ -32,7 +32,11 @@
+     } else
+ #endif
+     {
++#ifdef __APPLE__
++        strm->adler = state->check = (uint32_t)FUNCTABLE_CALL(adler32_fold_copy)(state->check, dst, src, copy);
++#else
+         strm->adler = state->check = FUNCTABLE_CALL(adler32_fold_copy)(state->check, dst, src, copy);
++#endif
+     }
+ }
+ 
+@@ -44,7 +48,11 @@
+     } else
+ #endif
+     {
++#ifdef __APPLE__
++        strm->adler = state->check = (uint32_t)FUNCTABLE_CALL(adler32)(state->check, src, len);
++#else
+         strm->adler = state->check = FUNCTABLE_CALL(adler32)(state->check, src, len);
++#endif
+     }
+ }
+ 
+@@ -626,7 +634,11 @@
+                         }
+                     }
+                     if ((state->flags & 0x0200) && (state->wrap & 4)) {
++#ifdef __APPLE__
++                        state->check = (uint32_t)PREFIX(crc32)(state->check, next, copy);
++#else
+                         state->check = PREFIX(crc32)(state->check, next, copy);
++#endif
+                     }
+                     have -= copy;
+                     next += copy;
+@@ -649,7 +661,11 @@
+                         state->head->name[state->length++] = (unsigned char)len;
+                 } while (len && copy < have);
+                 if ((state->flags & 0x0200) && (state->wrap & 4))
++#ifdef __APPLE__
++                    state->check = (uint32_t)PREFIX(crc32)(state->check, next, copy);
++#else
+                     state->check = PREFIX(crc32)(state->check, next, copy);
++#endif
+                 have -= copy;
+                 next += copy;
+                 if (len)
+@@ -672,7 +688,11 @@
+                         state->head->comment[state->length++] = (unsigned char)len;
+                 } while (len && copy < have);
+                 if ((state->flags & 0x0200) && (state->wrap & 4))
++#ifdef __APPLE__
++                    state->check = (uint32_t)PREFIX(crc32)(state->check, next, copy);
++#else
+                     state->check = PREFIX(crc32)(state->check, next, copy);
++#endif
+                 have -= copy;
+                 next += copy;
+                 if (len)
