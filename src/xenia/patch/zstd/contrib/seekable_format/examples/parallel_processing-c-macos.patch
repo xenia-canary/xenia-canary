@@ -1,0 +1,15 @@
+--- a/third_party/zstd/contrib/seekable_format/examples/parallel_processing.c
++++ b/third_party/zstd/contrib/seekable_format/examples/parallel_processing.c
+@@ -17,7 +17,11 @@
+ #include <string.h>    // strerror
+ #include <errno.h>     // errno
+ #define ZSTD_STATIC_LINKING_ONLY
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include <zstd_errors.h>
+ #if defined(_WIN32)
+ #  include <windows.h>
