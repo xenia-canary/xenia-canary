@@ -1,0 +1,15 @@
+--- a/third_party/zstd/contrib/seekable_format/examples/parallel_compression.c
++++ b/third_party/zstd/contrib/seekable_format/examples/parallel_compression.c
+@@ -11,7 +11,11 @@
+ #include <stdio.h>     // fprintf, perror, feof, fopen, etc.
+ #include <string.h>    // strlen, memset, strcat
+ #define ZSTD_STATIC_LINKING_ONLY
+-#include <zstd.h>      // presumes zstd library is installed
++#ifdef __APPLE__
++#include "zstd.h"
++#else
++#include <zstd.h>
++#endif      // presumes zstd library is installed
+ #include <zstd_errors.h>
+ #if defined(WIN32) || defined(_WIN32)
+ #  include <windows.h>
