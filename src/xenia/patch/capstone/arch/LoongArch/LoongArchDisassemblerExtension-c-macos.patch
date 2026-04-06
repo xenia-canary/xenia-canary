@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/LoongArch/LoongArchDisassemblerExtension.c
++++ b/third_party/capstone/arch/LoongArch/LoongArchDisassemblerExtension.c
+@@ -4,7 +4,11 @@
+ /*    Jiajie Chen <c@jia.je>, 2024 */
+ /*    Yanglin Xun <1109673069@qq.com>, 2024 */
+ 
++#ifdef __APPLE__
++#include "capstone/loongarch.h"
++#else
+ #include <capstone/loongarch.h>
++#endif
+ 
+ #include "LoongArchDisassemblerExtension.h"
+ 
