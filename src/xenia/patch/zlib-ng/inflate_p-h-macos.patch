@@ -1,0 +1,40 @@
+--- a/third_party/zlib-ng/inflate_p.h
++++ b/third_party/zlib-ng/inflate_p.h
+@@ -54,11 +54,29 @@
+ #endif
+ 
+ /* check macros for header crc */
++/* check macros for header crc */
+ #ifdef GUNZIP
++#ifdef __APPLE__
+ #  define CRC2(check, word) \
+     do { \
+         hbuf[0] = (unsigned char)(word); \
+         hbuf[1] = (unsigned char)((word) >> 8); \
++        check = (uint32_t)PREFIX(crc32)(check, hbuf, 2); \
++    } while (0)
++
++#  define CRC4(check, word) \
++    do { \
++        hbuf[0] = (unsigned char)(word); \
++        hbuf[1] = (unsigned char)((word) >> 8); \
++        hbuf[2] = (unsigned char)((word) >> 16); \
++        hbuf[3] = (unsigned char)((word) >> 24); \
++        check = (uint32_t)PREFIX(crc32)(check, hbuf, 4); \
++    } while (0)
++#else
++#  define CRC2(check, word) \
++    do { \
++        hbuf[0] = (unsigned char)(word); \
++        hbuf[1] = (unsigned char)((word) >> 8); \
+         check = PREFIX(crc32)(check, hbuf, 2); \
+     } while (0)
+ 
+@@ -71,6 +89,7 @@
+         check = PREFIX(crc32)(check, hbuf, 4); \
+     } while (0)
+ #endif
++#endif
+ 
+ /* Load registers with state in inflate() for speed */
+ #define LOAD() \
