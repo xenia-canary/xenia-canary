@@ -1,0 +1,14 @@
+--- a/third_party/zlib-ng/deflate.c
++++ b/third_party/zlib-ng/deflate.c
+@@ -926,7 +926,11 @@
+                      (s->gzhead->name == NULL ? 0 : 8) +
+                      (s->gzhead->comment == NULL ? 0 : 16)
+                      );
++#ifdef __APPLE__
++            put_uint32(s, (uint32_t)s->gzhead->time);
++#else
+             put_uint32(s, s->gzhead->time);
++#endif
+             put_byte(s, s->level == 9 ? 2 : (s->strategy >= Z_HUFFMAN_ONLY || s->level < 2 ? 4 : 0));
+             put_byte(s, s->gzhead->os & 0xff);
+             if (s->gzhead->extra != NULL)
