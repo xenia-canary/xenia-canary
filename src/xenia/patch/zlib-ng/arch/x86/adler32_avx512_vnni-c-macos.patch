@@ -1,0 +1,23 @@
+--- a/third_party/zlib-ng/arch/x86/adler32_avx512_vnni.c
++++ b/third_party/zlib-ng/arch/x86/adler32_avx512_vnni.c
+@@ -13,6 +13,11 @@
+ #include "adler32_p.h"
+ #include "arch_functions.h"
+ #include <immintrin.h>
++
++#pragma GCC target("avx512f,avx512vl,avx512vnni")
++#if defined(__clang__)
++#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,avx512vnni"))), apply_to=function)
++#endif
+ #include "x86_intrins.h"
+ #include "adler32_avx512_p.h"
+ #include "adler32_avx2_p.h"
+@@ -207,4 +212,8 @@
+     return adler;
+ }
+ 
++#if defined(__clang__)
++#pragma clang attribute pop
+ #endif
++
++#endif
