@@ -1,0 +1,22 @@
+--- a/third_party/zlib-ng/arch/x86/slide_hash_avx2.c
++++ b/third_party/zlib-ng/arch/x86/slide_hash_avx2.c
+@@ -14,6 +14,11 @@
+ 
+ #include <immintrin.h>
+ 
++#pragma GCC target("avx2")
++#if defined(__clang__)
++#pragma clang attribute push(__attribute__((target("avx2"))), apply_to=function)
++#endif
++
+ static inline void slide_hash_chain(Pos *table, uint32_t entries, const __m256i wsize) {
+     table += entries;
+     table -= 16;
+@@ -38,3 +43,7 @@
+     slide_hash_chain(s->head, HASH_SIZE, ymm_wsize);
+     slide_hash_chain(s->prev, wsize, ymm_wsize);
+ }
++
++#if defined(__clang__)
++#pragma clang attribute pop
++#endif
