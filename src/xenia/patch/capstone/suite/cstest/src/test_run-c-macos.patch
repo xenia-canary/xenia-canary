@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/src/test_run.c
++++ b/third_party/capstone/suite/cstest/src/test_run.c
+@@ -9,7 +9,11 @@
+ #include <stddef.h>
+ #include <setjmp.h>
+ #include "cmocka.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include <stdbool.h>
+ #include <stdio.h>
+ 
