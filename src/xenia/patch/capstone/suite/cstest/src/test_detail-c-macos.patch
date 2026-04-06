@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/src/test_detail.c
++++ b/third_party/capstone/suite/cstest/src/test_detail.c
+@@ -3,7 +3,11 @@
+ 
+ #include "test_detail.h"
+ #include "test_compare.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ TestDetail *test_detail_new()
+ {
