@@ -1,0 +1,23 @@
+--- a/third_party/zlib-ng/arch/x86/compare256_avx2.c
++++ b/third_party/zlib-ng/arch/x86/compare256_avx2.c
+@@ -11,6 +11,11 @@
+ #if defined(X86_AVX2) && defined(HAVE_BUILTIN_CTZ)
+ 
+ #include <immintrin.h>
++
++#pragma GCC target("avx2")
++#if defined(__clang__)
++#pragma clang attribute push(__attribute__((target("avx2"))), apply_to=function)
++#endif
+ #ifdef _MSC_VER
+ #  include <nmmintrin.h>
+ #endif
+@@ -61,4 +66,8 @@
+ 
+ #include "match_tpl.h"
+ 
++#if defined(__clang__)
++#pragma clang attribute pop
+ #endif
++
++#endif
