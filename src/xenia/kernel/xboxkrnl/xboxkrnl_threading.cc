@@ -1099,8 +1099,8 @@ DECLARE_XBOXKRNL_EXPORT3(NtWaitForMultipleObjectsEx, kThreading, kImplemented,
 
 dword_result_t NtSignalAndWaitForSingleObjectEx_entry(dword_t signal_handle,
                                                       dword_t wait_handle,
+                                                      dword_t wait_mode,
                                                       dword_t alertable,
-                                                      dword_t r6,
                                                       lpqword_t timeout_ptr) {
   X_STATUS result = X_STATUS_SUCCESS;
   // pre-lock for these two handle lookups
@@ -1113,9 +1113,9 @@ dword_result_t NtSignalAndWaitForSingleObjectEx_entry(dword_t signal_handle,
   global_critical_region::mutex().unlock();
   if (signal_object && wait_object) {
     uint64_t timeout = timeout_ptr ? static_cast<uint64_t>(*timeout_ptr) : 0u;
-    result =
-        XObject::SignalAndWait(signal_object.get(), wait_object.get(), 3, 1,
-                               alertable, timeout_ptr ? &timeout : nullptr);
+    result = XObject::SignalAndWait(signal_object.get(), wait_object.get(), 3,
+                                    wait_mode, alertable,
+                                    timeout_ptr ? &timeout : nullptr);
   } else {
     result = X_STATUS_INVALID_HANDLE;
   }
