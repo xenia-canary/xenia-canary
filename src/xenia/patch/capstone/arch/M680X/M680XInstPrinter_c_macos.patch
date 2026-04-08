@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/M680X/M680XInstPrinter.c
++++ b/third_party/capstone/arch/M680X/M680XInstPrinter.c
+@@ -5,7 +5,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../cs_priv.h"
+ #include "../../MCInst.h"
