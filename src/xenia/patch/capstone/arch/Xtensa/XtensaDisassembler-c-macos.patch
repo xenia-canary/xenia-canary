@@ -1,0 +1,18 @@
+--- a/third_party/capstone/arch/Xtensa/XtensaDisassembler.c
++++ b/third_party/capstone/arch/Xtensa/XtensaDisassembler.c
+@@ -29,7 +29,15 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
++#endif
+ 
+ #include "../../MathExtras.h"
+ #include "../../MCDisassembler.h"
