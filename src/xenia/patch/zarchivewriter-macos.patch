@@ -1,11 +1,14 @@
 --- a/third_party/zarchive/src/zarchivewriter.cpp
 +++ b/third_party/zarchive/src/zarchivewriter.cpp
-@@ -5,7 +5,7 @@
+@@ -5,7 +5,11 @@
  #include <string_view>
  #include <queue>
  
--#include <zstd.h>
++#ifdef __APPLE__
 +#include "zstd.h"
++#else
+ #include <zstd.h>
++#endif
  
  #include "sha_256.h"
  
