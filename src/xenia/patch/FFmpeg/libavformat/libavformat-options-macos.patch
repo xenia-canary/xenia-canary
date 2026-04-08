@@ -57,3 +57,4 @@
 +#endif
  
      av_log(s, loglevel, "Opening \'%s\' for %s\n", url, flags & AVIO_FLAG_WRITE ? "writing" : "reading");
+ 
