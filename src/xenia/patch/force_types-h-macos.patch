@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/third_party/force_types.h
+@@ -0,0 +1,12 @@
++/* force_types.h - Force types before anything else */
++#ifndef FORCE_TYPES_H
++#define FORCE_TYPES_H
++
++#define arm_cc int
++#define arm64_cc int
++#define arm_reg int
++#define arm64_reg int
++#define arm void*
++#define arm64 void*
++
++#endif
