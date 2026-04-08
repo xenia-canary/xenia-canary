@@ -1,0 +1,18 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZDisassembler.c
++++ b/third_party/capstone/arch/SystemZ/SystemZDisassembler.c
+@@ -23,7 +23,15 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
++#endif
+ 
+ #include "../../MCInst.h"
+ #include "../../MathExtras.h"
