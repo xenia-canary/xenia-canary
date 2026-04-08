@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/Mips/MipsInstPrinter.h
++++ b/third_party/capstone/arch/Mips/MipsInstPrinter.h
+@@ -31,7 +31,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../MCInstPrinter.h"
+ #include "../../cs_priv.h"
