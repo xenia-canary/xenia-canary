@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/LoongArch/LoongArchInstPrinter.c
++++ b/third_party/capstone/arch/LoongArch/LoongArchInstPrinter.c
+@@ -27,7 +27,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "LoongArchMapping.h"
+ #include "LoongArchInstPrinter.h"
