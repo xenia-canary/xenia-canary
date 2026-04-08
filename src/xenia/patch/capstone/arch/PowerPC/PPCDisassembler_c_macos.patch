@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/PowerPC/PPCDisassembler.c
++++ b/third_party/capstone/arch/PowerPC/PPCDisassembler.c
+@@ -20,7 +20,11 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
