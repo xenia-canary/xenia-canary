@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/LoongArch/LoongArchModule.c
++++ b/third_party/capstone/arch/LoongArch/LoongArchModule.c
+@@ -4,7 +4,11 @@
+ 
+ #ifdef CAPSTONE_HAS_LOONGARCH
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "LoongArchModule.h"
+ #include "../../MCRegisterInfo.h"
