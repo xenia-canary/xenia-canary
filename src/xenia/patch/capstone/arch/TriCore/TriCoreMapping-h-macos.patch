@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/TriCore/TriCoreMapping.h
++++ b/third_party/capstone/arch/TriCore/TriCoreMapping.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_TRICORE_MAP_H
+ #define CS_TRICORE_MAP_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ // given internal insn id, return public instruction info
+ void TriCore_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id);
