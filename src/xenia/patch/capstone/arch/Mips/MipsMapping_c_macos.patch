@@ -1,0 +1,16 @@
+--- a/third_party/capstone/arch/Mips/MipsMapping.c
++++ b/third_party/capstone/arch/Mips/MipsMapping.c
+@@ -6,8 +6,13 @@
+ #include <stdio.h>
+ #include <string.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#include "capstone/mips.h"
++#else
+ #include <capstone/capstone.h>
+ #include <capstone/mips.h>
++#endif
+ 
+ #include "../../Mapping.h"
+ #include "../../MCDisassembler.h"
