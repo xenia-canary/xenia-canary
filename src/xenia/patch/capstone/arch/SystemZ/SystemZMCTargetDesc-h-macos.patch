@@ -1,0 +1,15 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZMCTargetDesc.h
++++ b/third_party/capstone/arch/SystemZ/SystemZMCTargetDesc.h
+@@ -26,7 +26,12 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../MCInstPrinter.h"
+ #include "../../cs_priv.h"
