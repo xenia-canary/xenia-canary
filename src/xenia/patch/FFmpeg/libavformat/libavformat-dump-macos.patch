@@ -11,3 +11,4 @@
 +#endif
      AVCodecContext *avctx;
      int ret;
+ 
