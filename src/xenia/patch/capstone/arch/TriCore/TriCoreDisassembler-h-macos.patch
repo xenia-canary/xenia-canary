@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/TriCore/TriCoreDisassembler.h
++++ b/third_party/capstone/arch/TriCore/TriCoreDisassembler.h
+@@ -8,7 +8,11 @@
+ #include <stdint.h>
+ #endif
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include "../../MCRegisterInfo.h"
+ #include "../../MCInst.h"
+ 
