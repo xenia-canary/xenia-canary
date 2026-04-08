@@ -1,0 +1,54 @@
+--- a/third_party/DirectXShaderCompiler/include/dxc/WinAdapter.h
++++ b/third_party/DirectXShaderCompiler/include/dxc/WinAdapter.h
+@@ -51,8 +51,11 @@
+ #define _countof(a) (sizeof(a) / sizeof(*(a)))
+ 
+ // If it is GCC, there is no UUID support and we must emulate it.
++// Force emulation for clang to resolve macro issues
+ #ifndef __clang__
+ #define __EMULATE_UUID 1
++#elif defined(__clang__)
++#define __EMULATE_UUID 1
+ #endif // __clang__
+ 
+ #ifdef __EMULATE_UUID
+@@ -628,7 +631,7 @@ template <typename T> inline void **IID_PPV_ARGS_Helper(T **pp) {
+ 
+ //===--------------------- COM Interfaces ---------------------------------===//
+ 
+-CROSS_PLATFORM_UUIDOF(IUnknown, "00000000-0000-0000-C000-000000000046")
++CROSS_PLATFORM_UUIDOF(IUnknown, "00000000-0000-0000-C000-000000000046");
+ struct IUnknown {
+   IUnknown() {};
+   virtual HRESULT QueryInterface(REFIID riid, void **ppvObject) = 0;
+@@ -639,16 +642,16 @@ struct IUnknown {
+   }
+ };
+ 
+-CROSS_PLATFORM_UUIDOF(INoMarshal, "ECC8691B-C1DB-4DC0-855E-65F6C551AF49")
++CROSS_PLATFORM_UUIDOF(INoMarshal, "ECC8691B-C1DB-4DC0-855E-65F6C551AF49");
+ struct INoMarshal : public IUnknown {};
+ 
+-CROSS_PLATFORM_UUIDOF(ISequentialStream, "0C733A30-2A1C-11CE-ADE5-00AA0044773D")
++CROSS_PLATFORM_UUIDOF(ISequentialStream, "0C733A30-2A1C-11CE-ADE5-00AA0044773D");
+ struct ISequentialStream : public IUnknown {
+   virtual HRESULT Read(void *pv, ULONG cb, ULONG *pcbRead) = 0;
+   virtual HRESULT Write(const void *pv, ULONG cb, ULONG *pcbWritten) = 0;
+ };
+ 
+-CROSS_PLATFORM_UUIDOF(IStream, "0000000c-0000-0000-C000-000000000046")
++CROSS_PLATFORM_UUIDOF(IStream, "0000000c-0000-0000-C000-000000000046");
+ struct IStream : public ISequentialStream {
+   virtual HRESULT Seek(LARGE_INTEGER dlibMove, DWORD dwOrigin,
+                        ULARGE_INTEGER *plibNewPosition) = 0;
+@@ -674,8 +677,8 @@ struct IStream : public ISequentialStream {
+ 
+ // These don't need stub implementations as they come from the DirectX Headers
+ // They still need the __uuidof() though
+-CROSS_PLATFORM_UUIDOF(ID3D12LibraryReflection, "8E349D19-54DB-4A56-9DC9-119D87BDB804")
+-CROSS_PLATFORM_UUIDOF(ID3D12ShaderReflection, "5A58797D-A72C-478D-8BA2-EFC6B0EFE88E")
++CROSS_PLATFORM_UUIDOF(ID3D12LibraryReflection, "8E349D19-54DB-4A56-9DC9-119D87BDB804");
++CROSS_PLATFORM_UUIDOF(ID3D12ShaderReflection, "5A58797D-A72C-478D-8BA2-EFC6B0EFE88E");
+ 
+ //===--------------------- COM Pointer Types ------------------------------===//
+ 
