@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/PowerPC/PPCMCTargetDesc.h
++++ b/third_party/capstone/arch/PowerPC/PPCMCTargetDesc.h
+@@ -30,7 +30,11 @@
+ // GCC #defines PPC on Linux but we use it as our namespace name
+ #undef PPC
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
