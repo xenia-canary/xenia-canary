@@ -195,3 +195,4 @@
 +#endif
      if (size2 != size)
          p->eof = 1;
+ 
