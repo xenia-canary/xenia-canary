@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZMapping.h
++++ b/third_party/capstone/arch/SystemZ/SystemZMapping.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_SYSTEMZ_MAP_H
+ #define CS_SYSTEMZ_MAP_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "../../cs_priv.h"
+ 
