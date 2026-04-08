@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZDisassemblerExtension.c
++++ b/third_party/capstone/arch/SystemZ/SystemZDisassemblerExtension.c
+@@ -1,7 +1,11 @@
+ /* Capstone Disassembly Engine */
+ /* By Rot127 <unisono@quyllur.org>, 2022-2023 */
+ 
++#ifdef __APPLE__
++#include "capstone/systemz.h"
++#else
+ #include <capstone/systemz.h>
++#endif
+ #include "SystemZDisassemblerExtension.h"
+ #include "../../utils.h"
+ 
