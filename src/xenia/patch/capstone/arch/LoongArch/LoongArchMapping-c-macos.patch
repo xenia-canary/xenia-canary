@@ -1,0 +1,16 @@
+--- a/third_party/capstone/arch/LoongArch/LoongArchMapping.c
++++ b/third_party/capstone/arch/LoongArch/LoongArchMapping.c
+@@ -7,8 +7,13 @@
+ #include <stdio.h>
+ #include <string.h>
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#include "capstone/loongarch.h"
++#else
+ #include <capstone/capstone.h>
+ #include <capstone/loongarch.h>
++#endif
+ 
+ #include "../../Mapping.h"
+ #include "../../MCDisassembler.h"
