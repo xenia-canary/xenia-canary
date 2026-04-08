@@ -9,4 +9,3 @@
      if (!buf) {
          av_freep(&par);
          return NULL;
-Submodule third_party/capstone contains modified content
