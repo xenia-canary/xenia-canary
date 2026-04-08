@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/Xtensa/XtensaMapping.c
++++ b/third_party/capstone/arch/Xtensa/XtensaMapping.c
+@@ -1,7 +1,11 @@
+ /* Capstone Disassembly Engine */
+ /* By billow <billow.fun@gmail.com>, 2024 */
+ 
++#ifdef __APPLE__
++#include "capstone/xtensa.h"
++#else
+ #include <capstone/xtensa.h>
++#endif
+ 
+ #include "../../MCRegisterInfo.h"
+ #include "../../MCInst.h"
