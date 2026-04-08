@@ -1,0 +1,18 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZInstPrinter.h
++++ b/third_party/capstone/arch/SystemZ/SystemZInstPrinter.h
+@@ -30,7 +30,15 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
++#endif
+ 
+ #include "../../MCInstPrinter.h"
+ #include "../../cs_priv.h"
