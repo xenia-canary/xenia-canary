@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/Mips/MipsModule.c
++++ b/third_party/capstone/arch/Mips/MipsModule.c
+@@ -3,7 +3,11 @@
+ 
+ #ifdef CAPSTONE_HAS_MIPS
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ #include "MipsModule.h"
+ #include "../../MCRegisterInfo.h"
