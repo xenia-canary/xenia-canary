@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/RISCV/RISCVGenAsmWriter.inc
++++ b/third_party/capstone/arch/RISCV/RISCVGenAsmWriter.inc
+@@ -10,7 +10,11 @@
+ /* By Nguyen Anh Quynh <aquynh@gmail.com>, 2013-2015 */
+ 
+ #include <stdio.h>	// debug
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <assert.h>
+ 
+ 
