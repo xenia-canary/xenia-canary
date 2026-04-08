@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/include/test_detail_alpha.h
++++ b/third_party/capstone/suite/cstest/include/test_detail_alpha.h
+@@ -6,7 +6,11 @@
+ 
+ #include "test_compare.h"
+ #include <cyaml/cyaml.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ typedef struct {
+ 	char *type;
