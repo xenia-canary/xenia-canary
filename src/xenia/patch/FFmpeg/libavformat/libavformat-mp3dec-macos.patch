@@ -1,6 +1,18 @@
 --- a/third_party/FFmpeg/libavformat/mp3dec.c
 +++ b/third_party/FFmpeg/libavformat/mp3dec.c
-@@ -206,9 +206,14 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
+@@ -94,7 +94,11 @@ static int mp3_read_probe(const AVProbeData *p)
+             if (ret != 0)
+                 break;
+ 
++#ifdef __APPLE__
++            available = (int)(FFMIN(h.frame_size, end - buf2));
++#else
+             available = FFMIN(h.frame_size, end - buf2);
++#endif
+             for (buf3 = buf2 + 4; buf3 < buf2 + available; buf3++) {
+                 uint32_t next_sync = AV_RB32(buf3);
+                 header_emu += (next_sync & MP3_MASK) == (header & MP3_MASK);
+@@ -206,9 +210,14 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
      if (v & XING_FLAC_QSCALE)
          avio_rb32(s->pb);
  
@@ -15,3 +27,77 @@
  
      /* Info Tag revision + VBR method */
      avio_r8(s->pb);
+@@ -218,7 +227,11 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
+ 
+     /* ReplayGain peak */
+     v    = avio_rb32(s->pb);
++#ifdef __APPLE__
++    peak = (int32_t)(av_rescale(v, 100000, 1 << 23));
++#else
+     peak = av_rescale(v, 100000, 1 << 23);
++#endif
+ 
+     /* Radio ReplayGain */
+     v = avio_rb16(s->pb);
+@@ -404,7 +417,11 @@ static int mp3_read_header(AVFormatContext *s)
+             ffio_ensure_seekback(s->pb, i + 1024 + 4);
+         frame_size = check(s->pb, off + i, &header);
+         if (frame_size > 0) {
++#ifdef __APPLE__
++            ret = (int32_t)(avio_seek(s->pb, off, SEEK_SET));
++#else
+             ret = avio_seek(s->pb, off, SEEK_SET);
++#endif
+             if (ret < 0)
+                 return ret;
+             ffio_ensure_seekback(s->pb, i + 1024 + frame_size + 4);
+@@ -413,7 +430,11 @@ static int mp3_read_header(AVFormatContext *s)
+                 (header & MP3_MASK) == (header2 & MP3_MASK))
+             {
+                 av_log(s, i > 0 ? AV_LOG_INFO : AV_LOG_VERBOSE, "Skipping %d bytes of junk at %"PRId64".\n", i, off);
++#ifdef __APPLE__
++                ret = (int32_t)(avio_seek(s->pb, off + i, SEEK_SET));
++#else
+                 ret = avio_seek(s->pb, off + i, SEEK_SET);
++#endif
+                 if (ret < 0)
+                     return ret;
+                 break;
+@@ -425,7 +446,11 @@ static int mp3_read_header(AVFormatContext *s)
+             av_log(s, AV_LOG_ERROR, "Failed to read frame size: Could not seek to %"PRId64".\n", (int64_t) (i + 1024 + frame_size + 4));
+             return AVERROR(EINVAL);
+         }
++#ifdef __APPLE__
++        ret = (int32_t)(avio_seek(s->pb, off, SEEK_SET));
++#else
+         ret = avio_seek(s->pb, off, SEEK_SET);
++#endif
+         if (ret < 0)
+             return ret;
+     }
+@@ -449,7 +474,11 @@ static int mp3_read_packet(AVFormatContext *s, AVPacket *pkt)
+     size = MP3_PACKET_SIZE;
+     pos = avio_tell(s->pb);
+     if (mp3->filesize > ID3v1_TAG_SIZE && pos < mp3->filesize)
+-        size= FFMIN(size, mp3->filesize - pos);
++#ifdef __APPLE__
++        size = (int)(FFMIN(size, mp3->filesize - pos));
++#else
++        size = FFMIN(size, mp3->filesize - pos);
++#endif
+ 
+     ret = av_get_packet(s->pb, pkt, size);
+     if (ret <= 0) {
+@@ -585,7 +614,12 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
+         return best_pos;
+ 
+     if (mp3->is_cbr && ie == &ie1 && mp3->frames) {
++#ifdef __APPLE__
++        int frame_duration = (int)av_rescale(st->duration, 1, mp3->frames);
++#else
+         int frame_duration = av_rescale(st->duration, 1, mp3->frames);
++#endif
++
+         ie1.timestamp = frame_duration * av_rescale(best_pos - s->internal->data_offset, mp3->frames, mp3->header_filesize);
+     }
+ 
