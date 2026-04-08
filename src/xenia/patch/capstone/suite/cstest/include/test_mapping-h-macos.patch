@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/include/test_mapping.h
++++ b/third_party/capstone/suite/cstest/include/test_mapping.h
+@@ -5,7 +5,11 @@
+ #define TEST_MAPPING_H
+ 
+ #include "../../../Mapping.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ /// Maps a string to an option
+ typedef struct {
