@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/PowerPC/PPCInstPrinter.c
++++ b/third_party/capstone/arch/PowerPC/PPCInstPrinter.c
+@@ -24,7 +24,11 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
