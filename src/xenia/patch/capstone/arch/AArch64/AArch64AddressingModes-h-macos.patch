@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/AArch64/AArch64AddressingModes.h
++++ b/third_party/capstone/arch/AArch64/AArch64AddressingModes.h
+@@ -30,7 +30,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../MathExtras.h"
+ #include <assert.h>
