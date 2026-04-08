@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/Xtensa/XtensaInstPrinter.h
++++ b/third_party/capstone/arch/Xtensa/XtensaInstPrinter.h
+@@ -32,7 +32,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #define CONCAT(a, b) CONCAT_(a, b)
+ #define CONCAT_(a, b) a##_##b
