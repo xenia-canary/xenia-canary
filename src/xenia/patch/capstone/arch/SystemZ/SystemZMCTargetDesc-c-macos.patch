@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZMCTargetDesc.c
++++ b/third_party/capstone/arch/SystemZ/SystemZMCTargetDesc.c
+@@ -23,7 +23,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "../../MCInst.h"
+ #include "../../MCRegisterInfo.h"
