@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/SystemZ/SystemZDisassemblerExtension.h
++++ b/third_party/capstone/arch/SystemZ/SystemZDisassemblerExtension.h
+@@ -4,7 +4,11 @@
+ #ifndef CS_SYSTEMZ_DISASSEMBLER_EXTENSION_H
+ #define CS_SYSTEMZ_DISASSEMBLER_EXTENSION_H
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ bool SystemZ_getFeatureBits(unsigned int mode, unsigned int feature);
+ 
