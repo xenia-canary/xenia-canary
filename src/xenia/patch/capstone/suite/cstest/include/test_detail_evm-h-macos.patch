@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/include/test_detail_evm.h
++++ b/third_party/capstone/suite/cstest/include/test_detail_evm.h
+@@ -5,7 +5,11 @@
+ #define TEST_DETAIL_EVM_H
+ 
+ #include <cyaml/cyaml.h>
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ typedef struct {
+ 	unsigned char pop;
