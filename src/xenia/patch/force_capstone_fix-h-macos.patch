@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/third_party/force_capstone_fix.h
+@@ -0,0 +1,13 @@
++/* force_capstone_fix.h - Include BEFORE anything else */
++#ifndef FORCE_CAPSTONE_FIX_H
++#define FORCE_CAPSTONE_FIX_H
++
++/* NUCLEAR OPTION: Define the types before capstone is included */
++#define arm_cc int
++#define arm64_cc int
++#define arm_reg int
++#define arm64_reg int
++#define arm void*
++#define arm64 void*
++
++#endif
