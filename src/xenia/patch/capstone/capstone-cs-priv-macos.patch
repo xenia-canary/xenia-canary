@@ -1,9 +1,10 @@
 --- a/third_party/capstone/cs_priv.h
 +++ b/third_party/capstone/cs_priv.h
-@@ -7,7 +7,11 @@
+@@ -7,7 +7,12 @@
  #ifdef CAPSTONE_DEBUG
  #include <assert.h>
  #endif
++
 +#ifdef __APPLE__
 +#include "capstone/capstone.h"
 +#else
