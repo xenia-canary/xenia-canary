@@ -239,6 +239,31 @@ void XCustomRegisterDynamicActions_entry() {
   // ???
 }
 DECLARE_XAM_EXPORT1(XCustomRegisterDynamicActions, kNone, kStub);
+#ifdef __APPLE__
+dword_result_t XCustomUnregisterDynamicActions_entry() {
+  // Stub - return success
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XCustomUnregisterDynamicActions, kNone, kStub);
+
+dword_result_t XCustomSetDynamicActions_entry() {
+  // Stub - return success
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XCustomSetDynamicActions, kNone, kStub);
+
+dword_result_t XCustomGetCurrentGamercard_entry() {
+  // Stub - return failure for now
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XCustomGetCurrentGamercard, kNone, kStub);
+
+dword_result_t XCustomGetLastActionPressEx_entry() {
+  // Stub - return no action pressed
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XCustomGetLastActionPressEx, kNone, kStub);
+#endif
 
 dword_result_t XGetAVPack_entry() {
   // Value from
@@ -449,8 +474,12 @@ dword_result_t XamAllocEx_entry(dword_t phys_flags, dword_t flags, dword_t size,
 
   uint32_t flags_remapped = phys_flags;
   if ((phys_flags & 0xF000000) == 0) {
-    // setting default alignment
+// setting default alignment
+#ifdef __APPLE__
+    flags_remapped = 0xC000000 | (phys_flags & 0xF0FFFFFF);
+#else
     flags_remapped = 0xC000000 | phys_flags & 0xF0FFFFFF;
+#endif
   }
 
   uint32_t result = xboxkrnl::xeMmAllocatePhysicalMemoryEx(
