@@ -1,0 +1,14 @@
+--- a/third_party/capstone/suite/cstest/include/test_detail.h
++++ b/third_party/capstone/suite/cstest/include/test_detail.h
+@@ -33,7 +33,11 @@
+ #include "test_detail_m68k.h"
+ #include "test_detail_xtensa.h"
+ #include "test_compare.h"
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ #include <cyaml/cyaml.h>
+ 
+ /// The equivalent to cs_detail in capstone.h
