@@ -1,0 +1,13 @@
+--- a/third_party/FFmpeg/libavformat/os_support.c
++++ b/third_party/FFmpeg/libavformat/os_support.c
+@@ -297,3 +297,10 @@ int ff_poll(struct pollfd *fds, nfds_t numfds, int timeout)
+ #endif /* !HAVE_POLL_H */
+ 
+ #endif /* CONFIG_NETWORK */
++
++/* Dummy symbol to prevent "no symbols" error when CONFIG_NETWORK is disabled.
++ * This ensures the object file always contains at least one symbol on platforms
++ * like macOS where networking is disabled in FFmpeg configuration. */
++#if !CONFIG_NETWORK
++__attribute__((used)) static const int os_support_dummy_symbol = 0;
++#endif
