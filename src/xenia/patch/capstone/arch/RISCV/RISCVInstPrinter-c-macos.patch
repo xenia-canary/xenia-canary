@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/RISCV/RISCVInstPrinter.c
++++ b/third_party/capstone/arch/RISCV/RISCVInstPrinter.c
+@@ -16,7 +16,11 @@
+ #include <stdio.h>		// DEBUG
+ #include <stdlib.h>
+ #include <string.h>
++#ifdef __APPLE__
++#include "capstone/platform.h"
++#else
+ #include <capstone/platform.h>
++#endif
+ 
+ #include "RISCVInstPrinter.h"
+ #include "RISCVBaseInfo.h"
