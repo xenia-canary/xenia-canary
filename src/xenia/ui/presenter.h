@@ -318,6 +318,15 @@ class Presenter {
       uint32_t frontbuffer_width, uint32_t frontbuffer_height,
       uint32_t display_aspect_ratio_x, uint32_t display_aspect_ratio_y,
       std::function<bool(GuestOutputRefreshContext& context)> refresher);
+#ifdef __APPLE__
+  uint64_t GetGuestOutputRefreshAttemptCount() const {
+    return guest_output_refresh_attempt_count_.load(std::memory_order_relaxed);
+  }
+  uint64_t GetGuestOutputRefreshSuccessCount() const {
+    return guest_output_refresh_success_count_.load(std::memory_order_relaxed);
+  }
+  void LogGuestOutputBootstrapState(const char* reason);
+#endif
   // The implementation must be callable from any thread, including from
   // multiple at the same time, and it should acquire the latest guest output
   // image via ConsumeGuestOutput.
@@ -757,6 +766,12 @@ class Presenter {
            connection_state == SurfacePaintConnectionState::kConnectedOutdated;
   }
 
+#ifdef __APPLE__
+  static const char* PaintResultToString(PaintResult result);
+  static const char* PaintModeToString(PaintMode mode);
+  static const char* SurfaceConnectionStateToString(
+      SurfacePaintConnectionState state);
+#endif
   struct UIDrawerReference {
     UIDrawer* drawer;
     uint64_t last_draw;
@@ -959,6 +974,14 @@ class Presenter {
   // Accessible only by refreshing, whether the last refresh contained an image
   // rather than being blank.
   bool guest_output_active_last_refresh_ = false;
+#ifdef __APPLE__
+  std::atomic<uint64_t> presenter_bootstrap_start_ms_{0};
+  std::atomic<uint64_t> first_guest_refresh_attempt_ms_{0};
+  std::atomic<uint64_t> first_guest_refresh_success_ms_{0};
+  std::atomic<bool> bootstrap_mailbox_nudge_done_{false};
+  std::atomic<uint64_t> guest_output_refresh_attempt_count_{0};
+  std::atomic<uint64_t> guest_output_refresh_success_count_{0};
+#endif
 
   // Ordered by the Z order, and then by the time of addition.
   // Note: All the iteration logic involving this Z ordering must be the same as
