@@ -1,0 +1,14 @@
+--- a/third_party/capstone/arch/WASM/WASMMapping.h
++++ b/third_party/capstone/arch/WASM/WASMMapping.h
+@@ -1,7 +1,11 @@
+ /* Capstone Disassembly Engine */
+ /* By Spike, xwings 2019 */
+ 
++#ifdef __APPLE__
++#include "capstone/capstone.h"
++#else
+ #include <capstone/capstone.h>
++#endif
+ 
+ void WASM_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id);
+ const char *WASM_insn_name(csh handle, unsigned int id);
