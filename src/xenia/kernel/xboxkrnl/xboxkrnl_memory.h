@@ -17,6 +17,16 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
+struct X_MEMORY_BASIC_INFORMATION {
+  be<uint32_t> base_address;
+  be<uint32_t> allocation_base;
+  be<uint32_t> allocation_protect;
+  be<uint32_t> region_size;
+  be<uint32_t> state;
+  be<uint32_t> protect;
+  be<uint32_t> type;
+};
+
 // https://code.google.com/p/vdash/source/browse/trunk/vdash/include/kernel.h
 struct X_MM_QUERY_STATISTICS_SECTION {
   xe::be<uint32_t> available_pages;
@@ -42,6 +52,14 @@ struct X_MM_QUERY_STATISTICS_RESULT {
 };
 static_assert_size(X_MM_QUERY_STATISTICS_RESULT, 104);
 
+struct X_POOL_ALLOC_HEADER {
+  uint8_t unk_0;
+  uint8_t unk_1;
+  uint8_t unk_2;  // set this to 170
+  uint8_t unk_3;
+  xe::be<uint32_t> tag;
+};
+
 uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
                                       uint32_t protect_bits,
                                       uint32_t min_addr_range,
@@ -50,7 +68,7 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
 dword_result_t xeMmQueryStatistics(
     pointer_t<X_MM_QUERY_STATISTICS_RESULT> stats_ptr);
 uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
-                                   uint32_t tag, uint32_t zero);
+                                   uint32_t tag, uint32_t pool_selector);
 
 void xeFreePool(PPCContext* context, uint32_t base_address);
 

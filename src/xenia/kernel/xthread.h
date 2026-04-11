@@ -48,17 +48,6 @@ enum IRQL_FLAGS : uint8_t {
   IRQL_HIGHEST = 124
 };
 
-enum X_DISPATCHER_FLAGS {
-  DISPATCHER_MANUAL_RESET_EVENT = 0,
-  DISPATCHER_AUTO_RESET_EVENT = 1,
-  DISPATCHER_MUTANT = 2,
-  DISPATCHER_QUEUE = 4,
-  DISPATCHER_SEMAPHORE = 5,
-  DISPATCHER_THREAD = 6,
-  DISPATCHER_MANUAL_RESET_TIMER = 8,
-  DISPATCHER_AUTO_RESET_TIMER = 9,
-};
-
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/ntos/ke/kthread_state.htm
 enum X_KTHREAD_STATE_FLAGS : uint8_t {
   KTHREAD_STATE_INITIALIZED = 0,
@@ -222,12 +211,22 @@ struct X_KPCR {
   uint8_t unk_2AC[0x2C];            // 0x2AC
 };
 
-#ifdef WAIT_ANY
-#undef WAIT_ANY
-#endif
-enum : uint16_t {
-  WAIT_ALL = 0,
-  WAIT_ANY = 1,
+struct X_KMUTANT {
+  X_DISPATCH_HEADER header;            // 0x0
+  X_LIST_ENTRY unk_list;               // 0x10
+  TypedGuestPointer<X_KTHREAD> owner;  // 0x18
+  bool abandoned;                      // 0x1C
+  // these might just be padding
+  uint8_t unk_1D;  // 0x1D
+  uint8_t unk_1E;  // 0x1E
+  uint8_t unk_1F;  // 0x1F
+};
+static_assert_size(X_KMUTANT, 0x20);
+
+enum X_KWAIT_REASON : uint16_t {
+  WaitAll = 0,
+  WaitAny = 1,
+  WaitUnk3 = 3,
 };
 
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/ntos/ke_x/kwait_block.htm
@@ -243,7 +242,7 @@ struct X_KWAIT_BLOCK {
   // is satisfied
   xe::be<uint16_t> wait_result_xstatus;
   // WAIT_ALL or WAIT_ANY
-  xe::be<uint16_t> wait_type;
+  xe::be<X_KWAIT_REASON> wait_type;
 };
 
 static_assert_size(X_KWAIT_BLOCK, 0x18);
@@ -258,9 +257,9 @@ struct X_KTIMER {
 static_assert_size(X_KTIMER, 0x28);
 
 struct X_KTHREAD {
-  X_DISPATCH_HEADER header;          // 0x0
-  xe::be<uint32_t> unk_10;           // 0x10
-  xe::be<uint32_t> unk_14;           // 0x14
+  X_DISPATCH_HEADER header;  // 0x0
+  util::X_TYPED_LIST<X_KMUTANT, offsetof(X_KMUTANT, unk_list)>
+      mutants_list;                  // 0x10
   X_KTIMER wait_timeout_timer;       // 0x18
   X_KWAIT_BLOCK wait_timeout_block;  // 0x40
   uint8_t unk_58[0x4];               // 0x58
@@ -295,7 +294,11 @@ struct X_KTHREAD {
   xe::be<uint32_t> msr_mask;                      // 0x9C
   xe::be<X_STATUS> wait_result;                   // 0xA0
   uint8_t wait_irql;                              // 0xA4
-  uint8_t unk_A5[0xB];                            // 0xA5
+  uint8_t processor_mode;                         // 0xA5
+  uint8_t wait_next;                              // 0xA6
+  uint8_t wait_reason;                            // 0xA7
+  TypedGuestPointer<X_KWAIT_BLOCK> wait_blocks;   // 0xA8
+  uint8_t unk_AC[4];                              // 0xAC
   int32_t apc_disable_count;                      // 0xB0
   xe::be<int32_t> quantum;                        // 0xB4
   uint8_t saturation_increment;                   // 0xB8

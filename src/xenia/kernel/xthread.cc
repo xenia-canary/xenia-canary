@@ -180,21 +180,25 @@ static uint8_t GetFakeCpuNumber(uint8_t proc_mask) {
 void XThread::InitializeGuestObject() {
   auto guest_thread = guest_object<X_KTHREAD>();
   auto thread_guest_ptr = guest_object();
-  guest_thread->header.type = 6;
+  guest_thread->header.type = X_DISPATCHER_FLAGS::DISPATCHER_THREAD;
   guest_thread->suspend_count =
       (creation_params_.creation_flags & X_CREATE_SUSPENDED) ? 1 : 0;
 
-  guest_thread->unk_10 = (thread_guest_ptr + 0x10);
-  guest_thread->unk_14 = (thread_guest_ptr + 0x10);
+  guest_thread->mutants_list.flink_ptr = (thread_guest_ptr + 0x10);
+  guest_thread->mutants_list.blink_ptr = (thread_guest_ptr + 0x10);
+
+  auto timer_wait_header_list_entry = memory()->HostToGuestVirtual(
+      &guest_thread->wait_timeout_timer.header.wait_list);
   guest_thread->wait_timeout_block.wait_list_entry.flink_ptr =
-      thread_guest_ptr + 0x20;
+      timer_wait_header_list_entry;
   guest_thread->wait_timeout_block.wait_list_entry.blink_ptr =
-      thread_guest_ptr + 0x20;
+      timer_wait_header_list_entry;
   guest_thread->wait_timeout_block.thread = thread_guest_ptr;
-  uint32_t v6 = thread_guest_ptr + 0x18;
-  guest_thread->wait_timeout_block.wait_result_xstatus = 0x0100;
-  guest_thread->wait_timeout_block.wait_type = 0x0201;
-  guest_thread->wait_timeout_block.object = v6;
+  guest_thread->wait_timeout_block.object =
+      memory()->HostToGuestVirtual(&guest_thread->wait_timeout_timer);
+  guest_thread->wait_timeout_block.wait_result_xstatus = X_STATUS_TIMEOUT;
+  guest_thread->wait_timeout_block.wait_type = X_KWAIT_REASON::WaitAny;
+
   guest_thread->stack_base = (this->stack_base_);
   guest_thread->stack_limit = (this->stack_limit_);
   guest_thread->stack_kernel = (this->stack_base_ - 240);
