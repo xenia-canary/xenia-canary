@@ -96,21 +96,13 @@ struct TerminateNotification {
 // a bit like the timers on KUSER_SHARED on normal win32
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/ntexapi_x/kuser_shared_data/index.htm
 struct X_TIME_STAMP_BUNDLE {
+  // according to Nukernl these are BE
   uint64_t interrupt_time;
   // i assume system_time is in 100 ns intervals like on win32
   uint64_t system_time;
   uint32_t tick_count;
   uint32_t padding;
 };
-struct X_UNKNOWN_TYPE_REFED {
-  xe::be<uint32_t> field0;
-  xe::be<uint32_t> field4;
-  // this is definitely a LIST_ENTRY?
-  xe::be<uint32_t> points_to_self;  // this field points to itself
-  xe::be<uint32_t>
-      points_to_prior;  // points to the previous field, which points to itself
-};
-static_assert_size(X_UNKNOWN_TYPE_REFED, 16);
 
 struct KernelGuestGlobals {
   X_OBJECT_TYPE ExThreadObjectType;
@@ -125,7 +117,7 @@ struct KernelGuestGlobals {
   X_OBJECT_TYPE ObSymbolicLinkObjectType;
   // a constant buffer that some object types' "unknown_size_or_object" field
   // points to
-  X_UNKNOWN_TYPE_REFED OddObj;
+  X_DISPATCH_HEADER XboxKernelDefaultObject;
   X_KPROCESS idle_process;    // X_PROCTYPE_IDLE. runs in interrupt contexts. is
                               // also the context the kernel starts in?
   X_KPROCESS title_process;   // X_PROCTYPE_TITLE

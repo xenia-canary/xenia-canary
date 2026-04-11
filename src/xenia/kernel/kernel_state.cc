@@ -1527,15 +1527,17 @@ void KernelState::InitializeKernelGuestGlobals() {
   SetProcessTLSVars(system_process, 32, 0, 0);
 
   uint32_t oddobject_offset =
-      kernel_guest_globals_ + offsetof(KernelGuestGlobals, OddObj);
+      kernel_guest_globals_ +
+      offsetof(KernelGuestGlobals, XboxKernelDefaultObject);
 
   // init unknown object
 
-  block->OddObj.field0 = 0x1000000;
-  block->OddObj.field4 = 1;
-  block->OddObj.points_to_self =
-      oddobject_offset + offsetof(X_UNKNOWN_TYPE_REFED, points_to_self);
-  block->OddObj.points_to_prior = block->OddObj.points_to_self;
+  block->XboxKernelDefaultObject.type = DISPATCHER_AUTO_RESET_EVENT;
+  block->XboxKernelDefaultObject.signal_state = 1;
+  block->XboxKernelDefaultObject.wait_list.flink_ptr =
+      oddobject_offset + offsetof(X_DISPATCH_HEADER, wait_list.flink_ptr);
+  block->XboxKernelDefaultObject.wait_list.blink_ptr =
+      block->XboxKernelDefaultObject.wait_list.flink_ptr;
 
   // init thread object
   block->ExThreadObjectType.pool_tag = 0x65726854;

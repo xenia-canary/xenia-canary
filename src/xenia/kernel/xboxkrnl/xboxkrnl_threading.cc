@@ -692,12 +692,12 @@ DECLARE_XBOXKRNL_EXPORT2(NtClearEvent, kThreading, kImplemented,
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff552150(v=vs.85).aspx
 void KeInitializeSemaphore_entry(pointer_t<X_KSEMAPHORE> semaphore_ptr,
                                  dword_t count, dword_t limit) {
-  semaphore_ptr->header.type = 5;  // SemaphoreObject
+  semaphore_ptr->header.type = X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE;
   semaphore_ptr->header.signal_state = (uint32_t)count;
   semaphore_ptr->limit = (uint32_t)limit;
 
-  auto sem = XObject::GetNativeObject<XSemaphore>(kernel_state(), semaphore_ptr,
-                                                  5 /* SemaphoreObject */);
+  auto sem = XObject::GetNativeObject<XSemaphore>(
+      kernel_state(), semaphore_ptr, X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE);
   if (!sem) {
     assert_always();
     return;
@@ -1014,7 +1014,7 @@ dword_result_t KeWaitForMultipleObjects_entry(
     dword_t count, lpdword_t objects_ptr, dword_t wait_type,
     dword_t wait_reason, dword_t processor_mode, dword_t alertable,
     lpqword_t timeout_ptr, lpvoid_t wait_block_array_ptr) {
-  assert_true(wait_type <= 1);
+  assert_true(wait_type <= X_KWAIT_REASON::WaitAny);
 
   assert_true(count <= 64);
   object_ref<XObject> objects[64];
@@ -1049,7 +1049,7 @@ uint32_t xeNtWaitForMultipleObjectsEx(uint32_t count, xe::be<uint32_t>* handles,
                                       uint32_t wait_type, uint32_t wait_mode,
                                       uint32_t alertable,
                                       uint64_t* timeout_ptr) {
-  assert_true(wait_type <= 1);
+  assert_true(wait_type <= X_KWAIT_REASON::WaitAny);
 
   assert_true(count <= 64);
   object_ref<XObject> objects[64];
@@ -1091,7 +1091,8 @@ dword_result_t NtWaitForMultipleObjectsEx_entry(
     dword_t count, lpdword_t handles, dword_t wait_type, dword_t wait_mode,
     dword_t alertable, lpqword_t timeout_ptr) {
   uint64_t timeout = timeout_ptr ? static_cast<uint64_t>(*timeout_ptr) : 0u;
-  if (!count || count > 64 || (wait_type != 1 && wait_type)) {
+  if (!count || count > 64 ||
+      (wait_type != X_KWAIT_REASON::WaitAny && wait_type)) {
     return X_STATUS_INVALID_PARAMETER;
   }
   return xeNtWaitForMultipleObjectsEx(count, handles, wait_type, wait_mode,
@@ -1871,7 +1872,7 @@ dword_result_t KeSetPriorityThread_entry(pointer_t<X_KTHREAD> thread_ptr,
     return 0;
   }
 
-  if (thread_ptr->header.type != 6) {
+  if (thread_ptr->header.type != X_DISPATCHER_FLAGS::DISPATCHER_THREAD) {
     XELOGW("{}: Invalid object type: {}", __func__, thread_ptr->header.type);
   }
 
