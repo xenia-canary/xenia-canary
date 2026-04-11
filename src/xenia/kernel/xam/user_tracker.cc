@@ -18,9 +18,8 @@
 #include "xenia/kernel/xam/user_property.h"
 #include "xenia/kernel/xam/user_settings.h"
 #include "xenia/kernel/xam/user_tracker.h"
+#include "xenia/kernel/xam/user_utils.h"
 #include "xenia/kernel/xam/xdbf/gpd_info.h"
-
-DECLARE_int32(user_language);
 
 namespace xe {
 namespace kernel {
@@ -349,7 +348,7 @@ void UserTracker::UpdateTitleGpdFile() {
     }
 
     auto user_language = spa_data_->GetExistingLanguage(
-        static_cast<XLanguage>(cvars::user_language));
+        static_cast<XLanguage>(xam::GetUserLanguage(kernel_state())));
 
     // First add achievements because of lowest ID
     for (const auto& entry : spa_data_->GetAchievements()) {

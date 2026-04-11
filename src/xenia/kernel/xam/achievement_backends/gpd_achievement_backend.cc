@@ -11,8 +11,6 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 
-DECLARE_int32(user_language);
-
 namespace xe {
 namespace kernel {
 namespace xam {

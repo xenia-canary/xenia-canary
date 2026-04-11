@@ -12,12 +12,11 @@
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/user_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
-
-DECLARE_int32(user_country);
 
 // TODO(gibbed): put these forward decls in a header somewhere.
 
@@ -202,7 +201,8 @@ uint8_t xeXamGetLocaleFromCountry(uint8_t id) {
 
 uint8_t xeXamGetLocaleEx(uint8_t max_country_id, uint8_t max_locale_id) {
   // TODO(gibbed): rework when XConfig is cleanly implemented.
-  uint8_t country_id = static_cast<uint8_t>(cvars::user_country);
+  uint8_t country_id =
+      static_cast<uint8_t>(xam::GetUserCountry(kernel_state()));
   /*if (XSUCCEEDED(xboxkrnl::xeExGetXConfigSetting(
           3, 14, &country_id, sizeof(country_id), nullptr))) {*/
   if (country_id <= max_country_id) {

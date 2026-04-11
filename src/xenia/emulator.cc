@@ -42,6 +42,7 @@
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xam/achievement_manager.h"
+#include "xenia/kernel/xam/user_utils.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 #include "xenia/kernel/xbdm/xbdm_module.h"
@@ -83,8 +84,6 @@ DEFINE_bool(allow_game_relative_writes, false,
             "relative to game://. Used for "
             "generating test data to compare with original hardware. ",
             "General");
-
-DECLARE_int32(user_language);
 
 DECLARE_bool(allow_plugins);
 
@@ -1546,8 +1545,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     kernel_state_->xam_state()->user_tracker()->AddTitleToPlayedList();
 
     if (game_info_database_->IsValid()) {
-      title_name_ = game_info_database_->GetTitleName(
-          static_cast<XLanguage>(cvars::user_language));
+      title_name_ = game_info_database_->GetTitleName(static_cast<XLanguage>(
+          kernel::xam::GetUserLanguage(kernel_state_.get())));
       XELOGI("Title name: {}", title_name_);
 
       // Show achievments data

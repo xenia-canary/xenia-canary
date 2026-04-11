@@ -25,8 +25,6 @@ DEFINE_string(
     "Possible options: GPD.",
     "Kernel");
 
-DECLARE_int32(user_language);
-
 namespace xe {
 namespace kernel {
 namespace xam {

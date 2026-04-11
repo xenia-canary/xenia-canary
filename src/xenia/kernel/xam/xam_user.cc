@@ -14,14 +14,12 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/user_settings.h"
+#include "xenia/kernel/xam/user_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/xbox.h"
 
 #include "third_party/stb/stb_image.h"
-
-DECLARE_int32(user_language);
-DECLARE_int32(user_country);
 
 namespace xe {
 namespace kernel {
@@ -991,7 +989,7 @@ DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 dword_result_t XamUserGetOnlineLanguageFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return cvars::user_language;
+    return xam::GetUserLanguage(kernel_state());
   }
   return user->GetLanguage();
 }
@@ -1001,7 +999,7 @@ DECLARE_XAM_EXPORT1(XamUserGetOnlineLanguageFromXUID, kUserProfiles,
 dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return cvars::user_country;
+    return xam::GetUserCountry(kernel_state());
   }
   return user->GetCountry();
 }
