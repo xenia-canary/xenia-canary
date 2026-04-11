@@ -773,6 +773,37 @@ dword_result_t XamIsIptvEnabled_entry() {
 }
 DECLARE_XAM_EXPORT1(XamIsIptvEnabled, kNone, kImplemented);
 
+dword_result_t XamIptvGetServiceName_entry(lpdword_t service_name_ptr) {
+  auto address = kernel_state()->xam_state()->GetIptvNameAddress();
+  auto buffer = kernel_state()->memory()->TranslateVirtual(address);
+  char16_t* data_ptr = reinterpret_cast<char16_t*>(buffer);
+  kernel_state()->xconfig()->ReadSetting(
+      X_CONFIG_CATEGORY::XCONFIG_IPTV_CATEGORY,
+      XCONFIG_IPTV_SERVICE_PROVIDER_NAME, data_ptr);
+  if (*data_ptr == u'\0') {
+    xe::string_util::copy_and_swap_truncating(data_ptr, u"Xenia TV", 9);
+  }
+  *service_name_ptr = address;
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamIptvGetServiceName, kNone, kImplemented);
+
+dword_result_t XamGetDvrStorage_entry(lpdword_t dvr_storage,
+                                      lpdword_t used_dvr_storage,
+                                      lpdword_t hdd_unused_space) {
+  *dvr_storage = 0;
+  *used_dvr_storage = 0;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetDvrStorage, kNone, kStub);
+
+dword_result_t XamSetDvrStorage_entry(
+    dword_t dvr_storage_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamSetDvrStorage, kNone, kStub);
+
 dword_result_t XamLookupCommonStringByIndex_entry(dword_t string_index) {
   return 0;
 }
