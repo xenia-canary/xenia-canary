@@ -16,7 +16,7 @@
 #include "xenia/ui/window.h"
 
 #if XE_PLATFORM_WIN32
-#include "xenia/ui/window_win.h"
+#include "xenia/ui/window_wx.h"
 #endif
 
 // On Windows, InvalidateRect causes WM_PAINT to be sent quite quickly, so
@@ -1208,7 +1208,7 @@ void Presenter::UpdateSurfaceMonitorFromUIThread(
 #if XE_PLATFORM_WIN32
   HMONITOR surface_new_win32_monitor = nullptr;
   if (surface_) {
-    HWND hwnd = static_cast<const Win32Window*>(window_)->hwnd();
+    HWND hwnd = static_cast<const WxWindow*>(window_)->hwnd();
     // The HWND may be non-existent if the window has been closed and destroyed
     // (the HWND, not the xe::ui::Window) already.
     if (hwnd) {

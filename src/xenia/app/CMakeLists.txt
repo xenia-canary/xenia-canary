@@ -31,10 +31,15 @@ if(WIN32)
       PROPERTIES COMPILE_OPTIONS "/arch:SSE2"
     )
   endif()
+elseif(APPLE)
+  target_sources(xenia-app PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_mac.cc
+  )
 else()
   target_sources(xenia-app PRIVATE
     ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
-    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_linux.cc
   )
   if(NOT MSVC AND XE_TARGET_X86_64)
     set_source_files_properties(

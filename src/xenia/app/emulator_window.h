@@ -29,6 +29,9 @@
 namespace xe {
 namespace app {
 
+inline constexpr std::string_view kBaseTitle = "Xenia-canary";
+inline constexpr std::string_view kRecentlyPlayedTitlesFilename = "recent.toml";
+
 struct RecentTitleEntry {
   std::string title_name;
   std::filesystem::path path_to_file;
@@ -59,16 +62,6 @@ class EmulatorWindow {
   std::unique_ptr<xe::threading::Thread> Gamepad_HotKeys_Listener;
 
   int32_t selected_title_index = -1;
-
-  static constexpr int64_t diff_in_ms(
-      const steady_clock::time_point t1,
-      const steady_clock::time_point t2) noexcept {
-    using ms = std::chrono::milliseconds;
-    return std::chrono::duration_cast<ms>(t1 - t2).count();
-  }
-
-  steady_clock::time_point last_mouse_up = steady_clock::now();
-  steady_clock::time_point last_mouse_down = steady_clock::now();
 
   Emulator* emulator() const { return emulator_; }
   ui::WindowedAppContext& app_context() const { return app_context_; }
@@ -146,9 +139,6 @@ class EmulatorWindow {
     void OnFileDrop(ui::FileDropEvent& e) override;
 
     void OnKeyDown(ui::KeyEvent& e) override;
-
-    void OnMouseDown(ui::MouseEvent& e) override;
-    void OnMouseUp(ui::MouseEvent& e) override;
 
     void OnUsbDeviceChanged(bool is_arrival) override;
 
@@ -254,10 +244,7 @@ class EmulatorWindow {
   void ApplyDisplayConfigForCvars();
 
   void OnKeyDown(ui::KeyEvent& e);
-  void OnMouseDown(const ui::MouseEvent& e);
-  void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);
-  void OnMouseUp(const ui::MouseEvent& e);
   void FileOpen();
   void FileClose();
   void InstallContent();

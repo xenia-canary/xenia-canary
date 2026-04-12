@@ -625,6 +625,19 @@ def git_submodule_update():
         "-j", f"{os.cpu_count()}",
         *(submodules or []),
         ])
+    # wxWidgets has its own submodules (pcre, etc.) needed for building
+    # from source on Windows and macOS.
+    if sys.platform in ("win32", "darwin"):
+        shell_call([
+            "git",
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+            "--depth=1",
+            "-j", f"{os.cpu_count()}",
+            "third_party/wxWidgets",
+            ])
 
 
 def get_cc(cc=None):

@@ -619,6 +619,21 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   io.DisplaySize.x = window_->GetActualPhysicalWidth() * physical_to_logical;
   io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;
 
+  // Scale dialogs up with the window, floored at 1.0 so shrinking below the
+  // reference doesn't shrink them. Shrinking io.DisplaySize makes fixed-pixel
+  // dialogs occupy a larger share of the physical viewport. Reference is the
+  // window's desired logical size, which tracks internal_display_resolution.
+  float reference_w = float(window_->GetDesiredLogicalWidth());
+  float reference_h = float(window_->GetDesiredLogicalHeight());
+  if (reference_w > 0.0f && reference_h > 0.0f) {
+    float ui_stretch = std::max(1.0f, std::min(io.DisplaySize.x / reference_w,
+                                               io.DisplaySize.y / reference_h));
+    if (ui_stretch > 1.0f) {
+      io.DisplaySize.x /= ui_stretch;
+      io.DisplaySize.y /= ui_stretch;
+    }
+  }
+
   if (!dialogs_.empty()) {
     UpdateGamepads();
   }
@@ -882,10 +897,18 @@ void ImGuiDrawer::OnKey(KeyEvent& e, bool is_down) {
 
 void ImGuiDrawer::UpdateMousePosition(float x, float y) {
   auto& io = GetIO();
-  float physical_to_logical =
-      float(window_->GetMediumDpi()) / float(window_->GetDpi());
-  io.MousePos.x = x * physical_to_logical;
-  io.MousePos.y = y * physical_to_logical;
+  // Use io.DisplaySize so the mapping picks up DPI scaling and dialog stretch
+  // applied in BeginFrame in one go.
+  float phys_w = float(window_->GetActualPhysicalWidth());
+  float phys_h = float(window_->GetActualPhysicalHeight());
+  if (phys_w > 0.0f && phys_h > 0.0f && io.DisplaySize.x > 0.0f &&
+      io.DisplaySize.y > 0.0f) {
+    io.MousePos.x = x * io.DisplaySize.x / phys_w;
+    io.MousePos.y = y * io.DisplaySize.y / phys_h;
+  } else {
+    io.MousePos.x = x;
+    io.MousePos.y = y;
+  }
 }
 
 void ImGuiDrawer::SwitchToPhysicalMouseAndUpdateMousePosition(

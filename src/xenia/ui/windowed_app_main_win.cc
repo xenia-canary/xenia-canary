@@ -9,20 +9,15 @@
 
 #include <cstdlib>
 
-#include "xenia/base/console.h"
-#include "xenia/base/cvar.h"
-#include "xenia/base/main_win.h"
+#include <wx/wx.h>
+
 #include "xenia/base/platform_win.h"
 #include "xenia/kernel/kernel_state.cc"
-#include "xenia/ui/windowed_app.h"
-#include "xenia/ui/windowed_app_context_win.h"
+#include "xenia/ui/windowed_app_wx.h"
 
 #include "version.h"
 
 #include <Psapi.h>
-
-DEFINE_bool(enable_console, false, "Open a console window with the main window",
-            "Logging");
 
 static uintptr_t g_xenia_exe_base = 0;
 static size_t g_xenia_exe_size = 0;
@@ -306,6 +301,14 @@ LONG _UnhandledExceptionFilter(_EXCEPTION_POINTERS* ExceptionInfo) {
 
   return EXCEPTION_CONTINUE_SEARCH;
 }
+// wxWidgets app instance - XeniaWxApp handles OnInit/OnExit lifecycle.
+// Cvar/logging init and command-line parsing happen in XeniaWxApp::OnInit
+// after the WindowedApp is constructed and can supply its positional options.
+wxIMPLEMENT_APP_NO_MAIN(xe::ui::XeniaWxApp);
+
+DEFINE_bool(enable_console, false, "Open a console window with the main window",
+            "Logging");
+
 int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
                     LPWSTR command_line, int show_cmd) {
   MODULEINFO modinfo;
@@ -316,49 +319,17 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
   g_xenia_exe_base = reinterpret_cast<uintptr_t>(hinstance);
   g_xenia_exe_size = modinfo.SizeOfImage;
 
-  int result;
   SetUnhandledExceptionFilter(_UnhandledExceptionFilter);
-  {
-    xe::ui::Win32WindowedAppContext app_context(hinstance, show_cmd);
-    // TODO(Triang3l): Initialize creates a window. Set DPI awareness via the
-    // manifest.
-    if (!app_context.Initialize()) {
-      return EXIT_FAILURE;
-    }
 
-    std::unique_ptr<xe::ui::WindowedApp> app =
-        xe::ui::GetWindowedAppCreator()(app_context);
-
-    if (!xe::ParseWin32LaunchArguments(false, app->GetPositionalOptionsUsage(),
-                                       app->GetPositionalOptions(), nullptr)) {
-      return EXIT_FAILURE;
-    }
-
-    // Initialize COM on the UI thread with the apartment-threaded concurrency
-    // model, so dialogs can be used.
-    if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
-      return EXIT_FAILURE;
-    }
-
-    xe::InitializeWin32App(app->GetName());
-
-    if (app->OnInitialize()) {
-      // TODO(Triang3l): Rework this, need to initialize the console properly,
-      // disable has_console_attached_ by default in windowed apps, and attach
-      // only if needed.
-      if (cvars::enable_console) {
-        xe::AttachConsole();
-      }
-      result = app_context.RunMainMessageLoop();
-    } else {
-      result = EXIT_FAILURE;
-    }
-
-    app->InvokeOnDestroy();
+  // Initialize COM on the UI thread with the apartment-threaded concurrency
+  // model, so dialogs can be used.
+  if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
+    return EXIT_FAILURE;
   }
 
-  // Logging may still be needed in the destructors.
-  xe::ShutdownWin32App();
+  // command_line is intentionally null — ParseWin32LaunchArguments reads
+  // GetCommandLineW() directly inside XeniaWxApp::OnInit.
+  int result = wxEntry(hinstance, hinstance_prev, nullptr, show_cmd);
 
   CoUninitialize();
 

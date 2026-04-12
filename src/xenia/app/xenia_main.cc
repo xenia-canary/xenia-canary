@@ -144,6 +144,8 @@ class EmulatorApp final : public xe::ui::WindowedApp {
 
   ~EmulatorApp();
 
+  std::string_view GetTitle() const override { return kBaseTitle; }
+
   bool OnInitialize() override;
 
  protected:

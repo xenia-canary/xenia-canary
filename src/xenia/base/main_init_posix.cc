@@ -14,8 +14,6 @@
 #include <gtk/gtk.h>
 #include <xbyak/xbyak/xbyak_util.h>
 
-#include "xenia/ui/window_gtk.h"
-
 class StartupCpuFeatureCheck {
  public:
   StartupCpuFeatureCheck() {

@@ -149,7 +149,6 @@ class Window {
     kVisible,
     // Temporarily revealed, hidden if not interacting with the mouse.
     kAutoHidden,
-    kHidden,
   };
 
   static std::unique_ptr<Window> Create(WindowedAppContext& app_context,

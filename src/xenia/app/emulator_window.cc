@@ -146,10 +146,6 @@ DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
              "General");
-DEFINE_bool(disable_doubleclick_fullscreen, false,
-            "Allows the user to disable the behavior where a fast double-click "
-            "causes Xenia to enter fullscreen mode.",
-            "General");
 
 namespace xe {
 namespace app {
@@ -161,9 +157,6 @@ using xe::ui::UIEvent;
 
 using namespace xe::hid;
 using namespace xe::gpu;
-
-constexpr std::string_view kRecentlyPlayedTitlesFilename = "recent.toml";
-constexpr std::string_view kBaseTitle = "Xenia-canary";
 
 EmulatorWindow::EmulatorWindow(Emulator* emulator,
                                ui::WindowedAppContext& app_context,
@@ -293,14 +286,6 @@ void EmulatorWindow::EmulatorWindowListener::OnFileDrop(ui::FileDropEvent& e) {
 
 void EmulatorWindow::EmulatorWindowListener::OnKeyDown(ui::KeyEvent& e) {
   emulator_window_.OnKeyDown(e);
-}
-
-void EmulatorWindow::EmulatorWindowListener::OnMouseDown(ui::MouseEvent& e) {
-  emulator_window_.OnMouseDown(e);
-}
-
-void EmulatorWindow::EmulatorWindowListener::OnMouseUp(ui::MouseEvent& e) {
-  emulator_window_.OnMouseUp(e);
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnUsbDeviceChanged(
@@ -1102,20 +1087,6 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
   e.set_handled(true);
 }
 
-void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
-  if (imgui_drawer_->IsAnyDialogOpen()) {
-    return;
-  }
-
-  if (e.button() == ui::MouseEvent::Button::kLeft) {
-    ToggleFullscreenOnDoubleClick();
-  }
-}
-
-void EmulatorWindow::OnMouseUp(const ui::MouseEvent& e) {
-  last_mouse_up = steady_clock::now();
-}
-
 void EmulatorWindow::TakeScreenshot() {
   xe::ui::RawImage image;
 
@@ -1191,36 +1162,6 @@ void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
   }
 }
 
-void EmulatorWindow::ToggleFullscreenOnDoubleClick() {
-  if (cvars::disable_doubleclick_fullscreen) {
-    return;
-  }
-
-  // this function tests if user has double clicked.
-  // if double click was achieved the fullscreen gets toggled
-  const auto now = steady_clock::now();  // current mouse event time
-  constexpr int16_t mouse_down_max_threshold = 250;
-  constexpr int16_t mouse_up_max_threshold = 250;
-  constexpr int16_t mouse_up_down_max_delta = 100;
-  // max delta to prevent 'chaining' of double clicks with next mouse events
-
-  const auto last_mouse_down_delta = diff_in_ms(now, last_mouse_down);
-  if (last_mouse_down_delta >= mouse_down_max_threshold) {
-    last_mouse_down = now;
-    return;
-  }
-
-  const auto last_mouse_up_delta = diff_in_ms(now, last_mouse_up);
-  const auto mouse_event_deltas = diff_in_ms(last_mouse_up, last_mouse_down);
-  if (last_mouse_up_delta >= mouse_up_max_threshold) {
-    return;
-  }
-
-  if (mouse_event_deltas < mouse_up_down_max_delta) {
-    ToggleFullscreen();
-  }
-}
-
 void EmulatorWindow::FileDrop(const std::filesystem::path& path) {
   if (!emulator_initialized_) {
     return;
@@ -1237,8 +1178,17 @@ void EmulatorWindow::FileOpen() {
   file_picker->set_type(ui::FilePicker::Type::kFile);
   file_picker->set_multi_selection(false);
   file_picker->set_title("Select Content Package");
+  if (!recently_launched_titles_.empty()) {
+    file_picker->set_default_directory(
+        recently_launched_titles_[0].path_to_file.parent_path().string());
+  }
+  // Note: the first pattern of the first filter must be '*' (no extension)
+  // so wxFileDialog passes an empty default extension to the native MSW
+  // dialog. Otherwise the native dialog appends the first pattern's extension
+  // (e.g. .iso) to extensionless filenames like GOD content packages, even
+  // when selected by double-click.
   file_picker->set_extensions({
-      {"Supported Files", "*.iso;*.xex;*.zar;*.*"},
+      {"Supported Files", "*;*.iso;*.xex;*.zar"},
       {"Disc Image (*.iso)", "*.iso"},
       {"Disc Archive (*.zar)", "*.zar"},
       {"Xbox Executable (*.xex)", "*.xex"},
