@@ -792,10 +792,7 @@ void KernelState::TerminateTitle() {
 
   // Third: Unload all user modules (including the executable).
   for (size_t i = 0; i < user_modules_.size(); i++) {
-    X_STATUS status = user_modules_[i]->Unload();
-    assert_true(XSUCCEEDED(status));
-
-    object_table_.RemoveHandle(user_modules_[i]->handle());
+    user_modules_[i]->ReleaseHandle();
   }
   user_modules_.clear();
 

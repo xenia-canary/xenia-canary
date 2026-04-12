@@ -383,25 +383,41 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   auto& loader_data = xam->loader_data();
   loader_data.launch_flags = flags;
 
+  std::string title;
+  std::string message;
+
   // Translate the launch path to a full path.
   if (raw_name_ptr && !raw_name_ptr.value().empty()) {
     loader_data.launch_path = xe::path_to_utf8(raw_name_ptr.value());
     loader_data.launch_data_present = true;
     xam->SaveLoaderData();
-
-    auto display_window = kernel_state()->emulator()->display_window();
-    auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
-
-    if (display_window && imgui_drawer) {
-      display_window->app_context().CallInUIThreadSynchronous([imgui_drawer]() {
-        xe::ui::ImGuiDialog::ShowMessageBox(
-            imgui_drawer, "Title was restarted",
-            "Title closed with new launch data. \nPlease restart Xenia. "
-            "Game will be loaded automatically.");
-      });
-    }
+    title = "Title was restarted";
+    message =
+        "Title closed with new launch data. \nPlease restart Xenia. "
+        "Game will be loaded automatically.";
   } else {
+    title = "Title terminated";
+    message = "Game requested exit to dashboard.";
     assert_always("Game requested exit to dashboard via XamLoaderLaunchTitle");
+  }
+
+  auto display_window = kernel_state()->emulator()->display_window();
+  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
+
+  if (display_window && imgui_drawer) {
+    display_window->app_context().CallInUIThreadSynchronous(
+        [imgui_drawer, title, message]() {
+          auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
+              imgui_drawer, title.c_str(), message.c_str());
+
+          std::jthread([dialog]() {
+            while (!dialog->IsClosing()) {
+              std::this_thread::yield();
+            }
+
+            std::quick_exit(0);
+          }).detach();
+        });
   }
 
   // This function does not return.
