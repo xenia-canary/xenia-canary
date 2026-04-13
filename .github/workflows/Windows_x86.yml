@@ -66,7 +66,11 @@ jobs:
           }
 
       - name: Download submodules
-        run: git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS
+        run: |
+          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS
+          # wxWidgets has its own nested submodules (pcre, libpng, etc.) that
+          # the vendored Windows build needs. Mirrors xenia-build.py setup.
+          git submodule update --init --recursive --depth=1 -j $env:NUMBER_OF_PROCESSORS third_party/wxWidgets
 
       - name: Build Xenia
         run: python xenia-build.py build --config=Release --target=xenia-app

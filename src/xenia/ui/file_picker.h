@@ -55,6 +55,11 @@ class FilePicker {
     default_extension_ = std::move(default_extension);
   }
 
+  const std::string& default_directory() const { return default_directory_; }
+  void set_default_directory(std::string default_directory) {
+    default_directory_ = std::move(default_directory);
+  }
+
   const std::string& file_name() const { return file_name_; }
   void set_file_name(std::string file_name) {
     file_name_ = std::move(file_name);
@@ -86,6 +91,7 @@ class FilePicker {
   Mode mode_;
   Type type_;
   std::string title_;
+  std::string default_directory_;
   std::string default_extension_;
   std::string file_name_;
   std::vector<std::pair<std::string, std::string>> extensions_;

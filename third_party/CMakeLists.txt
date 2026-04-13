@@ -1,11 +1,19 @@
 # third_party/CMakeLists.txt - All third-party library targets.
 
-# Suppress warnings for all third-party code.
-if(MSVC)
-  add_compile_options(/W0)
-else()
-  add_compile_options(-w)
-endif()
+# Suppress warnings for individual third-party targets.  This is applied
+# per-target (not via add_compile_options) so that subdirectories like
+# wxWidgets that manage their own warning levels aren't affected.
+function(xe_disable_warnings target)
+  get_target_property(_type ${target} TYPE)
+  if(_type STREQUAL "INTERFACE_LIBRARY")
+    return()
+  endif()
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W0)
+  else()
+    target_compile_options(${target} PRIVATE -w)
+  endif()
+endfunction()
 
 # ==============================================================================
 # xbyak_aarch64 (ARM64 JIT assembler)
@@ -22,10 +30,8 @@ if(XE_TARGET_AARCH64)
   )
   if(MSVC)
     target_compile_definitions(xbyak_aarch64 PRIVATE NOMINMAX)
-    target_compile_options(xbyak_aarch64 PRIVATE /w)
-  else()
-    target_compile_options(xbyak_aarch64 PRIVATE -w)
   endif()
+  xe_disable_warnings(xbyak_aarch64)
 endif()
 
 # ==============================================================================
@@ -35,6 +41,7 @@ add_library(aes_128 STATIC
   aes_128/unroll/aes.c
 )
 target_include_directories(aes_128 PUBLIC aes_128)
+xe_disable_warnings(aes_128)
 
 # ==============================================================================
 # capstone
@@ -74,6 +81,7 @@ else()
   )
 endif()
 target_include_directories(capstone PUBLIC capstone/include PRIVATE capstone)
+xe_disable_warnings(capstone)
 # Force all capstone sources to compile as C
 file(GLOB_RECURSE _capstone_all_c "capstone/*.c")
 set_source_files_properties(${_capstone_all_c} PROPERTIES LANGUAGE C)
@@ -97,6 +105,7 @@ add_library(dxbc STATIC
   dxbc/DXBCChecksum.cpp
 )
 target_include_directories(dxbc PUBLIC dxbc)
+xe_disable_warnings(dxbc)
 
 # ==============================================================================
 # discord-rpc
@@ -116,6 +125,7 @@ elseif(XE_TARGET_ARM64)
   target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_NEON)
 endif()
 target_include_directories(discord-rpc PUBLIC discord-rpc/include PRIVATE rapidjson/include)
+xe_disable_warnings(discord-rpc)
 if(WIN32)
   target_sources(discord-rpc PRIVATE
     discord-rpc/src/connection_win.cpp
@@ -142,6 +152,7 @@ add_library(fmt STATIC
   fmt/src/os.cc
 )
 target_include_directories(fmt PUBLIC fmt/include)
+xe_disable_warnings(fmt)
 
 # ==============================================================================
 # glslang-spirv (not needed on macOS — no Vulkan/SPIR-V backend)
@@ -158,6 +169,7 @@ if(NOT APPLE)
     glslang/glslang/Include/visibility.h
   )
   target_include_directories(glslang-spirv PUBLIC glslang)
+  xe_disable_warnings(glslang-spirv)
 endif()
 
 # ==============================================================================
@@ -171,6 +183,7 @@ add_library(imgui STATIC
   imgui/imgui_widgets.cpp
 )
 target_include_directories(imgui PUBLIC imgui PRIVATE stb)
+xe_disable_warnings(imgui)
 
 # ==============================================================================
 # mspack
@@ -183,6 +196,7 @@ add_library(mspack STATIC
 target_compile_definitions(mspack PRIVATE HAVE_CONFIG_H)
 target_include_directories(mspack PUBLIC mspack)
 target_link_libraries(mspack PUBLIC xenia-base)
+xe_disable_warnings(mspack)
 
 # ==============================================================================
 # pugixml
@@ -191,6 +205,7 @@ add_library(pugixml STATIC
   pugixml/src/pugixml.cpp
 )
 target_include_directories(pugixml PUBLIC pugixml/src)
+xe_disable_warnings(pugixml)
 
 # ==============================================================================
 # snappy
@@ -223,6 +238,7 @@ add_library(snappy STATIC
   snappy/snappy.h
 )
 target_include_directories(snappy PUBLIC snappy)
+xe_disable_warnings(snappy)
 
 # ==============================================================================
 # xxhash
@@ -231,6 +247,7 @@ add_library(xxhash STATIC
   xxhash/xxhash.c
 )
 target_include_directories(xxhash PUBLIC xxhash)
+xe_disable_warnings(xxhash)
 
 # ==============================================================================
 # zstd
@@ -246,6 +263,7 @@ add_library(zstd STATIC
   ${_zstd_decompress}
 )
 target_include_directories(zstd PUBLIC zstd/lib PRIVATE zstd/lib/common)
+xe_disable_warnings(zstd)
 target_compile_definitions(zstd PRIVATE
   XXH_NAMESPACE=ZSTD_
   ZSTD_LEGACY_SUPPORT=0
@@ -271,6 +289,7 @@ add_library(zarchive STATIC
 )
 target_include_directories(zarchive PUBLIC zarchive/include PRIVATE zstd/lib)
 target_link_libraries(zarchive PUBLIC zstd)
+xe_disable_warnings(zarchive)
 
 # ==============================================================================
 # zlib-ng
@@ -357,6 +376,7 @@ else()
   endif()
 endif()
 target_include_directories(zlib-ng PUBLIC zlib-ng)
+xe_disable_warnings(zlib-ng)
 
 # ==============================================================================
 # libusb (Windows only)
@@ -381,6 +401,7 @@ if(WIN32)
     libusb/libusb/os/windows_winusb.h
   )
   target_include_directories(libusb PUBLIC libusb/libusb PRIVATE libusb/msvc)
+  xe_disable_warnings(libusb)
 endif()
 
 # ==============================================================================
@@ -449,6 +470,7 @@ if(WIN32)
   )
   target_include_directories(SDL2 PUBLIC SDL2/include)
   target_link_libraries(SDL2 PRIVATE setupapi winmm imm32 version)
+  xe_disable_warnings(SDL2)
 elseif(APPLE)
   # Use system SDL2 framework on macOS
   add_library(SDL2 INTERFACE)
@@ -531,6 +553,7 @@ endfunction()
 
 # Common function to apply shared FFmpeg settings to a target.
 function(ffmpeg_common target)
+  xe_disable_warnings(${target})
   target_compile_definitions(${target} PRIVATE
     HAVE_AV_CONFIG_H
     _USE_MATH_DEFINES
@@ -826,3 +849,70 @@ if(WIN32)
 endif()
 target_link_libraries(libavformat PRIVATE libavutil libavcodec)
 ffmpeg_common(libavformat)
+
+# ==============================================================================
+# wxWidgets
+# ==============================================================================
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  if(WIN32 OR APPLE)
+    # Build from vendored source on Windows/macOS (no system package manager).
+    # On MSVC, strip default /W3 so wxWidgets' own /W3 doesn't cause D9025 spam.
+    if(MSVC)
+      string(REGEX REPLACE " */W[0-4]" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+      string(REGEX REPLACE " */W[0-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    else()
+      add_compile_options(-w)
+    endif()
+    if(APPLE)
+      set(wxUSE_ZLIB sys CACHE STRING "" FORCE)
+      set(wxUSE_EXPAT sys CACHE STRING "" FORCE)
+    endif()
+    set(wxBUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(wxBUILD_INSTALL OFF CACHE BOOL "" FORCE)
+    set(wxBUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(wxBUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(wxBUILD_DEMOS OFF CACHE BOOL "" FORCE)
+    set(wxBUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(wxUSE_WEBVIEW OFF CACHE BOOL "" FORCE)
+    set(wxUSE_MEDIACTRL OFF CACHE BOOL "" FORCE)
+    set(wxUSE_RICHTEXT OFF CACHE BOOL "" FORCE)
+    set(wxUSE_RIBBON OFF CACHE BOOL "" FORCE)
+    set(wxUSE_PROPGRID OFF CACHE BOOL "" FORCE)
+    set(wxUSE_AUI OFF CACHE BOOL "" FORCE)
+    set(wxUSE_STC OFF CACHE BOOL "" FORCE)
+    set(wxUSE_HTML OFF CACHE BOOL "" FORCE)
+    set(wxUSE_XRC OFF CACHE BOOL "" FORCE)
+    set(wxUSE_PRINTING_ARCHITECTURE OFF CACHE BOOL "" FORCE)
+    set(wxUSE_HELP OFF CACHE BOOL "" FORCE)
+    set(wxUSE_MS_HTML_HELP OFF CACHE BOOL "" FORCE)
+    set(wxUSE_WXHTML_HELP OFF CACHE BOOL "" FORCE)
+    set(wxUSE_DEBUGREPORT OFF CACHE BOOL "" FORCE)
+    set(wxUSE_SOCKETS OFF CACHE BOOL "" FORCE)
+    set(wxUSE_PROTOCOL OFF CACHE BOOL "" FORCE)
+    set(wxUSE_URL OFF CACHE BOOL "" FORCE)
+    set(wxUSE_FS_INET OFF CACHE BOOL "" FORCE)
+    set(wxUSE_FS_ARCHIVE OFF CACHE BOOL "" FORCE)
+    set(wxUSE_SOUND OFF CACHE BOOL "" FORCE)
+    set(wxUSE_LIBTIFF OFF CACHE BOOL "" FORCE)
+    set(wxUSE_LIBJPEG OFF CACHE BOOL "" FORCE)
+    set(wxUSE_LIBWEBP OFF CACHE BOOL "" FORCE)
+    set(wxUSE_NANOSVG OFF CACHE BOOL "" FORCE)
+    add_subdirectory(wxWidgets)
+    if(WIN32)
+      # Add generic file dialog (not built by default on MSW) for Wine support.
+      target_sources(wxcore PRIVATE
+          ${CMAKE_CURRENT_SOURCE_DIR}/wxWidgets/src/generic/filedlgg.cpp)
+    endif()
+    add_library(xe-wxWidgets INTERFACE)
+    target_link_libraries(xe-wxWidgets INTERFACE wx::core wx::base)
+  else()
+    # Use system wxWidgets on Linux. 3.2 is the floor — older versions ship
+    # with GTK3/DPI bugs we don't want to work around, and the vendored
+    # submodule tracks 3.2-stable.
+    find_package(wxWidgets 3.2 REQUIRED COMPONENTS core base)
+    add_library(xe-wxWidgets INTERFACE)
+    target_include_directories(xe-wxWidgets INTERFACE ${wxWidgets_INCLUDE_DIRS})
+    target_link_libraries(xe-wxWidgets INTERFACE ${wxWidgets_LIBRARIES})
+    target_compile_definitions(xe-wxWidgets INTERFACE ${wxWidgets_DEFINITIONS})
+  endif()
+endif()

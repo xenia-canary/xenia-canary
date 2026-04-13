@@ -49,6 +49,7 @@ class WindowedApp {
 
   // Same as the executable (project), xenia-library-app.
   const std::string& GetName() const { return name_; }
+  virtual std::string_view GetTitle() const { return name_; }
   const std::string& GetPositionalOptionsUsage() const {
     return positional_options_usage_;
   }

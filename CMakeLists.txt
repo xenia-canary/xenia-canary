@@ -1,4 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
+
+# Suppress macOS ranlib warnings for empty object files (wxWidgets' bundled
+# libpng compiles Intel/MIPS/PowerPC sources that are empty on ARM64).
+if(APPLE)
+  set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols <TARGET>")
+  set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols <TARGET>")
+  set(CMAKE_OBJCXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols <TARGET>")
+endif()
+
 if(APPLE)
   project(xenia LANGUAGES C CXX OBJCXX)
   set(CMAKE_OBJCXX_STANDARD 20)
