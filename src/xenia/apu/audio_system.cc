@@ -15,13 +15,29 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/profiling.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/ring_buffer_mac.h"
+#else
 #include "xenia/base/ring_buffer.h"
+#endif
 #include "xenia/base/string_buffer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/cpu/thread_state.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 
 // As with normal Microsoft, there are like twelve different ways to access
 // the audio APIs. Early games use XMA*() methods almost exclusively to touch
