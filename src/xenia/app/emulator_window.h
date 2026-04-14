@@ -14,16 +14,36 @@
 #include <string>
 
 #include "xenia/app/profile_dialogs.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/emulator_mac.h"
+#else
 #include "xenia/emulator.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
+#endif
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"
 #include "xenia/ui/menu_item.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/presenter_mac.h"
+#else
 #include "xenia/ui/presenter.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 #include "xenia/ui/window_listener.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/windowed_app_context_mac.h"
+#else
 #include "xenia/ui/windowed_app_context.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
