@@ -16,7 +16,11 @@
 #include "third_party/disruptorplus/include/disruptorplus/spin_wait.hpp"
 #include "third_party/disruptorplus/include/disruptorplus/spin_wait_strategy.hpp"
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/base/threading_timer_queue.h"
 
 namespace dp = disruptorplus;
