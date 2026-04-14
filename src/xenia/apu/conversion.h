@@ -12,7 +12,11 @@
 
 #include <cstdint>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/base/platform.h"
 
 namespace xe {
