@@ -12,7 +12,11 @@
 #include <mutex>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/mutex.h"
 
 #if defined(_WIN32)
