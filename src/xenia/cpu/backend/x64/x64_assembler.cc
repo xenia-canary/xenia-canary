@@ -16,11 +16,27 @@
 #include "xenia/base/profiling.h"
 #include "xenia/base/reset_scope.h"
 #include "xenia/base/string.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_backend_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_code_cache_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_code_cache.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_emitter_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_emitter.h"
+#endif
 #include "xenia/cpu/backend/x64/x64_function.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/cpu_flags_mac.h"
+#else
 #include "xenia/cpu/cpu_flags.h"
+#endif
 #include "xenia/cpu/hir/hir_builder.h"
 #include "xenia/cpu/hir/label.h"
 #include "xenia/cpu/processor.h"
