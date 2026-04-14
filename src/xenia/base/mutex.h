@@ -10,7 +10,11 @@
 #ifndef XENIA_BASE_MUTEX_H_
 #define XENIA_BASE_MUTEX_H_
 #include <mutex>
+#if XE_PLATFORM_MACOS
+#include "memory_mac.h"
+#else
 #include "memory.h"
+#endif
 #include "platform.h"
 #define XE_ENABLE_FAST_WIN32_MUTEX 1
 namespace xe {
