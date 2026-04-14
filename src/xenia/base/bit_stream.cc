@@ -13,7 +13,11 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 
 namespace xe {
 
