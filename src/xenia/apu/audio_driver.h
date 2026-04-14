@@ -10,7 +10,11 @@
 #ifndef XENIA_APU_AUDIO_DRIVER_H_
 #define XENIA_APU_AUDIO_DRIVER_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
