@@ -49,6 +49,8 @@ DEFINE_bool(
 
 DECLARE_bool(allow_plugins);
 
+DECLARE_bool(disable_context_promotion);
+
 static constexpr uint8_t xe_xex1_retail_key[16] = {
     0xA2, 0x6C, 0x10, 0xF7, 0x1F, 0xD9, 0x35, 0xE9,
     0x8B, 0x99, 0x92, 0x2C, 0xE9, 0x32, 0x15, 0x72};
@@ -1352,7 +1354,10 @@ std::unique_ptr<Function> XexModule::CreateFunction(uint32_t address) {
       processor_->backend()->CreateGuestFunction(this, address));
 }
 void XexInfoCache::Init(XexModule* xexmod) {
-  if (cvars::disable_instruction_infocache) {
+  // If context promotion is disabled then disable instruction info cache as
+  // well, otherwise XMA will write to unknown registers.
+  if (cvars::disable_instruction_infocache ||
+      cvars::disable_context_promotion) {
     return;
   }
 
