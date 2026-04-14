@@ -36,7 +36,11 @@
 #include "xenia/base/profiling.h"
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 
 #if XE_OPTION_PROFILING
 #include "third_party/microprofile/microprofileui.h"
