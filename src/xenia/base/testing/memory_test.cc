@@ -7,7 +7,11 @@
  ******************************************************************************
  */
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 
 #include "third_party/catch/include/catch.hpp"
 #include "third_party/fmt/include/fmt/format.h"
