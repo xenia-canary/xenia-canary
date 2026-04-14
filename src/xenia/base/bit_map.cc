@@ -11,7 +11,11 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/atomic.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 
 namespace xe {
 
