@@ -17,7 +17,11 @@
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/xaudio2/xaudio2_api.h"
 #include "xenia/base/platform.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 
 struct IXAudio2;
 struct IXAudio2MasteringVoice;
