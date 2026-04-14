@@ -11,7 +11,11 @@
 #include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/platform.h"
 #include "xenia/base/string_util.h"
 #include "xenia/base/vec128.h"
