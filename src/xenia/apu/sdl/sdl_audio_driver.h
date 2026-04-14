@@ -16,7 +16,11 @@
 
 #include "SDL.h"
 #include "xenia/apu/audio_driver.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 
 namespace xe {
 namespace apu {
