@@ -20,7 +20,11 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/base/platform.h"
 #include "xenia/base/string.h"
 #include "xenia/base/vec128.h"
