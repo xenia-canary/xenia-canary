@@ -338,9 +338,6 @@ void XmaContextMaster::Decode(XMA_CONTEXT_DATA* data) {
   size_t input_buffer_1_size =
       data->input_buffer_1_packet_count * kBytesPerPacket;
   size_t input_total_size = input_buffer_0_size + input_buffer_1_size;
-#ifdef __APPLE__
-  (void)input_total_size;
-#endif
 
   size_t current_input_size =
       data->current_buffer ? input_buffer_1_size : input_buffer_0_size;
