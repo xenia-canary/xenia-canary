@@ -130,19 +130,11 @@ uint32_t NewObjectHandle(uint32_t table_guest, uint32_t object_guest,
 
   xboxkrnl::xeKeKfAcquireSpinLock(context, &table->table_lock, false);
   {
-#ifdef __APPLE__
-    if (table->unk_36 ||
-        (table->free_offset == table->highest_allocated_offset &&
-         !GrowHandleTable(table_guest, context))) {
-      new_handle = 0;
-    } else {
-#else
     if (table->unk_36 ||
         table->free_offset == table->highest_allocated_offset &&
             !GrowHandleTable(table_guest, context)) {
       new_handle = 0;
     } else {
-#endif
       guest_handle_t new_handle_offset = table->free_offset;
       uint32_t bucket = *context->TranslateVirtualBE<uint32_t>(
           HandleToBucketOffset(new_handle_offset) +
