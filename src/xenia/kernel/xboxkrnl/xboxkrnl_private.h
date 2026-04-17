@@ -11,7 +11,11 @@
 #define XENIA_KERNEL_XBOXKRNL_XBOXKRNL_PRIVATE_H_
 
 #include "xenia/cpu/export_resolver.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ordinals.h"
 
 namespace xe {
