@@ -21,7 +21,11 @@
 #include <vector>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
+#endif
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #include "xenia/gpu/d3d12/d3d12_primitive_processor.h"
 #include "xenia/gpu/d3d12/d3d12_render_target_cache.h"
@@ -34,8 +38,16 @@
 #include "xenia/gpu/dxbc_shader_translator.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/user_module_mac.h"
+#else
 #include "xenia/kernel/user_module.h"
+#endif
 #include "xenia/ui/d3d12/d3d12_descriptor_heap_pool.h"
 #include "xenia/ui/d3d12/d3d12_provider.h"
 #include "xenia/ui/d3d12/d3d12_upload_buffer_pool.h"
