@@ -13,7 +13,11 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/gpu_flags_mac.h"
+#else
 #include "xenia/gpu/gpu_flags.h"
+#endif
 
 DEFINE_int32(
     draw_resolution_scale_x, 1,
