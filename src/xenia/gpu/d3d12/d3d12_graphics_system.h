@@ -12,9 +12,17 @@
 
 #include <memory>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
+#endif
 #include "xenia/gpu/d3d12/deferred_command_list.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/graphics_system_mac.h"
+#else
 #include "xenia/gpu/graphics_system.h"
+#endif
 
 namespace xe {
 namespace gpu {
