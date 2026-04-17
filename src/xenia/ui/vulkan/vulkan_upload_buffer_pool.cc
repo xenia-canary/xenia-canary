@@ -10,7 +10,11 @@
 #include "xenia/ui/vulkan/vulkan_upload_buffer_pool.h"
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 namespace xe {
