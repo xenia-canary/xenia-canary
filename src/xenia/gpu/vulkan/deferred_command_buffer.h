@@ -16,8 +16,16 @@
 #include <vector>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/vulkan/vulkan_api_mac.h"
+#else
 #include "xenia/ui/vulkan/vulkan_api.h"
+#endif
 
 namespace xe {
 namespace gpu {
