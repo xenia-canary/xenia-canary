@@ -14,7 +14,11 @@
 
 #include "xenia/cpu/export_resolver.h"
 #include "xenia/kernel/kernel_module.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 
 namespace xe {
 namespace kernel {
