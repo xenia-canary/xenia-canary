@@ -11,7 +11,11 @@
 #define XENIA_KERNEL_XBDM_XBDM_MSIC_H_
 
 #include "xenia/kernel/util/shim_utils.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xam/xam_mac.h"
+#else
 #include "xenia/kernel/xam/xam.h"
+#endif
 
 namespace xe {
 namespace kernel {
