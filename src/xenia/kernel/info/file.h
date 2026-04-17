@@ -10,7 +10,11 @@
 #ifndef XENIA_KERNEL_INFO_FILE_H_
 #define XENIA_KERNEL_INFO_FILE_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/kernel/kernel.h"
 
 namespace xe {
