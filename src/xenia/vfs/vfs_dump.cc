@@ -11,7 +11,11 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/file.h"
