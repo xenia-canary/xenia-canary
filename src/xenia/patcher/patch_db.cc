@@ -78,12 +78,7 @@ PatchFileEntry PatchDB::ReadPatchFile(
     return patch_file;
   }
 
-#ifdef __APPLE__
-  patch_file.title_id =
-      static_cast<uint32_t>(strtoul(title_id->get().c_str(), NULL, 16));
-#else
   patch_file.title_id = strtoul(title_id->get().c_str(), NULL, 16);
-#endif
   patch_file.title_name = title_name->get();
   ReadHashes(patch_file, hashes_node);
 
