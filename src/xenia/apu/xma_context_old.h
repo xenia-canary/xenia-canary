@@ -16,7 +16,11 @@
 #include <queue>
 
 #include "xenia/apu/xma_context.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/xbox.h"
 
 // Forward declarations
