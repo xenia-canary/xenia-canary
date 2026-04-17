@@ -17,7 +17,11 @@
 #include <string>
 #include <vector>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/base/string_util.h"
 #include "xenia/xbox.h"
 
