@@ -12,7 +12,11 @@
 #include <cstdarg>
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/gpu_flags_mac.h"
+#else
 #include "xenia/gpu/gpu_flags.h"
+#endif
 
 namespace xe {
 namespace gpu {
