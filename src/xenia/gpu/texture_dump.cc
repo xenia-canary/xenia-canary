@@ -9,7 +9,11 @@
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/gpu/texture_info.h"
 
 DEFINE_bool(texture_dump, false, "Dump textures to DDS", "GPU");
