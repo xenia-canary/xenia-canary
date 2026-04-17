@@ -10,10 +10,18 @@
 #ifndef XENIA_GPU_NULL_NULL_COMMAND_PROCESSOR_H_
 #define XENIA_GPU_NULL_NULL_COMMAND_PROCESSOR_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
+#endif
 #include "xenia/gpu/null/null_graphics_system.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 
 namespace xe {
 namespace gpu {
