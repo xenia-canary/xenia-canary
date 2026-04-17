@@ -10,7 +10,11 @@
 #include "xenia/base/console_app_main.h"
 #include "xenia/base/logging.h"
 #include "xenia/gpu/trace_dump.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
+#else
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
+#endif
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
 #include "xenia/ui/vulkan/vulkan_provider.h"
 
