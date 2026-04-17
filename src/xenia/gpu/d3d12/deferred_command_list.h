@@ -17,8 +17,16 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/literals.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/ui/d3d12/d3d12_api.h"
 namespace xe {
 namespace gpu {
