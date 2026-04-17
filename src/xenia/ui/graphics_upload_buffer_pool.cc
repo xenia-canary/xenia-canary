@@ -10,7 +10,11 @@
 #include "xenia/ui/graphics_upload_buffer_pool.h"
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 
 namespace xe {
 namespace ui {
