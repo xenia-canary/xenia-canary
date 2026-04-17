@@ -27,7 +27,11 @@
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/thread_debug_info.h"
 #include "xenia/cpu/thread_state.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 DECLARE_bool(debug);
 
