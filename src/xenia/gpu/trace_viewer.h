@@ -13,18 +13,34 @@
 #include <string_view>
 
 #include "xenia/base/cvar.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/emulator_mac.h"
+#else
 #include "xenia/emulator.h"
+#endif
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/trace_player.h"
 #include "xenia/gpu/trace_protocol.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 #include "xenia/ui/window_listener.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/windowed_app_mac.h"
+#else
 #include "xenia/ui/windowed_app.h"
+#endif
 DECLARE_path(target_trace_file);
 namespace xe {
 namespace gpu {
