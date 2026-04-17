@@ -112,41 +112,23 @@ struct X_XAMACCOUNTINFO {
 
   void SetCountry(XOnlineCountry country) {
     cached_user_flags = cached_user_flags & ~kCountryMask;
-#ifdef __APPLE__
-    cached_user_flags =
-        (cached_user_flags | (static_cast<uint32_t>(country) << 8)) &
-        kCountryMask;
-#else
     cached_user_flags = cached_user_flags |
                         (static_cast<uint32_t>(country) << 8) & kCountryMask;
-#endif
   }
 
   void SetLanguage(XLanguage language) {
     cached_user_flags = cached_user_flags & ~kLanguageMask;
 
-#ifdef __APPLE__
-    cached_user_flags =
-        (cached_user_flags | (static_cast<uint32_t>(language) << 25)) &
-        kLanguageMask;
-#else
     cached_user_flags = cached_user_flags |
                         (static_cast<uint32_t>(language) << 25) & kLanguageMask;
-#endif
   }
 
   void SetSubscriptionTier(AccountSubscriptionTier sub_tier) {
     cached_user_flags = cached_user_flags & ~kSubscriptionTierMask;
 
-#ifdef __APPLE__
-    cached_user_flags =
-        (cached_user_flags | (static_cast<uint32_t>(sub_tier) << 20)) &
-        kSubscriptionTierMask;
-#else
     cached_user_flags =
         cached_user_flags |
         (static_cast<uint32_t>(sub_tier) << 20) & kSubscriptionTierMask;
-#endif
   }
 };
 static_assert_size(X_XAMACCOUNTINFO, 0x17C);
