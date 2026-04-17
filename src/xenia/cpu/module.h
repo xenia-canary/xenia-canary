@@ -19,7 +19,11 @@
 #include "xenia/base/mutex.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/symbol.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 namespace xe {
 namespace cpu {
