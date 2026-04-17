@@ -13,14 +13,26 @@
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/presenter_mac.h"
+#else
 #include "xenia/ui/presenter.h"
+#endif
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 #include "xenia/ui/window_demo.h"
 
 namespace xe {
