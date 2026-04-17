@@ -9,7 +9,11 @@
 
 #include "xenia/kernel/xam/app_manager.h"
 
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/xam/apps/messenger_app.h"
 #include "xenia/kernel/xam/apps/xam_app.h"
 #include "xenia/kernel/xam/apps/xgi_app.h"
