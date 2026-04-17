@@ -13,8 +13,16 @@
 #include <cstring>
 #include <queue>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xobject_mac.h"
+#else
 #include "xenia/kernel/xobject.h"
+#endif
 
 namespace xe {
 namespace kernel {
