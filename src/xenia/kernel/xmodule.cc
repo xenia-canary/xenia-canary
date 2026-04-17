@@ -13,8 +13,16 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
 #include "xenia/cpu/processor.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/user_module_mac.h"
+#else
 #include "xenia/kernel/user_module.h"
+#endif
 
 namespace xe {
 namespace kernel {
