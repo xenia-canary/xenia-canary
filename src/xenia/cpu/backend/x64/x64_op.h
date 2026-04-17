@@ -9,7 +9,11 @@
 #ifndef XENIA_CPU_BACKEND_X64_X64_OP_H_
 #define XENIA_CPU_BACKEND_X64_X64_OP_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_emitter_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_emitter.h"
+#endif
 
 #include "xenia/cpu/hir/instr.h"
 
