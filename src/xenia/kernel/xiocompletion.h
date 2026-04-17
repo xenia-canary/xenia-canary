@@ -12,8 +12,16 @@
 
 #include <queue>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xobject_mac.h"
+#else
 #include "xenia/kernel/xobject.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
