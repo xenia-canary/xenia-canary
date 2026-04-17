@@ -186,21 +186,6 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
               ->GetIdleProcess()));  // this one doesnt need any process
                                      // actually. never calls any guest code
   worker_thread_->set_name("XMA Decoder");
-#ifdef __APPLE__
-  // Validate that XMA Decoder is on HOST thread
-  if (worker_thread_->is_guest_thread()) {
-    XELOGE("   FATAL ERROR: XMA Decoder misclassified as GUEST thread!");
-    XELOGE(
-        "   Note: Audio infrastructure MUST be HOST threads if you are "
-        "considering it is on guest.");
-    XELOGE(
-        "   Note: You may need to parse additional details about its thread "
-        "state.")
-    std::abort();
-  }
-  XELOGI("✅ XMA Decoder thread role validation PASSED (HOST thread)");
-#endif
-
   worker_thread_->set_can_debugger_suspend(true);
   worker_thread_->Create();
 
