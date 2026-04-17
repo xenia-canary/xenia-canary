@@ -10,7 +10,11 @@
 #include <cstdint>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/gpu/dxbc_shader_translator.h"
 
 namespace xe {
