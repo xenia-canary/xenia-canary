@@ -19,8 +19,16 @@
 #include <utility>
 #include <vector>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/string_buffer.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/ucode.h"
