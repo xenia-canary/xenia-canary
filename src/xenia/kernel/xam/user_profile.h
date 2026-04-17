@@ -17,7 +17,11 @@
 #include <vector>
 
 #include "xenia/kernel/xam/user_property.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xam/xam_mac.h"
+#else
 #include "xenia/kernel/xam/xam.h"
+#endif
 #include "xenia/kernel/xam/xdbf/gpd_info_profile.h"
 #include "xenia/kernel/xam/xdbf/gpd_info_title.h"
 
