@@ -10,7 +10,11 @@
 #ifndef XENIA_KERNEL_UTIL_XFILETIME_H_
 #define XENIA_KERNEL_UTIL_XFILETIME_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/base/chrono.h"
 
 namespace xe {
