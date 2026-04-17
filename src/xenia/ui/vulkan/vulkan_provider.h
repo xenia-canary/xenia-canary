@@ -15,7 +15,11 @@
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/vulkan/ui_samplers.h"
 #include "xenia/ui/vulkan/vulkan_device.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/vulkan/vulkan_instance_mac.h"
+#else
 #include "xenia/ui/vulkan/vulkan_instance.h"
+#endif
 
 namespace xe {
 namespace ui {
