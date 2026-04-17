@@ -8,7 +8,11 @@
  */
 
 #include "xenia/kernel/xam/ui/create_profile_ui.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/emulator_mac.h"
+#else
 #include "xenia/emulator.h"
+#endif
 
 namespace xe {
 namespace kernel {
