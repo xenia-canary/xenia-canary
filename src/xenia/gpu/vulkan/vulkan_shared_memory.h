@@ -17,7 +17,11 @@
 
 #include "xenia/gpu/shared_memory.h"
 #include "xenia/gpu/trace_writer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/ui/vulkan/vulkan_upload_buffer_pool.h"
 
 namespace xe {
