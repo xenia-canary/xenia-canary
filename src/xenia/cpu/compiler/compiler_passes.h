@@ -13,7 +13,11 @@
 #include "xenia/cpu/compiler/passes/conditional_group_pass.h"
 #include "xenia/cpu/compiler/passes/conditional_group_subpass.h"
 #include "xenia/cpu/compiler/passes/constant_propagation_pass.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/compiler/passes/context_promotion_pass_mac.h"
+#else
 #include "xenia/cpu/compiler/passes/context_promotion_pass.h"
+#endif
 #include "xenia/cpu/compiler/passes/control_flow_analysis_pass.h"
 #include "xenia/cpu/compiler/passes/control_flow_simplification_pass.h"
 #include "xenia/cpu/compiler/passes/data_flow_analysis_pass.h"
