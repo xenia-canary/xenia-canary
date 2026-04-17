@@ -14,7 +14,11 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/cpu/processor.h"
 
 #include "xenia/xbox.h"
