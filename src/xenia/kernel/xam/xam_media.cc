@@ -9,7 +9,11 @@
 
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
