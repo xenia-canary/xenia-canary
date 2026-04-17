@@ -14,7 +14,11 @@
 #include <functional>
 
 #include "xenia/hid/input.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
