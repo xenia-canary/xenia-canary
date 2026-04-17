@@ -11,7 +11,11 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/vec128.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_emitter_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_emitter.h"
+#endif
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/thread_state.h"
 
