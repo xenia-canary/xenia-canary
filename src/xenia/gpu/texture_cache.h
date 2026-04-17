@@ -19,7 +19,11 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/hash.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/mutex.h"
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/shared_memory.h"
