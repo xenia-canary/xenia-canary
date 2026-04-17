@@ -1435,13 +1435,7 @@ void XexModule::PrecompileKnownFunctions() {
   if (!cvars::enable_early_precompilation) {
     return;
   }
-#ifdef __APPLE_
   uint32_t start = 0;
-  (void)start;
-#else
-  uint32_t start = 0;
-#endif
-
   uint32_t end = (high_address_ - low_address_) / 4;
   auto flags = info_cache_.LookupFlags(0);
   if (!flags) {
