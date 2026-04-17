@@ -10,11 +10,19 @@
 #include "xenia/kernel/xbdm/xbdm_misc.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string_util.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xbdm/xbdm_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 #include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/xbox.h"
 
