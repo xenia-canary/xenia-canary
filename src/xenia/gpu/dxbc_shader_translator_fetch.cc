@@ -495,12 +495,7 @@ uint32_t DxbcShaderTranslator::FindOrAddTextureBinding(
   if (dimension == xenos::FetchOpDimension::k1D) {
     dimension = xenos::FetchOpDimension::k2D;
   }
-#ifdef __APPLE__
   uint32_t srv_index = UINT32_MAX;
-  (void)srv_index;
-#else
-  uint32_t srv_index = UINT32_MAX;
-#endif
   for (uint32_t i = 0; i < uint32_t(texture_bindings_.size()); ++i) {
     const TextureBinding& texture_binding = texture_bindings_[i];
     if (texture_binding.fetch_constant == fetch_constant &&
@@ -558,12 +553,7 @@ uint32_t DxbcShaderTranslator::FindOrAddSamplerBinding(
     mip_filter = xenos::TextureFilter::kLinear;
     aniso_filter = std::min(aniso_filter, xenos::AnisoFilter::kMax_16_1);
   }
-#ifdef __APPLE__
   uint32_t sampler_index = UINT32_MAX;
-  (void)sampler_index;
-#else
-  uint32_t sampler_index = UINT32_MAX;
-#endif
   for (uint32_t i = 0; i < uint32_t(sampler_bindings_.size()); ++i) {
     const SamplerBinding& sampler_binding = sampler_bindings_[i];
     if (sampler_binding.fetch_constant == fetch_constant &&
