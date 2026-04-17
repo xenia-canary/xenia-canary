@@ -10,7 +10,11 @@
 #include "xenia/cpu/module.h"
 
 #include "xenia/base/profiling.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/cpu/processor.h"
 
 namespace xe {
