@@ -15,7 +15,11 @@
 
 #include "xenia/cpu/function_debug_info.h"
 #include "xenia/cpu/function_trace_data.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 #include "xenia/cpu/symbol.h"
 #include "xenia/cpu/thread_state.h"
 
