@@ -10,10 +10,18 @@
 #include "xenia/gpu/d3d12/deferred_command_list.h"
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/gpu_flags_mac.h"
+#else
 #include "xenia/gpu/gpu_flags.h"
+#endif
 
 namespace xe {
 namespace gpu {
