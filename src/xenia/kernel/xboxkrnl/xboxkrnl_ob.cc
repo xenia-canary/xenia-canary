@@ -169,11 +169,7 @@ uint32_t xeObCreateObject(X_OBJECT_TYPE* object_factory,
   header_for_named_object->object_type_ptr =
       context->HostToGuestVirtual(object_factory);
   header_for_named_object->flags =
-#ifdef __APPLE__
-      (resulting_header_flags & 0xFFFE) | OBJECT_HEADER_FLAG_NAMED_OBJECT;
-#else
       resulting_header_flags & 0xFFFE | OBJECT_HEADER_FLAG_NAMED_OBJECT;
-#endif
   *out_object = context->HostToGuestVirtual(&header_for_named_object[1]);
   return X_STATUS_SUCCESS;
 }
