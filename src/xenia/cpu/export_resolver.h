@@ -13,8 +13,16 @@
 #include <string>
 #include <vector>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 
 namespace xe {
 namespace cpu {
