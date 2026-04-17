@@ -18,7 +18,11 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/string.h"
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
 #include "xenia/gpu/d3d12/d3d12_texture_cache.h"
@@ -26,7 +30,11 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/dxbc.h"
 #include "xenia/gpu/dxbc_shader_translator.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/gpu_flags_mac.h"
+#else
 #include "xenia/gpu/gpu_flags.h"
+#endif
 #include "xenia/gpu/trace_writer.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/d3d12/d3d12_provider.h"
