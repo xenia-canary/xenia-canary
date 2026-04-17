@@ -15,7 +15,11 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 
