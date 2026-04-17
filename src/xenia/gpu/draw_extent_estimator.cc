@@ -108,12 +108,7 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
   };
   xenos::Endian index_endian = vgt_dma_size.swap_mode;
   if (vgt_draw_initiator.source_select == xenos::SourceSelect::kDMA) {
-#ifdef __APPLE__
     xenos::IndexFormat index_format = vgt_draw_initiator.index_size;
-    (void)index_format;
-#else
-    xenos::IndexFormat index_format = vgt_draw_initiator.index_size;
-#endif
     uint32_t index_buffer_base = regs[XE_GPU_REG_VGT_DMA_BASE];
     uint32_t index_buffer_read_count =
         std::min(uint32_t(vgt_draw_initiator.num_indices),
