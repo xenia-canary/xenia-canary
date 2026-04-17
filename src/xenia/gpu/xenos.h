@@ -10,8 +10,16 @@
 #ifndef XENIA_GPU_XENOS_H_
 #define XENIA_GPU_XENOS_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 
 namespace xe {
 namespace gpu {
