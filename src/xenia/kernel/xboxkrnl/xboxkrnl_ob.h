@@ -10,7 +10,11 @@
 #ifndef XENIA_KERNEL_XBOXKRNL_XBOXKRNL_OB_H_
 #define XENIA_KERNEL_XBOXKRNL_XBOXKRNL_OB_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 #include "xenia/kernel/kernel.h"
 
 using PPCContext = xe::cpu::ppc::PPCContext;
