@@ -14,7 +14,11 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
 #include "xenia/gpu/dxbc_shader.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/gpu_flags_mac.h"
+#else
 #include "xenia/gpu/gpu_flags.h"
+#endif
 #include "xenia/ui/d3d12/d3d12_api.h"
 
 namespace xe {
