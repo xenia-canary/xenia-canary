@@ -7,13 +7,21 @@
  ******************************************************************************
  */
 
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/compiler/passes/context_promotion_pass_mac.h"
+#else
 #include "xenia/cpu/compiler/passes/context_promotion_pass.h"
+#endif
 
 #include "xenia/apu/apu_flags.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/profiling.h"
 #include "xenia/cpu/compiler/compiler.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 #include "xenia/cpu/processor.h"
 
 DECLARE_bool(debug);
