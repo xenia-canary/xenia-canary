@@ -13,7 +13,11 @@
 #include <atomic>
 #include <string>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
 #include "xenia/gpu/trace_protocol.h"
 #include "xenia/gpu/trace_reader.h"
 
