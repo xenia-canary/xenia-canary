@@ -7,7 +7,11 @@
  ******************************************************************************
  */
 
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/cpu_flags_mac.h"
+#else
 #include "xenia/cpu/cpu_flags.h"
+#endif
 
 DEFINE_string(cpu, "any", "Does nothing. CPU backend [any, x64].", "CPU");
 
