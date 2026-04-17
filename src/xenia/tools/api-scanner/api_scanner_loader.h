@@ -12,12 +12,20 @@
 #include <memory>
 #include <vector>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/cpu/export_resolver.h"
 #include "xenia/kernel/fs/filesystem.h"
 #include "xenia/kernel/objects/xfile.h"
 #include "xenia/kernel/util/xex2.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
