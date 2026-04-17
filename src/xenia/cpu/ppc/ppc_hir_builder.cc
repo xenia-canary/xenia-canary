@@ -54,13 +54,7 @@ void DumpAllOpcodeCounts() {
   sb.Append("Instruction translation counts:\n");
   for (size_t i = 0; i < xe::countof(opcode_translation_counts); ++i) {
     auto opcode = static_cast<PPCOpcode>(i);
-#ifdef __APPLE__
     auto& opcode_info = GetOpcodeInfo(opcode);
-    (void)opcode_info;
-#else
-    auto& opcode_info = GetOpcodeInfo(opcode);
-#endif
-
     auto& disasm_info = GetOpcodeDisasmInfo(opcode);
     auto translation_count = opcode_translation_counts[i];
     if (translation_count) {
