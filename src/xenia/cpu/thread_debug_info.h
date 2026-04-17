@@ -13,7 +13,11 @@
 #include <vector>
 
 #include "xenia/base/host_thread_context.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/thread_mac.h"
+#else
 #include "xenia/cpu/thread.h"
+#endif
 #include "xenia/cpu/thread_state.h"
 
 namespace xe {
