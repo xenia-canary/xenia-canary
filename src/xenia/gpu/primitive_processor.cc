@@ -12,10 +12,18 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/registers.h"
