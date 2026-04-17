@@ -11,7 +11,11 @@
 #define XENIA_KERNEL_UTIL_NATIVE_LIST_H_
 
 #include "xenia/kernel/kernel.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 namespace xe {
 namespace kernel {
