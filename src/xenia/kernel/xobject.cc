@@ -156,8 +156,6 @@ object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,
       break;
     case Type::Undefined:
       break;
-    case Type::Device:
-      break;
   }
 
   assert_always("No restore handler exists for this object!");
