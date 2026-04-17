@@ -27,7 +27,11 @@
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/vulkan/vulkan_api_mac.h"
+#else
 #include "xenia/ui/vulkan/vulkan_api.h"
+#endif
 
 namespace xe {
 namespace gpu {
