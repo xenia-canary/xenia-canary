@@ -166,14 +166,6 @@ class UserData {
         case X_USER_DATA_TYPE::DOUBLE:
         case X_USER_DATA_TYPE::INT64:
           return sizeof(uint64_t);
-
-        case X_USER_DATA_TYPE::WSTRING:
-        case X_USER_DATA_TYPE::BINARY:
-          assert_always();
-          return 0;
-
-        case X_USER_DATA_TYPE::UNSET:
-          return sizeof(uint64_t);
       }
 
       return sizeof(uint64_t);
@@ -185,6 +177,7 @@ class UserData {
 
     return std::min(static_cast<uint32_t>(get_max_size(id)), provided_size);
   }
+
   size_t get_data_size() const {
     return sizeof(X_USER_DATA) + extended_data_.size();
   }
