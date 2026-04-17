@@ -52,21 +52,12 @@ inline constexpr bool IsXblaTitle(const uint32_t title_id) {
 static_assert(IsXblaTitle(0x5841127D));   // XBLA Game
 static_assert(!IsXblaTitle(0x4D5309C9));  // Non-XBLA Game
 
-#if defined(__APPLE__)
-inline constexpr bool IsAppTitle(const uint32_t title_id) {
-  const auto publisher = GetTitlePublisher(title_id);
-
-  return (publisher.first == 'X' && publisher.second == 'H') ||
-         (publisher.first == 'X' && publisher.second == 'J');
-}
-#else
 inline constexpr bool IsAppTitle(const uint32_t title_id) {
   const auto publisher = GetTitlePublisher(title_id);
 
   return publisher.first == 'X' && publisher.second == 'H' ||
          publisher.first == 'X' && publisher.second == 'J';
 }
-#endif
 
 inline constexpr bool IsXNTitle(const uint32_t title_id) {
   return title_id == kXN_2001 || title_id == kXN_2002;
