@@ -33,8 +33,6 @@ class Surface {
     kTypeIndex_XcbWindow,
     // Windows.
     kTypeIndex_Win32Hwnd,
-    // macOS.
-    kTypeIndex_MacNSView,
   };
   using TypeFlags = uint32_t;
   enum : TypeFlags {
@@ -42,7 +40,6 @@ class Surface {
                                     << kTypeIndex_AndroidNativeWindow,
     kTypeFlag_XcbWindow = TypeFlags(1) << kTypeIndex_XcbWindow,
     kTypeFlag_Win32Hwnd = TypeFlags(1) << kTypeIndex_Win32Hwnd,
-    kTypeFlag_MacNSView = TypeFlags(1) << kTypeIndex_MacNSView,
   };
 
   Surface(const Surface& surface) = delete;
