@@ -14,7 +14,11 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
+#else
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
+#endif
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 namespace xe {
