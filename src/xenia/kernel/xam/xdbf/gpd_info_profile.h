@@ -10,7 +10,11 @@
 #ifndef XENIA_KERNEL_XAM_XDBF_GPD_INFO_PROFILE_H_
 #define XENIA_KERNEL_XAM_XDBF_GPD_INFO_PROFILE_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/title_id_utils_mac.h"
+#else
 #include "xenia/kernel/title_id_utils.h"
+#endif
 #include "xenia/kernel/xam/xdbf/gpd_info.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 
