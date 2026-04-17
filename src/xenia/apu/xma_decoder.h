@@ -17,7 +17,11 @@
 #include "xenia/apu/xma_context.h"
 #include "xenia/apu/xma_register_file.h"
 #include "xenia/base/bit_map.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
