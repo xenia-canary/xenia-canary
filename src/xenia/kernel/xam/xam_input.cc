@@ -8,10 +8,18 @@
  */
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/emulator_mac.h"
+#else
 #include "xenia/emulator.h"
+#endif
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_system.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/xbox.h"
