@@ -12,17 +12,33 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/platform.h"
 #include "xenia/base/string_buffer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/cpu_flags_mac.h"
+#else
 #include "xenia/cpu/cpu_flags.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/raw_module.h"
 
 #if XE_ARCH_AMD64
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_backend_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#endif
 #endif  // XE_ARCH
 
 #if XE_COMPILER_MSVC
