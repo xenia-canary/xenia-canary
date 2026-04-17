@@ -12,10 +12,18 @@
 
 #include <string>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/cpu/module.h"
 #include "xenia/kernel/kernel.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xobject_mac.h"
+#else
 #include "xenia/kernel/xobject.h"
+#endif
 
 namespace xe {
 namespace kernel {
