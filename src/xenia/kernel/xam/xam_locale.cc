@@ -10,11 +10,19 @@
 #include <cstring>
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xenumerator.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 #include "xenia/xbox.h"
 
 DECLARE_int32(user_country);
