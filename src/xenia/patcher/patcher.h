@@ -10,7 +10,11 @@
 #ifndef XENIA_PATCHER_H_
 #define XENIA_PATCHER_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/patcher/patch_db.h"
 
 namespace xe {
