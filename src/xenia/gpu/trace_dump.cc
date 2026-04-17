@@ -14,13 +14,37 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/threading_mac.h"
+#else
 #include "xenia/base/threading.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/graphics_system_mac.h"
+#else
 #include "xenia/gpu/graphics_system.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/ui/file_picker.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/presenter_mac.h"
+#else
 #include "xenia/ui/presenter.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 #include "xenia/xbox.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
