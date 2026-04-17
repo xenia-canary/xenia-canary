@@ -16,7 +16,11 @@
 #include <utility>
 #include <vector>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/window_mac.h"
+#else
 #include "xenia/ui/window.h"
+#endif
 
 namespace xe {
 namespace ui {
