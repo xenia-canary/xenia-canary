@@ -13,7 +13,11 @@
 #include <memory>
 
 #include "xenia/ui/immediate_drawer.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/presenter_mac.h"
+#else
 #include "xenia/ui/presenter.h"
+#endif
 
 namespace xe {
 namespace ui {
