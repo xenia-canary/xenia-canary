@@ -10,7 +10,11 @@
 #include "xenia/kernel/xtimer.h"
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 
 namespace xe {
 namespace kernel {
