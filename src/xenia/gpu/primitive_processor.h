@@ -23,7 +23,11 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/base/mutex.h"
 #include "xenia/base/platform.h"
 #include "xenia/gpu/register_file.h"
@@ -31,7 +35,11 @@
 #include "xenia/gpu/shared_memory.h"
 #include "xenia/gpu/trace_writer.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 #if XE_ARCH_AMD64
 // 128-bit SSSE3-level (SSE2+ for integer comparison, SSSE3 for pshufb) or AVX
