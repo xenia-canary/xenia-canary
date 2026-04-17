@@ -7,7 +7,11 @@
  ******************************************************************************
  */
 
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 
 #include <cstdlib>
 
