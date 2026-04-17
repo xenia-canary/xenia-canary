@@ -14,7 +14,11 @@
 
 #include "xenia/base/type_pool.h"
 #include "xenia/cpu/function.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 namespace xe {
 namespace cpu {
