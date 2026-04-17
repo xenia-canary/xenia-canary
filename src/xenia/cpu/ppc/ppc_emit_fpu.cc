@@ -10,8 +10,16 @@
 #include "xenia/cpu/ppc/ppc_emit-private.h"
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_hir_builder_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
+#endif
 
 #include <stddef.h>
 
