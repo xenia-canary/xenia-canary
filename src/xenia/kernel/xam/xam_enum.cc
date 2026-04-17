@@ -9,7 +9,11 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/string_util.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_private.h"
