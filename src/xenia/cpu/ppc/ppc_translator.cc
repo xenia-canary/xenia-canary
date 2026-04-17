@@ -10,20 +10,44 @@
 #include "xenia/cpu/ppc/ppc_translator.h"
 
 #include "xenia/base/assert.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/base/cvar.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/base/profiling.h"
 #include "xenia/base/reset_scope.h"
 #include "xenia/base/string.h"
 #include "xenia/cpu/compiler/compiler_passes.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/cpu_flags_mac.h"
+#else
 #include "xenia/cpu/cpu_flags.h"
+#endif
 #include "xenia/cpu/ppc/ppc_frontend.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_hir_builder_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
+#endif
 #include "xenia/cpu/ppc/ppc_scanner.h"
 #include "xenia/cpu/processor.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/xex_module_mac.h"
+#else
 #include "xenia/cpu/xex_module.h"
+#endif
 
 DEFINE_bool(dump_translated_hir_functions, false, "dumps translated hir",
             "CPU");
