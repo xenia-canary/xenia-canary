@@ -214,9 +214,6 @@ struct X_KPCR {
   uint8_t unk_2AC[0x2C];            // 0x2AC
 };
 
-#ifdef WAIT_ANY
-#undef WAIT_ANY
-#endif
 enum : uint16_t {
   WAIT_ALL = 0,
   WAIT_ANY = 1,
