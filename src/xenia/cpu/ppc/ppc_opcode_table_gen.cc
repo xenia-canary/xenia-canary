@@ -5,7 +5,11 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/cpu/ppc/ppc_opcode.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
+#endif
 
 namespace xe {
 namespace cpu {
