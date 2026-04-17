@@ -12,7 +12,11 @@
 
 #include <algorithm>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/xenos.h"
 
