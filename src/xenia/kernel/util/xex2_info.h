@@ -14,7 +14,11 @@
 #include <string>
 #include <unordered_map>
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 
 union xe_xex2_version_t {
   uint32_t value;
