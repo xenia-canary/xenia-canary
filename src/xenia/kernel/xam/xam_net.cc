@@ -19,10 +19,6 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
-#ifdef __APPLE__
-#include <sys/select.h>
-#endif
-
 #ifdef XE_PLATFORM_WIN32
 // NOTE: must be included last as it expects windows.h to already be included.
 #define _WINSOCK_DEPRECATED_NO_WARNINGS  // inet_addr
