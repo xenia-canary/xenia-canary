@@ -13,9 +13,17 @@
 #include <vector>
 
 #include "xenia/base/platform.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_backend_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#endif
 #include "xenia/cpu/hir/hir_builder.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_context_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_context.h"
+#endif
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/test_module.h"
