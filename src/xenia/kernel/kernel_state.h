@@ -10,9 +10,6 @@
 #ifndef XENIA_KERNEL_KERNEL_STATE_H_
 #define XENIA_KERNEL_KERNEL_STATE_H_
 
-#ifdef __APPLE__
-#include <atomic>
-#endif
 #include <bitset>
 #include <condition_variable>
 #include <functional>
@@ -42,11 +39,6 @@ class Emulator;
 namespace cpu {
 class Processor;
 }  // namespace cpu
-#ifdef __APPLE__
-namespace threading {
-class Event;
-}  // namespace threading
-#endif
 }  // namespace xe
 
 namespace xe {
@@ -177,22 +169,6 @@ struct KernelVersion {
 
 class KernelState {
  public:
-#ifdef __APPLE__
-  struct UserModuleLoadStats {
-    uint64_t load_calls = 0;
-    bool load_inflight = false;
-    uint64_t load_success = 0;
-    uint64_t load_fail = 0;
-    uint64_t last_begin_ms = 0;
-    uint64_t last_end_ms = 0;
-    uint64_t last_progress_ms = 0;
-    uint64_t load_progress_count = 0;
-    uint32_t last_status = X_STATUS_SUCCESS;
-    uint64_t loaded_user_modules = 0;
-    uint64_t loaded_executable_user_modules = 0;
-  };
-#endif
-
   explicit KernelState(Emulator* emulator);
   ~KernelState();
 
@@ -256,17 +232,7 @@ class KernelState {
 
   object_ref<XThread> LaunchModule(object_ref<UserModule> module);
   object_ref<UserModule> GetExecutableModule();
-#ifdef __APPLE__
-  object_ref<UserModule> FindFirstExecutableUserModule();
-#endif
   void SetExecutableModule(object_ref<UserModule> module);
-#ifdef __APPLE__
-  UserModuleLoadStats GetUserModuleLoadStats();
-  threading::Event* user_module_load_event() const {
-    return user_module_load_event_.get();
-  }
-  void NoteUserModuleLoadProgress();
-#endif
   object_ref<UserModule> LoadUserModule(const std::string_view name,
                                         bool call_entry = true);
   object_ref<UserModule> LoadUserModuleFromMemory(const std::string_view name,
@@ -400,21 +366,6 @@ class KernelState {
   object_ref<UserModule> executable_module_;
   std::vector<object_ref<KernelModule>> kernel_modules_;
   std::vector<object_ref<UserModule>> user_modules_;
-#ifdef __APPLE__
-  std::atomic<uint64_t> user_module_load_calls_{0};
-  std::atomic<uint64_t> user_module_load_inflight_count_{0};
-  std::atomic<uint64_t> user_module_load_success_{0};
-  std::atomic<uint64_t> user_module_load_fail_{0};
-  std::atomic<uint64_t> user_module_last_begin_ms_{0};
-  std::atomic<uint64_t> user_module_last_end_ms_{0};
-  std::atomic<uint64_t> user_module_last_progress_ms_{0};
-  std::atomic<uint64_t> user_module_last_event_signal_ms_{0};
-  std::atomic<uint64_t> user_module_progress_count_{0};
-  std::atomic<uint32_t> user_module_last_status_{X_STATUS_SUCCESS};
-  std::atomic<uint64_t> loaded_user_modules_count_{0};
-  std::atomic<uint64_t> loaded_executable_user_modules_count_{0};
-  std::unique_ptr<threading::Event> user_module_load_event_;
-#endif
   std::vector<TerminateNotification> terminate_notifications_;
   uint32_t kernel_guest_globals_ = 0;
 
