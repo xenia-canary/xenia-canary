@@ -17,8 +17,16 @@
 
 #include "xenia/apu/xma_context.h"
 #include "xenia/base/bit_stream.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/ring_buffer_mac.h"
+#else
 #include "xenia/base/ring_buffer.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 #include "xenia/xbox.h"
 
 namespace xe {
