@@ -12,8 +12,16 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/main.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/base/memory_mac.h"
+#else
 #include "xenia/base/memory.h"
+#endif
 #include "xenia/base/platform.h"
 #include "xenia/base/string_util.h"
 
