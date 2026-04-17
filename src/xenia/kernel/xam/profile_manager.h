@@ -17,7 +17,11 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/string.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/title_id_utils_mac.h"
+#else
 #include "xenia/kernel/title_id_utils.h"
+#endif
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/xbox.h"
 
