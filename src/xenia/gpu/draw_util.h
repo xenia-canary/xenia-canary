@@ -20,7 +20,11 @@
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/trace_writer.h"
 #include "xenia/gpu/xenos.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/memory_mac.h"
+#else
 #include "xenia/memory.h"
+#endif
 
 namespace xe {
 namespace gpu {
