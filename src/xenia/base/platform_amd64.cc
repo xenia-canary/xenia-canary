@@ -9,15 +9,9 @@
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/platform.h"
-#include "xenia/base/xsimd_avx_support.h"
 #define XBYAK_NO_OP_NAMES
 #include "third_party/xbyak/xbyak/xbyak.h"
 #include "third_party/xbyak/xbyak/xbyak_util.h"
-
-#ifdef __APPLE__
-#include <sys/sysctl.h>
-#endif
-
 DEFINE_int64(x64_extension_mask, -1LL,
              "Allow the detection and utilization of specific instruction set "
              "features.\n"
@@ -48,17 +42,6 @@ uint64_t GetFeatureFlags() {
 XE_COLD
 XE_NOINLINE
 void InitFeatureFlags() {
-#ifdef __APPLE__
-  xe::xsimd_support::InitializeSIMDSupport();
-  if (xe::xsimd_support::IsRunningUnderRosetta2()) {
-    g_feature_flags = kX64EmitAVX2 | kX64EmitFMA | kX64EmitLZCNT |
-                      kX64EmitBMI1 | kX64EmitBMI2 | kX64EmitMovbe |
-                      kX64FastRepMovs | kX64FastJrcx | kX64FastLoop;
-
-    g_did_initialize_feature_flags = true;
-    return;
-  }
-#endif
   uint64_t feature_flags_ = 0U;
   {
     Xbyak::util::Cpu cpu_;
