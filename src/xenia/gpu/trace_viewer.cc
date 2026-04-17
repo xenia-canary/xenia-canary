@@ -370,34 +370,6 @@ void TraceViewer::DrawPacketDisassemblerUI() {
                   ImGui::Text("%.16" PRIX64, action.set_bin_select.value);
                   break;
                 }
-#ifdef __APPLE__
-                case PacketAction::Type::kSetBinMaskLo:
-                case PacketAction::Type::kSetBinMaskHi:
-                case PacketAction::Type::kSetBinSelectLo:
-                case PacketAction::Type::kSetBinSelectHi:
-                case PacketAction::Type::kMeInit:
-                case PacketAction::Type::kGenInterrupt:
-                case PacketAction::Type::kWaitRegMem:
-                case PacketAction::Type::kRegRmw:
-                case PacketAction::Type::kCondWrite:
-                case PacketAction::Type::kEventWrite:
-                case PacketAction::Type::kEventWriteSHD:
-                case PacketAction::Type::kEventWriteExt:
-                case PacketAction::Type::kDrawIndx:
-                case PacketAction::Type::kDrawIndx2:
-                case PacketAction::Type::kInvalidateState:
-                case PacketAction::Type::kImLoad:
-                case PacketAction::Type::kImLoadImmediate:
-                case PacketAction::Type::kContextUpdate:
-                case PacketAction::Type::kWaitForIdle:
-                case PacketAction::Type::kVizQuery:
-                case PacketAction::Type::kEventWriteZPD:
-                case PacketAction::Type::kMemWrite:
-                case PacketAction::Type::kRegToMem:
-                case PacketAction::Type::kIndirBuffer:
-                case PacketAction::Type::kXeSwap:
-                  break;
-#endif
               }
             }
             ImGui::TreePop();
@@ -437,10 +409,6 @@ void TraceViewer::DrawPacketDisassemblerUI() {
             ImGui::BulletText("<swap>");
             break;
           }
-#ifdef __APPLE__
-          default:
-            break;
-#endif
         }
         break;
       }
@@ -456,10 +424,6 @@ void TraceViewer::DrawPacketDisassemblerUI() {
         // ImGui::BulletText("GammaRamp");
         break;
       }
-#ifdef __APPLE__
-      default:
-        break;
-#endif
     }
   }
   ImGui::EndChild();
@@ -481,12 +445,7 @@ int TraceViewer::RecursiveDrawCommandBufferUI(
         }
 
         ImGui::PushID(int(i));
-#ifdef __APPLE__
-        if (ImGui::TreeNode((void*)0, "Indirect Buffer %" PRIu64,
-                            static_cast<uint64_t>(i))) {
-#else
         if (ImGui::TreeNode((void*)0, "Indirect Buffer %" PRIu64, i)) {
-#endif
           ImGui::Indent();
           auto id = RecursiveDrawCommandBufferUI(
               frame, buffer->commands[i].command_subtree.get());
@@ -870,54 +829,30 @@ void TraceViewer::DrawVertexFetcher(Shader* shader,
       switch (attrib.fetch_instr.attributes.data_format) {
         case xenos::VertexFormat::k_32:
         case xenos::VertexFormat::k_32_FLOAT:
-#ifdef __APPLE__
-          ImGui::Text("e%" PRIu64 ".x", static_cast<uint64_t>(el_index));
-#else
           ImGui::Text("e%" PRId64 ".x", el_index);
-#endif
           ImGui::NextColumn();
           break;
         case xenos::VertexFormat::k_16_16:
         case xenos::VertexFormat::k_16_16_FLOAT:
         case xenos::VertexFormat::k_32_32:
         case xenos::VertexFormat::k_32_32_FLOAT:
-#ifdef __APPLE__
-          ImGui::Text("e%" PRIu64 ".x", static_cast<uint64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRIu64 ".y", static_cast<uint64_t>(el_index));
-          ImGui::NextColumn();
-#else
           ImGui::Text("e%" PRId64 ".x", el_index);
           ImGui::NextColumn();
           ImGui::Text("e%" PRId64 ".y", el_index);
           ImGui::NextColumn();
-#endif
           break;
         case xenos::VertexFormat::k_10_11_11:
         case xenos::VertexFormat::k_11_11_10:
         case xenos::VertexFormat::k_32_32_32_FLOAT:
-#ifdef __APPLE__
-          ImGui::Text("e%" PRIu64 ".x", static_cast<uint64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRIu64 ".y", static_cast<uint64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRIu64 ".z", static_cast<uint64_t>(el_index));
-          ImGui::NextColumn();
-#else
           ImGui::Text("e%" PRId64 ".x", el_index);
           ImGui::NextColumn();
           ImGui::Text("e%" PRId64 ".y", el_index);
           ImGui::NextColumn();
           ImGui::Text("e%" PRId64 ".z", el_index);
           ImGui::NextColumn();
-#endif
           break;
         case xenos::VertexFormat::k_8_8_8_8:
-#ifdef __APPLE__
-          ImGui::Text("e%" PRIu64 ".xyzw", static_cast<uint64_t>(el_index));
-#else
           ImGui::Text("e%" PRId64 ".xyzw", el_index);
-#endif
           ImGui::NextColumn();
           break;
         case xenos::VertexFormat::k_2_10_10_10:
@@ -925,15 +860,6 @@ void TraceViewer::DrawVertexFetcher(Shader* shader,
         case xenos::VertexFormat::k_32_32_32_32:
         case xenos::VertexFormat::k_16_16_16_16_FLOAT:
         case xenos::VertexFormat::k_32_32_32_32_FLOAT:
-#ifdef __APPLE__
-          ImGui::Text("e%" PRId64 ".x", static_cast<int64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".y", static_cast<int64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".z", static_cast<int64_t>(el_index));
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".w", static_cast<int64_t>(el_index));
-#else
           ImGui::Text("e%" PRId64 ".x", el_index);
           ImGui::NextColumn();
           ImGui::Text("e%" PRId64 ".y", el_index);
@@ -941,7 +867,6 @@ void TraceViewer::DrawVertexFetcher(Shader* shader,
           ImGui::Text("e%" PRId64 ".z", el_index);
           ImGui::NextColumn();
           ImGui::Text("e%" PRId64 ".w", el_index);
-#endif
           ImGui::NextColumn();
           break;
         case xenos::VertexFormat::kUndefined:
@@ -1711,12 +1636,7 @@ void TraceViewer::DrawStateUI() {
       vertices.resize(size / 4);
       QueryVSOutput(vertices.data(), size);
 
-#ifdef __APPLE__
-      ImGui::Text("%" PRIu64 " output vertices",
-                  static_cast<uint64_t>(vertices.size() / 4));
-#else
       ImGui::Text("%" PRIu64 " output vertices", vertices.size() / 4);
-#endif
       ImGui::SameLine();
       static bool normalize = false;
       ImGui::Checkbox("Normalize", &normalize);
@@ -1842,17 +1762,9 @@ void TraceViewer::DrawStateUI() {
         xe_gpu_vertex_fetch_t fetch =
             regs.GetVertexFetch(vertex_binding.fetch_constant);
         assert_true(fetch.endian == xenos::Endian::k8in32);
-
-#ifdef __APPLE__
-        char tree_root_id[256];
-        snprintf(tree_root_id, sizeof(tree_root_id), "#vertices_root_%d",
-                 vertex_binding.fetch_constant);
-#else
         char tree_root_id[32];
         sprintf(tree_root_id, "#vertices_root_%d",
                 vertex_binding.fetch_constant);
-#endif
-
         if (ImGui::TreeNode(tree_root_id, "vf%d: 0x%.8X (%db), %s",
                             vertex_binding.fetch_constant, fetch.address << 2,
                             fetch.size * 4,
