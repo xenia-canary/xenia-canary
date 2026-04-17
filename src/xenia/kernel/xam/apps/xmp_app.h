@@ -10,7 +10,11 @@
 #ifndef XENIA_KERNEL_XAM_APPS_XMP_APP_H_
 #define XENIA_KERNEL_XAM_APPS_XMP_APP_H_
 
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/kernel_state_mac.h"
+#else
 #include "xenia/kernel/kernel_state.h"
+#endif
 #include "xenia/kernel/xam/app_manager.h"
 
 namespace xe {
