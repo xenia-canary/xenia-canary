@@ -13,7 +13,11 @@
 #include "xenia/base/logging.h"
 #include "xenia/cpu/ppc/ppc_decode_data.h"
 #include "xenia/cpu/ppc/ppc_emit.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#else
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
+#endif
 
 namespace xe {
 namespace cpu {
