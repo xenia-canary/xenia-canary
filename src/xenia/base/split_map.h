@@ -65,11 +65,7 @@ class split_map {
   }
 
   void InsertAt(TKey k, TValue v, uint32_t idx) {
-#ifdef __APPLE__
-    (void)size();
-#else
     uint32_t old_size = size();
-#endif
 
     values_.insert(values_.begin() + idx, v);
     keys_.insert(keys_.begin() + idx, k);
