@@ -11,8 +11,16 @@
 #define XENIA_CPU_BACKEND_X64_X64_STACK_LAYOUT_H_
 
 #include "xenia/base/vec128.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_backend_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#endif
+#if XE_PLATFORM_MACOS
+#include "xenia/cpu/backend/x64/x64_emitter_mac.h"
+#else
 #include "xenia/cpu/backend/x64/x64_emitter.h"
+#endif
 
 namespace xe {
 namespace cpu {
