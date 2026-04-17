@@ -9,11 +9,6 @@
 
 #include "src/xenia/kernel/xsocket.h"
 
-#ifdef __APPLE__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#endif
-
 #include <cstring>
 
 #include "xenia/base/logging.h"
@@ -37,9 +32,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef __APPLE__
-#pragma clang diagnostic pop
-#endif
 namespace xe {
 namespace kernel {
 
@@ -95,11 +87,7 @@ X_STATUS XSocket::Close() {
 #if XE_PLATFORM_WIN32
   int ret = closesocket(native_handle_);
 #elif XE_PLATFORM_LINUX
-#ifdef __APPLE__
-  int ret = close(static_cast<int>(native_handle_));
-#else
   int ret = close(native_handle_);
-#endif
 #endif
 
   if (ret != 0) {
@@ -111,15 +99,9 @@ X_STATUS XSocket::Close() {
 
 X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
                             uint32_t* optlen) {
-#ifdef __APPLE__
-  int ret = getsockopt(static_cast<int>(native_handle_), level, optname,
-                       static_cast<char*>(optval_ptr),
-                       reinterpret_cast<socklen_t*>(optlen));
-#else
   int ret =
       getsockopt(native_handle_, level, optname, static_cast<char*>(optval_ptr),
                  reinterpret_cast<socklen_t*>(optlen));
-#endif
   if (ret < 0) {
     // TODO: WSAGetLastError()
     return X_STATUS_UNSUCCESSFUL;
@@ -159,15 +141,8 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
       native_optname = supported_tcp_options.at(optname);
     }
   }
-#ifdef __APPLE__
-  int ret = setsockopt(static_cast<int>(native_handle_), native_level,
-                       native_optname, reinterpret_cast<const char*>(optval),
-                       static_cast<socklen_t>(optlen));
-#else
   int ret = setsockopt(native_handle_, native_level, native_optname,
                        static_cast<char*>(optval_ptr), optlen);
-#endif
-
   if (ret < 0) {
     // TODO: WSAGetLastError()
     XELOGE("XSocket::SetOption: failed with error {:08X}", GetLastWSAError());
@@ -206,33 +181,11 @@ X_STATUS XSocket::IOControl(uint32_t cmd, uint8_t* arg_ptr) {
   }
 
   return X_STATUS_SUCCESS;
-#elif XE_PLATFORM_MACOS
-  int native_cmd = cmd;
-
-  assert_false(!supported_controls.contains(cmd));
-
-  if (supported_controls.contains(cmd)) {
-    native_cmd = supported_controls.at(cmd);
-  }
-
-  int ret = ioctl(static_cast<int>(native_handle_), native_cmd, arg_ptr);
-
-  if (ret < 0) {
-    return X_STATUS_UNSUCCESSFUL;
-  }
-
-  return X_STATUS_SUCCESS;
 #endif
 }
 
 X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
-#ifdef __APPLE__
-  int ret = connect(static_cast<int>(native_handle_),
-                    reinterpret_cast<const sockaddr*>(name),
-                    static_cast<socklen_t>(name_len));
-#else
   int ret = connect(native_handle_, (sockaddr*)name, name_len);
-#endif
   if (ret < 0) {
     return X_STATUS_UNSUCCESSFUL;
   }
@@ -252,13 +205,7 @@ X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
     XELOGW("XSocket::Bind: port {} requires privileges, remapping to port {}",
            original_port, new_port);
   }
-#ifdef __APPLE__
-  int ret = bind(static_cast<int>(native_handle_),
-                 reinterpret_cast<const sockaddr*>(name),
-                 static_cast<socklen_t>(name_len));
-#else
   int ret = bind(native_handle_, (sockaddr*)name, name_len);
-#endif
 
   if (ret < 0) {
     return X_STATUS_UNSUCCESSFUL;
@@ -271,11 +218,7 @@ X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
 }
 
 X_STATUS XSocket::Listen(int backlog) {
-#ifdef __APPLE__
-  int ret = listen(static_cast<int>(native_handle_), backlog);
-#else
   int ret = listen(native_handle_, backlog);
-#endif
   if (ret < 0) {
     return X_STATUS_UNSUCCESSFUL;
   }
@@ -286,13 +229,7 @@ X_STATUS XSocket::Listen(int backlog) {
 object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
   sockaddr n_sockaddr;
   socklen_t n_name_len = sizeof(sockaddr);
-#ifdef __APPLE__
-  int ret = accept(static_cast<int>(native_handle_),
-                   reinterpret_cast<sockaddr*>(&n_sockaddr),
-                   reinterpret_cast<socklen_t*>(&n_name_len));
-#else
   uintptr_t ret = accept(native_handle_, &n_sockaddr, &n_name_len);
-#endif
   if (ret == -1) {
     std::memset(name, 0, *name_len);
     *name_len = 0;
@@ -311,22 +248,10 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
 
   return socket;
 }
-#ifdef __APPLE__
-int XSocket::Shutdown(int how) {
-  return shutdown(static_cast<int>(native_handle_), how);
-}
-#else
 int XSocket::Shutdown(int how) { return shutdown(native_handle_, how); }
-#endif
 
 int XSocket::Recv(uint8_t* buf, uint32_t buf_len, uint32_t flags) {
-#ifdef __APPLE__
-  return static_cast<int>(recv(static_cast<int>(native_handle_),
-                               reinterpret_cast<char*>(buf),
-                               static_cast<size_t>(buf_len), flags));
-#else
   return recv(native_handle_, reinterpret_cast<char*>(buf), buf_len, flags);
-#endif
 }
 
 int XSocket::RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags,
@@ -356,15 +281,8 @@ int XSocket::RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags,
 
   sockaddr_in nfrom;
   socklen_t nfromlen = sizeof(sockaddr_in);
-#ifdef __APPLE__
-  int ret = static_cast<int>(recvfrom(
-      static_cast<int>(native_handle_), reinterpret_cast<char*>(buf),
-      static_cast<size_t>(buf_len), flags, reinterpret_cast<sockaddr*>(from),
-      reinterpret_cast<socklen_t*>(from_len)));
-#else
   int ret = recvfrom(native_handle_, reinterpret_cast<char*>(buf), buf_len,
                      flags, (sockaddr*)&nfrom, &nfromlen);
-#endif
   if (from) {
     from->sin_family = nfrom.sin_family;
     from->sin_addr = ntohl(nfrom.sin_addr.s_addr);  // BE <- BE
@@ -380,14 +298,8 @@ int XSocket::RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags,
 }
 
 int XSocket::Send(const uint8_t* buf, uint32_t buf_len, uint32_t flags) {
-#ifdef __APPLE__
-  return static_cast<int>(send(static_cast<int>(native_handle_),
-                               reinterpret_cast<const char*>(buf),
-                               static_cast<size_t>(buf_len), flags));
-#else
   return send(native_handle_, reinterpret_cast<const char*>(buf), buf_len,
               flags);
-#endif
 }
 
 int XSocket::SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags,
@@ -409,16 +321,8 @@ int XSocket::SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags,
     nto.sin_family = to->sin_family;
     nto.sin_port = to->sin_port;
   }
-#ifdef __APPLE__
-  return static_cast<int>(sendto(static_cast<int>(native_handle_),
-                                 reinterpret_cast<const char*>(buf),
-                                 static_cast<size_t>(buf_len), flags,
-                                 reinterpret_cast<const sockaddr*>(addr),
-                                 static_cast<socklen_t>(addr_len)));
-#else
   return sendto(native_handle_, reinterpret_cast<char*>(buf), buf_len, flags,
                 to ? (sockaddr*)&nto : nullptr, to_len);
-#endif
 }
 
 bool XSocket::QueuePacket(uint32_t src_ip, uint16_t src_port,
@@ -439,13 +343,7 @@ bool XSocket::QueuePacket(uint32_t src_ip, uint16_t src_port,
 
 X_STATUS XSocket::GetSockName(uint8_t* buf, int* buf_len) {
   struct sockaddr sa = {};
-#ifdef __APPLE__
-  int ret = getsockname(static_cast<int>(native_handle_),
-                        reinterpret_cast<sockaddr*>(&sa),
-                        reinterpret_cast<socklen_t*>(buf_len));
-#else
   int ret = getsockname(native_handle_, &sa, (socklen_t*)buf_len);
-#endif
   if (ret < 0) {
     return X_STATUS_UNSUCCESSFUL;
   }
