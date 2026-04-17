@@ -9,7 +9,11 @@
 
 #include "xenia/vfs/devices/disc_image_entry.h"
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/math_mac.h"
+#else
 #include "xenia/base/math.h"
+#endif
 #include "xenia/vfs/devices/disc_image_file.h"
 
 namespace xe {
