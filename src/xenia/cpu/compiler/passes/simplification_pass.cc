@@ -391,10 +391,6 @@ redo:
       }
       break;
     }
-#ifdef __APPLE__
-    default:
-      break;
-#endif
   }
 
   if (Is1BitOpcode(def_opcode)) {
