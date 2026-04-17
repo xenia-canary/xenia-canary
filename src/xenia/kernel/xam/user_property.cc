@@ -20,11 +20,7 @@ Property::Property(const Property& property)
 
 Property::Property(uint32_t property_id, UserDataTypes property_data)
     : UserData(get_type(property_id), property_data) {
-#ifdef __APPLE__
-  property_id_.value = property_id;
-#else
   property_id_ = static_cast<AttributeKey>(property_id);
-#endif
 }
 
 Property::Property(uint32_t property_id, uint32_t value_size,
