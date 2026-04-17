@@ -12,7 +12,11 @@
 
 #include "xenia/ui/d3d12/d3d12_provider.h"
 #include "xenia/ui/window_demo.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/ui/windowed_app_mac.h"
+#else
 #include "xenia/ui/windowed_app.h"
+#endif
 
 namespace xe {
 namespace ui {
