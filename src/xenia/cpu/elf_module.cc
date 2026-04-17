@@ -9,7 +9,11 @@
 
 #include "xenia/cpu/elf_module.h"
 
+#if XE_PLATFORM_MACOS
+#include "xenia/base/byte_order_mac.h"
+#else
 #include "xenia/base/byte_order.h"
+#endif
 #include "xenia/base/logging.h"
 #include "xenia/cpu/processor.h"
 
