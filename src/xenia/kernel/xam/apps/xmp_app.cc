@@ -8,10 +8,18 @@
  */
 
 #include "xenia/kernel/xam/apps/xmp_app.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xthread_mac.h"
+#else
 #include "xenia/kernel/xthread.h"
+#endif
 
 #include "xenia/base/logging.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/emulator_mac.h"
+#else
 #include "xenia/emulator.h"
+#endif
 #include "xenia/xbox.h"
 
 #include "xenia/apu/audio_media_player.h"
