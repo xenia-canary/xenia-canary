@@ -33,6 +33,16 @@ extern "C" {
 namespace xe {
 namespace apu {
 
+namespace {
+
+bool ShouldLogStallSummary(uint32_t consecutive_count) {
+  return consecutive_count == 1 || consecutive_count == 8 ||
+         consecutive_count == 64 ||
+         (consecutive_count >= 256 && consecutive_count % 256 == 0);
+}
+
+}  // namespace
+
 XmaContextNew::XmaContextNew() = default;
 
 XmaContextNew::~XmaContextNew() {
@@ -110,6 +120,63 @@ RingBuffer XmaContextNew::PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data) {
   return output_rb;
 }
 
+void XmaContextNew::NoteNoSpaceStall(const XMA_CONTEXT_DATA& data,
+                                     int32_t minimum_subframe_decode_count) {
+  consecutive_no_space_stalls_++;
+  total_no_space_stalls_++;
+  if (!ShouldLogStallSummary(consecutive_no_space_stalls_)) {
+    return;
+  }
+  XELOGW(
+      "XmaContext {}: output-space stall x{} (total {}): need {} blocks, "
+      "have {}, read {} write {}, sdc {}, padding {}, last progress input {} "
+      "output {}/{}",
+      id(), consecutive_no_space_stalls_, total_no_space_stalls_,
+      minimum_subframe_decode_count,
+      remaining_subframe_blocks_in_output_buffer_,
+      data.output_buffer_read_offset, data.output_buffer_write_offset,
+      data.subframe_decode_count, data.output_buffer_padding,
+      last_progress_input_offset_, last_progress_output_read_offset_,
+      last_progress_output_write_offset_);
+}
+
+void XmaContextNew::NoteNoProgressStall(const XMA_CONTEXT_DATA& data) {
+  consecutive_no_progress_stalls_++;
+  total_no_progress_stalls_++;
+  if (!ShouldLogStallSummary(consecutive_no_progress_stalls_)) {
+    return;
+  }
+  XELOGW(
+      "XmaContext {}: no-progress stall x{} (total {}): input {}, current "
+      "buffer {}, output {}/{}, last progress input {} output {}/{}",
+      id(), consecutive_no_progress_stalls_, total_no_progress_stalls_,
+      data.input_buffer_read_offset, data.current_buffer,
+      data.output_buffer_read_offset, data.output_buffer_write_offset,
+      last_progress_input_offset_, last_progress_output_read_offset_,
+      last_progress_output_write_offset_);
+}
+
+void XmaContextNew::NoteProgress(const XMA_CONTEXT_DATA& data,
+                                 const RingBuffer& output_rb,
+                                 uint32_t previous_input_offset) {
+  if (consecutive_no_space_stalls_ || consecutive_no_progress_stalls_) {
+    XELOGW(
+        "XmaContext {}: recovered after stalls (no-space {}, no-progress {}), "
+        "input {} -> {}, output {}/{}",
+        id(), consecutive_no_space_stalls_, consecutive_no_progress_stalls_,
+        previous_input_offset, data.input_buffer_read_offset,
+        data.output_buffer_read_offset,
+        output_rb.write_offset() / kOutputBytesPerBlock);
+  }
+  consecutive_no_space_stalls_ = 0;
+  consecutive_no_progress_stalls_ = 0;
+  total_progress_events_++;
+  last_progress_input_offset_ = data.input_buffer_read_offset;
+  last_progress_output_read_offset_ = data.output_buffer_read_offset;
+  last_progress_output_write_offset_ =
+      output_rb.write_offset() / kOutputBytesPerBlock;
+}
+
 bool XmaContextNew::Work() {
   if (!is_enabled() || !is_allocated()) {
     return false;
@@ -166,6 +233,7 @@ bool XmaContextNew::Work() {
     XELOGD("XmaContext {}: No space for subframe decoding {}/{}!", id(),
            minimum_subframe_decode_count,
            remaining_subframe_blocks_in_output_buffer_);
+    NoteNoSpaceStall(data, minimum_subframe_decode_count);
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
@@ -183,9 +251,18 @@ bool XmaContextNew::Work() {
 
     const uint32_t pre_decode_offset = data.input_buffer_read_offset;
     const uint8_t pre_remaining_subframes = current_frame_remaining_subframes_;
+    const uint32_t pre_output_write_offset = output_rb.write_offset();
 
     Decode(&data);
     Consume(&output_rb, &data);
+
+    const bool made_progress =
+        data.input_buffer_read_offset != pre_decode_offset ||
+        current_frame_remaining_subframes_ != pre_remaining_subframes ||
+        output_rb.write_offset() != pre_output_write_offset;
+    if (made_progress) {
+      NoteProgress(data, output_rb, pre_decode_offset);
+    }
 
     if (!data.IsAnyInputBufferValid() || data.error_status == 4) {
       XELOGAPU(
@@ -202,6 +279,7 @@ bool XmaContextNew::Work() {
     if (pre_remaining_subframes == 0 &&
         data.input_buffer_read_offset == pre_decode_offset &&
         current_frame_remaining_subframes_ == 0) {
+      NoteNoProgressStall(data);
       XELOGAPU(
           "XmaContext {}: Decode stalled at offset {} (no progress), "
           "waiting for next buffer",
@@ -254,6 +332,14 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  consecutive_no_space_stalls_ = 0;
+  consecutive_no_progress_stalls_ = 0;
+  total_no_space_stalls_ = 0;
+  total_no_progress_stalls_ = 0;
+  total_progress_events_ = 0;
+  last_progress_input_offset_ = kBitsPerPacketHeader;
+  last_progress_output_read_offset_ = 0;
+  last_progress_output_write_offset_ = 0;
 }
 
 void XmaContextNew::Disable() { set_is_enabled(false); }
@@ -266,6 +352,14 @@ void XmaContextNew::Release() {
   set_is_allocated(false);
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
   std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));  // Zero it.
+  consecutive_no_space_stalls_ = 0;
+  consecutive_no_progress_stalls_ = 0;
+  total_no_space_stalls_ = 0;
+  total_no_progress_stalls_ = 0;
+  total_progress_events_ = 0;
+  last_progress_input_offset_ = kBitsPerPacketHeader;
+  last_progress_output_read_offset_ = 0;
+  last_progress_output_write_offset_ = 0;
 }
 
 int XmaContextNew::GetSampleRate(int id) {

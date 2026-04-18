@@ -60,6 +60,12 @@ class XmaContextNew : public XmaContext {
   void Release();
 
  private:
+  void NoteNoSpaceStall(const XMA_CONTEXT_DATA& data,
+                        int32_t minimum_subframe_decode_count);
+  void NoteNoProgressStall(const XMA_CONTEXT_DATA& data);
+  void NoteProgress(const XMA_CONTEXT_DATA& data, const RingBuffer& output_rb,
+                    uint32_t previous_input_offset);
+
   void ClearLocked(XMA_CONTEXT_DATA* data);
   static void SwapInputBuffer(XMA_CONTEXT_DATA* data);
   // Convert sampling rate from ID to frequency.
@@ -119,6 +125,15 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+
+  uint32_t consecutive_no_space_stalls_ = 0;
+  uint32_t consecutive_no_progress_stalls_ = 0;
+  uint32_t total_no_space_stalls_ = 0;
+  uint32_t total_no_progress_stalls_ = 0;
+  uint32_t total_progress_events_ = 0;
+  uint32_t last_progress_input_offset_ = kBitsPerPacketHeader;
+  uint8_t last_progress_output_read_offset_ = 0;
+  uint8_t last_progress_output_write_offset_ = 0;
 };
 
 }  // namespace apu
