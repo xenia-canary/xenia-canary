@@ -143,16 +143,21 @@ bool XmaContextNew::Work() {
   }
 
   // Minimum free blocks needed before attempting a decode.
-  // Use the number of subframes Consume() will actually write per iteration
-  // (= subframe_decode_count, clamped to 1) plus any headroom requested by
-  // output_buffer_padding.  Using a full-frame worth of space (the old
-  // formula) was far too restrictive: games like TGM Ace use
-  // subframe_decode_count=2 on a small ring buffer and never had 8 free
-  // blocks available, causing the decoder to permanently stall.
+  // Use only the number of subframes Consume() will actually write per
+  // iteration (= subframe_decode_count, clamped to 1).
+  //
+  // The bits we currently expose as output_buffer_padding in
+  // XMA_CONTEXT_DATA are still a guess. Treating that guessed field as a hard
+  // admission requirement stalls contexts that still have enough room to make
+  // forward progress (for example, 4 writable subframes with a guessed padding
+  // value of 3 would incorrectly require 7 free blocks before any decode).
+  //
+  // Keep any padding reservation best-effort in Consume(), but don't block the
+  // decoder from producing audio solely because of it.
   const uint32_t effective_sdc =
       std::max(static_cast<uint32_t>(1), data.subframe_decode_count);
   const int32_t minimum_subframe_decode_count =
-      static_cast<int32_t>(effective_sdc) + data.output_buffer_padding;
+      static_cast<int32_t>(effective_sdc);
 
   // We don't have enough space to even make one pass
   // Waiting for decoder to return more space.
@@ -337,12 +342,18 @@ void XmaContextNew::Consume(RingBuffer* XE_RESTRICT output_rb,
       raw_frame_.data() + (kOutputBytesPerBlock * raw_frame_read_offset),
       subframes_to_write * kOutputBytesPerBlock);
 
-  // Reserve extra blocks as headroom when unk_skip_decode is set.
-  // Only apply when the frame is fully consumed to avoid double-counting.
-  const int8_t headroom =
-      (current_frame_remaining_subframes_ - subframes_to_write == 0)
-          ? data->output_buffer_padding
-          : 0;
+  // Reserve extra blocks as headroom on a best-effort basis when the frame is
+  // fully consumed. This field is still only a guess, so don't let it drive
+  // the accounting negative or block otherwise valid writes.
+  int8_t headroom = 0;
+  if (current_frame_remaining_subframes_ - subframes_to_write == 0) {
+    const int32_t remaining_after_write =
+        remaining_subframe_blocks_in_output_buffer_ - subframes_to_write;
+    if (remaining_after_write > 0) {
+      headroom = static_cast<int8_t>(std::min<int32_t>(
+          data->output_buffer_padding, remaining_after_write));
+    }
+  }
 
   remaining_subframe_blocks_in_output_buffer_ -= subframes_to_write + headroom;
   current_frame_remaining_subframes_ -= subframes_to_write;
