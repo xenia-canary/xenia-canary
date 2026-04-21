@@ -68,20 +68,28 @@ class AudioMediaPlayer {
   }
   XmpApp::PlaybackFlags GetPlaybackFlags() const { return playback_flags_; }
 
-  void SetPlaybackClient(XmpApp::PlaybackClient playback_client) {
-    if (playback_client == XmpApp::PlaybackClient::kSystem) {
-      return;
-    }
+  void SetXMPOverride(bool xmp_override) { xmp_override_ = xmp_override; }
+  bool IsXMPOverrideEnabled() const { return xmp_override_; }
 
-    playback_client_ = playback_client;
-  }
-
-  XmpApp::PlaybackClient GetPlaybackClient() const { return playback_client_; }
   uint32_t GetDashInItState() const { return dash_init_state; }
 
+  void SetXMPClient(XMP_CLIENT xmp_client) { xmp_client_ = xmp_client; }
+
+  void SetPlaybackController(PlaybackController playback_controller) {
+    playback_controller_ = playback_controller;
+  }
+
+  PlaybackController GetPlaybackController() const {
+    return playback_controller_;
+  }
+
+  XMP_CLIENT GetXMPClient() const { return xmp_client_; }
+
   bool IsTitleInPlaybackControl() const {
-    return playback_client_ == XmpApp::PlaybackClient::kTitle ||
-           is_title_rendering_enabled_;
+    const bool game_control = xmp_client_ == XMP_CLIENT::Game &&
+                              playback_controller_ == PlaybackController::Game;
+
+    return game_control || xmp_override_ || is_title_rendering_enabled_;
   }
 
   void SetCaptureCallback(uint32_t callback, uint32_t context,
@@ -102,10 +110,12 @@ class AudioMediaPlayer {
   std::span<uint8_t> LoadSongToMemory();
 
   XmpApp::State state_ = XmpApp::State::kIdle;
-  XmpApp::PlaybackClient playback_client_ = XmpApp::PlaybackClient::kSystem;
+  bool xmp_override_ = false;
   XmpApp::PlaybackMode playback_mode_ = XmpApp::PlaybackMode::kInOrder;
   XmpApp::RepeatMode repeat_mode_ = XmpApp::RepeatMode::kPlaylist;
   XmpApp::PlaybackFlags playback_flags_ = XmpApp::PlaybackFlags::kDefault;
+  PlaybackController playback_controller_ = PlaybackController::Game;
+  XMP_CLIENT xmp_client_ = XMP_CLIENT::Game;
   std::atomic<float> volume_ = 0.0f;
   uint32_t dash_init_state = 0;
 

@@ -14,6 +14,28 @@
 #include "xenia/kernel/xam/app_manager.h"
 
 namespace xe {
+namespace apu {
+enum class XMP_CLIENT : uint32_t {
+  Dash,
+  HUD,
+  Game,
+  Remote,
+  MusicPlayer,
+  MSAL,
+  MCE,
+};
+
+enum class PlaybackController : uint32_t {
+  Game,
+  User,
+  Dash,
+  MCE,
+  Restore,
+};
+}  // namespace apu
+}  // namespace xe
+
+namespace xe {
 namespace kernel {
 namespace xam {
 namespace apps {
@@ -53,20 +75,20 @@ struct XMP_SONGINFO {
 static_assert_size(XMP_SONGINFO, 0x3E0);
 
 struct XMP_PLAY_TITLE_PLAYLIST {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> storage_ptr;
   xe::be<uint32_t> song_handle;
 };
 static_assert_size(XMP_PLAY_TITLE_PLAYLIST, 0xC);
 
 struct XMP_STOP {
-  xe::be<uint32_t> xmp_client;
-  xe::be<uint32_t> unk;
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<uint32_t> allow_restart;
 };
 static_assert_size(XMP_STOP, 0x8);
 
 struct XMP_SET_PLAYBACK_BEHAVIOR {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> playback_mode;
   xe::be<uint32_t> repeat_mode;
   xe::be<uint32_t> flags;
@@ -74,25 +96,25 @@ struct XMP_SET_PLAYBACK_BEHAVIOR {
 static_assert_size(XMP_SET_PLAYBACK_BEHAVIOR, 0x10);
 
 struct XMP_GET_STATUS {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> state_ptr;
 };
 static_assert_size(XMP_GET_STATUS, 0x8);
 
 struct XMP_GET_VOLUME {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> volume_ptr;
 };
 static_assert_size(XMP_GET_VOLUME, 0x8);
 
 struct XMP_SET_VOLUME {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<float> value;
 };
 static_assert_size(XMP_SET_VOLUME, 0x8);
 
 struct XMP_CREATE_TITLE_PLAYLIST {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> storage_ptr;
   xe::be<uint32_t> storage_size;
   xe::be<uint32_t> songs_ptr;
@@ -105,41 +127,41 @@ struct XMP_CREATE_TITLE_PLAYLIST {
 static_assert_size(XMP_CREATE_TITLE_PLAYLIST, 0x24);
 
 struct XMP_GET_CURRENT_SONG {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> unk_ptr;
   xe::be<uint32_t> info_ptr;
 };
 static_assert_size(XMP_GET_CURRENT_SONG, 0xC);
 
 struct XMP_DELETE_TITLE_PLAYLIST {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> storage_ptr;
 };
 static_assert_size(XMP_DELETE_TITLE_PLAYLIST, 0x8);
 
 struct XMP_SET_PLAYBACK_CONTROLLER {
-  xe::be<uint32_t> xmp_client;
-  xe::be<uint32_t> controller;
-  xe::be<uint32_t> playback_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<apu::PlaybackController> playback_controller_request;
+  xe::be<uint32_t> playback_controller_locked;
 };
 static_assert_size(XMP_SET_PLAYBACK_CONTROLLER, 0xC);
 
 struct XMP_GET_PLAYBACK_CONTROLLER {
-  xe::be<uint32_t> xmp_client;
-  xe::be<uint32_t> controller_ptr;
-  xe::be<uint32_t> locked_ptr;
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<uint32_t> playback_controller_ptr;
+  xe::be<uint32_t> playback_controller_locked_ptr;
 };
 static_assert_size(XMP_GET_PLAYBACK_CONTROLLER, 0xC);
 
 struct XMP_CREATE_USER_PLAYLIST_ENUMERATOR {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> flags;
   xe::be<uint32_t> object_ptr;
 };
 static_assert_size(XMP_CREATE_USER_PLAYLIST_ENUMERATOR, 0xC);
 
 struct XMP_GET_PLAYBACK_BEHAVIOR {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> playback_mode_ptr;
   xe::be<uint32_t> repeat_mode_ptr;
   xe::be<uint32_t> playback_flags_ptr;
@@ -147,23 +169,23 @@ struct XMP_GET_PLAYBACK_BEHAVIOR {
 static_assert_size(XMP_GET_PLAYBACK_BEHAVIOR, 0x10);
 
 struct XMP_GET_MEDIA_SOURCES {
-  xe::be<uint32_t> xmp_client;
-  xe::be<uint32_t> unk1;
-  xe::be<uint32_t> unk1_ptr;
-  xe::be<uint32_t> unk2;
-  xe::be<uint32_t> unk2_ptr;
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<uint32_t> get_connected_sources_only;
+  xe::be<uint32_t> media_resources_ptr;  // *MSAL_MEDIASOURCEINFO
+  xe::be<uint32_t> max_source;
+  xe::be<uint32_t> sources_returned_ptr;
 };
 static_assert_size(XMP_GET_MEDIA_SOURCES, 0x14);
 
 struct XMP_GET_TITLE_PLAYLIST_BUFFER_SIZE {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> song_count;
   xe::be<uint32_t> size_ptr;
 };
 static_assert_size(XMP_GET_TITLE_PLAYLIST_BUFFER_SIZE, 0xC);
 
 struct XMP_DASH_INIT {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> buffer_ptr;     // used by XamEnumerate
   xe::be<uint32_t> buffer_length;  // used by XamEnumerate
   xe::be<uint32_t> unk1;
@@ -173,7 +195,7 @@ struct XMP_DASH_INIT {
 static_assert_size(XMP_DASH_INIT, 0x18);
 
 struct XMP_CAPTURE_OUTPUT {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> callback;
   xe::be<uint32_t> context;
   xe::be<uint32_t> title_render;
@@ -181,7 +203,7 @@ struct XMP_CAPTURE_OUTPUT {
 static_assert_size(XMP_CAPTURE_OUTPUT, 0x10);
 
 struct XMP_SET_MEDIA_SOURCE_WORKSPACE {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> unk1;
   xe::be<uint32_t> storage_ptr;
   xe::be<uint32_t> unk2;
@@ -189,7 +211,7 @@ struct XMP_SET_MEDIA_SOURCE_WORKSPACE {
 static_assert_size(XMP_SET_MEDIA_SOURCE_WORKSPACE, 0x10);
 
 struct XMP_GET_DASH_INIT_STATE {
-  xe::be<uint32_t> xmp_client;
+  xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> dash_init_state_ptr;
 };
 static_assert_size(XMP_GET_DASH_INIT_STATE, 0x8);
@@ -200,10 +222,6 @@ class XmpApp : public App {
     kIdle = 0,
     kPlaying = 1,
     kPaused = 2,
-  };
-  enum class PlaybackClient : uint32_t {
-    kSystem = 0,
-    kTitle = 1,
   };
   enum class PlaybackMode : uint32_t {
     kInOrder = 0,
@@ -217,12 +235,12 @@ class XmpApp : public App {
     kDefault = 0,
     kAutoPause = 1,
   };
-  struct Song {
-    enum class Format : uint32_t {
-      kWma = 0,
-      kMp3 = 1,
-    };
+  enum class SongFormat : uint32_t {
+    kWma = 0,
+    kMp3 = 1,
+  };
 
+  struct Song {
     uint32_t handle;
     std::u16string file_path;
     std::u16string name;
@@ -232,7 +250,7 @@ class XmpApp : public App {
     std::u16string genre;
     uint32_t track_number;
     uint32_t duration_ms;
-    Format format;
+    SongFormat format;
   };
   struct Playlist {
     uint32_t handle;
@@ -258,7 +276,7 @@ class XmpApp : public App {
   X_HRESULT XMPPause();
   X_HRESULT XMPNext();
   X_HRESULT XMPPrevious();
-  X_HRESULT XMPGetTitlePlaylistBufferSize(uint32_t xmp_client,
+  X_HRESULT XMPGetTitlePlaylistBufferSize(apu::XMP_CLIENT xmp_client,
                                           uint32_t song_count,
                                           uint32_t storage_ptr);
 
