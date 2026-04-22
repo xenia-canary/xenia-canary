@@ -96,9 +96,11 @@ include_directories(SYSTEM
 add_compile_definitions(
   VULKAN_HPP_NO_TO_STRING
   IMGUI_DISABLE_DEFAULT_FONT
-  IMGUI_USE_STB_SPRINTF
   USE_CPP17  # Tabulate
 )
+
+# Prevent ASan error from ImGUI
+add_compile_definitions($<$<NOT:$<CONFIG:Checked>>:IMGUI_USE_STB_SPRINTF>)
 
 # Static library define
 add_compile_definitions(_LIB)
