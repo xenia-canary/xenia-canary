@@ -11,6 +11,7 @@
 // constructing various tables.
 
 XE_MODULE_EXPORT_GROUP(xam, Avatar)
+XE_MODULE_EXPORT_GROUP(xam, AvatarEnum)
 XE_MODULE_EXPORT_GROUP(xam, Content)
 XE_MODULE_EXPORT_GROUP(xam, ContentAggregate)
 XE_MODULE_EXPORT_GROUP(xam, ContentDevice)

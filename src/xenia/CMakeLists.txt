@@ -56,3 +56,5 @@ if(WIN32)
   add_subdirectory(hid/xinput)
   add_subdirectory(ui/d3d12)
 endif()
+
+add_subdirectory(avatars)
