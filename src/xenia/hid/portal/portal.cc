@@ -12,8 +12,8 @@
 namespace xe {
 namespace hid {
 
-Portal::Portal() {}
-Portal::~Portal() {}
+Portal::Portal() = default;
+Portal::~Portal() = default;
 
 bool Portal::IsConnected() {
   std::lock_guard<xe_mutex> guard(lock_);

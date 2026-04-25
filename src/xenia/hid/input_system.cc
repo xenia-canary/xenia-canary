@@ -16,9 +16,7 @@
 #include "xenia/hid/input_driver.h"
 #include "xenia/kernel/util/shim_utils.h"
 
-#ifdef XE_PLATFORM_WIN32
 #include "xenia/hid/portal/hardware_portal.h"
-#endif  // XE_PLATFORM_WIN32
 
 namespace xe {
 namespace hid {
@@ -33,9 +31,7 @@ DEFINE_double(
     "Defines deadzone level for right stick. Allowed range [0.0-1.0].", "HID");
 
 InputSystem::InputSystem(xe::ui::Window* window) : window_(window) {
-#ifdef XE_PLATFORM_WIN32
   portal_ = std::make_unique<HardwarePortal>();
-#endif  // XE_PLATFORM_WIN32
 }
 
 InputSystem::~InputSystem() = default;
