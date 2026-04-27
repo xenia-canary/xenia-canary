@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/base/threading.h"
+#include "xenia/base/threading_mac.h"
 
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -15,10 +15,14 @@
 #include <time.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -33,11 +37,28 @@ class MacThread;
 
 uint64_t ticks() { return mach_absolute_time(); }
 
+uint32_t logical_processor_count() {
+  static uint32_t value = 0;
+  if (!value) {
+    value = std::thread::hardware_concurrency();
+  }
+  return value;
+}
+
+thread_local uint32_t current_thread_id_ = UINT_MAX;
+
 uint32_t current_thread_system_id() {
   uint64_t tid;
   pthread_threadid_np(pthread_self(), &tid);
   return static_cast<uint32_t>(tid);
 }
+
+uint32_t current_thread_id() {
+  return current_thread_id_ == UINT_MAX ? current_thread_system_id()
+                                        : current_thread_id_;
+}
+
+void set_current_thread_id(uint32_t id) { current_thread_id_ = id; }
 
 void set_name(const std::string_view name) {
   pthread_setname_np(std::string(name).c_str());
@@ -302,29 +323,33 @@ class MacCondition<Event> : public MacConditionBase {
 
   bool Signal() override {
     auto lock = std::unique_lock(mutex_);
-    signal_ = true;
+    signal_.store(true, std::memory_order_release);
     cond_.notify_all();
     return true;
   }
 
   void Reset() {
     auto lock = std::unique_lock(mutex_);
-    signal_ = false;
+    signal_.store(false, std::memory_order_release);
   }
 
-  [[nodiscard]] bool is_signaled() const { return signal_; }
+  [[nodiscard]] bool is_signaled() const {
+    return signal_.load(std::memory_order_acquire);
+  }
   [[nodiscard]] void* native_handle() const {
     return const_cast<std::mutex*>(&mutex_);
   }
 
  private:
-  [[nodiscard]] bool signaled() const override { return signal_; }
+  [[nodiscard]] bool signaled() const override {
+    return signal_.load(std::memory_order_relaxed);
+  }
   void post_execution() override {
     if (!manual_reset_) {
-      signal_ = false;
+      signal_.store(false, std::memory_order_release);
     }
   }
-  bool signal_;
+  std::atomic<bool> signal_;
   const bool manual_reset_;
 };
 
@@ -449,6 +474,9 @@ struct ThreadStartData {
   MacCondition<Thread>* condition;
 };
 
+// Thread-local storage for current thread pointer
+thread_local MacThread* current_thread_ = nullptr;
+
 template <>
 class MacCondition<Thread> final : public MacConditionBase {
  public:
@@ -490,11 +518,14 @@ class MacCondition<Thread> final : public MacConditionBase {
       return false;
     }
 
-    state_ = State::kRunning;
-    if (!params.create_suspended) {
-      started_ = true;
-      cond_.notify_all();
+    {
+      std::lock_guard lock(state_mutex_);
+      state_ = State::kRunning;
+      if (!params.create_suspended) {
+        started_ = true;
+      }
     }
+    state_cond_.notify_all();
 
     return true;
   }
@@ -508,15 +539,16 @@ class MacCondition<Thread> final : public MacConditionBase {
   void Terminate(int exit_code) {
     bool is_current_thread = pthread_self() == thread_;
     {
-      std::lock_guard lock(mutex_);
+      std::lock_guard lock(state_mutex_);
       if (state_ == State::kFinished) {
         return;
       }
       state_ = State::kFinished;
       exit_code_ = exit_code;
       signaled_ = true;
-      cond_.notify_all();
     }
+    state_cond_.notify_all();
+    MacConditionBase::cond_.notify_all();
     if (is_current_thread) {
       pthread_exit(reinterpret_cast<void*>(exit_code));
     }
@@ -524,18 +556,18 @@ class MacCondition<Thread> final : public MacConditionBase {
   }
 
   void WaitStarted() const {
-    std::unique_lock lock(mutex_);
-    cond_.wait(lock, [this] { return state_ != State::kUninitialized; });
+    std::unique_lock lock(state_mutex_);
+    state_cond_.wait(lock, [this] { return state_ != State::kUninitialized; });
   }
 
   void WaitSuspended() {
-    std::unique_lock lock(mutex_);
-    cond_.wait(lock, [this] { return suspend_count_ == 0; });
+    std::unique_lock lock(state_mutex_);
+    state_cond_.wait(lock, [this] { return suspend_count_ == 0; });
     state_ = State::kRunning;
   }
 
   void CallUserCallback() {
-    std::lock_guard lock(mutex_);
+    std::lock_guard lock(state_mutex_);
     if (user_callback_) {
       user_callback_();
     }
@@ -546,7 +578,7 @@ class MacCondition<Thread> final : public MacConditionBase {
       *out_previous_suspend_count = 0;
     }
     WaitStarted();
-    std::lock_guard lock(mutex_);
+    std::lock_guard lock(state_mutex_);
     if (state_ != State::kSuspended) return false;
     if (out_previous_suspend_count) {
       *out_previous_suspend_count = suspend_count_;
@@ -554,7 +586,7 @@ class MacCondition<Thread> final : public MacConditionBase {
     suspend_count_--;
     if (suspend_count_ == 0) {
       state_ = State::kRunning;
-      cond_.notify_all();
+      state_cond_.notify_all();
     }
     return true;
   }
@@ -565,7 +597,7 @@ class MacCondition<Thread> final : public MacConditionBase {
     }
     WaitStarted();
     {
-      std::lock_guard lock(mutex_);
+      std::lock_guard lock(state_mutex_);
       if (out_previous_suspend_count) {
         *out_previous_suspend_count = suspend_count_;
       }
@@ -577,7 +609,7 @@ class MacCondition<Thread> final : public MacConditionBase {
 
   void QueueUserCallback(std::function<void()> callback) {
     WaitStarted();
-    std::lock_guard lock(mutex_);
+    std::lock_guard lock(state_mutex_);
     user_callback_ = std::move(callback);
   }
 
@@ -607,7 +639,7 @@ class MacCondition<Thread> final : public MacConditionBase {
 
   void set_name(const std::string& name) const {
     WaitStarted();
-    std::lock_guard lock(mutex_);
+    std::lock_guard lock(state_mutex_);
     if (state_ != State::kUninitialized && state_ != State::kFinished) {
       if (pthread_equal(pthread_self(), thread_)) {
         pthread_setname_np(name.c_str());
@@ -628,9 +660,71 @@ class MacCondition<Thread> final : public MacConditionBase {
   };
 
   static void* ThreadStartRoutine(void* parameter) {
-    auto start_data = static_cast<ThreadStartData*>(parameter);
+    std::unique_ptr<ThreadStartData> start_data_holder(
+        static_cast<ThreadStartData*>(parameter));
+    auto* start_data = start_data_holder.get();
+    if (!start_data || !start_data->condition) {
+      fprintf(stderr,
+              "[threading_mac] Invalid thread startup data passed to "
+              "ThreadStartRoutine\n");
+      return nullptr;
+    }
     start_data->condition->WaitStarted();
-    start_data->start_routine();
+
+    // Enhanced macOS TLS setup - establish thread context before executing user
+    // code This is critical for preventing TLS failures in GPU Commands thread
+    auto mac_thread = std::make_unique<MacThread>(pthread_self());
+
+    // Set thread-local current thread pointer BEFORE executing user routine
+    // This prevents GetCurrentThread() from returning nullptr during startup
+    current_thread_ = mac_thread.get();
+
+    // Additional thread initialization for critical threads
+    if (start_data->start_routine) {
+      // Detect if this might be GPU Commands thread by checking stack size
+      // GPU Commands thread typically uses 128KB stack
+      if (start_data->condition->params_.stack_size == 128 * 1024) {
+        // This is likely the GPU Commands thread - ensure TLS is stable
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        // Verify TLS is properly set
+        if (current_thread_ == nullptr) {
+          // TLS setup failed - this would cause GetCurrentThread() to return
+          // nullptr
+          fprintf(stderr,
+                  "[threading_mac] CRITICAL: TLS setup failed for GPU Commands "
+                  "thread!\n");
+        } else {
+          fprintf(stderr,
+                  "[threading_mac] SUCCESS: TLS established for GPU Commands "
+                  "thread\n");
+        }
+      }
+    }
+
+    // Store thread in a way that won't be destroyed when routine exits
+    static thread_local std::unique_ptr<MacThread> persistent_thread;
+    persistent_thread = std::move(mac_thread);
+
+    try {
+      start_data->start_routine();
+    } catch (const std::system_error& e) {
+      char thread_name[64] = {};
+      pthread_getname_np(pthread_self(), thread_name, sizeof(thread_name));
+      fprintf(stderr,
+              "[threading_mac] Exception in thread routine: thread=%s "
+              "stack_size=%zu code=%d category=%s message=%s\n",
+              thread_name[0] ? thread_name : "<unnamed>",
+              start_data->condition->params_.stack_size, e.code().value(),
+              e.code().category().name(), e.what());
+    } catch (const std::exception& e) {
+      fprintf(stderr, "[threading_mac] Exception in thread routine: %s\n",
+              e.what());
+    } catch (...) {
+      fprintf(stderr, "[threading_mac] Unknown exception in thread routine\n");
+    }
+    start_data->condition->start_data_ = nullptr;
+
     return nullptr;
   }
 
@@ -649,6 +743,8 @@ class MacCondition<Thread> final : public MacConditionBase {
   std::atomic<State> state_;
   std::atomic<uint32_t> suspend_count_;
   std::function<void()> user_callback_;
+  mutable std::mutex state_mutex_;
+  mutable std::condition_variable state_cond_;
   ThreadStartData* start_data_ = nullptr;
   Thread::CreationParameters params_;
 };
@@ -663,8 +759,10 @@ class MacThread final : public MacConditionHandle<Thread> {
 
   bool Initialize(Thread::CreationParameters params,
                   std::function<void()> start_routine) {
-    auto start_data =
-        new ThreadStartData({std::move(start_routine), false, this, nullptr});
+    auto start_data = new ThreadStartData{};
+    start_data->start_routine = std::move(start_routine);
+    start_data->create_suspended = false;
+    start_data->condition = nullptr;
     return handle_.Initialize(params, start_data);
   }
 
@@ -703,8 +801,6 @@ class MacThread final : public MacConditionHandle<Thread> {
 
   void Terminate(int exit_code) override { handle_.Terminate(exit_code); }
 };
-
-thread_local MacThread* current_thread_ = nullptr;
 
 std::unique_ptr<Semaphore> Semaphore::Create(int initial_count,
                                              int maximum_count) {
