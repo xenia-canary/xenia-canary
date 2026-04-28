@@ -1,0 +1,715 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2022 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_CPU_BACKEND_X64_X64_EMITTER_MAC_H_
+#define XENIA_CPU_BACKEND_X64_X64_EMITTER_MAC_H_
+
+#include <vector>
+
+#include "xenia/base/arena.h"
+#include "xenia/cpu/function.h"
+#include "xenia/cpu/function_trace_data.h"
+#include "xenia/cpu/hir/hir_builder.h"
+#include "xenia/cpu/hir/instr.h"
+#include "xenia/cpu/hir/value.h"
+#include "xenia/cpu/xex_module_mac.h"
+#include "xenia/memory_mac.h"
+// NOTE: must be included last as it expects windows.h to already be included.
+#include "third_party/xbyak/xbyak/xbyak.h"
+#include "third_party/xbyak/xbyak/xbyak_util.h"
+#include "x64_amdfx_extensions.h"
+namespace xe {
+namespace cpu {
+class Processor;
+}  // namespace cpu
+}  // namespace xe
+
+namespace xe {
+namespace cpu {
+namespace backend {
+namespace x64 {
+using namespace amd64;
+class X64Backend;
+class X64CodeCache;
+
+struct EmitFunctionInfo;
+
+enum RegisterFlags {
+  REG_DEST = (1 << 0),
+  REG_ABCD = (1 << 1),
+};
+/*
+    SSE/AVX/AVX512 has seperate move instructions/shuffle instructions for float
+   data and int data for a reason most processors implement two distinct
+   pipelines, one for the integer domain and one for the floating point domain
+    currently, xenia makes no distinction between the two. Crossing domains is
+   expensive. On Zen processors the penalty is one cycle each time you cross,
+   plus the two pipelines need to synchronize Often xenia will emit an integer
+   instruction, then a floating instruction, then integer again. this
+   effectively adds at least two cycles to the time taken These values will in
+   the future be used as tags to operations that tell them which domain to
+   operate in, if its at all possible to avoid crossing
+*/
+enum class SimdDomain : uint32_t {
+  FLOATING,
+  INTEGER,
+  DONTCARE,
+  CONFLICTING  // just used as a special result for PickDomain, different from
+               // dontcare (dontcare means we just dont know the domain,
+               // CONFLICTING means its used in multiple domains)
+};
+
+enum class MXCSRMode : uint32_t { Unknown, Fpu, Vmx };
+XE_MAYBE_UNUSED
+static SimdDomain PickDomain2(SimdDomain dom1, SimdDomain dom2) {
+  if (dom1 == dom2) {
+    return dom1;
+  }
+  if (dom1 == SimdDomain::DONTCARE) {
+    return dom2;
+  }
+  if (dom2 == SimdDomain::DONTCARE) {
+    return dom1;
+  }
+  return SimdDomain::CONFLICTING;
+}
+enum XmmConst {
+  XMMZero = 0,
+  XMMByteSwapMask,
+  XMMOne,
+  XMMOnePD,
+  XMMNegativeOne,
+  XMMFFFF,
+  XMMMaskX16Y16,
+  XMMFlipX16Y16,
+  XMMFixX16Y16,
+  XMMNormalizeX16Y16,
+  XMM0001,
+  XMM3301,
+  XMM3331,
+  XMM3333,
+  XMMSignMaskPS,
+  XMMSignMaskPD,
+  XMMAbsMaskPS,
+  XMMAbsMaskPD,
+
+  XMMByteOrderMask,
+  XMMPermuteControl15,
+  XMMPermuteByteMask,
+  XMMPackD3DCOLORSat,
+  XMMPackD3DCOLOR,
+  XMMUnpackD3DCOLOR,
+  XMMPackFLOAT16_2,
+  XMMUnpackFLOAT16_2,
+  XMMPackFLOAT16_4,
+  XMMUnpackFLOAT16_4,
+  XMMPackSHORT_Min,
+  XMMPackSHORT_Max,
+  XMMPackSHORT_2,
+  XMMPackSHORT_4,
+  XMMUnpackSHORT_2,
+  XMMUnpackSHORT_4,
+  XMMUnpackSHORT_Overflow,
+  XMMPackUINT_2101010_MinUnpacked,
+  XMMPackUINT_2101010_MaxUnpacked,
+  XMMPackUINT_2101010_MaskUnpacked,
+  XMMPackUINT_2101010_MaskPacked,
+  XMMPackUINT_2101010_Shift,
+  XMMUnpackUINT_2101010_Overflow,
+  XMMPackULONG_4202020_MinUnpacked,
+  XMMPackULONG_4202020_MaxUnpacked,
+  XMMPackULONG_4202020_MaskUnpacked,
+  XMMPackULONG_4202020_PermuteXZ,
+  XMMPackULONG_4202020_PermuteYW,
+  XMMUnpackULONG_4202020_Permute,
+  XMMUnpackULONG_4202020_Overflow,
+  XMMOneOver255,
+  XMMMaskEvenPI16,
+  XMMShiftMaskEvenPI16,
+  XMMShiftMaskPS,
+  XMMShiftByteMask,
+  XMMSwapWordMask,
+  XMMUnsignedDwordMax,
+  XMM255,
+  XMMPI32,
+  XMMSignMaskI8,
+  XMMSignMaskI16,
+  XMMSignMaskI32,
+  XMMSignMaskF32,
+  XMMShortMinPS,
+  XMMShortMaxPS,
+  XMMIntMin,
+  XMMIntMax,
+  XMMIntMaxPD,
+  XMMPosIntMinPS,
+  XMMQNaN,
+  XMMInt127,
+  XMM2To32,
+  XMMFloatInf,
+  XMMIntsToBytes,
+  XMMShortsToBytes,
+  XMMLVSLTableBase,
+  XMMLVSRTableBase,
+  XMMSingleDenormalMask,
+  XMMThreeFloatMask,  // for clearing the fourth float prior to DOT_PRODUCT_3
+  XMMF16UnpackLCPI2,  // 0x38000000, 1/ 32768
+  XMMF16UnpackLCPI3,  // 0x0x7fe000007fe000
+  XMMF16PackLCPI0,
+  XMMF16PackLCPI2,
+  XMMF16PackLCPI3,
+  XMMF16PackLCPI4,
+  XMMF16PackLCPI5,
+  XMMF16PackLCPI6,
+  XMMXOPByteShiftMask,
+  XMMXOPWordShiftMask,
+  XMMXOPDwordShiftMask,
+  XMMLVLShuffle,
+  XMMLVRCmp16,
+  XMMSTVLShuffle,
+  XMMSTVRSwapMask,  // swapwordmask with bit 7 set
+  XMMVSRShlByteshuf,
+  XMMVSRMask,
+  XMMVRsqrteTableStart,
+  XMMVRsqrteTableBase =
+      XMMVRsqrteTableStart +
+      (32 /
+       4),  // 32 4-byte elements in table, 4 4-byte elements fit in each xmm
+
+};
+using amdfx::xopcompare_e;
+using Xbyak::Xmm;
+// X64Backend specific Instr->runtime_flags
+enum : uint32_t {
+  INSTR_X64_FLAGS_ELIMINATED =
+      1,  // another sequence marked this instruction as not needing codegen,
+          // meaning they likely already handled it
+};
+
+// Unfortunately due to the design of xbyak we have to pass this to the ctor.
+class XbyakAllocator : public Xbyak::Allocator {
+ public:
+  virtual bool useProtect() const { return false; }
+};
+
+class X64Emitter;
+using TailEmitCallback = std::function<void(X64Emitter& e, Xbyak::Label& lbl)>;
+struct TailEmitter {
+  Xbyak::Label label;
+  uint32_t alignment;
+  TailEmitCallback func;
+};
+
+class X64Emitter : public Xbyak::CodeGenerator {
+ public:
+  X64Emitter(X64Backend* backend, XbyakAllocator* allocator);
+  virtual ~X64Emitter();
+
+  Processor* processor() const { return processor_; }
+  X64Backend* backend() const { return backend_; }
+
+  static uintptr_t PlaceConstData();
+  static void FreeConstData(uintptr_t data);
+
+  bool Emit(GuestFunction* function, hir::HIRBuilder* builder,
+            uint32_t debug_info_flags, FunctionDebugInfo* debug_info,
+            void** out_code_address, size_t* out_code_size,
+            std::vector<SourceMapEntry>* out_source_map);
+
+ public:
+  // Reserved:  rsp, rsi, rdi
+  // Scratch:   rax/rcx/rdx
+  //            xmm0-2
+  // Available: rbx, r10-r15
+  //            xmm4-xmm15 (save to get xmm3)
+  static constexpr int GPR_COUNT = 7;
+  static constexpr int XMM_COUNT = 12;
+  static constexpr size_t kStashOffset = 32;
+  static void SetupReg(const hir::Value* v, Xbyak::Reg8& r) {
+    auto idx = gpr_reg_map_[v->reg.index];
+    r = Xbyak::Reg8(idx);
+  }
+  static void SetupReg(const hir::Value* v, Xbyak::Reg16& r) {
+    auto idx = gpr_reg_map_[v->reg.index];
+    r = Xbyak::Reg16(idx);
+  }
+  static void SetupReg(const hir::Value* v, Xbyak::Reg32& r) {
+    auto idx = gpr_reg_map_[v->reg.index];
+    r = Xbyak::Reg32(idx);
+  }
+  static void SetupReg(const hir::Value* v, Xbyak::Reg64& r) {
+    auto idx = gpr_reg_map_[v->reg.index];
+    r = Xbyak::Reg64(idx);
+  }
+  static void SetupReg(const hir::Value* v, Xbyak::Xmm& r) {
+    auto idx = xmm_reg_map_[v->reg.index];
+    r = Xbyak::Xmm(idx);
+  }
+
+  Xbyak::Label& epilog_label() { return *epilog_label_; }
+
+  void MarkSourceOffset(const hir::Instr* i);
+
+  void DebugBreak();
+  void Trap(uint16_t trap_type = 0);
+  void UnimplementedInstr(const hir::Instr* i);
+
+  void Call(const hir::Instr* instr, GuestFunction* function);
+  void CallIndirect(const hir::Instr* instr, const Xbyak::Reg64& reg);
+  void CallExtern(const hir::Instr* instr, const Function* function);
+  void CallNative(void* fn);
+  void CallNative(uint64_t (*fn)(void* raw_context));
+  void CallNative(uint64_t (*fn)(void* raw_context, uint64_t arg0));
+  void CallNative(uint64_t (*fn)(void* raw_context, uint64_t arg0),
+                  uint64_t arg0);
+  void CallNativeSafe(void* fn);
+  void SetReturnAddress(uint64_t value);
+
+  Xbyak::Reg64 GetNativeParam(uint32_t param);
+
+  Xbyak::Reg64 GetContextReg() const;
+  Xbyak::Reg64 GetMembaseReg() const;
+  bool CanUseMembaseLow32As0() const { return may_use_membase32_as_zero_reg_; }
+  void ReloadMembase();
+
+  void nop(size_t length = 1);
+
+  // Moves a 64bit immediate into memory.
+  bool ConstantFitsIn32Reg(uint64_t v);
+  void MovMem64(const Xbyak::RegExp& addr, uint64_t v);
+
+  Xbyak::Address GetXmmConstPtr(XmmConst id);
+  Xbyak::Address GetBackendCtxPtr(int offset_in_x64backendctx) const;
+
+  void LoadConstantXmm(Xbyak::Xmm dest, float v);
+  void LoadConstantXmm(Xbyak::Xmm dest, double v);
+  void LoadConstantXmm(Xbyak::Xmm dest, const vec128_t& v);
+  Xbyak::Address StashXmm(int index, const Xbyak::Xmm& r);
+  Xbyak::Address StashConstantXmm(int index, float v);
+  Xbyak::Address StashConstantXmm(int index, double v);
+  Xbyak::Address StashConstantXmm(int index, const vec128_t& v);
+  Xbyak::Address GetBackendFlagsPtr() const;
+  void* FindByteConstantOffset(unsigned bytevalue);
+  void* FindWordConstantOffset(unsigned wordvalue);
+  void* FindDwordConstantOffset(unsigned bytevalue);
+  void* FindQwordConstantOffset(uint64_t bytevalue);
+  bool IsFeatureEnabled(uint64_t feature_flag) const {
+    return (feature_flags_ & feature_flag) == feature_flag;
+  }
+
+  Xbyak::Label& AddToTail(TailEmitCallback callback, uint32_t alignment = 0);
+  Xbyak::Label& NewCachedLabel();
+
+  void PushStackpoint();
+  void PopStackpoint();
+
+  void EnsureSynchronizedGuestAndHostStack();
+  FunctionDebugInfo* debug_info() const { return debug_info_; }
+
+  size_t stack_size() const { return stack_size_; }
+  Xbyak::RegExp GetLocalsBase() const;
+  SimdDomain DeduceSimdDomain(const hir::Value* for_value);
+
+  void ForgetMxcsrMode() { mxcsr_mode_ = MXCSRMode::Unknown; }
+  /*
+        returns true if had to load mxcsr. DOT_PRODUCT can use this to skip
+     clearing the overflow flag, as it will never be set in the vmx fpscr
+  */
+  bool ChangeMxcsrMode(
+      MXCSRMode new_mode,
+      bool already_set = false);  // already_set means that the caller already
+                                  // did vldmxcsr, used for SET_ROUNDING_MODE
+
+  void LoadFpuMxcsrDirect();  // unsafe, does not change mxcsr_mode_
+  void LoadVmxMxcsrDirect();  // unsafe, does not change mxcsr_mode_
+
+  XexModule* GuestModule() { return guest_module_; }
+
+  void EmitProfilerEpilogue();
+
+  void EmitXOP(amdfx::xop_t xoperation) {
+    xoperation.ForeachByte([this](uint8_t b) { this->db(b); });
+  }
+
+  // VEX fallback wrappers (use SSE encodings when AVX isn't executable).
+  using Xbyak::CodeGenerator::vcmpeqpd;
+  using Xbyak::CodeGenerator::vcmpeqss;
+  using Xbyak::CodeGenerator::vpcmpeqb;
+  using Xbyak::CodeGenerator::vpcmpeqd;
+  using Xbyak::CodeGenerator::vpxor;
+  using Xbyak::CodeGenerator::vpxord;
+  using Xbyak::CodeGenerator::vxorpd;
+  using Xbyak::CodeGenerator::vxorps;
+
+  void vxorps(const Xmm& dest, const Xmm& src);
+  void vxorps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vxorps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vxorpd(const Xmm& dest, const Xmm& src);
+  void vxorpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vxorpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vmovups(const Xmm& dest, const Xmm& src);
+  void vmovups(const Xmm& dest, const Xbyak::Address& src);
+  void vmovups(const Xbyak::Address& dest, const Xmm& src);
+
+  void vmovaps(const Xmm& dest, const Xmm& src);
+  void vmovaps(const Xmm& dest, const Xbyak::Address& src);
+  void vmovaps(const Xbyak::Address& dest, const Xmm& src);
+
+  void vpxor(const Xmm& dest, const Xmm& src);
+  void vpxor(const Xmm& dest, const Xbyak::Address& src);
+  void vpxor(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpxor(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vpxord(const Xmm& dest, const Xmm& src);
+  void vpxord(const Xmm& dest, const Xbyak::Address& src);
+  void vpxord(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpxord(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vpcmpeqb(const Xmm& dest, const Xmm& src);
+  void vpcmpeqb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpcmpeqb(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vpcmpeqd(const Xmm& dest, const Xmm& src);
+  void vpcmpeqd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpcmpeqd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vcmpeqss(const Xmm& dest, const Xmm& src);
+  void vcmpeqpd(const Xmm& dest, const Xmm& src);
+
+  // Common SSE fallbacks for VEX-encoded ops (XMM width).
+  void vaddps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vaddps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vaddpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vaddpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vaddsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vaddsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vaddss(const Xmm& dest, const Xmm& src);
+  void vaddss(const Xmm& dest, const Xbyak::Address& src);
+  void vaddss(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vaddss(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vsubps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vsubps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vsubpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vsubpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vsubsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vsubsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vsubss(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vsubss(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vmulps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmulps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vmulpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmulpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vmulsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmulsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vmulss(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmulss(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vdivps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vdivps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vdivpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vdivpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vdivsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vdivsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vdivss(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vdivss(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vmaxps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmaxps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vmaxsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vmaxsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vminps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vminps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vminsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vminsd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vandps(const Xmm& dest, const Xmm& src);
+  void vandps(const Xmm& dest, const Xbyak::Address& src);
+  void vandps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vandps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vandpd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vandpd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vandnps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vandnps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vorps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vorps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vorps(const Xmm& dest, const Xmm& src);
+  void vorps(const Xmm& dest, const Xbyak::Address& src);
+
+  void vcmpps(const Xmm& dest, const Xmm& src1, const Xmm& src2, uint8_t imm);
+  void vcmpps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2,
+              uint8_t imm);
+  void vcmpps(const Xbyak::Opmask& mask, const Xmm& src1,
+              const Xbyak::Address& src2, uint8_t imm);
+  void vcmpeqps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vcmpeqps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vcmpneqps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vcmpgeps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vcmpgeps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vcmpgtps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vcmpunordps(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vcomiss(const Xmm& dest, const Xmm& src);
+  void vcomisd(const Xmm& dest, const Xmm& src);
+  void vucomisd(const Xmm& dest, const Xmm& src);
+
+  void vcvtdq2ps(const Xmm& dest, const Xmm& src);
+  void vcvttps2dq(const Xmm& dest, const Xmm& src);
+  void vcvtsi2sd(const Xmm& dest, const Xmm& src);
+  void vcvtsi2sd(const Xmm& dest, const Xbyak::Reg64& src);
+  void vcvtsi2ss(const Xmm& dest, const Xmm& src);
+  void vcvtsd2si(const Xbyak::Reg32& dest, const Xmm& src);
+  void vcvtsd2si(const Xbyak::Reg64& dest, const Xmm& src);
+  void vcvttsd2si(const Xbyak::Reg32& dest, const Xmm& src);
+  void vcvttsd2si(const Xbyak::Reg64& dest, const Xmm& src);
+  void vcvttss2si(const Xbyak::Reg32& dest, const Xmm& src);
+  void vcvttss2si(const Xbyak::Reg64& dest, const Xmm& src);
+  void vcvtss2si(const Xbyak::Reg32& dest, const Xmm& src);
+  void vcvtss2si(const Xbyak::Reg64& dest, const Xmm& src);
+  void vcvtsd2ss(const Xmm& dest, const Xmm& src);
+  void vcvttss2si(const Xmm& dest, const Xmm& src);
+
+  void vmovapd(const Xmm& dest, const Xmm& src);
+  void vmovapd(const Xmm& dest, const Xbyak::Address& src);
+  void vmovdqa(const Xmm& dest, const Xmm& src);
+  void vmovdqa(const Xmm& dest, const Xbyak::Address& src);
+  void vmovdqa(const Xbyak::Address& dest, const Xmm& src);
+  void vmovdqa(const Xbyak::Address& dest, const Xbyak::Ymm& src);
+  void vmovd(const Xmm& dest, const Xbyak::Reg32& src);
+  void vmovd(const Xbyak::Reg32& dest, const Xmm& src);
+  void vmovq(const Xmm& dest, const Xbyak::Reg64& src);
+  void vmovq(const Xbyak::Reg64& dest, const Xmm& src);
+  void vmovsd(const Xmm& dest, const Xmm& src);
+  void vmovsd(const Xmm& dest, const Xbyak::Address& src);
+  void vmovsd(const Xbyak::Address& dest, const Xmm& src);
+  void vmovss(const Xmm& dest, const Xmm& src);
+  void vmovss(const Xmm& dest, const Xbyak::Address& src);
+  void vmovss(const Xbyak::Address& dest, const Xmm& src);
+
+  void vbroadcastss(const Xmm& dest, const Xbyak::Address& src);
+  void vbroadcastss(const Xmm& dest, const Xmm& src);
+
+  void vshufps(const Xmm& dest, const Xmm& src1, const Xmm& src2, uint8_t imm);
+  void vshufps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2,
+               uint8_t imm);
+  void vshufps(const Xmm& dest, const Xmm& src, uint8_t imm);
+
+  void vblendvps(const Xmm& dest, const Xmm& src1, const Xmm& src2,
+                 const Xmm& mask);
+  void vblendvps(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2,
+                 const Xmm& mask);
+  void vblendvb(const Xmm& dest, const Xmm& src1, const Xmm& src2,
+                const Xmm& mask);
+  void vblendw(const Xmm& dest, const Xmm& src1, const Xmm& src2, uint8_t imm);
+  void vblendd(const Xmm& dest, const Xmm& src1, const Xmm& src2, uint8_t imm);
+
+  void vpshufb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpshufb(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vpshufd(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpshufhw(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpshuflw(const Xmm& dest, const Xmm& src1, uint8_t imm);
+
+  void vpunpcklbw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpcklbw(const Xmm& dest, const Xmm& src);
+  void vpunpcklwd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpcklwd(const Xmm& dest, const Xmm& src);
+  void vpunpckldq(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpcklqdq(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpckhbw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpckhwd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpckhdq(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpunpckhqdq(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpackssdw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpacksswb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpackusdw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpackuswb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpaddb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddb(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vpaddb(const Xmm& dest, const Xmm& src);
+  void vpaddw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddd(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vpaddd(const Xmm& dest, const Xmm& src);
+  void vpaddd(const Xmm& dest, const Xbyak::Address& src);
+  void vpaddsb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddsw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddusb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpaddusw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpsubb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubd(const Xmm& dest, const Xmm& src);
+  void vpsubsb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubsw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubusb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsubusw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpand(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpand(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vpand(const Xmm& dest, const Xmm& src);
+  void vpand(const Xmm& dest, const Xbyak::Address& src);
+  void vpandn(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpor(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpor(const Xmm& dest, const Xmm& src);
+  void vpor(const Xmm& dest, const Xbyak::Address& src);
+
+  void vpcmpeqw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpcmpgtb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpcmpgtb(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+  void vpcmpgtw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpcmpgtd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpsllw(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpsllw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpslld(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpslld(const Xmm& dest, uint8_t imm);
+  void vpslld(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsrlw(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpsrlw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsrld(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpsrld(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsraw(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpsraw(const Xmm& dest, uint8_t imm);
+  void vpsraw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpsrad(const Xmm& dest, const Xmm& src1, uint8_t imm);
+  void vpsrad(const Xmm& dest, uint8_t imm);
+  void vpsrad(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+
+  void vpavgb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpavgw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxub(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxuw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxsb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxsw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpmaxud(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminub(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminuw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminsb(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminsw(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminsd(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminud(const Xmm& dest, const Xmm& src1, const Xmm& src2);
+  void vpminud(const Xmm& dest, const Xmm& src1, const Xbyak::Address& src2);
+
+  void vpsignb(const Xmm& dest, const Xmm& src);
+  void vpsignw(const Xmm& dest, const Xmm& src);
+  void vpsignd(const Xmm& dest, const Xmm& src);
+
+  void vptest(const Xmm& dest, const Xmm& src);
+  void vptest(const Xmm& dest, const Xbyak::Address& src);
+  void vldmxcsr(const Xbyak::Address& src);
+  void vstmxcsr(const Xbyak::Address& dest);
+
+  void vpcmov(Xmm dest, Xmm src1, Xmm src2, Xmm selector) {
+    auto xop_bytes = amdfx::operations::vpcmov(
+        dest.getIdx(), src1.getIdx(), src2.getIdx(), selector.getIdx());
+    EmitXOP(xop_bytes);
+  }
+
+  void vpperm(Xmm dest, Xmm src1, Xmm src2, Xmm selector) {
+    auto xop_bytes = amdfx::operations::vpperm(
+        dest.getIdx(), src1.getIdx(), src2.getIdx(), selector.getIdx());
+    EmitXOP(xop_bytes);
+  }
+
+#define DEFINECOMPARE(name)                                                \
+  void name(Xmm dest, Xmm src1, Xmm src2, xopcompare_e compareop) {        \
+    auto xop_bytes = amdfx::operations::name(dest.getIdx(), src1.getIdx(), \
+                                             src2.getIdx(), compareop);    \
+    EmitXOP(xop_bytes);                                                    \
+  }
+  DEFINECOMPARE(vpcomb);
+  DEFINECOMPARE(vpcomub);
+  DEFINECOMPARE(vpcomw);
+  DEFINECOMPARE(vpcomuw);
+  DEFINECOMPARE(vpcomd);
+  DEFINECOMPARE(vpcomud);
+  DEFINECOMPARE(vpcomq);
+  DEFINECOMPARE(vpcomuq);
+#undef DEFINECOMPARE
+
+#define DEFINESHIFTER(name)                                                   \
+  void name(Xmm dest, Xmm src1, Xmm src2) {                                   \
+    auto xop_bytes =                                                          \
+        amdfx::operations::name(dest.getIdx(), src1.getIdx(), src2.getIdx()); \
+    EmitXOP(xop_bytes);                                                       \
+  }
+
+  DEFINESHIFTER(vprotb)
+  DEFINESHIFTER(vprotw)
+  DEFINESHIFTER(vprotd)
+  DEFINESHIFTER(vprotq)
+
+  DEFINESHIFTER(vpshab)
+  DEFINESHIFTER(vpshaw)
+  DEFINESHIFTER(vpshad)
+  DEFINESHIFTER(vpshaq)
+
+  DEFINESHIFTER(vpshlb)
+  DEFINESHIFTER(vpshlw)
+  DEFINESHIFTER(vpshld)
+  DEFINESHIFTER(vpshlq)
+
+ protected:
+  void* Emplace(const EmitFunctionInfo& func_info,
+                GuestFunction* function = nullptr);
+  bool Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info);
+  void EmitGetCurrentThreadId();
+  void EmitTraceUserCallReturn();
+  static void HandleStackpointOverflowError(ppc::PPCContext* context);
+
+ protected:
+  Processor* processor_ = nullptr;
+  X64Backend* backend_ = nullptr;
+  X64CodeCache* code_cache_ = nullptr;
+  XbyakAllocator* allocator_ = nullptr;
+  XexModule* guest_module_ = nullptr;
+  bool synchronize_stack_on_next_instruction_ = false;
+  int locals_page_delta_ = 0;
+  Xbyak::util::Cpu cpu_;
+  uint64_t feature_flags_ = 0;
+  uint32_t current_guest_function_ = 0;
+  Xbyak::Label* epilog_label_ = nullptr;
+
+  hir::Instr* current_instr_ = nullptr;
+
+  FunctionDebugInfo* debug_info_ = nullptr;
+  uint32_t debug_info_flags_ = 0;
+  FunctionTraceData* trace_data_ = nullptr;
+  Arena source_map_arena_;
+
+  size_t stack_size_ = 0;
+  bool use_vex_ = true;
+
+  static const uint32_t gpr_reg_map_[GPR_COUNT];
+  static const uint32_t xmm_reg_map_[XMM_COUNT];
+  /*
+    set to true if the low 32 bits of membase == 0.
+    only really advantageous if you are storing 32 bit 0 to a displaced address,
+    which would have to represent 0 as 4 bytes
+  */
+  bool may_use_membase32_as_zero_reg_;
+  std::vector<TailEmitter> tail_code_;
+  std::vector<Xbyak::Label*>
+      label_cache_;  // for creating labels that need to be referenced much
+                     // later by tail emitters
+  MXCSRMode mxcsr_mode_ = MXCSRMode::Unknown;
+};
+
+}  // namespace x64
+}  // namespace backend
+}  // namespace cpu
+}  // namespace xe
+
+#endif  // XENIA_CPU_BACKEND_X64_X64_EMITTER_MAC_H_
