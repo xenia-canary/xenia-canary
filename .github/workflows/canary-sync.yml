@@ -1,0 +1,152 @@
+name: Sync canary branch with xenia-canary upstream
+
+# Mirrors xenia-canary/xenia-canary canary_experimental into our `canary`
+# branch and reports drift between `canary` and `main`.
+#
+# This workflow does NOT touch `main`. Rebasing `main` onto `canary` is a
+# manual step a maintainer performs after this job runs — keeping force
+# pushes off `main` is intentional. The drift report is the human signal
+# that a rebase is due.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: canary-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Fast-forward canary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canary
+        uses: actions/checkout@v4
+        with:
+          ref: canary
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name 'kinectix-bot'
+          git config user.email 'kinectix-bot@users.noreply.github.com'
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/xenia-canary/xenia-canary.git
+          git fetch --no-tags upstream canary_experimental
+
+      - name: Fast-forward canary
+        id: ff
+        run: |
+          set -e
+          BEFORE=$(git rev-parse HEAD)
+          if git merge --ff-only upstream/canary_experimental; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" = "$AFTER" ]; then
+              echo "result=already-up-to-date" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=fast-forwarded" >> "$GITHUB_OUTPUT"
+              echo "before=$BEFORE" >> "$GITHUB_OUTPUT"
+              echo "after=$AFTER" >> "$GITHUB_OUTPUT"
+              git push origin canary
+            fi
+          else
+            echo "result=non-fast-forward" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Compute drift between canary and main
+        id: drift
+        if: ${{ steps.ff.outputs.result != 'non-fast-forward' }}
+        run: |
+          set -e
+          git fetch --no-tags origin main
+          AHEAD=$(git rev-list --count origin/main..canary)
+          BEHIND=$(git rev-list --count canary..origin/main)
+          echo "main_behind_canary=$AHEAD" >> "$GITHUB_OUTPUT"
+          echo "main_ahead_canary=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "main is $BEHIND commits ahead, $AHEAD commits behind canary"
+
+      - name: Open drift-alert issue if main is far behind
+        if: ${{ steps.drift.outputs.main_behind_canary != '' && fromJSON(steps.drift.outputs.main_behind_canary) > 50 }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const behind = ${{ steps.drift.outputs.main_behind_canary }};
+            const title = `[canary-sync] main is ${behind} commits behind canary`;
+            const body = [
+              `Automated drift report from \`canary-sync.yml\`.`,
+              ``,
+              `\`main\` is **${behind}** commits behind \`canary\`.`,
+              ``,
+              `When this passes 50, rebase pain starts compounding fast. Schedule a rebase:`,
+              ``,
+              '```bash',
+              'git fetch origin canary',
+              'git checkout main',
+              'git rebase origin/canary',
+              '# resolve conflicts if any (touch them ONLY in src/xenia/hid/nui/, etc.)',
+              'git push --force-with-lease origin main',
+              '```',
+              ``,
+              `Close this issue once the rebase has landed.`,
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'canary-sync',
+              state: 'open',
+              per_page: 5,
+            });
+            if (existing.data.some(i => i.title.startsWith('[canary-sync] main is'))) {
+              core.info('Open drift-alert issue already present; skipping.');
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['canary-sync'],
+            });
+
+      - name: Report no-fast-forward as a failure issue
+        if: ${{ failure() && steps.ff.outputs.result == 'non-fast-forward' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `[canary-sync] canary diverged from upstream — manual fix needed`;
+            const body = [
+              `\`canary-sync.yml\` could not fast-forward \`canary\` to`,
+              `\`upstream/canary_experimental\`. This means someone committed`,
+              `directly to \`canary\` (which CONTRIBUTING.md forbids) or the`,
+              `upstream history was force-pushed.`,
+              ``,
+              `Manual fix:`,
+              ``,
+              '```bash',
+              'git fetch upstream canary_experimental',
+              'git checkout canary',
+              'git reset --hard upstream/canary_experimental',
+              'git push --force-with-lease origin canary',
+              '```',
+              ``,
+              `Then investigate why divergence happened and tighten the rule.`,
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['canary-sync', 'urgent'],
+            });

@@ -147,10 +147,10 @@ docs/                                                     [NEW or extended]
 
 .github/
 ├── workflows/
-│   ├── upstream-sync.yml                                 [NEW]
-│   │   # Cron-triggered weekly. Fetches xenia-canary master, attempts
-│   │   # rebase of `main` onto fresh `upstream`. Opens a PR on success;
-│   │   # opens an alert issue on conflict.
+│   ├── canary-sync.yml                                   [NEW]
+│   │   # Cron-triggered weekly. Fetches xenia-canary's
+│   │   # canary_experimental branch and fast-forwards our `canary`
+│   │   # mirror branch. Reports drift between `canary` and `main`.
 │   │
 │   ├── ci.yml                                            [NEW]
 │   │   # Build matrix (Linux/Windows × backend flags).

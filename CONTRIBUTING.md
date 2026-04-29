@@ -41,11 +41,13 @@ GPU: Fix incorrect tile size in resolve path
 
 ## Branch model
 
-- `upstream` — automated mirror of xenia-canary master. Do not push.
-- `main` — protected. PRs only. Rebased on `upstream` weekly by `.github/workflows/upstream-sync.yml`.
+- `canary` — automated mirror of `xenia-canary/xenia-canary`'s `canary_experimental` branch. Do not push directly.
+- `main` — protected. PRs only. Rebased on `canary` weekly by `.github/workflows/canary-sync.yml`.
 - `feature/nui-<short-name>` — your working branch. PR'd to `main`.
 
-If you fork from `main` and the weekly upstream rebase happens before your PR merges, you'll need to rebase your branch. This is normal. Keep features small to minimize the pain.
+Note: the `upstream` name in this repo refers to the **remote** pointing at `xenia-canary/xenia-canary` (used for `git fetch upstream`), not a branch. The mirror branch is `canary`.
+
+If you fork from `main` and the weekly canary rebase happens before your PR merges, you'll need to rebase your branch. This is normal. Keep features small to minimize the pain.
 
 ## Code style
 
@@ -90,7 +92,7 @@ Be kind. We are working on motion control emulation for fifteen-year-old games. 
 
 - Backend changes (`hid/nui/recorded`, `hid/nui/freenect*`, `hid/nui/mediapipe`): any maintainer.
 - `xam_nui.cc` and the `INuiBackend` interface itself: requires two maintainer LGTMs because contract changes propagate.
-- `.github/workflows/upstream-sync.yml` and other CI: requires a maintainer LGTM and a known-good run on a fork before merge.
+- `.github/workflows/canary-sync.yml` and other CI: requires a maintainer LGTM and a known-good run on a fork before merge.
 
 ## Release process
 

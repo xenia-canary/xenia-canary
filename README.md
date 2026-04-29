@@ -51,8 +51,8 @@ Validation targets, in priority order:
 
 ## Branch model
 
-- `upstream` — mirror of `xenia-canary/xenia-canary` master, updated weekly by [`upstream-sync.yml`](.github/workflows/upstream-sync.yml). Never commit here directly.
-- `main` — integration branch. Rebased on `upstream` weekly. All code review lands here.
+- `canary` — mirror of `xenia-canary/xenia-canary`'s `canary_experimental` branch, updated weekly by [`canary-sync.yml`](.github/workflows/canary-sync.yml). Never commit here directly.
+- `main` — integration branch. Rebased on `canary` weekly. All code review lands here.
 - `feature/nui-*` — working branches for in-progress NUI work, PR'd to `main`.
 - `release/*` — tagged release branches with pre-built binaries.
 
