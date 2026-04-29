@@ -38,6 +38,7 @@
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_driver.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/hid/nui/nui_manager.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
@@ -176,6 +177,9 @@ Emulator::~Emulator() {
     audio_system_->Shutdown();
   }
 
+  // Kinectix NUI subsystem. Tears down the active backend.
+  xe::hid::nui::NuiManager::Shutdown();
+
   input_system_.reset();
   graphics_system_.reset();
   audio_system_.reset();
@@ -297,6 +301,10 @@ X_STATUS Emulator::Setup(
   if (result) {
     return result;
   }
+
+  // Kinectix NUI subsystem. Reads --nui_backend cvar and installs the
+  // selected backend (default: null/no-op). Logs a one-line status banner.
+  xe::hid::nui::NuiManager::Setup();
 
   // Add inputSystem to UI
   imgui_drawer_->LoadInputSystem(input_system_.get());

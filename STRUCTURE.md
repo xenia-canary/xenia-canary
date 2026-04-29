@@ -86,9 +86,10 @@ src/xenia/
 │       │       ├── fruit_ninja_kinect_swipe.xnuirec      [NEW, hand-authored]
 │       │       └── empty_session.xnuirec                 [NEW, no skeletons]
 │       │
-│       └── premake5.lua                                  [NEW]
-│           # Build configuration. Conditionally includes freenect/,
-│           # mediapipe/ subdirs based on KINECTIX_NUI_* flags.
+│       └── CMakeLists.txt                                [NEW]
+│           # Build configuration. Always builds recorded backend.
+│           # Conditionally adds freenect/ and mediapipe/ sources based on
+│           # KINECTIX_NUI_* CMake options (default OFF).
 │
 ├── kernel/xam/
 │   ├── xam_nui.cc                                        [MODIFIED]

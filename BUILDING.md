@@ -38,12 +38,14 @@ Kinectix adds optional backend flags. **None are required** — a default `xb bu
 | `KINECTIX_NUI_FREENECT2` | OFF | Builds the libfreenect2 (Kinect v2) backend | `libfreenect2-dev` |
 | `KINECTIX_NUI_MEDIAPIPE` | OFF | Builds the webcam + MediaPipe pose backend | `mediapipe`, `opencv` |
 
-To enable a flag at premake time:
+To enable a flag at CMake configure time:
 
 ```bash
-./xb premake --KINECTIX_NUI_FREENECT
-./xb build
+cmake -S . -B build -DKINECTIX_NUI_FREENECT=ON
+cmake --build build
 ```
+
+(Or, via xenia-canary's `xb` wrapper which forwards `-D` to CMake under the hood.)
 
 The recorded backend (replay from `.xnuirec` files) is **always built** and requires no external dependencies.
 
@@ -58,11 +60,11 @@ A backend selected via `--nui_backend` that wasn't built into this binary falls 
 
 ## Build status of the NUI tree
 
-As of `v0.0.1-scaffolding`, the NUI code in `src/xenia/hid/nui/` is **not wired into the build**. The `premake5.lua` in that directory is correct, but it is not yet `include()`'d from `src/xenia/hid/premake5.lua`, so the kinectix NUI library does not yet link into the main emulator binary.
+As of the Stage 1 wiring commit, `xenia-hid-nui` is built and linked into `xenia-app` on every configuration. At default settings (`--nui_backend=none`) the null backend is installed, exposing no Kinect to the guest, matching upstream behavior.
 
-This is intentional — the scaffolding commit is meant to be a stable baseline before we start poking the build system. Wiring is tracked in the issue **"Stage 1: wire src/xenia/hid/nui/ into the build"** (or similar — see open issues).
+`recorded_backend.cc` is built but uses a stub `XnuirecReader` — `Open()` always returns false. The real implementation requires flatbuffer codegen from `xnuirec.fbs`, which is a follow-up. Until then, `--nui_backend=recorded` reports the backend as disconnected at runtime.
 
-When that issue lands, the build flags above start having effect. Until then, they are documentation for the future.
+`KINECTIX_NUI_FREENECT`, `KINECTIX_NUI_FREENECT2`, `KINECTIX_NUI_MEDIAPIPE` are declared as CMake options but enabling them currently only sets `XE_KINECTIX_NUI_*=1` defines and prints a STATUS message. Backend sources land in Stage 2/3.
 
 ## Common build issues
 
