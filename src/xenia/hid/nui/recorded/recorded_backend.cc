@@ -73,10 +73,9 @@ bool RecordedBackend::Reload(const std::string& xnuirec_path) {
   last_color_frame_returned_ = SIZE_MAX;
   guest_frame_counter_ = 0;
 
-  XELOGI(
-      "RecordedBackend: loaded %s (%u frames, caps=0x%X, device=%s)",
-      path_.c_str(), reader_->FrameCount(), capabilities_,
-      reader_->DeviceKindString().c_str());
+  XELOGI("RecordedBackend: loaded %s (%u frames, caps=0x%X, device=%s)",
+         path_.c_str(), reader_->FrameCount(), capabilities_,
+         reader_->DeviceKindString().c_str());
   return true;
 }
 

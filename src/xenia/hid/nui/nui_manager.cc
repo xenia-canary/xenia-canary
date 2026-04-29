@@ -28,18 +28,16 @@
 #include "xenia/hid/nui/mediapipe/mediapipe_backend.h"
 #endif
 
-DEFINE_string(
-    nui_backend, "none",
-    "Active NUI (Kinect) backend. One of: "
-    "none, recorded, freenect, freenect2, mediapipe. "
-    "Some values require build flags (KINECTIX_NUI_FREENECT, ...).",
-    "NUI");
+DEFINE_string(nui_backend, "none",
+              "Active NUI (Kinect) backend. One of: "
+              "none, recorded, freenect, freenect2, mediapipe. "
+              "Some values require build flags (KINECTIX_NUI_FREENECT, ...).",
+              "NUI");
 
-DEFINE_string(
-    nui_record_path, "",
-    "Path to a .xnuirec file when --nui_backend=recorded. "
-    "If empty, the recorded backend operates in null mode.",
-    "NUI");
+DEFINE_string(nui_record_path, "",
+              "Path to a .xnuirec file when --nui_backend=recorded. "
+              "If empty, the recorded backend operates in null mode.",
+              "NUI");
 
 namespace xe {
 namespace hid {
@@ -108,8 +106,8 @@ std::string NuiManager::StatusString() const {
     return "kinectix: backend=<none-installed>";
   }
   return std::string("kinectix: backend=") + backend_->Name() +
-         " connected=" + (backend_->IsConnected() ? "yes" : "no") +
-         " caps=0x" + std::to_string(backend_->Capabilities());
+         " connected=" + (backend_->IsConnected() ? "yes" : "no") + " caps=0x" +
+         std::to_string(backend_->Capabilities());
 }
 
 std::unique_ptr<INuiBackend> NuiManager::CreateBackendFromCvars() {
