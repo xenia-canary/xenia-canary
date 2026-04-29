@@ -1707,6 +1707,11 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     }
   }
 
+  // Resume the main thread now.
+  // If the debugger has requested a suspend this will just decrement the
+  // suspend count without resuming it until the debugger wants.
+  main_thread_->Resume();
+
   return X_STATUS_SUCCESS;
 }
 

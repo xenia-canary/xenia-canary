@@ -426,11 +426,6 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
   // Waits for a debugger client, if desired.
   emulator()->processor()->PreLaunch();
 
-  // Resume the thread now.
-  // If the debugger has requested a suspend this will just decrement the
-  // suspend count without resuming it until the debugger wants.
-  thread->Resume();
-
   return thread;
 }
 
