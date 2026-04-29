@@ -1,0 +1,114 @@
+// Kinectix recorded NUI session schema (.xnuirec).
+//
+// Compiled at build time to xnuirec_generated.h via flatc.
+// Format version 1.
+//
+// Goals:
+//   - Skeleton-only recordings should be small (<1 MB for 60s at 30 Hz).
+//   - Full RGBD recordings exist but are optional — fields are unset on
+//     skeleton-only files. Readers must tolerate missing data fields.
+//   - Recording is deterministic-replayable: same file in, same XAM NUI
+//     output every time, regardless of host clock.
+//   - Self-describing: header carries device kind, sample rate, recording
+//     duration, optional title id and human-readable comment.
+
+namespace Kinectix.Xnuirec;
+
+// Per-joint tracking state. Mirrors xe::hid::nui::SkeletonPositionTrackingState.
+enum JointState : ubyte {
+  NotTracked = 0,
+  Inferred   = 1,
+  Tracked    = 2,
+}
+
+// Per-skeleton-slot tracking state. Mirrors xe::hid::nui::SkeletonTrackingState.
+enum SlotState : ubyte {
+  NotTracked   = 0,
+  PositionOnly = 1,
+  Tracked      = 2,
+}
+
+// Source device used to produce this recording.
+// "synthetic" indicates hand-authored fixtures (Stage 1).
+enum DeviceKind : ubyte {
+  Unknown   = 0,
+  KinectV1  = 1,
+  KinectV2  = 2,
+  MediaPipe = 3,
+  Synthetic = 4,
+}
+
+table Joint {
+  x : float;
+  y : float;
+  z : float;
+  state : JointState = NotTracked;
+}
+
+table Skeleton {
+  slot_index : uint;
+  state : SlotState = NotTracked;
+  // Length 20 (kSkeletonPositionCount) when state == Tracked; length 1
+  // (hip-center only) when state == PositionOnly; empty when NotTracked.
+  joints : [Joint];
+}
+
+table Frame {
+  // Microseconds since the start of the recording. Strictly monotonic.
+  timestamp_us : uint64;
+
+  // Up to kMaxSkeletons (6) entries. Empty if no skeletons in this frame.
+  skeletons : [Skeleton];
+
+  // Optional depth frame for this timestamp. Empty pixels = absent.
+  depth_width : ushort = 0;
+  depth_height : ushort = 0;
+  depth_pixels : [ushort];
+
+  // Optional color frame, BGRA. Empty pixels = absent.
+  color_width : ushort = 0;
+  color_height : ushort = 0;
+  color_pixels : [ubyte];
+}
+
+table SensorPose {
+  // Sensor height above floor in meters.
+  height_m : float = 0.7;
+  // Sensor tilt in degrees, +up. Kinect v1 motor range is -27..+27.
+  tilt_deg : float = 0.0;
+}
+
+table CalibrationProfile {
+  // Reserved for future use; intrinsics, distortion coefficients, etc.
+  // For Stage 1 we do not need calibration; the field exists so that
+  // future captures can carry it without breaking the schema.
+  reserved : [ubyte];
+}
+
+table Header {
+  format_version : uint = 1;
+  device_kind : DeviceKind = Unknown;
+
+  // Nominal sample rate. Frames may be irregularly spaced; this is for
+  // documentation and player UI.
+  sample_rate_hz : float = 30.0;
+
+  recording_duration_us : uint64;
+  recorded_at_iso8601 : string;
+
+  // Optional metadata.
+  game_title_id : uint = 0;     // e.g. 0x4D5307D5 for Kinect Adventures
+  comment : string;
+
+  sensor_pose : SensorPose;
+  calibration : CalibrationProfile;
+}
+
+table Recording {
+  header : Header;
+  frames : [Frame];
+}
+
+root_type Recording;
+file_identifier "XNUI";
+file_extension "xnuirec";
