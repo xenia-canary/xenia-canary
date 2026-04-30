@@ -8,6 +8,7 @@
  */
 
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_flags.h"
 #include "xenia/kernel/kernel_state.h"
@@ -25,9 +26,27 @@ DEFINE_bool(allow_nui_initialization, false,
             " require avatar implementation.",
             "Kernel");
 
+DEFINE_bool(nui_telemetry, false,
+            "Log every XAM NUI export entry (function name + arguments) to\n"
+            " xenia.log via XELOGI. Used by Kinectix to capture real call\n"
+            " sequences from Kinect-using titles for reverse engineering.\n"
+            " Off by default; enable only when collecting traces.",
+            "Kernel");
+
 namespace xe {
 namespace kernel {
 namespace xam {
+
+// Kinectix telemetry — emits a one-line trace per XAM NUI export entry when
+// the nui_telemetry cvar is on. When the cvar is off the cost is a single
+// load + branch (predicted not-taken via XE_UNLIKELY).
+#define XE_NUI_TRACE(...)                    \
+  do {                                       \
+    if (XE_UNLIKELY(cvars::nui_telemetry)) { \
+      XELOGI("[nui] " __VA_ARGS__);          \
+    }                                        \
+  } while (0)
+
 // https://web.cs.ucdavis.edu/~okreylos/ResDev/Kinect/MainPage.html
 
 struct X_NUI_DEVICE_STATUS {
@@ -56,6 +75,8 @@ static_assert(sizeof(X_NUI_DEVICE_STATUS) == 24, "Size matters");
 // Get
 dword_result_t XamNuiGetDeviceStatus_entry(
     pointer_t<X_NUI_DEVICE_STATUS> status_ptr) {
+  XE_NUI_TRACE("XamNuiGetDeviceStatus(status_ptr={:08X})",
+               status_ptr.guest_address());
   /* Notes:
      - it does return a value that is not always used
      - returns values are X_ERROR_SUCCESS, 0xC0050006, and others
@@ -75,11 +96,15 @@ dword_result_t XamNuiGetDeviceStatus_entry(
 DECLARE_XAM_EXPORT1(XamNuiGetDeviceStatus, kNone, kStub);
 
 dword_result_t XamUserNuiGetUserIndex_entry(unknown_t unk, lpdword_t index) {
+  XE_NUI_TRACE("XamUserNuiGetUserIndex(index_ptr={:08X})",
+               index.guest_address());
   return X_E_NO_SUCH_USER;
 }
 DECLARE_XAM_EXPORT1(XamUserNuiGetUserIndex, kNone, kStub);
 
 dword_result_t XamUserNuiGetUserIndexForSignin_entry(lpdword_t index) {
+  XE_NUI_TRACE("XamUserNuiGetUserIndexForSignin(index_ptr={:08X})",
+               index.guest_address());
   for (uint32_t i = 0; i < XUserMaxUserCount; i++) {
     auto profile = kernel_state()->xam_state()->GetUserProfile(i);
     if (profile) {
@@ -93,11 +118,15 @@ dword_result_t XamUserNuiGetUserIndexForSignin_entry(lpdword_t index) {
 DECLARE_XAM_EXPORT1(XamUserNuiGetUserIndexForSignin, kNone, kImplemented);
 
 dword_result_t XamUserNuiGetUserIndexForBind_entry(lpdword_t index) {
+  XE_NUI_TRACE("XamUserNuiGetUserIndexForBind(index_ptr={:08X})",
+               index.guest_address());
   return X_E_FAIL;
 }
 DECLARE_XAM_EXPORT1(XamUserNuiGetUserIndexForBind, kNone, kStub);
 
 dword_result_t XamNuiGetDepthCalibration_entry(lpdword_t unk1) {
+  XE_NUI_TRACE("XamNuiGetDepthCalibration(unk1_ptr={:08X})",
+               unk1.guest_address());
   /* Notes:
      - Possible returns X_STATUS_NO_SUCH_FILE, and 0x10000000
   */
@@ -107,6 +136,8 @@ DECLARE_XAM_EXPORT1(XamNuiGetDepthCalibration, kNone, kStub);
 
 // Skeleton
 qword_result_t XamNuiSkeletonGetBestSkeletonIndex_entry(int_t unk) {
+  XE_NUI_TRACE("XamNuiSkeletonGetBestSkeletonIndex(unk={})",
+               static_cast<int32_t>(unk));
   return 0xffffffffffffffff;
 }
 DECLARE_XAM_EXPORT1(XamNuiSkeletonGetBestSkeletonIndex, kNone, kStub);
@@ -116,6 +147,8 @@ DECLARE_XAM_EXPORT1(XamNuiSkeletonGetBestSkeletonIndex, kNone, kStub);
 */
 
 dword_result_t XamNuiCameraTiltGetStatus_entry(lpvoid_t unk) {
+  XE_NUI_TRACE("XamNuiCameraTiltGetStatus(unk_ptr={:08X})",
+               unk.guest_address());
   /* Notes:
      - Used by XamNuiCameraElevationGetAngle, and XamNuiCameraSetFlags
      - if it returns anything greater than -1 then both above functions continue
@@ -129,6 +162,9 @@ DECLARE_XAM_EXPORT1(XamNuiCameraTiltGetStatus, kNone, kStub);
 
 dword_result_t XamNuiCameraElevationGetAngle_entry(lpqword_t unk1,
                                                    lpdword_t unk2) {
+  XE_NUI_TRACE(
+      "XamNuiCameraElevationGetAngle(unk1_ptr={:08X}, unk2_ptr={:08X})",
+      unk1.guest_address(), unk2.guest_address());
   /* Notes:
      - Xam 12611 does not show what unk1 is used for (Ghidra)
   */
@@ -144,6 +180,7 @@ dword_result_t XamNuiCameraElevationGetAngle_entry(lpqword_t unk1,
 DECLARE_XAM_EXPORT1(XamNuiCameraElevationGetAngle, kNone, kStub);
 
 dword_result_t XamNuiCameraGetTiltControllerType_entry() {
+  XE_NUI_TRACE("XamNuiCameraGetTiltControllerType()");
   /* Notes:
      - undefined unk[8]
      - undefined8 local_28;
@@ -162,6 +199,8 @@ dword_result_t XamNuiCameraGetTiltControllerType_entry() {
 DECLARE_XAM_EXPORT1(XamNuiCameraGetTiltControllerType, kNone, kStub);
 
 dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
+  XE_NUI_TRACE("XamNuiCameraSetFlags(unk1={:016X}, unk2={:08X})",
+               static_cast<uint64_t>(unk1), static_cast<uint32_t>(unk2));
   /* Notes:
      - if XamNuiCameraGetTiltControllerType returns 1 then operation is done
      - else 0xffffffff8007048f
@@ -182,11 +221,13 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
 DECLARE_XAM_EXPORT1(XamNuiCameraSetFlags, kNone, kStub);
 
 dword_result_t XamIsNuiUIActive_entry() {
+  XE_NUI_TRACE("XamIsNuiUIActive()");
   return kernel_state()->xam_state()->xam_nui_dialogs_shown_ > 0;
 }
 DECLARE_XAM_EXPORT1(XamIsNuiUIActive, kNone, kImplemented);
 
 dword_result_t XamNuiIsDeviceReady_entry() {
+  XE_NUI_TRACE("XamNuiIsDeviceReady()");
   /* device_state Notes:
    - used with XNotifyBroadcast(kXNotificationSystemNUIHardwareStatusChanged,
    device_state)
@@ -201,6 +242,7 @@ dword_result_t XamNuiIsDeviceReady_entry() {
 DECLARE_XAM_EXPORT1(XamNuiIsDeviceReady, kNone, kImplemented);
 
 dword_result_t XamIsNuiAutomationEnabled_entry(unknown_t unk1, unknown_t unk2) {
+  XE_NUI_TRACE("XamIsNuiAutomationEnabled()");
   /* Notes:
      - XamIsNuiAutomationEnabled = XamIsNatalPlaybackEnabled
      - Always returns X_E_SUCCESS? Maybe check later versions
@@ -212,6 +254,7 @@ dword_result_t XamIsNuiAutomationEnabled_entry(unknown_t unk1, unknown_t unk2) {
 DECLARE_XAM_EXPORT2(XamIsNuiAutomationEnabled, kNone, kStub, kHighFrequency);
 
 dword_result_t XamIsNatalPlaybackEnabled_entry(unknown_t unk1, unknown_t unk2) {
+  XE_NUI_TRACE("XamIsNatalPlaybackEnabled()");
   /* Notes:
      - XamIsNuiAutomationEnabled = XamIsNatalPlaybackEnabled
      - Always returns X_E_SUCCESS? Maybe check later versions
@@ -223,6 +266,7 @@ dword_result_t XamIsNatalPlaybackEnabled_entry(unknown_t unk1, unknown_t unk2) {
 DECLARE_XAM_EXPORT2(XamIsNatalPlaybackEnabled, kNone, kStub, kHighFrequency);
 
 dword_result_t XamNuiIsChatMicEnabled_entry() {
+  XE_NUI_TRACE("XamNuiIsChatMicEnabled()");
   /* Notes:
      - calls a second function with a param of uint local_20 [4];
      - Second function calls ExGetXConfigSetting(7,9,local_30,0x1c,local_40);
@@ -248,6 +292,8 @@ uint32_t engaged_tracking_id = 0;
 char nui_unknown_2 = '\0';
 
 dword_result_t XamNuiHudSetEngagedTrackingID_entry(dword_t id) {
+  XE_NUI_TRACE("XamNuiHudSetEngagedTrackingID(id={:08X})",
+               static_cast<uint32_t>(id));
   if (!id) {
     return X_STATUS_SUCCESS;
   }
@@ -262,6 +308,7 @@ dword_result_t XamNuiHudSetEngagedTrackingID_entry(dword_t id) {
 DECLARE_XAM_EXPORT1(XamNuiHudSetEngagedTrackingID, kNone, kImplemented);
 
 qword_result_t XamNuiHudGetEngagedTrackingID_entry() {
+  XE_NUI_TRACE("XamNuiHudGetEngagedTrackingID()");
   if (nui_unknown_1 != 0) {
     return engaged_tracking_id;
   }
@@ -271,6 +318,7 @@ qword_result_t XamNuiHudGetEngagedTrackingID_entry() {
 DECLARE_XAM_EXPORT1(XamNuiHudGetEngagedTrackingID, kNone, kImplemented);
 
 dword_result_t XamNuiHudIsEnabled_entry() {
+  XE_NUI_TRACE("XamNuiHudIsEnabled()");
   /* Notes:
      - checks if XamNuiIsDeviceReady false, if nui_unknown_1 exists, and
      nui_unknown_2 is equal to null terminated string
@@ -299,6 +347,7 @@ uint32_t XeXamNuiHudCheck(dword_t unk1) {
 }
 
 dword_result_t XamNuiHudGetInitializeFlags_entry() {
+  XE_NUI_TRACE("XamNuiHudGetInitializeFlags()");
   /* HUD_Flags Notes:
      - set by 0x2B003
      - set to 0 by unnamed func alongside version_id
@@ -311,6 +360,8 @@ dword_result_t XamNuiHudGetInitializeFlags_entry() {
 DECLARE_XAM_EXPORT1(XamNuiHudGetInitializeFlags, kNone, kImplemented);
 
 void XamNuiHudGetVersions_entry(lpqword_t unk1, lpqword_t unk2) {
+  XE_NUI_TRACE("XamNuiHudGetVersions(unk1_ptr={:08X}, unk2_ptr={:08X})",
+               unk1.guest_address(), unk2.guest_address());
   /* version_id Notes:
      - set by 0x2B003
      - set to 0 by unnamed func alongside HUD_Flags
@@ -328,6 +379,11 @@ DECLARE_XAM_EXPORT1(XamNuiHudGetVersions, kNone, kImplemented);
 dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
                                                 dword_t tracking_id,
                                                 dword_t flags) {
+  XE_NUI_TRACE(
+      "XamShowNuiTroubleshooterUI(user_index={:08X}, tracking_id={:08X}, "
+      "flags={:08X})",
+      static_cast<uint32_t>(user_index), static_cast<uint32_t>(tracking_id),
+      static_cast<uint32_t>(flags));
   /* Notes:
      - calls XamPackageManagerGetExperienceMode(&var) with var = 1
      - If returns less than zero or (var & 1) == 0 then get error message:
@@ -376,6 +432,7 @@ dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
 DECLARE_XAM_EXPORT1(XamShowNuiTroubleshooterUI, kNone, kStub);
 
 dword_result_t XamShowNuiHardwareRequiredUI_entry(unknown_t unk1) {
+  XE_NUI_TRACE("XamShowNuiHardwareRequiredUI()");
   if (unk1 != 0) {
     return X_ERROR_INVALID_PARAMETER;
   }
@@ -385,6 +442,7 @@ dword_result_t XamShowNuiHardwareRequiredUI_entry(unknown_t unk1) {
 DECLARE_XAM_EXPORT1(XamShowNuiHardwareRequiredUI, kNone, kImplemented);
 
 dword_result_t XamShowNuiGuideUI_entry(unknown_t unk1, unknown_t unk2) {
+  XE_NUI_TRACE("XamShowNuiGuideUI()");
   /* Notes:
    - calls an unnamed function that checks XamNuiHudIsEnabled and
    XamNuiHudSetEngagedTrackingID
@@ -413,6 +471,7 @@ DECLARE_XAM_EXPORT1(XamShowNuiGuideUI, kNone, kStub);
 uint64_t NUI_Session_Id = 0;
 
 qword_result_t XamNuiIdentityGetSessionId_entry() {
+  XE_NUI_TRACE("XamNuiIdentityGetSessionId()");
   if (NUI_Session_Id == 0) {
     // xboxkrnl::XeCryptRandom_entry(NUI_Session_Id, 8);
     NUI_Session_Id = 0xDEADF00DDEADF00D;
@@ -423,6 +482,11 @@ DECLARE_XAM_EXPORT1(XamNuiIdentityGetSessionId, kNone, kImplemented);
 
 dword_result_t XamNuiIdentityEnrollForSignIn_entry(dword_t unk1, qword_t unk2,
                                                    qword_t unk3, dword_t unk4) {
+  XE_NUI_TRACE(
+      "XamNuiIdentityEnrollForSignIn(unk1={:08X}, unk2={:016X}, unk3={:016X}, "
+      "unk4={:08X})",
+      static_cast<uint32_t>(unk1), static_cast<uint64_t>(unk2),
+      static_cast<uint64_t>(unk3), static_cast<uint32_t>(unk4));
   /* Notes:
      - Decompiler issues so double check
   */
@@ -438,6 +502,7 @@ dword_result_t XamNuiIdentityEnrollForSignIn_entry(dword_t unk1, qword_t unk2,
 DECLARE_XAM_EXPORT1(XamNuiIdentityEnrollForSignIn, kNone, kStub);
 
 dword_result_t XamNuiIdentityAbort_entry(dword_t unk) {
+  XE_NUI_TRACE("XamNuiIdentityAbort(unk={:08X})", static_cast<uint32_t>(unk));
   if (XamNuiHudIsEnabled_entry() == false) {
     return X_E_FAIL;
   }
@@ -451,12 +516,16 @@ DECLARE_XAM_EXPORT1(XamNuiIdentityAbort, kNone, kStub);
 // Other
 dword_result_t XamUserNuiEnableBiometric_entry(dword_t user_index,
                                                int_t enable) {
+  XE_NUI_TRACE("XamUserNuiEnableBiometric(user_index={:08X}, enable={})",
+               static_cast<uint32_t>(user_index), static_cast<int32_t>(enable));
   return X_E_INVALIDARG;
 }
 DECLARE_XAM_EXPORT1(XamUserNuiEnableBiometric, kNone, kStub);
 
 void XamNuiPlayerEngagementUpdate_entry(qword_t unk1, unknown_t unk2,
                                         lpunknown_t unk3) {
+  XE_NUI_TRACE("XamNuiPlayerEngagementUpdate(unk1={:016X}, unk3_ptr={:08X})",
+               static_cast<uint64_t>(unk1), unk3.guest_address());
   /* Notes:
      - Only calls a second function with the params unk3, 0, and 0x1c in that
      order
