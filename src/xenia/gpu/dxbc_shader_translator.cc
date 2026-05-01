@@ -173,6 +173,7 @@ void DxbcShaderTranslator::Reset() {
   uav_count_ = 0;
   uav_index_shared_memory_ = kBindingIndexUnallocated;
   uav_index_edram_ = kBindingIndexUnallocated;
+  uav_index_zpd_rov_counter_ = kBindingIndexUnallocated;
 
   sampler_bindings_.clear();
 
@@ -2146,7 +2147,9 @@ constexpr DxbcShaderTranslator::SystemConstantRdef
         {"xe_edram_32bpp_tile_pitch_dwords_scaled", ShaderRdefTypeIndex::kUint,
          sizeof(uint32_t)},
         {"xe_edram_depth_base_dwords_scaled", ShaderRdefTypeIndex::kUint,
-         sizeof(uint32_t), sizeof(uint32_t)},
+         sizeof(uint32_t)},
+        {"xe_zpd_rov_counter_index", ShaderRdefTypeIndex::kUint,
+         sizeof(uint32_t)},
 
         {"xe_color_exp_bias", ShaderRdefTypeIndex::kFloat4, sizeof(float) * 4},
 
@@ -2548,6 +2551,11 @@ void DxbcShaderTranslator::WriteResourceDefinition() {
   if (uav_index_edram_ != kBindingIndexUnallocated) {
     name_ptr += dxbc::AppendAlignedString(shader_object_, "xe_edram");
   }
+  uint32_t zpd_rov_counter_name_ptr = name_ptr;
+  if (uav_index_zpd_rov_counter_ != kBindingIndexUnallocated) {
+    name_ptr +=
+        dxbc::AppendAlignedString(shader_object_, "xe_zpd_rov_counter_uav");
+  }
 
   uint32_t bindings_position_dwords = uint32_t(shader_object_.size());
 
@@ -2678,6 +2686,13 @@ void DxbcShaderTranslator::WriteResourceDefinition() {
         uav.dimension = dxbc::RdefDimension::kUAVBuffer;
         uav.sample_count = UINT32_MAX;
         uav.bind_point = uint32_t(UAVRegister::kEdram);
+      } else if (i == uav_index_zpd_rov_counter_) {
+        // ROV ZPD counter buffer.
+        uav.name_ptr = zpd_rov_counter_name_ptr;
+        uav.type = dxbc::RdefInputType::kUAVRWByteAddress;
+        uav.return_type = dxbc::ResourceReturnType::kMixed;
+        uav.dimension = dxbc::RdefDimension::kUAVBuffer;
+        uav.bind_point = uint32_t(UAVRegister::kZpdRovCounter);
       } else {
         assert_unhandled_case(i);
       }
@@ -3565,6 +3580,12 @@ void DxbcShaderTranslator::WriteShaderCode() {
           dxbc::Src::U(dxbc::Src::Dcl, uav_index_edram_,
                        uint32_t(UAVRegister::kEdram),
                        uint32_t(UAVRegister::kEdram)));
+    } else if (i == uav_index_zpd_rov_counter_) {
+      // ROV ZPD counter buffer.
+      ao_.OpDclUnorderedAccessViewRaw(
+          0, dxbc::Src::U(dxbc::Src::Dcl, uav_index_zpd_rov_counter_,
+                          uint32_t(UAVRegister::kZpdRovCounter),
+                          uint32_t(UAVRegister::kZpdRovCounter)));
     } else {
       assert_unhandled_case(i);
     }

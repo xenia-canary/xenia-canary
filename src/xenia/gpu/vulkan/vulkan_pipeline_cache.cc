@@ -766,6 +766,28 @@ bool VulkanPipelineCache::IsCreatingPipelines() {
   return !creation_queue_.empty() || creation_threads_busy_ != 0;
 }
 
+void VulkanPipelineCache::AwaitPipelineCompletion() {
+  if (creation_threads_.empty()) {
+    return;
+  }
+
+  bool await_creation_completion_event;
+  {
+    std::lock_guard<std::mutex> lock(creation_request_lock_);
+    await_creation_completion_event =
+        !creation_queue_.empty() || creation_threads_busy_ != 0;
+    if (await_creation_completion_event) {
+      creation_completion_event_->Reset();
+      creation_completion_set_event_.store(true, std::memory_order_release);
+    }
+  }
+
+  if (await_creation_completion_event) {
+    creation_request_cond_.notify_one();
+    xe::threading::Wait(creation_completion_event_.get(), false);
+  }
+}
+
 void VulkanPipelineCache::CreationThread() {
   for (;;) {
     PipelineCreationArguments creation_arguments;

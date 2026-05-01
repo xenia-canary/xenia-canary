@@ -954,65 +954,95 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
   return true;
 }
 
-static uint32_t samples = cvars::query_occlusion_sample_upper_threshold;
-static uint32_t batched_samples = 0;
-
 XE_NOINLINE
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
     uint32_t packet, uint32_t count) XE_RESTRICT {
-  // Set by D3D as BE but struct ABI is LE
-  const uint32_t kQueryFinished = xe::byte_swap(0xFFFFFEED);
   assert_true(count == 1);
   uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
   // Writeback initiator.
   COMMAND_PROCESSOR::WriteEventInitiator(initiator & 0x3F);
 
-  if (cvars::query_occlusion_sample_lower_threshold < 0) {
+  uint32_t report_address =
+      register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
+  uint32_t report_record_base = XenosZPDReport::GetRecordBase(report_address);
+  bool is_begin_record = XenosZPDReport::IsBeginRecord(report_address);
+  bool is_end_record = XenosZPDReport::IsEndRecord(report_address);
+
+  xe_gpu_depth_sample_counts* report =
+      report_record_base
+          ? memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+                report_record_base)
+          : nullptr;
+
+  // True if the record has the pending D3D sentinel.
+  // Useful as a hint, but not authoritative for report boundaries.
+  // QueryBatch titles can have multiple pending sentinels in a row and don't
+  // necessarily update in an order we currently observe.
+  bool guest_marks_end = report && XenosZPDReport::HasPendingSentinel(report);
+  bool logical_active = zpd_active_segment_.logical_active;
+
+  // QueryBatch fake fallback, which ignores record layout and just returns an
+  // incrementing sample count on each event.
+  if (cvars::occlusion_query_querybatch_range > 0) {
+    uint32_t sample_count =
+        XenosZPDReport::QueryBatchFakeSamples(querybatch_zpd_sample_count_);
+    if (report) {
+      // Both QueryBatch and conventional fake samples skip elective saturation.
+      XenosZPDReport::WriteSampleCount(report, sample_count, false);
+    }
     return true;
   }
-  // Occlusion queries:
-  // This command is send on query begin and end.
-  // As a workaround report some fixed amount of passed samples.
-  auto* pSampleCounts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-      register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR]);
-  // 0xFFFFFEED is written to this two locations by D3D only on D3DISSUE_END
-  // and used to detect a finished query.
-  bool is_end_via_z_pass = pSampleCounts->ZPass_A == kQueryFinished ||
-                           pSampleCounts->ZPass_B == kQueryFinished;
-  // Older versions of D3D also checks for ZFail (4D5307D5).
-  bool is_end_via_z_fail = pSampleCounts->ZFail_A == kQueryFinished ||
-                           pSampleCounts->ZFail_B == kQueryFinished;
-  std::memset(pSampleCounts, 0, sizeof(xe_gpu_depth_sample_counts));
 
-  // Titles that use QueryBatch (4D5309B1, 4E4D0801) don't use an END result for
-  // every query. Each ISSUE snapshots the sample count into a new slot and
-  // recovers the total by looking at differences between slots.
-  // END detection isn't sufficient here.
-  if (cvars::query_occlusion_querybatch_range > 0) {
-    // Mimic batched behavior by reporting a running count and writing it on
-    // every event.
-    const uint32_t base =
-        static_cast<uint32_t>(cvars::query_occlusion_sample_lower_threshold);
-    const uint32_t range =
-        static_cast<uint32_t>(cvars::query_occlusion_querybatch_range);
-    if (batched_samples < base || batched_samples - base + 1 >= range) {
-      batched_samples = base;
-    } else {
-      ++batched_samples;
+  if (GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_) {
+    if (logical_active && is_end_record) {
+      COMMAND_PROCESSOR::EndZPDReport(report_address, false);
+      return true;
     }
-    pSampleCounts->ZPass_A = batched_samples;
-    pSampleCounts->Total_A = batched_samples;
-  } else if (is_end_via_z_pass || is_end_via_z_fail) {
-    pSampleCounts->ZPass_A = samples;
-    pSampleCounts->Total_A = samples;
+    if (is_begin_record) {
+      // Clear the record so the game knows the BEGIN was processed and
+      // stale sentinel data from a prior query lifetime doesn't persist.
+      if (report) {
+        std::memset(report, 0, sizeof(xe_gpu_depth_sample_counts));
+      }
+      COMMAND_PROCESSOR::BeginZPDReport(report_address);
+      return true;
+    }
+    if (!logical_active && is_end_record) {
+      // No logical report is active for this slot, so this is likely an
+      // orphaned END. In fast mode, replay the last cached delta so polling
+      // code does not sit on the sentinel forever.
+      if (GetZPDMode() == ZPDMode::kFast) {
+        uint32_t cached_delta = 1;
+        auto cache_it = fast_zpd_report_cached_values_.find(report_record_base);
+        if (cache_it != fast_zpd_report_cached_values_.end()) {
+          cached_delta = cache_it->second;
+        }
+        COMMAND_PROCESSOR::WriteZPDReport(0, report_record_base, 0,
+                                          cached_delta, false);
+      } else {
+        // In strict mode, just pump in case a previous report has resolved.
+        COMMAND_PROCESSOR::PumpQueryResolves();
+      }
+      return true;
+    }
+    // Address is neither BEGIN nor END (non-standard layout). Fall through
+    // to the fake path so the guest at least gets a result written rather
+    // than leaving the sentinel in place forever.
   }
 
-  samples =
-      samples <= static_cast<uint32_t>(
-                     cvars::query_occlusion_sample_lower_threshold)
-          ? static_cast<uint32_t>(cvars::query_occlusion_sample_upper_threshold)
-          : samples - 1;
+  // Conventional fake fallback, which only touches records marked as pending.
+  if (cvars::occlusion_query_fake_lower_threshold < 0 || !report_record_base ||
+      !guest_marks_end) {
+    return true;
+  }
 
+  fake_zpd_sample_count_ =
+      (fake_zpd_sample_count_ <=
+       static_cast<uint32_t>(cvars::occlusion_query_fake_lower_threshold))
+          ? static_cast<uint32_t>(cvars::occlusion_query_fake_upper_threshold)
+          : fake_zpd_sample_count_ - 1;
+
+  XenosZPDReport::WriteSampleCount(report, fake_zpd_sample_count_, false);
   return true;
 }
 

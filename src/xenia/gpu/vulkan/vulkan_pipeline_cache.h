@@ -113,6 +113,10 @@ class VulkanPipelineCache {
 
   void EndSubmission();
   bool IsCreatingPipelines();
+  // Waits for any pipeline creation needed by the current draw path to finish
+  // before state is consumed. This was added so strict ZPD query paths stop
+  // racing pipeline compilation and then blocking work on incomplete state.
+  void AwaitPipelineCompletion();
 
   VulkanShader* LoadShader(xenos::ShaderType shader_type,
                            const uint32_t* host_address, uint32_t dword_count);

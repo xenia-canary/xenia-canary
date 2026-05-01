@@ -26,11 +26,17 @@ DECLARE_bool(non_seamless_cube_map);
 
 DECLARE_bool(half_pixel_offset);
 
-DECLARE_int32(query_occlusion_querybatch_range);
+DECLARE_string(occlusion_query);
 
-DECLARE_int32(query_occlusion_sample_lower_threshold);
+DECLARE_int32(occlusion_query_fake_lower_threshold);
 
-DECLARE_int32(query_occlusion_sample_upper_threshold);
+DECLARE_int32(occlusion_query_fake_upper_threshold);
+
+DECLARE_bool(occlusion_query_fast_preserve_cached_zero);
+
+DECLARE_int32(occlusion_query_querybatch_range);
+
+DECLARE_double(occlusion_query_sample_count_saturation);
 
 DECLARE_int32(anisotropic_override);
 

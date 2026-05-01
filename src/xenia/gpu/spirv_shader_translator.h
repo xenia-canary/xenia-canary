@@ -224,6 +224,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // If alpha to mask is enabled, bits 0:7 are sample offsets, and bit 8 must
     // be 1.
     uint32_t alpha_to_mask;
+    // UINT32_MAX when the draw is outside an active ZPD segment, which is used
+    // as a skip writing sentinel to the FSI counter buffer.
+    uint32_t zpd_fsi_counter_index;
+    // Align for std140.
+    uint32_t color_exp_bias_padding[2];
 
     float color_exp_bias[4];
 
@@ -726,6 +731,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // flow because of taking derivatives of the fragment depth.
   void FSI_DepthStencilTest(spv::Id msaa_samples,
                             bool sample_mask_potentially_narrowed_previouly);
+  // Adds the surviving coverage MSAA counts from FSI to the active ZPD counter
+  // slot after final PS depth/stencil.
+  void FSI_AddPassedMSAASamplesToZPD();
 
   // Alpha to coverage helper - tests one sample.
   // coverage_out is modified to include this sample if it passes.
@@ -878,9 +886,10 @@ class SpirvShaderTranslator : public ShaderTranslator {
     kSystemConstantTextureSwizzles,
     kSystemConstantTexturesResolved,
     kSystemConstantAlphaTestReference,
-    kSystemConstantAlphaToMask,
     kSystemConstantEdram32bppTilePitchDwordsScaled,
     kSystemConstantEdramDepthBaseDwordsScaled,
+    kSystemConstantAlphaToMask,
+    kSystemConstantZpdFsiCounterIndex,
     kSystemConstantColorExpBias,
     kSystemConstantEdramPolyOffsetFrontScale,
     kSystemConstantEdramPolyOffsetBackScale,
@@ -905,6 +914,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
   spv::Id buffers_shared_memory_;
   spv::Id buffer_edram_;
+  spv::Id buffer_zpd_fsi_counter_;
 
   // Not using combined images and samplers because
   // maxPerStageDescriptorSamplers is often lower than

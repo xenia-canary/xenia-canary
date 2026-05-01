@@ -131,6 +131,46 @@ class DeferredCommandBuffer {
                 sizeof(VkDeviceSize) * binding_count);
   }
 
+  void CmdVkBeginQuery(VkQueryPool query_pool, uint32_t query,
+                       VkQueryControlFlags flags) {
+    auto& args = *reinterpret_cast<ArgsVkBeginQuery*>(
+        WriteCommand(Command::kVkBeginQuery, sizeof(ArgsVkBeginQuery)));
+    args.query_pool = query_pool;
+    args.query = query;
+    args.flags = flags;
+  }
+
+  void CmdVkEndQuery(VkQueryPool query_pool, uint32_t query) {
+    auto& args = *reinterpret_cast<ArgsVkEndQuery*>(
+        WriteCommand(Command::kVkEndQuery, sizeof(ArgsVkEndQuery)));
+    args.query_pool = query_pool;
+    args.query = query;
+  }
+
+  void CmdVkCopyQueryPoolResults(VkQueryPool query_pool, uint32_t first_query,
+                                 uint32_t query_count, VkBuffer dst_buffer,
+                                 VkDeviceSize dst_offset, VkDeviceSize stride,
+                                 VkQueryResultFlags flags) {
+    auto& args = *reinterpret_cast<ArgsVkCopyQueryPoolResults*>(WriteCommand(
+        Command::kVkCopyQueryPoolResults, sizeof(ArgsVkCopyQueryPoolResults)));
+    args.query_pool = query_pool;
+    args.first_query = first_query;
+    args.query_count = query_count;
+    args.dst_buffer = dst_buffer;
+    args.dst_offset = dst_offset;
+    args.stride = stride;
+    args.flags = flags;
+  }
+
+  void CmdVkResetQueryPool(VkQueryPool query_pool, uint32_t first_query,
+                           uint32_t query_count) {
+    auto& args = *reinterpret_cast<ArgsVkResetQueryPool*>(
+        WriteCommand(Command::kVkResetQueryPool, sizeof(ArgsVkResetQueryPool)));
+    args.query_pool = query_pool;
+    args.first_query = first_query;
+    args.query_count = query_count;
+  }
+
   void CmdClearAttachmentsEmplace(uint32_t attachment_count,
                                   VkClearAttachment*& attachments_out,
                                   uint32_t rect_count,
@@ -230,6 +270,16 @@ class DeferredCommandBuffer {
     std::memcpy(CmdCopyBufferToImageEmplace(src_buffer, dst_image,
                                             dst_image_layout, region_count),
                 regions, sizeof(VkBufferImageCopy) * region_count);
+  }
+
+  void CmdVkFillBuffer(VkBuffer dst_buffer, VkDeviceSize dst_offset,
+                       VkDeviceSize size, uint32_t data) {
+    auto& args = *reinterpret_cast<ArgsVkFillBuffer*>(
+        WriteCommand(Command::kVkFillBuffer, sizeof(ArgsVkFillBuffer)));
+    args.dst_buffer = dst_buffer;
+    args.dst_offset = dst_offset;
+    args.size = size;
+    args.data = data;
   }
 
   VkImageBlit* CmdBlitImageEmplace(VkImage src_image,
@@ -393,10 +443,15 @@ class DeferredCommandBuffer {
     kVkBindIndexBuffer,
     kVkBindPipeline,
     kVkBindVertexBuffers,
+    kVkBeginQuery,
+    kVkEndQuery,
+    kVkCopyQueryPoolResults,
+    kVkResetQueryPool,
     kVkClearAttachments,
     kVkClearColorImage,
     kVkCopyBuffer,
     kVkCopyBufferToImage,
+    kVkFillBuffer,
     kVkBlitImage,
     kVkDispatch,
     kVkDraw,
@@ -459,6 +514,33 @@ class DeferredCommandBuffer {
     static_assert(alignof(VkDeviceSize) <= alignof(uintmax_t));
   };
 
+  struct ArgsVkBeginQuery {
+    VkQueryPool query_pool;
+    uint32_t query;
+    VkQueryControlFlags flags;
+  };
+
+  struct ArgsVkEndQuery {
+    VkQueryPool query_pool;
+    uint32_t query;
+  };
+
+  struct ArgsVkCopyQueryPoolResults {
+    VkQueryPool query_pool;
+    uint32_t first_query;
+    uint32_t query_count;
+    VkBuffer dst_buffer;
+    VkDeviceSize dst_offset;
+    VkDeviceSize stride;
+    VkQueryResultFlags flags;
+  };
+
+  struct ArgsVkResetQueryPool {
+    VkQueryPool query_pool;
+    uint32_t first_query;
+    uint32_t query_count;
+  };
+
   struct ArgsVkClearAttachments {
     uint32_t attachment_count;
     uint32_t rect_count;
@@ -491,6 +573,13 @@ class DeferredCommandBuffer {
     uint32_t region_count;
     // Followed by aligned VkBufferImageCopy[].
     static_assert(alignof(VkBufferImageCopy) <= alignof(uintmax_t));
+  };
+
+  struct ArgsVkFillBuffer {
+    VkBuffer dst_buffer;
+    VkDeviceSize dst_offset;
+    VkDeviceSize size;
+    uint32_t data;
   };
 
   struct ArgsVkBlitImage {

@@ -743,6 +743,8 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       }
     }
 
+    FSI_AddPassedMSAASamplesToZPD();
+
     if (color_write_depth_stencil_condition != spv::NoResult) {
       // Skip all color operations if the pixel has failed the tests entirely.
       block_fsi_if_after_depth_stencil = &builder_->makeNewBlock();
@@ -1813,6 +1815,61 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
   }
   return builder_->createBinOp(spv::OpIAdd, type_int_, sample_0_address,
                                sample_offset);
+}
+
+void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
+  assert_true(edram_fragment_shader_interlock_);
+  assert_true(buffer_zpd_fsi_counter_ != spv::NoResult);
+
+  // UINT32_MAX means no ZPD segment is currently open for this draw.
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(
+      builder_->makeIntConstant(kSystemConstantZpdFsiCounterIndex));
+  spv::Id counter_index = builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_system_constants_, id_vector_temp_),
+      spv::NoPrecision);
+  SpirvBuilder::IfBuilder if_counter_open(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, counter_index,
+                            builder_->makeUintConstant(UINT32_MAX)),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
+  // don't contribute to the counter.
+  spv::Id passed_sample_count = builder_->createUnaryOp(
+      spv::OpBitCount, type_uint_,
+      builder_->createBinOp(
+          spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
+          builder_->makeUintConstant((uint32_t(1) << 4) - 1)));
+
+  SpirvBuilder::IfBuilder if_any_samples(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, passed_sample_count,
+                            const_uint_0_),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  spv::StorageClass storage_class = features_.spirv_version >= spv::Spv_1_3
+                                        ? spv::StorageClassStorageBuffer
+                                        : spv::StorageClassUniform;
+  spv::Id const_scope_device =
+      builder_->makeUintConstant(static_cast<unsigned int>(spv::ScopeDevice));
+  spv::Id const_semantics_relaxed = const_uint_0_;
+
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(const_int_0_);
+  id_vector_temp_.push_back(
+      builder_->createUnaryOp(spv::OpBitcast, type_int_, counter_index));
+  spv::Id counter_ptr = builder_->createAccessChain(
+      storage_class, buffer_zpd_fsi_counter_, id_vector_temp_);
+
+  // Add the number of samples that survived final depth/stencil for this
+  // fragment to the active query slot, which is copied to the ZPD readback
+  // buffer when the query segment is closed.
+  builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
+                         const_scope_device, const_semantics_relaxed,
+                         passed_sample_count);
+
+  if_any_samples.makeEndIf();
+  if_counter_open.makeEndIf();
 }
 
 void SpirvShaderTranslator::FSI_DepthStencilTest(
