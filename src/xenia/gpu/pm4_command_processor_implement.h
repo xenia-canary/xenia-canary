@@ -988,11 +988,18 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
   // every query. Each ISSUE snapshots the sample count into a new slot and
   // recovers the total by looking at differences between slots.
   // END detection isn't sufficient here.
-  if (cvars::query_occlusion_batched) {
+  if (cvars::query_occlusion_querybatch_range > 0) {
     // Mimic batched behavior by reporting a running count and writing it on
     // every event.
-    const uint32_t step = std::max(uint32_t(1), samples);
-    batched_samples = std::min(batched_samples, UINT32_MAX - step) + step;
+    const uint32_t base =
+        static_cast<uint32_t>(cvars::query_occlusion_sample_lower_threshold);
+    const uint32_t range =
+        static_cast<uint32_t>(cvars::query_occlusion_querybatch_range);
+    if (batched_samples < base || batched_samples - base + 1 >= range) {
+      batched_samples = base;
+    } else {
+      ++batched_samples;
+    }
     pSampleCounts->ZPass_A = batched_samples;
     pSampleCounts->Total_A = batched_samples;
   } else if (is_end_via_z_pass || is_end_via_z_fail) {

@@ -59,11 +59,11 @@ DEFINE_bool(
     "when MSAA is used with fullscreen passes.",
     "GPU");
 
-DEFINE_bool(query_occlusion_batched, false,
-            "Increment the sample count total by a fixed amount on every "
-            "EVENT_WRITE_ZPD. This provides an approximate batched occlusion "
-            "query implementation for many titles.",
-            "GPU");
+DEFINE_int32(query_occlusion_querybatch_range, 0,
+             "Range of fake ZPD sample count values to cycle for titles that "
+             "use D3D QueryBatch. 0 disables this behavior entirely. Any non-"
+             "zero values should only be used if required for specific titles.",
+             "GPU");
 DEFINE_int32(query_occlusion_sample_lower_threshold, 80,
              "If set to -1 no sample counts are written, games may hang. Else, "
              "the sample count of every tile will be incremented on every "
