@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_ASSEMBLER_H_
 #define XENIA_CPU_BACKEND_ASSEMBLER_H_
 
+#include <cstdint>
 #include <memory>
 
 namespace xe {

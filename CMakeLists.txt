@@ -224,6 +224,7 @@ else()
   # C-specific warnings
   add_compile_options(
     $<$<COMPILE_LANGUAGE:C>:-Wno-implicit-function-declaration>
+    $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types>
   )
 
   if(APPLE)
