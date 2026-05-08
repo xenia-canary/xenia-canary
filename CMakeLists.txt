@@ -314,6 +314,7 @@ else()
     # macOS-specific settings
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS version")
     add_compile_options(
+      -Wno-unknown-warning-option
       $<$<COMPILE_LANGUAGE:CXX>:-Wno-shorten-64-to-32>
       -Wno-deprecated-declarations
       -Wno-character-conversion

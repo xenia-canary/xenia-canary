@@ -134,6 +134,69 @@ jobs:
           path: artifacts/release
           if-no-files-found: error
 
+  build-macos:
+    name: Build macOS ARM64
+    needs: lint
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        run: |
+          # Update submodules. Skip DirectXShaderCompiler (we don't use the
+          # Metal shader converter / dxilconv pipeline on edge).
+          git submodule update --init --depth=1 -j$(sysctl -n hw.ncpu) \
+            $(grep -oE 'path = .+' .gitmodules | sed 's/path = //' \
+              | grep -v 'DirectXShaderCompiler')
+
+          # wxWidgets has nested submodules (pcre, libpng, ...) needed when
+          # building from vendored source.
+          git submodule update --init --recursive --depth=1 \
+            -j$(sysctl -n hw.ncpu) third_party/wxWidgets
+
+          # Fetch data repos (game-patches)
+          ./xenia-build.py fetchdata
+
+      - name: Build
+        run: ./xenia-build.py build --config=Release --target=xenia-app
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          app_bundle="build/bin/macOS/Release/Xenia-edge.app"
+          if [ ! -d "$app_bundle" ]; then
+            echo "::error::App bundle not found at $app_bundle"
+            ls -la build/bin/macOS/Release/ 2>&1 || true
+            exit 1
+          fi
+          main_exe="$app_bundle/Contents/MacOS/Xenia-edge"
+          if [ "$(stat -f%z "$main_exe")" -le 100000 ]; then
+            echo "::error::$main_exe is too small."
+            exit 1
+          fi
+
+          # DMG with an Applications symlink for drag-install UX.
+          mkdir -p dmg_contents
+          cp -R "$app_bundle" dmg_contents/
+          cp LICENSE dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          mkdir -p artifacts/release
+          hdiutil create -volname "Xenia-edge" \
+            -srcfolder dmg_contents -ov -format UDZO \
+            artifacts/release/xenia_edge_macos_arm64.dmg
+          rm -rf dmg_contents
+
+      - name: Upload xenia edge macOS artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_macos
+          path: artifacts/release
+          if-no-files-found: error
+
   build-windows:
     name: Build Windows
     needs: lint
