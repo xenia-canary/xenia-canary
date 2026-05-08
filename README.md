@@ -11,10 +11,7 @@ on faster iteration, higher default game compatibility, usability and platform s
 
 ## Status
 
-Buildbot | Status
--------- | ------
-Windows | [![CI](https://github.com/has207/xenia-edge/actions/workflows/Windows_build.yml/badge.svg?branch=edge)](https://github.com/has207/xenia-edge/actions/workflows/Windows_build.yml) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/cd506034fd8148309a45034925648499)](https://app.codacy.com/gh/has207/xenia-edge/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-Linux | [![CI](https://github.com/has207/xenia-edge/actions/workflows/Linux_build.yml/badge.svg?branch=edge)](https://github.com/has207/xenia-edge/actions/workflows/Linux_build.yml)
+Build (Windows / Linux / macOS arm64 / macOS x86_64): [![CI](https://github.com/has207/xenia-edge/actions/workflows/CI.yml/badge.svg?branch=edge)](https://github.com/has207/xenia-edge/actions/workflows/CI.yml) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/cd506034fd8148309a45034925648499)](https://app.codacy.com/gh/has207/xenia-edge/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 Releases
 --------
