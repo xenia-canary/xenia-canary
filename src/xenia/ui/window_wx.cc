@@ -367,6 +367,12 @@ bool WxWindow::OpenImpl() {
     frame_->ShowFullScreen(true);
   }
 
+#if XE_PLATFORM_MAC
+  // Without this wx uses the legacy fullscreen path, which leaves the
+  // title-bar bit in the styleMask and produces a short content view.
+  frame_->EnableFullScreenView(true);
+#endif
+
   frame_->Show(true);
   render_target()->SetFocus();
 
