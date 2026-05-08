@@ -574,10 +574,14 @@ void EmulatorWindow::OnEmulatorInitialized() {
       return;
     }
 #endif
-    // Exit directly - don't go through window close path which would
-    // spawn a UI process if return_to_ui is set
     xe::FlushLog();
-    std::exit(0);
+    std::thread([]() {
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+      XELOGW("UI loop drain exceeded watchdog timeout, forcing exit");
+      xe::FlushLog();
+      std::_Exit(0);
+    }).detach();
+    app_context_.RequestDeferredQuit();
   });
 
   // Register callback for disc swap to update title bar
@@ -1338,7 +1342,6 @@ void EmulatorWindow::StopTitleAndReturnToList() {
     if (auto cb = emulator_->on_launch_new_title()) {
       cb(/*host_path=*/{}, /*launch_module=*/{}, /*launch_flags=*/0,
          /*launch_data=*/{});
-      // The callback std::exit()s on success.
     }
     return;
   }
@@ -2603,7 +2606,6 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     if (cb) {
       cb(host_path, /*launch_module=*/{}, /*launch_flags=*/0,
          /*launch_data=*/{});
-      // cb calls std::exit() on success.
     }
     return X_STATUS_UNSUCCESSFUL;
 #endif
