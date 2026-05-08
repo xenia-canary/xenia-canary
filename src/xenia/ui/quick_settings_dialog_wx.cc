@@ -288,6 +288,15 @@ void QuickSettingsDialog::Build() {
     remember_label("discord", discord_label);
     add_form_row(grid, discord_label, discord);
 
+#if XE_PLATFORM_WIN32
+    // Other platforms always relaunch out-of-process (see RunTitle), so the
+    // cvar has no effect there.
+    auto* in_proc = add_check(box, "in_process_title_relaunch");
+    auto* in_proc_label = add_label(box, "In-Process Title Relaunch:");
+    remember_label("in_process_title_relaunch", in_proc_label);
+    add_form_row(grid, in_proc_label, in_proc);
+#endif
+
     auto* lang = add_combo(box, "user_language", find_options("user_language"));
     auto* lang_label = add_label(box, "Language:");
     remember_label("user_language", lang_label);
@@ -515,7 +524,8 @@ void QuickSettingsDialog::Save() {
       } catch (...) {
       }
     } else if (name == "fullscreen" || name == "present_letterbox" ||
-               name == "discord" || name == "use_dedicated_xma_thread") {
+               name == "discord" || name == "use_dedicated_xma_thread" ||
+               name == "in_process_title_relaunch") {
       apply(var, toml::value(opt.pending_value == "true"));
     } else {
       apply(var, toml::value(opt.pending_value));
