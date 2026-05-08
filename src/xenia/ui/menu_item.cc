@@ -33,6 +33,14 @@ MenuItem::MenuItem(Type type, const std::string& text,
       hotkey_(hotkey),
       callback_(std::move(callback)) {}
 
+MenuItem::MenuItem(Type type, const std::string& text, bool initially_checked,
+                   std::function<void(bool)> on_toggle)
+    : type_(type),
+      parent_item_(nullptr),
+      text_(text),
+      checked_(initially_checked),
+      toggle_callback_(std::move(on_toggle)) {}
+
 MenuItem::~MenuItem() = default;
 
 void MenuItem::AddChild(MenuItem* child_item) {
@@ -68,6 +76,14 @@ void MenuItem::OnSelected() {
     callback_();
     // Note that this MenuItem might have been destroyed by the callback.
     // Must not do anything with *this in this function from now on.
+  }
+}
+
+void MenuItem::OnToggled() {
+  checked_ = !checked_;
+  if (toggle_callback_) {
+    toggle_callback_(checked_);
+    // *this may have been destroyed by the callback.
   }
 }
 

@@ -25,6 +25,8 @@ class WxMenuItem : public MenuItem {
  public:
   WxMenuItem(Type type, const std::string& text, const std::string& hotkey,
              std::function<void()> callback);
+  WxMenuItem(Type type, const std::string& text, bool initially_checked,
+             std::function<void(bool)> on_toggle);
   ~WxMenuItem() override;
 
   // For kNormal type, returns the wxMenuBar.
@@ -34,8 +36,10 @@ class WxMenuItem : public MenuItem {
   wxMenu* GetMenu() const { return menu_; }
 
   void SetEnabled(bool enabled) override;
+  void SetChecked(bool checked) override;
 
   using MenuItem::OnSelected;
+  using MenuItem::OnToggled;
 
  protected:
   void OnChildAdded(MenuItem* child_item) override;

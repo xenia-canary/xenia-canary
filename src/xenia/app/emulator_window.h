@@ -267,10 +267,14 @@ class EmulatorWindow {
   ui::MenuItem* profile_menu_ = nullptr;
   ui::MenuItem* config_menu_ = nullptr;
   ui::MenuItem* tools_menu_ = nullptr;
+  ui::MenuItem* view_show_toolbar_item_ = nullptr;
+  bool show_toolbar_ = true;
   void RefreshProfileMenu();
   void PopulateProfileMenu(ui::MenuItem* parent);
   void RefreshProfileIcon();
   void ShowProfilePopupMenu();
+  // Show or hide the icon toolbar pane and persist the preference.
+  void SetToolbarVisible(bool visible);
   // Reapply the "render visible iff title open or fullscreen, game list
   // otherwise" invariant. Called on every relevant state change.
   void ApplyContentVisibility();

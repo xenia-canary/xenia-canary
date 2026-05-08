@@ -21,6 +21,13 @@ std::unique_ptr<MenuItem> MenuItem::Create(Type type, const std::string& text,
   return std::make_unique<WxMenuItem>(type, text, hotkey, std::move(callback));
 }
 
+std::unique_ptr<MenuItem> MenuItem::CreateCheck(
+    const std::string& text, bool initially_checked,
+    std::function<void(bool)> on_toggle) {
+  return std::make_unique<WxMenuItem>(Type::kCheck, text, initially_checked,
+                                      std::move(on_toggle));
+}
+
 int WxMenuItem::AllocateId() {
   static std::atomic<int> next_id{wxID_HIGHEST + 1};
   return next_id.fetch_add(1);
@@ -42,7 +49,17 @@ WxMenuItem::WxMenuItem(Type type, const std::string& text,
       break;
     case Type::kSeparator:
       break;
+    case Type::kCheck:
+      wx_id_ = AllocateId();
+      break;
   }
+}
+
+WxMenuItem::WxMenuItem(Type type, const std::string& text,
+                       bool initially_checked,
+                       std::function<void(bool)> on_toggle)
+    : MenuItem(type, text, initially_checked, std::move(on_toggle)) {
+  wx_id_ = AllocateId();
 }
 
 WxMenuItem::~WxMenuItem() {
@@ -52,7 +69,7 @@ WxMenuItem::~WxMenuItem() {
 void WxMenuItem::SetEnabled(bool enabled) {
   if (!parent_item_) return;
   auto* parent_wx = static_cast<WxMenuItem*>(parent_item_);
-  if (type_ == Type::kString && parent_wx->menu_) {
+  if ((type_ == Type::kString || type_ == Type::kCheck) && parent_wx->menu_) {
     parent_wx->menu_->Enable(wx_id_, enabled);
     return;
   }
@@ -97,6 +114,15 @@ void WxMenuItem::OnChildAdded(MenuItem* child_item) {
                     child->wx_id_);
         break;
       }
+      case Type::kCheck: {
+        child->wx_menu_item_ = menu_->AppendCheckItem(
+            child->wx_id_, wxString::FromUTF8(child->text_));
+        child->wx_menu_item_->Check(child->IsChecked());
+        id_to_child_[child->wx_id_] = child;
+        menu_->Bind(wxEVT_MENU, &WxMenuItem::OnMenuItemSelected, this,
+                    child->wx_id_);
+        break;
+      }
       case Type::kSeparator:
         child->wx_menu_item_ = menu_->AppendSeparator();
         break;
@@ -123,7 +149,19 @@ void WxMenuItem::OnChildRemoved(MenuItem* child_item) {
 void WxMenuItem::OnMenuItemSelected(wxCommandEvent& event) {
   auto it = id_to_child_.find(event.GetId());
   if (it == id_to_child_.end()) return;
-  it->second->OnSelected();
+  WxMenuItem* child = it->second;
+  if (child->type() == Type::kCheck) {
+    child->OnToggled();
+  } else {
+    child->OnSelected();
+  }
+}
+
+void WxMenuItem::SetChecked(bool checked) {
+  MenuItem::SetChecked(checked);
+  if (wx_menu_item_ && type_ == Type::kCheck) {
+    wx_menu_item_->Check(checked);
+  }
 }
 
 }  // namespace ui
