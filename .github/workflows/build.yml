@@ -134,7 +134,7 @@ jobs:
           path: artifacts/release
           if-no-files-found: error
 
-  build-macos:
+  build-macos-arm64:
     name: Build macOS ARM64
     needs: lint
     runs-on: macos-26
@@ -189,11 +189,75 @@ jobs:
             artifacts/release/xenia_edge_macos_arm64.dmg
           rm -rf dmg_contents
 
-      - name: Upload xenia edge macOS artifacts
+      - name: Upload xenia edge macOS arm64 artifacts
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_edge_macos
+          name: xenia_edge_macos_arm64
+          path: artifacts/release
+          if-no-files-found: error
+
+  build-macos-x86_64:
+    name: Build macOS x86_64 (cross from arm64)
+    needs: lint
+    # Cross-compiled on the arm64 runner — Apple's Intel runners are much
+    # slower, and Apple clang is universal so -arch x86_64 produces a native
+    # x86_64 binary either way.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        run: |
+          git submodule update --init --depth=1 -j$(sysctl -n hw.ncpu) \
+            $(grep -oE 'path = .+' .gitmodules | sed 's/path = //' \
+              | grep -v 'DirectXShaderCompiler')
+          git submodule update --init --recursive --depth=1 \
+            -j$(sysctl -n hw.ncpu) third_party/wxWidgets
+          ./xenia-build.py fetchdata
+
+      - name: Build
+        run: ./xenia-build.py build --config=Release --target=xenia-app --target-arch=x64
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          app_bundle="build-x64/bin/macOS/Release/Xenia-edge.app"
+          if [ ! -d "$app_bundle" ]; then
+            echo "::error::App bundle not found at $app_bundle"
+            ls -la build-x64/bin/macOS/Release/ 2>&1 || true
+            exit 1
+          fi
+          main_exe="$app_bundle/Contents/MacOS/Xenia-edge"
+          if [ "$(stat -f%z "$main_exe")" -le 100000 ]; then
+            echo "::error::$main_exe is too small."
+            exit 1
+          fi
+          # Confirm we actually produced an x86_64 binary (not arm64).
+          if ! file "$main_exe" | grep -q "x86_64"; then
+            echo "::error::$main_exe is not x86_64:"
+            file "$main_exe"
+            exit 1
+          fi
+
+          mkdir -p dmg_contents
+          cp -R "$app_bundle" dmg_contents/
+          cp LICENSE dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          mkdir -p artifacts/release
+          hdiutil create -volname "Xenia-edge" \
+            -srcfolder dmg_contents -ov -format UDZO \
+            artifacts/release/xenia_edge_macos_x86_64.dmg
+          rm -rf dmg_contents
+
+      - name: Upload xenia edge macOS x86_64 artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64
           path: artifacts/release
           if-no-files-found: error
 
