@@ -116,6 +116,16 @@ void InitFeatureFlags() {
         feature_flags_ |= kX64FlagsIndependentVars;
       }
     }
+#if XE_PLATFORM_MAC
+    // Rosetta 2 on macOS Sequoia (15.0+) translates AVX/AVX2/BMI1/BMI2/FMA,
+    // but doesn't always advertise them via CPUID, so Xbyak misses them. Our
+    // bundle's LSMinimumSystemVersion is 15.0, and every Intel Mac that can
+    // run Sequoia natively (Coffee Lake / Ice Lake / Skylake-W) has AVX2
+    // anyway, so force the bits on here, still subject to the cvar mask.
+    constexpr uint64_t kX64MacForceMask =
+        kX64EmitAVX2 | kX64EmitFMA | kX64EmitBMI1 | kX64EmitBMI2;
+    feature_flags_ |= (cvars::x64_extension_mask & kX64MacForceMask);
+#endif
   }
   {
     unsigned int data[4];
