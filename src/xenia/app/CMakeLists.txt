@@ -1,10 +1,17 @@
 if(WIN32)
   add_executable(xenia-app WIN32)
+elseif(APPLE)
+  add_executable(xenia-app MACOSX_BUNDLE)
 else()
   add_executable(xenia-app)
 endif()
 
-set_target_properties(xenia-app PROPERTIES OUTPUT_NAME "xenia_edge")
+if(APPLE)
+  # Drives the .app bundle directory name and the binary in Contents/MacOS/.
+  set_target_properties(xenia-app PROPERTIES OUTPUT_NAME "Xenia-edge")
+else()
+  set_target_properties(xenia-app PROPERTIES OUTPUT_NAME "xenia_edge")
+endif()
 
 target_sources(xenia-app PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/xenia_main.cc
@@ -122,6 +129,69 @@ elseif(APPLE)
     xenia-hid-keyboard
     xenia-ui-metal
   )
+
+  # macOS .app bundle: identity, Info.plist substitutions, AppIcon.icns,
+  # rpath for frameworks alongside the executable, ad-hoc codesign with the
+  # JIT entitlements so the binary can map writable+executable pages.
+  #
+  # iconutil only accepts a strictly-named .iconset directory, so stage one
+  # in the build tree by copying assets/icon/<size>.png to the canonical
+  # icon_<size>x<size>[@2x].png names.
+  set(_xe_app_icon_src "${PROJECT_SOURCE_DIR}/assets/icon")
+  set(_xe_app_iconset_dir "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.iconset")
+  set(_xe_app_icns "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.icns")
+  set(_xe_app_iconset_pairs
+    16   icon_16x16.png
+    32   icon_16x16@2x.png
+    32   icon_32x32.png
+    64   icon_32x32@2x.png
+    128  icon_128x128.png
+    256  icon_128x128@2x.png
+    256  icon_256x256.png
+    512  icon_256x256@2x.png
+    512  icon_512x512.png
+    1024 icon_512x512@2x.png)
+  set(_xe_app_iconset_copy_cmds
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_xe_app_iconset_dir}")
+  set(_xe_app_iconset_deps "")
+  while(_xe_app_iconset_pairs)
+    list(POP_FRONT _xe_app_iconset_pairs _xe_size _xe_dst)
+    list(APPEND _xe_app_iconset_copy_cmds
+      COMMAND "${CMAKE_COMMAND}" -E copy
+              "${_xe_app_icon_src}/${_xe_size}.png"
+              "${_xe_app_iconset_dir}/${_xe_dst}")
+    list(APPEND _xe_app_iconset_deps "${_xe_app_icon_src}/${_xe_size}.png")
+  endwhile()
+  add_custom_command(
+    OUTPUT "${_xe_app_icns}"
+    ${_xe_app_iconset_copy_cmds}
+    COMMAND iconutil --convert icns
+            --output "${_xe_app_icns}"
+            "${_xe_app_iconset_dir}"
+    DEPENDS ${_xe_app_iconset_deps}
+    VERBATIM)
+  target_sources(xenia-app PRIVATE "${_xe_app_icns}")
+  set_source_files_properties("${_xe_app_icns}" PROPERTIES
+    GENERATED TRUE
+    MACOSX_PACKAGE_LOCATION Resources)
+
+  set_target_properties(xenia-app PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
+    MACOSX_BUNDLE_BUNDLE_NAME "Xenia-edge"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.xenia.edge"
+    MACOSX_BUNDLE_BUNDLE_VERSION "1"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    MACOSX_BUNDLE_ICON_FILE "AppIcon.icns")
+
+  target_link_options(xenia-app PRIVATE
+    "-Wl,-rpath,@executable_path/../Frameworks"
+    "-Wl,-rpath,@loader_path/../Frameworks")
+
+  add_custom_command(TARGET xenia-app POST_BUILD
+    COMMAND codesign --force --deep --sign -
+            --entitlements "${PROJECT_SOURCE_DIR}/xenia.entitlements"
+            "$<TARGET_BUNDLE_DIR:xenia-app>"
+    VERBATIM)
 endif()
 
 xe_target_defaults(xenia-app)
