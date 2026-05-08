@@ -70,10 +70,13 @@ message(STATUS "Target architecture: XE_TARGET_AARCH64=${XE_TARGET_AARCH64} XE_T
 option(XENIA_BUILD_TESTS "Build test suites" OFF)
 option(XENIA_BUILD_MISC "Build misc subprojects (trace viewers, shader compiler, vfs-dump, demos)" OFF)
 option(XENIA_ENABLE_LTO "Enable link-time optimization in Release (slow link)" ON)
+option(XENIA_ENABLE_PROFILER "Enable profiler (UI is Debug-only)" OFF)
 
-# Toggle profiler. UI is Debug-only — shutdown dump spams the log otherwise.
-add_compile_definitions(XE_OPTION_PROFILING=1)
-add_compile_definitions($<$<CONFIG:Debug>:XE_OPTION_PROFILING_UI=1>)
+if(XENIA_ENABLE_PROFILER)
+  # UI is Debug-only — shutdown dump spams the log otherwise.
+  add_compile_definitions(XE_OPTION_PROFILING=1)
+  add_compile_definitions($<$<CONFIG:Debug>:XE_OPTION_PROFILING_UI=1>)
+endif()
 
 if(XENIA_BUILD_TESTS)
   enable_testing()

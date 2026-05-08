@@ -565,18 +565,21 @@ def get_build_dir(target_arch=None):
 
 
 def run_cmake_configure(cc=None, generator=None, build_tests=False,
-                        disable_lto=False, target_arch=None, config=None):
+                        disable_lto=False, enable_profiler=False,
+                        target_arch=None, config=None):
     """Runs `cmake` to (re)configure build/ from the source root.
 
     Uses Ninja Multi-Config by default on all platforms. On Linux the
     C/C++ compilers come from get_cc() / the CC env var; on Windows the
     detected Visual Studio toolchain wins. build_tests toggles
     -DXENIA_BUILD_TESTS=ON; disable_lto toggles -DXENIA_ENABLE_LTO=OFF
-    (faster Release link, at the cost of LTO's whole-program opts).
-    target_arch enables cross-compilation on Windows (arm64↔x64 via the
-    MSVC cross-compiler) and macOS (arm64↔x86_64 via clang's -arch and
-    CMAKE_OSX_ARCHITECTURES) into a separate build-<arch>/ tree; Linux
-    rejects non-native target_arch.
+    (faster Release link, at the cost of LTO's whole-program opts);
+    enable_profiler toggles -DXENIA_ENABLE_PROFILER=ON (microprofile
+    instrumentation; UI overlay only in Debug, profile.html dump on
+    shutdown otherwise). target_arch enables cross-compilation on
+    Windows (arm64↔x64 via the MSVC cross-compiler) and macOS
+    (arm64↔x86_64 via clang's -arch and CMAKE_OSX_ARCHITECTURES) into a
+    separate build-<arch>/ tree; Linux rejects non-native target_arch.
     """
     # Cross-compilation via --target-arch is only supported on Windows
     # (MSVC cross toolchain) and macOS (universal clang). On Linux it would
@@ -666,6 +669,7 @@ def run_cmake_configure(cc=None, generator=None, build_tests=False,
                   f"'MSVC {target.upper()} build tools' in Visual Studio.")
     args += [f"-DXENIA_BUILD_TESTS={'ON' if build_tests else 'OFF'}"]
     args += [f"-DXENIA_ENABLE_LTO={'OFF' if disable_lto else 'ON'}"]
+    args += [f"-DXENIA_ENABLE_PROFILER={'ON' if enable_profiler else 'OFF'}"]
     if config:
         args += [f"-DCMAKE_BUILD_TYPE={config.title()}"]
     ret = subprocess.call(args)
@@ -882,6 +886,12 @@ class BaseBuildCommand(Command):
                  "(sets -DXENIA_ENABLE_LTO=OFF). Much faster Release link "
                  "at the cost of whole-program opts.")
         self.parser.add_argument(
+            "--enable-profiler", dest="enable_profiler", action="store_true",
+            default=False,
+            help="Enables the microprofile profiler (sets "
+                 "-DXENIA_ENABLE_PROFILER=ON). UI overlay is built only in "
+                 "Debug; otherwise dumps profile.html on shutdown.")
+        self.parser.add_argument(
             "--target-arch", type=normalize_target_arch, default=None,
             help="Target architecture (arm64/aarch64/a64, x64/amd64/x86_64/x86). "
                  "On Windows and macOS, non-native values enable cross-compilation "
@@ -895,6 +905,7 @@ class BaseBuildCommand(Command):
                 cc=args["cc"],
                 build_tests=args["build_tests"],
                 disable_lto=args["disable_lto"],
+                enable_profiler=args["enable_profiler"],
                 target_arch=target_arch,
                 config=args["config"],
             )

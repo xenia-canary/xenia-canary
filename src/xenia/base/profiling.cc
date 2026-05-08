@@ -112,11 +112,18 @@ void Profiler::Dump() {
 #if XE_OPTION_PROFILING_UI
   MicroProfileDumpTimers();
 #endif  // XE_OPTION_PROFILING_UI
-  // MicroProfileDumpHtml("profile.html");
-  // MicroProfileDumpHtmlToFile();
+  if (FILE* f = fopen("profile.html", "w")) {
+    MicroProfileDumpHtml(
+        MicroProfileWriteFile, f,
+        MICROPROFILE_MAX_FRAME_HISTORY - MICROPROFILE_GPU_FRAME_DELAY - 3,
+        nullptr);
+    fclose(f);
+    XELOGI("Profiler dump written to profile.html");
+  }
 }
 
 void Profiler::Shutdown() {
+  Dump();
   SetUserIO(0, nullptr, nullptr, nullptr);
   window_ = nullptr;
   MicroProfileShutdown();
