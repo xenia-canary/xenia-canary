@@ -275,6 +275,9 @@ class EmulatorWindow {
   void ShowProfilePopupMenu();
   // Show or hide the icon toolbar pane and persist the preference.
   void SetToolbarVisible(bool visible);
+  // Show the quick-settings dialog (toolbar settings icon and Configuration >
+  // Main both route here).
+  void ShowQuickSettings();
   // Reapply the "render visible iff title open or fullscreen, game list
   // otherwise" invariant. Called on every relevant state change.
   void ApplyContentVisibility();

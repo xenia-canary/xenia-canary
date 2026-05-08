@@ -689,6 +689,9 @@ bool EmulatorWindow::Initialize() {
     // actually compiled in.
     auto config_menu =
         MenuItem::Create(MenuItem::Type::kPopup, "&Configuration");
+    config_menu->AddChild(MenuItem::Create(MenuItem::Type::kString, "&Main", "",
+                                           [this]() { ShowQuickSettings(); }));
+    config_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     if (cvar::ConfigVars) {
       std::set<std::string> categories;
       for (const auto& [name, var] : *cvar::ConfigVars) {
@@ -842,17 +845,7 @@ bool EmulatorWindow::Initialize() {
             if (emulator_->is_title_open()) {
               ToggleContextMenu(false);
             } else {
-              auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
-              int rc;
-              {
-                QuickSettingsDialog dlg(
-                    wx_window ? wx_window->frame() : nullptr, this);
-                rc = dlg.ShowModal();
-              }
-              if (rc == QuickSettingsDialog::kReturnAdvancedRequested) {
-                config::ReloadConfig();
-                ToggleConfigDialog();
-              }
+              ShowQuickSettings();
             }
           },
           kToolIdSettings);
@@ -1460,6 +1453,19 @@ void EmulatorWindow::ApplyContentVisibility() {
   // launches.
   if (config_menu_) config_menu_->SetEnabled(!title_open);
   if (tools_menu_) tools_menu_->SetEnabled(!title_open);
+}
+
+void EmulatorWindow::ShowQuickSettings() {
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  int rc;
+  {
+    QuickSettingsDialog dlg(wx_window ? wx_window->frame() : nullptr, this);
+    rc = dlg.ShowModal();
+  }
+  if (rc == QuickSettingsDialog::kReturnAdvancedRequested) {
+    config::ReloadConfig();
+    ToggleConfigDialog();
+  }
 }
 
 void EmulatorWindow::SetToolbarVisible(bool visible) {
