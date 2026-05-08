@@ -190,15 +190,11 @@ dword_result_t XamUserGetGamerTag_entry(dword_t user_index, dword_t buffer,
 DECLARE_XAM_EXPORT1(XamUserGetGamerTag, kUserProfiles, kImplemented);
 
 // https://github.com/oukiar/freestyledash/blob/master/Freestyle/Tools/Generic/xboxtools.cpp
-uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
-                                      uint32_t xuid_count, be<uint64_t>* xuids,
-                                      uint32_t setting_count,
-                                      be<uint32_t>* setting_ids, uint32_t unk,
-                                      be<uint32_t>* buffer_size_ptr,
-                                      uint8_t* buffer,
-                                      lpvoid_t overlapped_ptr) {
-  assert_zero(unk);  // probably flags
-
+uint32_t XamUserReadProfileSettingsEx(
+    uint32_t title_id, uint32_t user_index, uint32_t xuid_count,
+    be<uint64_t>* xuids, uint32_t setting_count, be<uint32_t>* setting_ids,
+    uint32_t unused, be<uint32_t>* buffer_size_ptr, uint8_t* buffer,
+    lpvoid_t overlapped_ptr) {
   // must have at least 1 to 32 settings
   if (setting_count < 1 || setting_count > 32) {
     return X_ERROR_INVALID_PARAMETER;
@@ -339,10 +335,11 @@ DECLARE_XAM_EXPORT1(XamUserReadProfileSettings, kUserProfiles, kImplemented);
 dword_result_t XamUserReadProfileSettingsEx_entry(
     dword_t title_id, dword_t user_index, dword_t xuid_count, lpqword_t xuids,
     dword_t setting_count, lpdword_t setting_ids, lpdword_t buffer_size_ptr,
-    dword_t unk_2, lpvoid_t buffer_ptr, lpvoid_t overlapped) {
-  return XamUserReadProfileSettingsEx(title_id, user_index, xuid_count, xuids,
-                                      setting_count, setting_ids, unk_2,
-                                      buffer_size_ptr, buffer_ptr, overlapped);
+    lpdword_t unkn_buffer_size_ptr, lpvoid_t buffer_ptr, lpvoid_t overlapped) {
+  return XamUserReadProfileSettingsEx(
+      title_id, user_index, xuid_count, xuids, setting_count, setting_ids, 0,
+      buffer_size_ptr ? buffer_size_ptr : unkn_buffer_size_ptr, buffer_ptr,
+      overlapped);
 }
 DECLARE_XAM_EXPORT1(XamUserReadProfileSettingsEx, kUserProfiles, kImplemented);
 
