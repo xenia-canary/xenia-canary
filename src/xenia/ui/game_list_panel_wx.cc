@@ -25,6 +25,7 @@
 #include <wx/menu.h>
 #include <wx/msgdlg.h>
 #include <wx/mstream.h>
+#include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/textdlg.h>
 #include <wx/variant.h>
@@ -279,8 +280,8 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   // width regardless of flags. Pre-empt that by stretching the Title column
   // ourselves so the last column has no slack to absorb.
   const int min_title_width = char_w * 20;
-  list_->Bind(wxEVT_SIZE, [this, last_played_width,
-                           min_title_width](wxSizeEvent& event) {
+  list_->Bind(wxEVT_SIZE, [this, last_played_width, min_title_width,
+                           char_w](wxSizeEvent& event) {
     event.Skip();
     if (list_->GetColumnCount() < 6) return;
     list_->GetColumn(5)->SetWidth(last_played_width);
@@ -290,6 +291,12 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
       fixed += list_->GetColumn(i)->GetWidth();
     }
     int avail = list_->GetClientSize().GetWidth();
+#if XE_PLATFORM_MAC
+    // wx's DoGetClientSize doesn't subtract NSScrollView's own scroller, and
+    // NSOutlineView adds intercell spacing + per-cell insets that aren't in
+    // the widths we set. Reserve enough to absorb all of it.
+    avail -= wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, list_) + char_w * 10;
+#endif
     list_->GetColumn(2)->SetWidth(std::max(avail - fixed, min_title_width));
   });
 
