@@ -635,11 +635,91 @@ if(WIN32)
   target_include_directories(SDL2 PUBLIC SDL2/include)
   target_link_libraries(SDL2 PRIVATE setupapi winmm imm32 version)
 elseif(APPLE)
-  # Use system SDL2 framework on macOS
-  add_library(SDL2 INTERFACE)
-  find_library(SDL2_LIBRARY SDL2 REQUIRED)
-  target_include_directories(SDL2 INTERFACE "${SDL2_LIBRARY}/Headers")
-  target_link_libraries(SDL2 INTERFACE "${SDL2_LIBRARY}")
+  # Build SDL2 from source on macOS. SDL2's auto-detected SDL_config_macosx.h
+  # selects the CoreAudio audio, Cocoa video, IOKit joystick/haptic, MFi
+  # controller, pthread, and dlopen subsystems wired up below; SDL_RENDER_DISABLED
+  # keeps the renderer subsystem out (xenia drives Metal directly).
+  file(GLOB _sdl2_sources
+    "SDL2/src/*.c"
+    "SDL2/src/atomic/*.c"
+    "SDL2/src/audio/*.c"
+    "SDL2/src/audio/coreaudio/*.m"
+    "SDL2/src/audio/disk/*.c"
+    "SDL2/src/audio/dummy/*.c"
+    "SDL2/src/cpuinfo/*.c"
+    "SDL2/src/dynapi/*.c"
+    "SDL2/src/events/*.c"
+    "SDL2/src/file/*.c"
+    "SDL2/src/file/cocoa/*.m"
+    "SDL2/src/filesystem/cocoa/*.m"
+    "SDL2/src/haptic/*.c"
+    "SDL2/src/haptic/darwin/*.c"
+    "SDL2/src/hidapi/*.c"
+    "SDL2/src/joystick/*.c"
+    "SDL2/src/joystick/darwin/*.c"
+    "SDL2/src/joystick/dummy/*.c"
+    "SDL2/src/joystick/hidapi/*.c"
+    "SDL2/src/joystick/iphoneos/*.m"
+    "SDL2/src/joystick/virtual/*.c"
+    "SDL2/src/libm/*.c"
+    "SDL2/src/loadso/dlopen/*.c"
+    "SDL2/src/locale/*.c"
+    "SDL2/src/locale/macosx/*.m"
+    "SDL2/src/misc/*.c"
+    "SDL2/src/misc/macosx/*.m"
+    "SDL2/src/power/*.c"
+    "SDL2/src/power/macosx/*.c"
+    "SDL2/src/render/*.c"
+    "SDL2/src/sensor/*.c"
+    "SDL2/src/sensor/dummy/*.c"
+    "SDL2/src/stdlib/*.c"
+    "SDL2/src/thread/*.c"
+    "SDL2/src/thread/pthread/*.c"
+    "SDL2/src/timer/*.c"
+    "SDL2/src/timer/unix/*.c"
+    "SDL2/src/video/*.c"
+    "SDL2/src/video/cocoa/*.m"
+    "SDL2/src/video/dummy/*.c"
+    "SDL2/src/video/yuv2rgb/*.c"
+  )
+  add_library(SDL2 STATIC ${_sdl2_sources})
+  target_compile_definitions(SDL2 PRIVATE
+    HAVE_LIBC
+    SDL_LEAN_AND_MEAN
+    SDL_RENDER_DISABLED
+    # Apple ships CGL but not <EGL/egl.h>. SDL_USE_BUILTIN_OPENGL_DEFINITIONS
+    # makes SDL_egl.h provide stub EGL typedefs, which is enough for the
+    # whole EGL family (SDL_egl.c, SDL_cocoaopengles.m) to compile — the
+    # actual EGL entry points are runtime-loaded via dlopen("libEGL.so") and
+    # only fail if an app explicitly asks for SDL_GL_CONTEXT_PROFILE_ES.
+    SDL_USE_BUILTIN_OPENGL_DEFINITIONS
+  )
+  # SDL_mfijoystick.m uses __weak — requires ARC. Other .m files don't rely
+  # on explicit retain/release, so ARC across the whole OBJC set is safe.
+  target_compile_options(SDL2 PRIVATE
+    $<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>
+  )
+  target_include_directories(SDL2 PUBLIC SDL2/include)
+  target_link_libraries(SDL2 PRIVATE
+    "-framework AVFoundation"
+    "-framework AudioToolbox"
+    "-framework Carbon"
+    "-framework Cocoa"
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+    "-framework CoreGraphics"
+    "-framework CoreHaptics"
+    "-framework CoreServices"
+    "-framework CoreVideo"
+    "-framework ForceFeedback"
+    "-framework Foundation"
+    "-framework GameController"
+    "-framework IOKit"
+    "-framework Metal"
+    "-framework OpenGL"
+    "-framework QuartzCore"
+    iconv
+  )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Use system SDL2 on Linux
   add_library(SDL2 INTERFACE)
