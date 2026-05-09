@@ -9,6 +9,7 @@
 
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
 
+#include "xenia/base/logging.h"
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #include "xenia/ui/vulkan/vulkan_provider.h"
 #include "xenia/xbox.h"
@@ -28,6 +29,10 @@ X_STATUS VulkanGraphicsSystem::Setup(cpu::Processor* processor,
                                      ui::WindowedAppContext* app_context,
                                      bool with_presentation) {
   provider_ = xe::ui::vulkan::VulkanProvider::Create(true, with_presentation);
+  if (!provider_) {
+    XELOGE("Vulkan provider creation failed");
+    return X_STATUS_UNSUCCESSFUL;
+  }
   return GraphicsSystem::Setup(processor, kernel_state, app_context,
                                with_presentation);
 }
