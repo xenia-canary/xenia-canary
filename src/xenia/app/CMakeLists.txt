@@ -89,14 +89,12 @@ target_link_libraries(xenia-app PRIVATE
   xenia-hid-sdl
 )
 
-# Vulkan/SPIR-V backends (not macOS)
-if(NOT APPLE)
-  target_link_libraries(xenia-app PRIVATE
-    xenia-gpu-vulkan
-    xenia-ui-vulkan
-    glslang-spirv
-  )
-endif()
+# Vulkan/SPIR-V backends.
+target_link_libraries(xenia-app PRIVATE
+  xenia-gpu-vulkan
+  xenia-ui-vulkan
+  glslang-spirv
+)
 
 # Architecture-specific backend
 if(XE_TARGET_X86_64)

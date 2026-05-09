@@ -49,9 +49,7 @@
 
 // Available graphics systems:
 #include "xenia/gpu/null/null_graphics_system.h"
-#if !XE_PLATFORM_MAC
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
-#endif
 #if XE_PLATFORM_WIN32
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #endif  // XE_PLATFORM_WIN32
@@ -88,7 +86,7 @@ DEFINE_string(gpu, "vulkan", "Graphics system. Use: " GPU_OPTIONS, "GPU");
 DEFINE_string(hid, "sdl", "Input system. Use: " HID_OPTIONS, "HID");
 #elif XE_PLATFORM_MAC
 #define APU_OPTIONS "[sdl, nop]"
-#define GPU_OPTIONS "[metal, null]"
+#define GPU_OPTIONS "[metal, vulkan, null]"
 #define HID_OPTIONS "[sdl, nop]"
 DEFINE_string(apu, "sdl", "Audio system. Use: " APU_OPTIONS, "APU");
 DEFINE_string(gpu, "metal", "Graphics system. Use: " GPU_OPTIONS, "GPU");
@@ -498,9 +496,7 @@ std::unique_ptr<gpu::GraphicsSystem> EmulatorApp::CreateGraphicsSystem() {
 #if XE_PLATFORM_WIN32
   factory.Add<gpu::d3d12::D3D12GraphicsSystem>("d3d12");
 #endif  // XE_PLATFORM_WIN32
-#if !XE_PLATFORM_MAC
   factory.Add<gpu::vulkan::VulkanGraphicsSystem>("vulkan");
-#endif
 #if XE_PLATFORM_MAC
   factory.Add<gpu::metal::MetalGraphicsSystem>("metal");
 #endif  // XE_PLATFORM_MAC

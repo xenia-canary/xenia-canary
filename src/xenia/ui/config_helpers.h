@@ -79,7 +79,7 @@ GetKnownEnumOptions() {
       {"apu", {"alsa", "sdl", "nop"}},
       {"hid", {"sdl", "nop"}},
 #elif XE_PLATFORM_MAC
-      {"gpu", {"metal", "null"}},
+      {"gpu", {"metal", "vulkan", "null"}},
       {"apu", {"nop", "sdl"}},
       {"hid", {"sdl", "nop"}},
 #else
