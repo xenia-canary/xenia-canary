@@ -30,6 +30,32 @@ bool MacNSViewSurface::GetSizeImpl(uint32_t& width_out, uint32_t& height_out) co
   return true;
 }
 
+double MacNSViewSurface::GetBackingScale() const {
+  if (!view_) {
+    return 1.0;
+  }
+
+  NSScreen* screen = [view_ window].screen;
+  if (!screen) {
+    screen = NSScreen.mainScreen;
+  }
+  return screen ? screen.backingScaleFactor : 1.0;
+}
+
+void MacNSViewSurface::ConfigureMetalLayer(uint32_t drawable_width, uint32_t drawable_height,
+                                           double contents_scale) const {
+  CAMetalLayer* metal_layer = GetOrCreateMetalLayer();
+  if (!metal_layer) {
+    return;
+  }
+
+  CALayer* main_layer = [view_ layer];
+  metal_layer.frame = main_layer.bounds;
+  metal_layer.contentsScale = contents_scale;
+  metal_layer.drawableSize =
+      CGSizeMake(drawable_width * contents_scale, drawable_height * contents_scale);
+}
+
 CAMetalLayer* MacNSViewSurface::GetOrCreateMetalLayer() const {
   if (!view_) {
     return nullptr;

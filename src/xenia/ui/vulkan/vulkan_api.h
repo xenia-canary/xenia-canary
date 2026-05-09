@@ -27,6 +27,12 @@
 #endif
 #endif
 
+#if XE_PLATFORM_MAC
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+#endif
+
 #if XE_PLATFORM_GNU_LINUX
 // Support both XCB (X11) and Wayland on Linux
 #ifndef VK_USE_PLATFORM_XCB_KHR

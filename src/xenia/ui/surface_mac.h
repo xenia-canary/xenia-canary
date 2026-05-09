@@ -21,7 +21,9 @@
 // Match wx/defs.h's DECLARE_WXCOCOA_OBJC_CLASS pattern so non-Obj-C TUs that
 // include both headers don't hit a typedef/struct redefinition.
 struct NSView;
+#ifndef VULKAN_METAL_H_
 struct CAMetalLayer;
+#endif
 #endif
 
 namespace xe {
@@ -32,6 +34,9 @@ class MacNSViewSurface final : public Surface {
   explicit MacNSViewSurface(NSView* view) : view_(view) {}
   TypeIndex GetType() const override { return kTypeIndex_MacNSView; }
   NSView* view() const { return view_; }
+  double GetBackingScale() const;
+  void ConfigureMetalLayer(uint32_t drawable_width, uint32_t drawable_height,
+                           double contents_scale) const;
   CAMetalLayer* GetOrCreateMetalLayer() const;
 
  protected:

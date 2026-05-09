@@ -9,6 +9,7 @@
 
 #include "xenia/ui/vulkan/vulkan_instance.h"
 
+#include <cstdlib>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -20,7 +21,7 @@
 #include "xenia/base/platform.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
 #include <dlfcn.h>
 #elif XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
@@ -59,6 +60,43 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   vulkan_instance->loader_ = dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
   if (!vulkan_instance->loader_) {
     XELOGE("Failed to load {}", loader_library_name);
+    return nullptr;
+  }
+#define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
+  functions_loaded &=                                                    \
+      (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
+      nullptr;
+#elif XE_PLATFORM_MAC
+  std::vector<const char*> loader_library_names;
+  const char* const moltenvk_path = std::getenv("MOLTENVK_ICD_DYLIB_PATH");
+  if (moltenvk_path && moltenvk_path[0]) {
+    loader_library_names.push_back(moltenvk_path);
+  }
+  loader_library_names.insert(
+      loader_library_names.end(),
+      {
+          "@executable_path/../Frameworks/MoltenVK.framework/MoltenVK",
+          "@loader_path/../Frameworks/MoltenVK.framework/MoltenVK",
+          "@executable_path/../Frameworks/libMoltenVK.dylib",
+          "@loader_path/../Frameworks/libMoltenVK.dylib",
+          "libMoltenVK.dylib",
+          "/opt/homebrew/lib/libMoltenVK.dylib",
+          "/usr/local/lib/libMoltenVK.dylib",
+          "libvulkan.1.dylib",
+          "libvulkan.dylib",
+      });
+  for (const char* const loader_library_name : loader_library_names) {
+    vulkan_instance->loader_ =
+        dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
+    if (vulkan_instance->loader_) {
+      XELOGI("Loaded Vulkan loader {}", loader_library_name);
+      break;
+    }
+  }
+  if (!vulkan_instance->loader_) {
+    XELOGE(
+        "Failed to load MoltenVK or the Vulkan loader. Install MoltenVK or "
+        "set MOLTENVK_ICD_DYLIB_PATH to the MoltenVK dynamic library path.");
     return nullptr;
   }
 #define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
@@ -157,6 +195,12 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     requested_extensions.emplace(
         "VK_KHR_android_surface",
         &vulkan_instance->extensions_.ext_KHR_android_surface);
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    // #218.
+    requested_extensions.emplace(
+        "VK_EXT_metal_surface",
+        &vulkan_instance->extensions_.ext_EXT_metal_surface);
 #endif
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     // #10.
@@ -486,6 +530,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
 #include "xenia/ui/vulkan/functions/instance_khr_android_surface.inc"
   }
 #endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+  if (vulkan_instance->extensions_.ext_EXT_metal_surface) {
+#include "xenia/ui/vulkan/functions/instance_ext_metal_surface.inc"
+  }
+#endif
 #ifdef VK_USE_PLATFORM_WIN32_KHR
   if (vulkan_instance->extensions_.ext_KHR_win32_surface) {
 #include "xenia/ui/vulkan/functions/instance_khr_win32_surface.inc"
@@ -590,7 +639,7 @@ VulkanInstance::~VulkanInstance() {
     functions_.vkDestroyInstance(instance_, nullptr);
   }
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   if (loader_) {
     dlclose(loader_);
   }

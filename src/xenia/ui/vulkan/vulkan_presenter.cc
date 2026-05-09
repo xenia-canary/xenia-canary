@@ -21,6 +21,9 @@
 #if XE_PLATFORM_ANDROID
 #include "xenia/ui/surface_android.h"
 #endif
+#if XE_PLATFORM_MAC
+#include "xenia/ui/surface_mac.h"
+#endif
 #if XE_PLATFORM_GNU_LINUX
 #include "xenia/ui/surface_gnulinux.h"
 #endif
@@ -48,6 +51,11 @@ DEFINE_bool(
     "may present with tearing if frames don't meet the host display refresh "
     "rate.",
     "Vulkan");
+#if XE_PLATFORM_MAC
+DEFINE_bool(vulkan_presenter_use_backing_scale, false,
+            "Use the macOS view backing scale factor for MoltenVK drawables.",
+            "Vulkan");
+#endif  // XE_PLATFORM_MAC
 
 namespace xe {
 namespace ui {
@@ -201,6 +209,11 @@ Surface::TypeFlags VulkanPresenter::GetSurfaceTypesSupportedByInstance(
 #if XE_PLATFORM_ANDROID
   if (instance_extensions.ext_KHR_android_surface) {
     type_flags |= Surface::kTypeFlag_AndroidNativeWindow;
+  }
+#endif
+#if XE_PLATFORM_MAC
+  if (instance_extensions.ext_EXT_metal_surface) {
+    type_flags |= Surface::kTypeFlag_MacNSView;
   }
 #endif
 #if XE_PLATFORM_GNU_LINUX
@@ -535,6 +548,17 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(
   // awaiting completion of the usage of the swapchain and the surface on the
   // GPU.
   if (paint_context_.vulkan_surface != VK_NULL_HANDLE) {
+#if XE_PLATFORM_MAC
+    if (new_surface.GetType() == Surface::kTypeIndex_MacNSView) {
+      auto& mac_nsview_surface =
+          static_cast<const MacNSViewSurface&>(new_surface);
+      const double contents_scale = cvars::vulkan_presenter_use_backing_scale
+                                        ? mac_nsview_surface.GetBackingScale()
+                                        : 1.0;
+      mac_nsview_surface.ConfigureMetalLayer(
+          new_surface_width, new_surface_height, contents_scale);
+    }
+#endif  // XE_PLATFORM_MAC
     VkSwapchainKHR old_swapchain =
         paint_context_.PrepareForSwapchainRetirement();
     bool surface_unusable;
@@ -615,6 +639,33 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(
                                       &paint_context_.vulkan_surface);
       } break;
 #endif
+#if XE_PLATFORM_MAC
+      case Surface::kTypeIndex_MacNSView: {
+        auto& mac_nsview_surface =
+            static_cast<const MacNSViewSurface&>(new_surface);
+        const double contents_scale = cvars::vulkan_presenter_use_backing_scale
+                                          ? mac_nsview_surface.GetBackingScale()
+                                          : 1.0;
+        mac_nsview_surface.ConfigureMetalLayer(
+            new_surface_width, new_surface_height, contents_scale);
+        CAMetalLayer* const metal_layer =
+            mac_nsview_surface.GetOrCreateMetalLayer();
+        if (!metal_layer) {
+          XELOGE(
+              "VulkanPresenter: Failed to create a CAMetalLayer for MoltenVK");
+          return SurfacePaintConnectResult::kFailureSurfaceUnusable;
+        }
+        VkMetalSurfaceCreateInfoEXT surface_create_info;
+        surface_create_info.sType =
+            VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+        surface_create_info.pNext = nullptr;
+        surface_create_info.flags = 0;
+        surface_create_info.pLayer = metal_layer;
+        vulkan_surface_create_result =
+            ifn.vkCreateMetalSurfaceEXT(instance, &surface_create_info, nullptr,
+                                        &paint_context_.vulkan_surface);
+      } break;
+#endif  // XE_PLATFORM_MAC
 #if XE_PLATFORM_WIN32
       case Surface::kTypeIndex_Win32Hwnd: {
         auto& win32_hwnd_surface =
