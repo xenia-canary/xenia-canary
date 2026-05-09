@@ -230,6 +230,8 @@ if(APPLE)
     COMMAND codesign --force --deep --sign -
             --entitlements "${PROJECT_SOURCE_DIR}/xenia.entitlements"
             "$<TARGET_BUNDLE_DIR:xenia-app>"
+    # Strip macos-26 provenance/macl xattrs so AMFI on macOS 15 accepts the seal.
+    COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:xenia-app>"
     VERBATIM)
 endif()
 
