@@ -186,12 +186,6 @@ elseif(APPLE)
   target_link_options(xenia-app PRIVATE
     "-Wl,-rpath,@executable_path/../Frameworks"
     "-Wl,-rpath,@loader_path/../Frameworks")
-
-  add_custom_command(TARGET xenia-app POST_BUILD
-    COMMAND codesign --force --deep --sign -
-            --entitlements "${PROJECT_SOURCE_DIR}/xenia.entitlements"
-            "$<TARGET_BUNDLE_DIR:xenia-app>"
-    VERBATIM)
 endif()
 
 xe_target_defaults(xenia-app)
@@ -226,6 +220,17 @@ endforeach()
 if(_xe_mo_outputs)
   add_custom_target(xenia-locale ALL DEPENDS ${_xe_mo_outputs})
   add_dependencies(xenia-app xenia-locale)
+endif()
+
+# Sign the bundle last, after every POST_BUILD step that drops files into
+# it (locales, etc.) — otherwise Gatekeeper rejects the downloaded artifact
+# with "a sealed resource is missing or invalid".
+if(APPLE)
+  add_custom_command(TARGET xenia-app POST_BUILD
+    COMMAND codesign --force --deep --sign -
+            --entitlements "${PROJECT_SOURCE_DIR}/xenia.entitlements"
+            "$<TARGET_BUNDLE_DIR:xenia-app>"
+    VERBATIM)
 endif()
 
 # Bake icons into the app binary (font lives with xenia-ui).
