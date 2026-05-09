@@ -159,6 +159,9 @@ jobs:
           # Fetch data repos (game-patches)
           ./xenia-build.py fetchdata
 
+      - name: Install Metal Toolchain
+        run: sudo xcodebuild -downloadComponent MetalToolchain
+
       - name: Build
         run: ./xenia-build.py build --config=Release --target=xenia-app
 
@@ -217,6 +220,9 @@ jobs:
           git submodule update --init --recursive --depth=1 \
             -j$(sysctl -n hw.ncpu) third_party/wxWidgets
           ./xenia-build.py fetchdata
+
+      - name: Install Metal Toolchain
+        run: sudo xcodebuild -downloadComponent MetalToolchain
 
       - name: Build
         run: ./xenia-build.py build --config=Release --target=xenia-app --target-arch=x64
