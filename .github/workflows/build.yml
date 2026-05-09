@@ -160,7 +160,20 @@ jobs:
           ./xenia-build.py fetchdata
 
       - name: Install Metal Toolchain
-        run: sudo xcodebuild -downloadComponent MetalToolchain
+        # Apple's MobileAsset catalog fetch is flaky; retry with backoff.
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if sudo xcodebuild -downloadComponent MetalToolchain; then
+              exit 0
+            fi
+            if [ $attempt -lt 5 ]; then
+              delay=$((attempt * 30))
+              echo "::warning::MetalToolchain download attempt $attempt failed; retrying in ${delay}s"
+              sleep $delay
+            fi
+          done
+          echo "::error::MetalToolchain download failed after 5 attempts"
+          exit 1
 
       - name: Build
         run: ./xenia-build.py build --config=Release --target=xenia-app
@@ -222,7 +235,20 @@ jobs:
           ./xenia-build.py fetchdata
 
       - name: Install Metal Toolchain
-        run: sudo xcodebuild -downloadComponent MetalToolchain
+        # Apple's MobileAsset catalog fetch is flaky; retry with backoff.
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if sudo xcodebuild -downloadComponent MetalToolchain; then
+              exit 0
+            fi
+            if [ $attempt -lt 5 ]; then
+              delay=$((attempt * 30))
+              echo "::warning::MetalToolchain download attempt $attempt failed; retrying in ${delay}s"
+              sleep $delay
+            fi
+          done
+          echo "::error::MetalToolchain download failed after 5 attempts"
+          exit 1
 
       - name: Build
         run: ./xenia-build.py build --config=Release --target=xenia-app --target-arch=x64
