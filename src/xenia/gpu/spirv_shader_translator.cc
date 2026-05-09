@@ -772,15 +772,16 @@ void SpirvShaderTranslator::StartTranslation() {
     id_vector_temp_.push_back(main_rect_list_loop_continue_->getId());
     main_rect_list_loop_vertex_index_ =
         builder_->createOp(spv::OpPhi, type_int_, id_vector_temp_);
+    spv::Id main_rect_list_loop_condition = builder_->createBinOp(
+        spv::OpSLessThan, type_bool_, main_rect_list_loop_vertex_index_,
+        builder_->makeIntConstant(3));
     uint_vector_temp_.clear();
     builder_->createLoopMerge(
         main_rect_list_loop_merge_, main_rect_list_loop_continue_,
         spv::LoopControlDontUnrollMask, uint_vector_temp_);
-    builder_->createConditionalBranch(
-        builder_->createBinOp(spv::OpSLessThan, type_bool_,
-                              main_rect_list_loop_vertex_index_,
-                              builder_->makeIntConstant(3)),
-        &main_rect_list_loop_body, main_rect_list_loop_merge_);
+    builder_->createConditionalBranch(main_rect_list_loop_condition,
+                                      &main_rect_list_loop_body,
+                                      main_rect_list_loop_merge_);
 
     builder_->setBuildPoint(&main_rect_list_loop_body);
     ResetUcodeInvocationStateInMain();
