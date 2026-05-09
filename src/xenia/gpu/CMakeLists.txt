@@ -2,12 +2,8 @@ add_library(xenia-gpu STATIC)
 xe_platform_sources(xenia-gpu ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(xenia-gpu PRIVATE
   ${PROJECT_SOURCE_DIR}/third_party/glslang
+  ${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include
 )
-if(NOT APPLE)
-  target_include_directories(xenia-gpu PRIVATE
-    ${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include
-  )
-endif()
 target_link_libraries(xenia-gpu PUBLIC dxbc fmt snappy xxhash xenia-base xenia-ui)
 target_link_libraries(xenia-gpu PRIVATE glslang-spirv)
 xe_target_defaults(xenia-gpu)

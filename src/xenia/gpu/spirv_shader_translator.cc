@@ -22,6 +22,7 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader.h"
+#include "xenia/ui/vulkan/vulkan_device.h"
 
 DEFINE_string(spirv_version_override, "1.0",
               "Override the SPIR-V version used in shader translation.\n"
@@ -53,7 +54,6 @@ namespace xe {
 namespace gpu {
 
 namespace {
-#if !XE_PLATFORM_MAC
 // Cache for auto-detected SPIR-V version to avoid re-testing on every
 // Features construction.
 static std::optional<spv::SpvVersion> g_cached_spirv_version;
@@ -112,7 +112,6 @@ bool TestSpirvVersionSupport(const ui::vulkan::VulkanDevice* vulkan_device,
 
   return false;
 }
-#endif  // !XE_PLATFORM_MAC
 
 }  // namespace
 
@@ -132,7 +131,6 @@ SpirvShaderTranslator::Features::Features(bool all)
       demote_to_helper_invocation(all),
       fragment_shader_barycentric(all) {}
 
-#if !XE_PLATFORM_MAC
 SpirvShaderTranslator::Features::Features(
     const ui::vulkan::VulkanDevice* const vulkan_device)
     : max_storage_buffer_range(
@@ -197,7 +195,6 @@ SpirvShaderTranslator::Features::Features(
     }
   }
 }
-#endif  // !XE_PLATFORM_MAC
 
 uint64_t SpirvShaderTranslator::GetDefaultVertexShaderModification(
     uint32_t dynamic_addressable_register_count,
