@@ -31,8 +31,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # GTK3: XCB handle extraction in window_wx.cc (gtk_widget_realize, etc.).
   target_link_libraries(xenia-ui PRIVATE xcb X11 X11-xcb fontconfig ${GTK3_LIBRARIES})
 elseif(APPLE)
-  # xe_platform_sources globs *.cc only; surface_mac.mm is Objective-C++.
-  target_sources(xenia-ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/surface_mac.mm)
+  # xe_platform_sources globs *.cc only; .mm sources need explicit listing.
+  target_sources(xenia-ui PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/surface_mac.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/windowed_app_wx_mac.mm
+  )
   target_link_libraries(xenia-ui PRIVATE
     "-framework Cocoa"
     "-framework QuartzCore"

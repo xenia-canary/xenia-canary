@@ -38,6 +38,10 @@ int g_argc = 0;
 char** g_argv = nullptr;
 #endif
 
+#if XE_PLATFORM_MAC
+void SuppressMacAutoMenuItems();
+#endif
+
 bool XeniaWxApp::OnInit() {
   // Skip wxApp::OnInit() — its default implementation parses argv with a
   // parser that doesn't know our cvars and would reject them. We do our own
@@ -46,6 +50,10 @@ bool XeniaWxApp::OnInit() {
 
   app_context_ = std::make_unique<WxWindowedAppContext>();
   app_ = GetWindowedAppCreator()(*app_context_);
+
+#if XE_PLATFORM_MAC
+  SuppressMacAutoMenuItems();
+#endif
 
 #if XE_PLATFORM_WIN32
   // Use GetCommandLineW so Unicode paths in positional args survive.
