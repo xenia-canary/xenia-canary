@@ -836,15 +836,22 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
 
   // VK_KHR_fragment_shader_barycentric (#322) /
   // VK_NV_fragment_shader_barycentric (#203).
-  if (ext_KHR_fragment_shader_barycentric ||
-      ext_NV_fragment_shader_barycentric) {
+  // MoltenVK advertises this, but SPIRV-Cross can't translate Xenia's
+  // PerVertexKHR usage to MSL, so leave the shader path on its fallback.
+  const bool driver_is_moltenvk =
+      device->properties_.driverID == VK_DRIVER_ID_MOLTENVK;
+  if ((ext_KHR_fragment_shader_barycentric ||
+       ext_NV_fragment_shader_barycentric) &&
+      !driver_is_moltenvk) {
     if (with_gpu_emulation) {
       XE_UI_VULKAN_FEATURE_2(features_KHR_fragment_shader_barycentric,
                              fragmentShaderBarycentric);
     }
   }
   device->extensions_.ext_KHR_fragment_shader_barycentric =
-      ext_KHR_fragment_shader_barycentric || ext_NV_fragment_shader_barycentric;
+      (ext_KHR_fragment_shader_barycentric ||
+       ext_NV_fragment_shader_barycentric) &&
+      !driver_is_moltenvk;
 
 #undef XE_UI_VULKAN_LIMIT
 #undef XE_UI_VULKAN_ENUM_LIMIT
