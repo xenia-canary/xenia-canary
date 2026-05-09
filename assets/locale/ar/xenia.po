@@ -1,0 +1,1332 @@
+# Arabic translation for xenia-edge.
+# Initial seed translation; refresh by running `xb i18n` and copying new
+# msgids over from xenia.pot.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: xenia-edge\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ar\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+#: src/xenia/ui/game_list_panel_wx.cc:493
+msgid ""
+"\n"
+"\n"
+"Browse for the file?"
+msgstr ""
+"\n"
+"\n"
+"هل تريد استعراض الملف؟"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1004
+msgid " (%zu discs)"
+msgstr " (عدد الأقراص: %zu)"
+
+#: src/xenia/ui/game_list_panel_wx.cc:545
+msgid " (default)"
+msgstr " (افتراضي)"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:252
+msgid " - %s (%08X)"
+msgstr " - %s (%08X)"
+
+#: src/xenia/ui/patches_dialog_wx.cc:36
+msgid "%s (%08X)"
+msgstr "%s (%08X)"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:266
+msgid "%s (%08X) — Config Overrides"
+msgstr "%s (%08X) — تجاوزات الإعدادات"
+
+#: src/xenia/app/emulator_window.cc:1683
+msgid "%s (Slot %d)"
+msgstr "%s (الفتحة %d)"
+
+#: src/xenia/app/emulator_window.cc:748
+msgid "&About..."
+msgstr "حول(&A)…"
+
+#: src/xenia/app/emulator_window.cc:693
+msgid "&Configuration"
+msgstr "إعدادات(&C)"
+
+#: src/xenia/app/emulator_window.cc:660
+msgid "&File"
+msgstr "ملف(&F)"
+
+#: src/xenia/app/emulator_window.cc:737
+msgid "&Help"
+msgstr "مساعدة(&H)"
+
+#: src/xenia/app/emulator_window.cc:730
+msgid "&Install Content..."
+msgstr "تثبيت المحتوى(&I)…"
+
+#: src/xenia/app/emulator_window.cc:695
+msgid "&Main"
+msgstr "رئيسي(&M)"
+
+#: src/xenia/app/emulator_window.cc:663
+msgid "&Open..."
+msgstr "فتح(&O)…"
+
+#: src/xenia/app/emulator_window.cc:685
+msgid "&Profile"
+msgstr "الملف الشخصي(&P)"
+
+#: src/xenia/app/emulator_window.cc:668
+msgid "&Stop Game"
+msgstr "إيقاف اللعبة(&S)"
+
+#: src/xenia/app/emulator_window.cc:727
+msgid "&Tools"
+msgstr "أدوات(&T)"
+
+#: src/xenia/app/emulator_window.cc:716
+msgid "&View"
+msgstr "عرض(&V)"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:197
+msgid "50Hz"
+msgstr "50Hz"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:198
+msgid "60Hz"
+msgstr "60Hz"
+
+#: src/xenia/ui/game_list_panel_wx.cc:255
+msgid "Achievements"
+msgstr "الإنجازات"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:178
+#: src/xenia/ui/game_config_dialog_wx.cc:430
+msgid "Add Override"
+msgstr "إضافة تجاوز"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:290
+msgid "Add..."
+msgstr "إضافة…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:321
+msgid "Advanced..."
+msgstr "متقدم…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:67
+msgid "Albania"
+msgstr "ألبانيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:92
+msgid "Algeria"
+msgstr "الجزائر"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:277
+msgid "All"
+msgstr "الكل"
+
+#: src/xenia/ui/file_picker_wx.cc:59
+msgid "All Files"
+msgstr "جميع الملفات"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:430
+msgid "All cvars are already overridden."
+msgstr "جميع cvars متجاوزة بالفعل."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:69
+msgid "Argentina"
+msgstr "الأرجنتين"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:68
+msgid "Armenia"
+msgstr "أرمينيا"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:241
+msgid "Audio"
+msgstr "الصوت"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:247
+msgid "Audio Backend:"
+msgstr "الواجهة الخلفية للصوت:"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:252
+msgid "Audio Decoder:"
+msgstr "فاكك ترميز الصوت:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:71
+msgid "Australia"
+msgstr "أستراليا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:70
+msgid "Austria"
+msgstr "النمسا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:72
+msgid "Azerbaijan"
+msgstr "أذربيجان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:75
+msgid "Bahrain"
+msgstr "البحرين"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:79
+msgid "Belarus"
+msgstr "بيلاروسيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:73
+msgid "Belgium"
+msgstr "بلجيكا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:80
+msgid "Belize"
+msgstr "بليز"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:77
+msgid "Bolivia"
+msgstr "بوليفيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:78
+msgid "Brazil"
+msgstr "البرازيل"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:277
+#: src/xenia/ui/game_config_dialog_wx.cc:94
+msgid "Browse..."
+msgstr "استعراض…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:76
+msgid "Brunei Darussalam"
+msgstr "بروناي دار السلام"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:74
+msgid "Bulgaria"
+msgstr "بلغاريا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:81
+msgid "Canada"
+msgstr "كندا"
+
+#: src/xenia/ui/game_list_panel_wx.cc:827
+msgid "Canary"
+msgstr "Canary"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:296
+#: src/xenia/ui/install_progress_dialog_wx.cc:167
+#: src/xenia/ui/profile_editor_dialog_wx.cc:514
+#: src/xenia/ui/quick_settings_dialog_wx.cc:330
+msgid "Cancel"
+msgstr "إلغاء"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:321
+msgid "Cancelling..."
+msgstr "جارٍ الإلغاء…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:369
+msgid "Change Icon..."
+msgstr "تغيير الأيقونة…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:84
+msgid "Chile"
+msgstr "تشيلي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:85
+msgid "China"
+msgstr "الصين"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:387
+msgid "Clear Icon"
+msgstr "مسح الأيقونة"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:201
+#: src/xenia/ui/game_list_panel_wx.cc:558
+#: src/xenia/ui/install_progress_dialog_wx.cc:171
+msgid "Close"
+msgstr "إغلاق"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:86
+msgid "Colombia"
+msgstr "كولومبيا"
+
+#: src/xenia/ui/game_list_panel_wx.cc:847
+msgid "Compatibility"
+msgstr "التوافق"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:296
+msgid "Complete"
+msgstr "اكتمل"
+
+#: src/xenia/ui/game_list_panel_wx.cc:812
+msgid "Config Overrides..."
+msgstr "تجاوزات الإعدادات…"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:95
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:380
+msgid "Configuration Manager"
+msgstr "مدير الإعدادات"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:379
+msgid "Configuration Manager *"
+msgstr "مدير الإعدادات *"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:227
+msgid "Content Type: %s"
+msgstr "نوع المحتوى: %s"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:87
+msgid "Costa Rica"
+msgstr "كوستاريكا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+msgid "Could not decode the selected image."
+msgstr "تعذّر فك ترميز الصورة المحددة."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:448
+#: src/xenia/ui/quick_settings_dialog_wx.cc:311
+msgid "Country:"
+msgstr "الدولة:"
+
+#: src/xenia/app/emulator_window.cc:1759
+msgid "Create new..."
+msgstr "إنشاء جديد…"
+
+#: src/xenia/app/emulator_window.cc:1763
+#: src/xenia/app/emulator_window.cc:1771
+msgid "Create profile"
+msgstr "إنشاء ملف شخصي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:106
+msgid "Croatia"
+msgstr "كرواتيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:88
+msgid "Czech Republic"
+msgstr "جمهورية التشيك"
+
+#: src/xenia/ui/game_list_panel_wx.cc:774
+msgid "DLC"
+msgstr "DLC"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:257
+msgid "Dedicated Thread:"
+msgstr "خيط مخصص:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:90
+msgid "Denmark"
+msgstr "الدنمارك"
+
+#: src/xenia/ui/game_list_panel_wx.cc:542
+#: src/xenia/ui/game_list_panel_wx.cc:711
+msgid "Disc %zu"
+msgstr "القرص %zu"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:194
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+msgid "Discard Changes"
+msgstr "تجاهل التغييرات"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+msgid "Discard all unsaved changes?"
+msgstr "تجاهل جميع التغييرات غير المحفوظة؟"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:291
+msgid "Discord Rich Presence:"
+msgstr "Discord Rich Presence:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:91
+msgid "Dominican Republic"
+msgstr "جمهورية الدومينيكان"
+
+#: src/xenia/app/emulator_window.cc:678
+msgid "E&xit"
+msgstr "خروج(&X)"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:93
+msgid "Ecuador"
+msgstr "الإكوادور"
+
+#: src/xenia/ui/game_list_panel_wx.cc:528
+msgid "Edit Discs"
+msgstr "تعديل الأقراص"
+
+#: src/xenia/ui/game_list_panel_wx.cc:721
+msgid "Edit Discs..."
+msgstr "تعديل الأقراص…"
+
+#: src/xenia/app/emulator_window.cc:1739
+msgid "Edit..."
+msgstr "تعديل…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:95
+msgid "Egypt"
+msgstr "مصر"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:160
+msgid "El Salvador"
+msgstr "السلفادور"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:216
+msgid "Emulated Display Refresh Rate:"
+msgstr "معدل تحديث الشاشة المُحاكاة:"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:69
+msgid "Emulator Settings"
+msgstr "إعدادات المحاكي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:52
+msgid "English"
+msgstr "الإنجليزية"
+
+#: src/xenia/app/emulator_window.cc:1763
+msgid "Enter gamertag for new profile:"
+msgstr "أدخل علامة اللاعب للملف الشخصي الجديد:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:577
+msgid "Enter new label:"
+msgstr "أدخل التسمية الجديدة:"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:405
+msgid "Error"
+msgstr "خطأ"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:94
+msgid "Estonia"
+msgstr "إستونيا"
+
+#: src/xenia/app/emulator_window.cc:1977
+msgid ""
+"Experimental fork of Xenia Canary.\n"
+"\n"
+"https://github.com/has207/xenia-edge\n"
+"\n"
+"Branch: %s\n"
+"Commit: %s\n"
+"Build Date: %s\n"
+"\n"
+"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
+"Icons by Icons8 (https://icons8.com)."
+msgstr ""
+"نسخة تجريبية متفرّعة من Xenia Canary.\n"
+"\n"
+"https://github.com/has207/xenia-edge\n"
+"\n"
+"الفرع: %s\n"
+"الالتزام: %s\n"
+"تاريخ البناء: %s\n"
+"\n"
+"خط الواجهة: Inter بواسطة Rasmus Andersson (https://rsms.me/inter/، SIL Open Font License 1.1).\n"
+"الأيقونات: Icons8 (https://icons8.com)."
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:239
+msgid "Extract To: "
+msgstr "الاستخراج إلى: "
+
+#: src/xenia/app/emulator_window.cc:740
+msgid "FA&Q..."
+msgstr "FAQ(&Q)…"
+
+#: src/xenia/ui/patches_dialog_wx.cc:213
+msgid "Failed to save changes."
+msgstr "فشل حفظ التغييرات."
+
+#: src/xenia/ui/game_config_dialog_wx.cc:404
+msgid "Failed to save: %s"
+msgstr "فشل الحفظ: %s"
+
+#: src/xenia/ui/patches_dialog_wx.cc:202
+msgid "Failed to update patch state."
+msgstr "فشل تحديث حالة التصحيح."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:181
+#: src/xenia/ui/profile_editor_dialog_wx.cc:185
+msgid "Family"
+msgstr "Family"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:98
+msgid "Faroe Islands"
+msgstr "جزر فارو"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1000
+msgid "File Corrupted"
+msgstr "ملف تالف"
+
+#: src/xenia/ui/game_list_panel_wx.cc:491
+msgid ""
+"File not found:\n"
+"%s"
+msgstr ""
+"الملف غير موجود:\n"
+"%s"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:184
+msgid "Filter cvars"
+msgstr "تصفية cvars"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:97
+msgid "Finland"
+msgstr "فنلندا"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:187
+msgid "Framerate Limit (0 = unlimited):"
+msgstr "حد معدل الإطارات (0 = غير محدود):"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:99
+msgid "France"
+msgstr "فرنسا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:55
+msgid "French"
+msgstr "الفرنسية"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:275
+msgid "Full"
+msgstr "كامل"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:226
+msgid "Full Screen:"
+msgstr "ملء الشاشة:"
+
+#: src/xenia/app/emulator_window.cc:744
+msgid "Game &compatibility..."
+msgstr "توافق الألعاب(&C)…"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:250
+msgid "GameMode not in PATH; install to enable."
+msgstr "GameMode غير موجود في PATH؛ ثبّته لتمكينه."
+
+#: src/xenia/ui/game_list_panel_wx.cc:119
+msgid "Gameplay"
+msgstr "اللعب ممكن"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:436
+msgid "Gamer Bio:"
+msgstr "نبذة اللاعب:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:429
+msgid "Gamer Motto:"
+msgstr "شعار اللاعب:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:423
+msgid "Gamer Name:"
+msgstr "اسم اللاعب:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:490
+msgid "Gamer Zone:"
+msgstr "منطقة اللاعب:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:266
+msgid "Gamercard Editor"
+msgstr "محرر بطاقة اللاعب"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:271
+msgid "Gamercard Editor — %s"
+msgstr "محرر بطاقة اللاعب — %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:256
+msgid "Gamerscore"
+msgstr "نقاط اللاعب"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:412
+msgid "Gamertag:"
+msgstr "علامة اللاعب:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:101
+msgid "Georgia"
+msgstr "جورجيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:54
+msgid "German"
+msgstr "الألمانية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:89
+msgid "Germany"
+msgstr "ألمانيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:180
+msgid "Gold"
+msgstr "Gold"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:145
+msgid "Graphics"
+msgstr "الرسوميات"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:151
+msgid "Graphics Backend:"
+msgstr "الواجهة الخلفية للرسوميات:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:100
+msgid "Great Britain"
+msgstr "بريطانيا العظمى"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:102
+msgid "Greece"
+msgstr "اليونان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:103
+msgid "Guatemala"
+msgstr "غواتيمالا"
+
+#: src/xenia/app/emulator_window.cc:1449
+msgid "Guide"
+msgstr "دليل"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:105
+msgid "Honduras"
+msgstr "هندوراس"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:104
+msgid "Hong Kong"
+msgstr "هونغ كونغ"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:107
+msgid "Hungary"
+msgstr "المجر"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:114
+msgid "Iceland"
+msgstr "آيسلندا"
+
+#: src/xenia/ui/game_list_panel_wx.cc:253
+msgid "Icon"
+msgstr "أيقونة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:374
+msgid "Icon change is disabled while a title is running."
+msgstr "لا يمكن تغيير الأيقونة أثناء تشغيل لعبة."
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:299
+msgid "In-Process Title Relaunch:"
+msgstr "إعادة تشغيل اللعبة في نفس العملية:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:111
+msgid "India"
+msgstr "الهند"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:108
+msgid "Indonesia"
+msgstr "إندونيسيا"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:240
+msgid "Installation Path: "
+msgstr "مسار التثبيت: "
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:57
+msgid "Installation Progress"
+msgstr "تقدم التثبيت"
+
+#: src/xenia/ui/game_list_panel_wx.cc:582
+msgid "Invalid Label"
+msgstr "تسمية غير صالحة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:566
+#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+msgid "Invalid file"
+msgstr "ملف غير صالح"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:554
+msgid "Invalid gamertag"
+msgstr "علامة لاعب غير صالحة"
+
+#: src/xenia/app/emulator_window.cc:1771
+msgid "Invalid gamertag."
+msgstr "علامة اللاعب غير صالحة."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:583
+msgid "Invalid resolution"
+msgstr "دقة غير صالحة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:113
+msgid "Iran"
+msgstr "إيران"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:112
+msgid "Iraq"
+msgstr "العراق"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:109
+msgid "Ireland"
+msgstr "أيرلندا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:110
+msgid "Israel"
+msgstr "إسرائيل"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:57
+msgid "Italian"
+msgstr "الإيطالية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:115
+msgid "Italy"
+msgstr "إيطاليا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:116
+msgid "Jamaica"
+msgstr "جامايكا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:118
+msgid "Japan"
+msgstr "اليابان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:53
+msgid "Japanese"
+msgstr "اليابانية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:117
+msgid "Jordan"
+msgstr "الأردن"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:123
+msgid "Kazakhstan"
+msgstr "كازاخستان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:119
+msgid "Kenya"
+msgstr "كينيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:121
+msgid "Korea"
+msgstr "كوريا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:58
+msgid "Korean"
+msgstr "الكورية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:122
+msgid "Kuwait"
+msgstr "الكويت"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:120
+msgid "Kyrgyzstan"
+msgstr "قرغيزستان"
+
+#: src/xenia/ui/game_list_panel_wx.cc:582
+msgid "Label cannot contain '::'."
+msgstr "لا يمكن أن تحتوي التسمية على '::'."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:442
+#: src/xenia/ui/quick_settings_dialog_wx.cc:305
+msgid "Language:"
+msgstr "اللغة:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:257
+msgid "Last Played"
+msgstr "آخر تشغيل"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:128
+msgid "Latvia"
+msgstr "لاتفيا"
+
+#: src/xenia/ui/game_list_panel_wx.cc:720
+#: src/xenia/ui/game_list_panel_wx.cc:727
+msgid "Launch"
+msgstr "تشغيل"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:124
+msgid "Lebanon"
+msgstr "لبنان"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:231
+msgid "Letterbox:"
+msgstr "نمط الشاشة الواسعة:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:129
+msgid "Libya"
+msgstr "ليبيا"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:286
+msgid "License:"
+msgstr "الترخيص:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:125
+msgid "Liechtenstein"
+msgstr "ليختنشتاين"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:126
+msgid "Lithuania"
+msgstr "ليتوانيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:457
+msgid "Live Enabled"
+msgstr "Live مُمكَّن"
+
+#: src/xenia/ui/game_list_panel_wx.cc:121
+msgid "Loads"
+msgstr "يُحمَّل"
+
+#: src/xenia/app/emulator_window.cc:1691
+msgid "Login"
+msgstr "تسجيل الدخول"
+
+#: src/xenia/app/emulator_window.cc:1719
+msgid "Logout"
+msgstr "تسجيل الخروج"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:127
+msgid "Luxembourg"
+msgstr "لوكسمبورغ"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:134
+msgid "Macau"
+msgstr "ماكاو"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:132
+msgid "Macedonia"
+msgstr "مقدونيا الشمالية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:137
+msgid "Malaysia"
+msgstr "ماليزيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:135
+msgid "Maldives"
+msgstr "جزر المالديف"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:158
+msgid "Manage emulator configuration. Changes are saved to config.toml; some settings need a relaunch to take effect."
+msgstr "إدارة إعدادات المحاكي. يتم حفظ التغييرات في config.toml؛ تتطلب بعض الإعدادات إعادة التشغيل لتطبيقها."
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:246
+msgid "MangoHUD not in PATH; install to enable."
+msgstr "MangoHUD غير موجود في PATH؛ ثبّته لتمكينه."
+
+#: src/xenia/ui/game_list_panel_wx.cc:828
+msgid "Master"
+msgstr "Master"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:136
+msgid "Mexico"
+msgstr "المكسيك"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:131
+msgid "Monaco"
+msgstr "موناكو"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:133
+msgid "Mongolia"
+msgstr "منغوليا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:130
+msgid "Morocco"
+msgstr "المغرب"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:234
+msgid "Name: %s"
+msgstr "الاسم: %s"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:163
+msgid "Native"
+msgstr "أصلي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:139
+msgid "Netherlands"
+msgstr "هولندا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:141
+msgid "New Zealand"
+msgstr "نيوزيلندا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:138
+msgid "Nicaragua"
+msgstr "نيكاراغوا"
+
+#: src/xenia/ui/game_list_panel_wx.cc:490
+msgid "No file path is set for this title."
+msgstr "لم يتم تعيين مسار للملف لهذه اللعبة."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:178
+#: src/xenia/ui/profile_editor_dialog_wx.cc:184
+#: src/xenia/ui/quick_settings_dialog_wx.cc:273
+msgid "None"
+msgstr "لا شيء"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:140
+msgid "Norway"
+msgstr "النرويج"
+
+#: src/xenia/ui/game_list_panel_wx.cc:105
+msgid ""
+"Not\n"
+"logged in"
+msgstr "غير مسجَّل"
+
+#: src/xenia/ui/game_list_panel_wx.cc:110
+msgid ""
+"Not\n"
+"played"
+msgstr "لم تُلعب"
+
+#: src/xenia/app/emulator_window.cc:815
+#: src/xenia/app/emulator_window.cc:1850
+msgid "Not logged in"
+msgstr "غير مسجَّل الدخول"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:142
+msgid "Oman"
+msgstr "عُمان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:478
+msgid "Online Domain:"
+msgstr "النطاق عبر الإنترنت:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:454
+msgid "Online Profile Settings"
+msgstr "إعدادات الملف الشخصي عبر الإنترنت"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:473
+msgid "Online XUID:"
+msgstr "XUID عبر الإنترنت:"
+
+#: src/xenia/app/emulator_window.cc:803
+msgid "Open"
+msgstr "فتح"
+
+#: src/xenia/app/emulator_window.cc:804
+#: src/xenia/app/emulator_window.cc:1443
+msgid "Open a title"
+msgstr "فتح لعبة"
+
+#: src/xenia/ui/game_list_panel_wx.cc:733
+msgid "Open containing folder"
+msgstr "فتح المجلد المُحتوي"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:206
+msgid "Operation: Create Archive"
+msgstr "العملية: إنشاء أرشيف"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:207
+msgid "Operation: Extract Archive"
+msgstr "العملية: استخراج أرشيف"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:267
+msgid "Other"
+msgstr "أخرى"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:238
+msgid "Output: "
+msgstr "المخرجات: "
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:560
+msgid "PNG Images (*.png)|*.png|All Files (*.*)|*.*"
+msgstr "صور PNG (*.png)|*.png|جميع الملفات (*.*)|*.*"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:380
+msgid "PNG, 64x64 or 32x32. Refresh after re-login."
+msgstr "PNG، 64x64 أو 32x32. سيتم التحديث بعد إعادة تسجيل الدخول."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:146
+msgid "Pakistan"
+msgstr "باكستان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:143
+msgid "Panama"
+msgstr "بنما"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:150
+msgid "Paraguay"
+msgstr "باراغواي"
+
+#: src/xenia/ui/patches_dialog_wx.cc:104
+msgid "Patch #%zu"
+msgstr "التصحيح رقم %zu"
+
+#: src/xenia/ui/game_list_panel_wx.cc:784
+#: src/xenia/ui/game_list_panel_wx.cc:809
+msgid "Patches"
+msgstr "التصحيحات"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:144
+msgid "Peru"
+msgstr "بيرو"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:145
+msgid "Philippines"
+msgstr "الفلبين"
+
+#: src/xenia/ui/game_list_panel_wx.cc:117
+msgid "Playable"
+msgstr "قابل للعب"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:147
+msgid "Poland"
+msgstr "بولندا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:62
+msgid "Polish"
+msgstr "البولندية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:149
+msgid "Portugal"
+msgstr "البرتغال"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:60
+msgid "Portuguese"
+msgstr "البرتغالية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:184
+msgid "Pro"
+msgstr "Pro"
+
+#: src/xenia/app/emulator_window.cc:818
+#: src/xenia/app/emulator_window.cc:819
+msgid "Profile"
+msgstr "الملف الشخصي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:358
+msgid "Profile Settings"
+msgstr "إعدادات الملف الشخصي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:580
+msgid "Profile icon must be 64x64 or 32x32. Selected image is %dx%d."
+msgstr "يجب أن تكون أيقونة الملف الشخصي 64x64 أو 32x32. الصورة المحددة هي %dx%d."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:377
+msgid "Profile must be signed in to change the icon."
+msgstr "يجب تسجيل الدخول إلى الملف الشخصي لتغيير الأيقونة."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:148
+msgid "Puerto Rico"
+msgstr "بورتوريكو"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:151
+msgid "Qatar"
+msgstr "قطر"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:184
+msgid "Recreation"
+msgstr "Recreation"
+
+#: src/xenia/ui/game_list_panel_wx.cc:557
+msgid "Remove"
+msgstr "إزالة"
+
+#: src/xenia/ui/game_list_panel_wx.cc:859
+msgid ""
+"Remove %s from the list?\n"
+"\n"
+"This only clears it from the dashboard records; game files on disk are kept."
+msgstr ""
+"إزالة %s من القائمة؟\n"
+"\n"
+"يزيلها هذا فقط من سجلات لوحة القيادة؛ تبقى ملفات اللعبة على القرص."
+
+#: src/xenia/ui/game_list_panel_wx.cc:601
+msgid "Remove '%s' from the disc list?"
+msgstr "إزالة '%s' من قائمة الأقراص؟"
+
+#: src/xenia/ui/game_list_panel_wx.cc:602
+msgid "Remove Disc"
+msgstr "إزالة القرص"
+
+#: src/xenia/ui/game_list_panel_wx.cc:850
+#: src/xenia/ui/game_list_panel_wx.cc:862
+msgid "Remove from list"
+msgstr "إزالة من القائمة"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:327
+msgid "Remove this override"
+msgstr "إزالة هذا التجاوز"
+
+#: src/xenia/ui/game_list_panel_wx.cc:577
+msgid "Rename Disc"
+msgstr "إعادة تسمية القرص"
+
+#: src/xenia/ui/game_list_panel_wx.cc:556
+msgid "Rename..."
+msgstr "إعادة تسمية…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:157
+msgid "Rendering:"
+msgstr "التصيير:"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:544
+msgid "Reset all settings on this dialog to their default values?"
+msgstr "إعادة تعيين جميع الإعدادات في هذا المربع إلى القيم الافتراضية؟"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:434
+msgid "Reset all settings to their default values?"
+msgstr "إعادة تعيين جميع الإعدادات إلى القيم الافتراضية؟"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:323
+msgid "Reset to Default"
+msgstr "إعادة التعيين إلى الافتراضي"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:197
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:435
+#: src/xenia/ui/quick_settings_dialog_wx.cc:545
+msgid "Reset to Defaults"
+msgstr "إعادة التعيين إلى الافتراضي"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:173
+msgid "Resolution Scale:"
+msgstr "مقياس الدقة:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:152
+msgid "Romania"
+msgstr "رومانيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:63
+msgid "Russian"
+msgstr "الروسية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:153
+msgid "Russian Federation"
+msgstr "الاتحاد الروسي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:154
+msgid "Saudi Arabia"
+msgstr "المملكة العربية السعودية"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:295
+#: src/xenia/ui/profile_editor_dialog_wx.cc:512
+#: src/xenia/ui/quick_settings_dialog_wx.cc:325
+msgid "Save"
+msgstr "حفظ"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:188
+msgid "Save Changes"
+msgstr "حفظ التغييرات"
+
+#: src/xenia/ui/patches_dialog_wx.cc:222
+msgid "Saved. Takes effect on next launch."
+msgstr "تم الحفظ. سيسري عند التشغيل التالي."
+
+#: src/xenia/ui/game_list_panel_wx.cc:765
+msgid "Saves"
+msgstr "حفظات"
+
+#: src/xenia/ui/game_list_panel_wx.cc:225
+msgid "Search games..."
+msgstr "البحث عن الألعاب…"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:283
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:291
+#: src/xenia/ui/game_config_dialog_wx.cc:105
+msgid "Select %s"
+msgstr "تحديد %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:500
+msgid "Select Content Package"
+msgstr "تحديد حزمة المحتوى"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:559
+msgid "Select PNG image"
+msgstr "تحديد صورة PNG"
+
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:299
+#: src/xenia/ui/game_config_dialog_wx.cc:112
+msgid "Select directory for %s"
+msgstr "تحديد مجلد لـ %s"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:565
+msgid "Selected file is not a valid PNG image."
+msgstr "الملف المحدد ليس صورة PNG صالحة."
+
+#: src/xenia/app/emulator_window.cc:808
+#: src/xenia/app/emulator_window.cc:809
+#: src/xenia/app/emulator_window.cc:1449
+msgid "Settings"
+msgstr "الإعدادات"
+
+#: src/xenia/app/emulator_window.cc:719
+msgid "Show &Toolbar"
+msgstr "إظهار شريط الأدوات(&T)"
+
+#: src/xenia/app/emulator_window.cc:674
+msgid "Show content directory..."
+msgstr "إظهار مجلد المحتوى…"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:179
+msgid "Silver"
+msgstr "Silver"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:61
+msgid "Simplified Chinese"
+msgstr "الصينية المبسطة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:156
+msgid "Singapore"
+msgstr "سنغافورة"
+
+#: src/xenia/app/emulator_window.cc:1695
+msgid "Slot %d"
+msgstr "الفتحة %d"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:158
+msgid "Slovak Republic"
+msgstr "سلوفاكيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:157
+msgid "Slovenia"
+msgstr "سلوفينيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:174
+msgid "South Africa"
+msgstr "جنوب أفريقيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:96
+msgid "Spain"
+msgstr "إسبانيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:56
+msgid "Spanish"
+msgstr "الإسبانية"
+
+#: src/xenia/ui/game_list_panel_wx.cc:252
+msgid "Status"
+msgstr "الحالة"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:248
+msgid "Status: %s"
+msgstr "الحالة: %s"
+
+#: src/xenia/app/emulator_window.cc:1440
+msgid "Stop the running title and return to the list"
+msgstr "إيقاف اللعبة الجارية والعودة إلى القائمة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:498
+msgid "Subscription Tier:"
+msgstr "مستوى الاشتراك:"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:292
+msgid "Successfully completed %d operation(s)."
+msgstr "تم إكمال %d عملية بنجاح."
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:294
+msgid "Successfully installed %d package(s)."
+msgstr "تم تثبيت %d حزمة بنجاح."
+
+#: src/xenia/ui/game_list_panel_wx.cc:505
+msgid "Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*.zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
+msgstr "الملفات المدعومة|*;*.iso;*.xex;*.zar|صورة قرص (*.iso)|*.iso|أرشيف قرص (*.zar)|*.zar|ملف Xbox تنفيذي (*.xex)|*.xex|جميع الملفات (*.*)|*.*"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:155
+msgid "Sweden"
+msgstr "السويد"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:83
+msgid "Switzerland"
+msgstr "سويسرا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:161
+msgid "Syria"
+msgstr "سوريا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:166
+msgid "Taiwan"
+msgstr "تايوان"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:162
+msgid "Thailand"
+msgstr "تايلاند"
+
+#: src/xenia/ui/game_list_panel_wx.cc:254
+msgid "Title"
+msgstr "العنوان"
+
+#: src/xenia/ui/game_list_panel_wx.cc:769
+msgid "Title Updates"
+msgstr "تحديثات اللعبة"
+
+#: src/xenia/ui/game_list_panel_wx.cc:494
+msgid "Title not found"
+msgstr "اللعبة غير موجودة"
+
+#: src/xenia/ui/patches_dialog_wx.cc:145
+msgid "Toggles take effect on next launch."
+msgstr "التبديل يسري عند التشغيل التالي."
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:59
+msgid "Traditional Chinese"
+msgstr "الصينية التقليدية"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:165
+msgid "Trinidad And Tobago"
+msgstr "ترينيداد وتوباغو"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:163
+msgid "Tunisia"
+msgstr "تونس"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:164
+msgid "Turkey"
+msgstr "تركيا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:167
+msgid "Ukraine"
+msgstr "أوكرانيا"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:195
+msgid "Uncapped"
+msgstr "غير محدود"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:185
+msgid "Underground"
+msgstr "Underground"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:66
+msgid "United Arab Emirates"
+msgstr "الإمارات العربية المتحدة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:168
+msgid "United States"
+msgstr "الولايات المتحدة"
+
+#: src/xenia/ui/game_list_panel_wx.cc:126
+msgid "Unknown"
+msgstr "غير معروف"
+
+#: src/xenia/ui/game_list_panel_wx.cc:123
+msgid "Unplayable"
+msgstr "غير قابل للعب"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:335
+#: src/xenia/ui/quick_settings_dialog_wx.cc:571
+msgid "Unsaved Changes"
+msgstr "تغييرات غير محفوظة"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:169
+msgid "Uruguay"
+msgstr "الأوروغواي"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:170
+msgid "Uzbekistan"
+msgstr "أوزبكستان"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:221
+msgid "VSync:"
+msgstr "التزامن العمودي:"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:171
+msgid "Venezuela"
+msgstr "فنزويلا"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:172
+msgid "Viet Nam"
+msgstr "فيتنام"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:173
+msgid "Yemen"
+msgstr "اليمن"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:334
+msgid "You have unsaved changes. Discard them?"
+msgstr "لديك تغييرات غير محفوظة. هل تريد تجاهلها؟"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:569
+msgid "You have unsaved changes. Save them before opening advanced settings?"
+msgstr "لديك تغييرات غير محفوظة. هل تريد حفظها قبل فتح الإعدادات المتقدمة؟"
+
+#: src/xenia/ui/install_progress_dialog_wx.cc:79
+msgid "Zarchive Progress"
+msgstr "تقدم Zarchive"
+
+#: src/xenia/ui/profile_editor_dialog_wx.cc:175
+msgid "Zimbabwe"
+msgstr "زيمبابوي"
+
+#: src/xenia/ui/patches_dialog_wx.cc:126
+msgid "by %s"
+msgstr "بواسطة %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:856
+msgid "title %08X"
+msgstr "اللعبة %08X"

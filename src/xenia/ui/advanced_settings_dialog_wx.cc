@@ -92,7 +92,7 @@ std::string GetCurrentValue(cvar::IConfigVar* var) {
 
 AdvancedSettingsDialog::AdvancedSettingsDialog(wxWindow* parent,
                                                EmulatorWindow* emulator_window)
-    : wxDialog(parent, wxID_ANY, "Configuration Manager", wxDefaultPosition,
+    : wxDialog(parent, wxID_ANY, _("Configuration Manager"), wxDefaultPosition,
                wxSize(900, 650), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window) {
   LoadConfigValues();
@@ -155,8 +155,8 @@ void AdvancedSettingsDialog::Build() {
 
   auto* info_label = new wxStaticText(
       this, wxID_ANY,
-      "Manage emulator configuration. Changes are saved to config.toml; some "
-      "settings need a relaunch to take effect.");
+      _("Manage emulator configuration. Changes are saved to config.toml; some "
+        "settings need a relaunch to take effect."));
   info_label->Wrap(860);
   root->Add(info_label, 0, wxEXPAND | wxALL, 8);
 
@@ -185,20 +185,20 @@ void AdvancedSettingsDialog::Build() {
   root->Add(split, 1, wxEXPAND);
 
   auto* buttons = new wxBoxSizer(wxHORIZONTAL);
-  auto* save = new wxButton(this, wxID_ANY, "Save Changes");
+  auto* save = new wxButton(this, wxID_ANY, _("Save Changes"));
   save->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     Save();
     if (!has_unsaved_changes_) EndModal(wxID_OK);
   });
   buttons->Add(save, 0, wxALL, 4);
-  auto* discard = new wxButton(this, wxID_ANY, "Discard Changes");
+  auto* discard = new wxButton(this, wxID_ANY, _("Discard Changes"));
   discard->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Discard(); });
   buttons->Add(discard, 0, wxALL, 4);
-  auto* reset = new wxButton(this, wxID_ANY, "Reset to Defaults");
+  auto* reset = new wxButton(this, wxID_ANY, _("Reset to Defaults"));
   reset->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { DoReset(); });
   buttons->Add(reset, 0, wxALL, 4);
   buttons->AddStretchSpacer(1);
-  auto* close = new wxButton(this, wxID_CANCEL, "Close");
+  auto* close = new wxButton(this, wxID_CANCEL, _("Close"));
   buttons->Add(close, 0, wxALL, 4);
   root->Add(buttons, 0, wxEXPAND | wxALL, 4);
 
@@ -243,11 +243,11 @@ wxWindow* AdvancedSettingsDialog::CreateEditor(wxWindow* parent,
 #if XE_PLATFORM_LINUX
     if (info->name == "use_mangohud" && !IsCommandAvailable("mangohud")) {
       check->Disable();
-      check->SetToolTip("MangoHUD not in PATH; install to enable.");
+      check->SetToolTip(_("MangoHUD not in PATH; install to enable."));
     } else if (info->name == "use_gamemode" &&
                !IsCommandAvailable("gamemoderun")) {
       check->Disable();
-      check->SetToolTip("GameMode not in PATH; install to enable.");
+      check->SetToolTip(_("GameMode not in PATH; install to enable."));
     }
 #endif
     return check;
@@ -274,26 +274,31 @@ wxWindow* AdvancedSettingsDialog::CreateEditor(wxWindow* parent,
                                 wxString::FromUTF8(info->pending_value));
     text->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { OnAnyChanged(); });
     row->Add(text, 1, wxEXPAND | wxRIGHT, 4);
-    auto* browse = new wxButton(container, wxID_ANY, "Browse...");
+    auto* browse = new wxButton(container, wxID_ANY, _("Browse..."));
     browse->Bind(wxEVT_BUTTON, [this, text, info](wxCommandEvent&) {
       const auto* path_info = ui::GetCvarPathInfo(info->name);
       wxString picked;
       if (path_info && path_info->kind == ui::CvarPathKind::kFileOpen) {
-        wxFileDialog dlg(this, wxString::FromUTF8("Select " + info->name),
-                         wxEmptyString, text->GetValue(),
-                         wxString::FromUTF8(path_info->wildcard),
-                         wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        wxFileDialog dlg(
+            this,
+            wxString::Format(_("Select %s"), wxString::FromUTF8(info->name)),
+            wxEmptyString, text->GetValue(),
+            wxString::FromUTF8(path_info->wildcard),
+            wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
       } else if (path_info && path_info->kind == ui::CvarPathKind::kFileSave) {
-        wxFileDialog dlg(this, wxString::FromUTF8("Select " + info->name),
-                         wxEmptyString, text->GetValue(),
-                         wxString::FromUTF8(path_info->wildcard),
-                         wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        wxFileDialog dlg(
+            this,
+            wxString::Format(_("Select %s"), wxString::FromUTF8(info->name)),
+            wxEmptyString, text->GetValue(),
+            wxString::FromUTF8(path_info->wildcard),
+            wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
         if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
       } else {
-        wxDirDialog dlg(
-            this, wxString::FromUTF8("Select directory for " + info->name),
-            text->GetValue());
+        wxDirDialog dlg(this,
+                        wxString::Format(_("Select directory for %s"),
+                                         wxString::FromUTF8(info->name)),
+                        text->GetValue());
         if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
       }
       if (!picked.IsEmpty()) {
@@ -371,8 +376,8 @@ void AdvancedSettingsDialog::UpdateLabelBold(VarInfo* info) {
 }
 
 void AdvancedSettingsDialog::UpdateModifiedTitle() {
-  SetTitle(has_unsaved_changes_ ? "Configuration Manager *"
-                                : "Configuration Manager");
+  SetTitle(has_unsaved_changes_ ? _("Configuration Manager *")
+                                : _("Configuration Manager"));
 }
 
 void AdvancedSettingsDialog::Save() {
@@ -426,8 +431,8 @@ void AdvancedSettingsDialog::Save() {
 }
 
 void AdvancedSettingsDialog::DoReset() {
-  if (wxMessageBox("Reset all settings to their default values?",
-                   "Reset to Defaults", wxYES_NO | wxICON_QUESTION,
+  if (wxMessageBox(_("Reset all settings to their default values?"),
+                   _("Reset to Defaults"), wxYES_NO | wxICON_QUESTION,
                    this) != wxYES) {
     return;
   }
@@ -473,7 +478,7 @@ void AdvancedSettingsDialog::DoReset() {
 
 void AdvancedSettingsDialog::Discard() {
   if (!has_unsaved_changes_) return;
-  if (wxMessageBox("Discard all unsaved changes?", "Discard Changes",
+  if (wxMessageBox(_("Discard all unsaved changes?"), _("Discard Changes"),
                    wxYES_NO | wxICON_QUESTION, this) != wxYES) {
     return;
   }

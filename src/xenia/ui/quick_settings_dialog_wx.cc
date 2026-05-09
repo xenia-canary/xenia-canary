@@ -66,7 +66,7 @@ const std::string& VrrCvarName(const std::string& gpu) {
 
 QuickSettingsDialog::QuickSettingsDialog(wxWindow* parent,
                                          EmulatorWindow* emulator_window)
-    : wxDialog(parent, wxID_ANY, "Emulator Settings", wxDefaultPosition,
+    : wxDialog(parent, wxID_ANY, _("Emulator Settings"), wxDefaultPosition,
                wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window) {
   SetMinSize(wxSize(500, -1));
@@ -142,25 +142,25 @@ void QuickSettingsDialog::Build() {
 
   // ---- Graphics ----
   {
-    auto* box = new wxStaticBox(this, wxID_ANY, "Graphics");
+    auto* box = new wxStaticBox(this, wxID_ANY, _("Graphics"));
     auto* box_sizer = new wxStaticBoxSizer(box, wxVERTICAL);
     auto* grid = new wxFlexGridSizer(2, 6, 8);
     grid->AddGrowableCol(1, 1);
 
     auto* gpu = add_combo(box, "gpu", find_options("gpu"));
-    auto* gpu_label = add_label(box, "Graphics Backend:");
+    auto* gpu_label = add_label(box, _("Graphics Backend:"));
     remember_label("gpu", gpu_label);
     add_form_row(grid, gpu_label, gpu);
 
     auto* rt = add_combo(box, "render_target_path",
                          find_options("render_target_path"));
-    auto* rt_label = add_label(box, "Rendering:");
+    auto* rt_label = add_label(box, _("Rendering:"));
     remember_label("render_target_path", rt_label);
     add_form_row(grid, rt_label, rt);
 
     auto* scale = new wxChoice(box, wxID_ANY);
     for (int i = 1; i <= 8; ++i) {
-      scale->Append(i == 1 ? wxString("Native") : wxString::Format("%dx", i),
+      scale->Append(i == 1 ? _("Native") : wxString::Format("%dx", i),
                     reinterpret_cast<void*>(static_cast<intptr_t>(i)));
     }
     scale->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnAnyChanged(); });
@@ -170,7 +170,7 @@ void QuickSettingsDialog::Build() {
       opt.editor = scale;
       options_["draw_resolution_scale"] = opt;
     }
-    auto* scale_label = add_label(box, "Resolution Scale:");
+    auto* scale_label = add_label(box, _("Resolution Scale:"));
     remember_label("draw_resolution_scale", scale_label);
     add_form_row(grid, scale_label, scale);
 
@@ -184,7 +184,7 @@ void QuickSettingsDialog::Build() {
 #endif
 
     auto* fps = add_spin(box, "framerate_limit", 0, 1000);
-    auto* fps_label = add_label(box, "Framerate Limit (0 = unlimited):");
+    auto* fps_label = add_label(box, _("Framerate Limit (0 = unlimited):"));
     remember_label("framerate_limit", fps_label);
     add_form_row(grid, fps_label, fps);
 
@@ -192,10 +192,10 @@ void QuickSettingsDialog::Build() {
     auto* refresh_panel = new wxPanel(box);
     auto* refresh_sizer = new wxBoxSizer(wxHORIZONTAL);
     refresh_uncapped_ =
-        new wxRadioButton(refresh_panel, wxID_ANY, "Uncapped",
+        new wxRadioButton(refresh_panel, wxID_ANY, _("Uncapped"),
                           wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
-    refresh_50hz_ = new wxRadioButton(refresh_panel, wxID_ANY, "50Hz");
-    refresh_60hz_ = new wxRadioButton(refresh_panel, wxID_ANY, "60Hz");
+    refresh_50hz_ = new wxRadioButton(refresh_panel, wxID_ANY, _("50Hz"));
+    refresh_60hz_ = new wxRadioButton(refresh_panel, wxID_ANY, _("60Hz"));
     refresh_sizer->Add(refresh_uncapped_, 0, wxRIGHT, 8);
     refresh_sizer->Add(refresh_50hz_, 0, wxRIGHT, 8);
     refresh_sizer->Add(refresh_60hz_, 0);
@@ -212,22 +212,22 @@ void QuickSettingsDialog::Build() {
       opt.editor = refresh_panel;
       options_["guest_refresh_rate"] = opt;
     }
-    auto* refresh_label = add_label(box, "Emulated Display Refresh Rate:");
+    auto* refresh_label = add_label(box, _("Emulated Display Refresh Rate:"));
     remember_label("guest_refresh_rate", refresh_label);
     add_form_row(grid, refresh_label, refresh_panel);
 
     auto* vsync = add_check(box, "vsync");
-    auto* vsync_label = add_label(box, "VSync:");
+    auto* vsync_label = add_label(box, _("VSync:"));
     remember_label("vsync", vsync_label);
     add_form_row(grid, vsync_label, vsync);
 
     auto* fs = add_check(box, "fullscreen");
-    auto* fs_label = add_label(box, "Full Screen:");
+    auto* fs_label = add_label(box, _("Full Screen:"));
     remember_label("fullscreen", fs_label);
     add_form_row(grid, fs_label, fs);
 
     auto* lb = add_check(box, "present_letterbox");
-    auto* lb_label = add_label(box, "Letterbox:");
+    auto* lb_label = add_label(box, _("Letterbox:"));
     remember_label("present_letterbox", lb_label);
     add_form_row(grid, lb_label, lb);
 
@@ -237,23 +237,23 @@ void QuickSettingsDialog::Build() {
 
   // ---- Audio ----
   {
-    auto* box = new wxStaticBox(this, wxID_ANY, "Audio");
+    auto* box = new wxStaticBox(this, wxID_ANY, _("Audio"));
     auto* box_sizer = new wxStaticBoxSizer(box, wxVERTICAL);
     auto* grid = new wxFlexGridSizer(2, 6, 8);
     grid->AddGrowableCol(1, 1);
 
     auto* apu = add_combo(box, "apu", find_options("apu"));
-    auto* apu_label = add_label(box, "Audio Backend:");
+    auto* apu_label = add_label(box, _("Audio Backend:"));
     remember_label("apu", apu_label);
     add_form_row(grid, apu_label, apu);
 
     auto* xma = add_combo(box, "xma_decoder", find_options("xma_decoder"));
-    auto* xma_label = add_label(box, "Audio Decoder:");
+    auto* xma_label = add_label(box, _("Audio Decoder:"));
     remember_label("xma_decoder", xma_label);
     add_form_row(grid, xma_label, xma);
 
     auto* xma_thread = add_check(box, "use_dedicated_xma_thread");
-    auto* xma_thread_label = add_label(box, "Dedicated Thread:");
+    auto* xma_thread_label = add_label(box, _("Dedicated Thread:"));
     remember_label("use_dedicated_xma_thread", xma_thread_label);
     add_form_row(grid, xma_thread_label, xma_thread);
 
@@ -263,15 +263,18 @@ void QuickSettingsDialog::Build() {
 
   // ---- Other ----
   {
-    auto* box = new wxStaticBox(this, wxID_ANY, "Other");
+    auto* box = new wxStaticBox(this, wxID_ANY, _("Other"));
     auto* box_sizer = new wxStaticBoxSizer(box, wxVERTICAL);
     auto* grid = new wxFlexGridSizer(2, 6, 8);
     grid->AddGrowableCol(1, 1);
 
     auto* license = new wxChoice(box, wxID_ANY);
-    license->Append("None", reinterpret_cast<void*>(static_cast<intptr_t>(0)));
-    license->Append("Full", reinterpret_cast<void*>(static_cast<intptr_t>(1)));
-    license->Append("All", reinterpret_cast<void*>(static_cast<intptr_t>(-1)));
+    license->Append(_("None"),
+                    reinterpret_cast<void*>(static_cast<intptr_t>(0)));
+    license->Append(_("Full"),
+                    reinterpret_cast<void*>(static_cast<intptr_t>(1)));
+    license->Append(_("All"),
+                    reinterpret_cast<void*>(static_cast<intptr_t>(-1)));
     license->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnAnyChanged(); });
     {
       Option opt;
@@ -279,12 +282,12 @@ void QuickSettingsDialog::Build() {
       opt.editor = license;
       options_["license_mask"] = opt;
     }
-    auto* license_label = add_label(box, "License:");
+    auto* license_label = add_label(box, _("License:"));
     remember_label("license_mask", license_label);
     add_form_row(grid, license_label, license);
 
     auto* discord = add_check(box, "discord");
-    auto* discord_label = add_label(box, "Discord Rich Presence:");
+    auto* discord_label = add_label(box, _("Discord Rich Presence:"));
     remember_label("discord", discord_label);
     add_form_row(grid, discord_label, discord);
 
@@ -292,19 +295,19 @@ void QuickSettingsDialog::Build() {
     // Other platforms always relaunch out-of-process (see RunTitle), so the
     // cvar has no effect there.
     auto* in_proc = add_check(box, "in_process_title_relaunch");
-    auto* in_proc_label = add_label(box, "In-Process Title Relaunch:");
+    auto* in_proc_label = add_label(box, _("In-Process Title Relaunch:"));
     remember_label("in_process_title_relaunch", in_proc_label);
     add_form_row(grid, in_proc_label, in_proc);
 #endif
 
     auto* lang = add_combo(box, "user_language", find_options("user_language"));
-    auto* lang_label = add_label(box, "Language:");
+    auto* lang_label = add_label(box, _("Language:"));
     remember_label("user_language", lang_label);
     add_form_row(grid, lang_label, lang);
 
     auto* country =
         add_combo(box, "user_country", find_options("user_country"));
-    auto* country_label = add_label(box, "Country:");
+    auto* country_label = add_label(box, _("Country:"));
     remember_label("user_country", country_label);
     add_form_row(grid, country_label, country);
 
@@ -314,21 +317,21 @@ void QuickSettingsDialog::Build() {
 
   // ---- Buttons ----
   auto* button_row = new wxBoxSizer(wxHORIZONTAL);
-  auto* advanced = new wxButton(this, wxID_ANY, "Advanced...");
+  auto* advanced = new wxButton(this, wxID_ANY, _("Advanced..."));
   advanced->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnAdvanced(); });
-  auto* reset = new wxButton(this, wxID_ANY, "Reset to Default");
+  auto* reset = new wxButton(this, wxID_ANY, _("Reset to Default"));
   reset->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ResetToDefaults(); });
-  auto* save = new wxButton(this, wxID_ANY, "Save");
+  auto* save = new wxButton(this, wxID_ANY, _("Save"));
   save->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     Save();
     EndModal(wxID_OK);
   });
-  auto* cancel = new wxButton(this, wxID_ANY, "Cancel");
+  auto* cancel = new wxButton(this, wxID_ANY, _("Cancel"));
   cancel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     if (has_unsaved_changes_) {
       auto reply =
-          wxMessageBox("You have unsaved changes. Discard them?",
-                       "Unsaved Changes", wxYES_NO | wxICON_QUESTION, this);
+          wxMessageBox(_("You have unsaved changes. Discard them?"),
+                       _("Unsaved Changes"), wxYES_NO | wxICON_QUESTION, this);
       if (reply != wxYES) return;
     }
     EndModal(wxID_CANCEL);
@@ -536,9 +539,9 @@ void QuickSettingsDialog::Save() {
 }
 
 void QuickSettingsDialog::ResetToDefaults() {
-  auto reply =
-      wxMessageBox("Reset all settings on this dialog to their default values?",
-                   "Reset to Defaults", wxYES_NO | wxICON_QUESTION, this);
+  auto reply = wxMessageBox(
+      _("Reset all settings on this dialog to their default values?"),
+      _("Reset to Defaults"), wxYES_NO | wxICON_QUESTION, this);
   if (reply != wxYES) return;
   if (!cvar::ConfigVars) return;
   // Snapshot the on-disk current_value so we can show the bold-modified state
@@ -562,9 +565,9 @@ void QuickSettingsDialog::ResetToDefaults() {
 void QuickSettingsDialog::OnAdvanced() {
   if (has_unsaved_changes_) {
     auto reply = wxMessageBox(
-        "You have unsaved changes. Save them before opening advanced "
-        "settings?",
-        "Unsaved Changes",
+        _("You have unsaved changes. Save them before opening advanced "
+          "settings?"),
+        _("Unsaved Changes"),
         wxYES_NO | wxCANCEL | wxICON_QUESTION | wxYES_DEFAULT, this);
     if (reply == wxCANCEL) return;
     if (reply == wxYES) Save();

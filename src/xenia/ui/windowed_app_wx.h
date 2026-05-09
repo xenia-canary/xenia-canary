@@ -35,6 +35,11 @@ class XeniaWxApp : public wxApp {
   bool OnInit() override;
   int OnRun() override;
   int OnExit() override;
+  // Force LTR layout regardless of locale; RTL would propagate WS_EX_LAYOUTRTL
+  // and reverse Latin text in wxDataView cells.
+  wxLayoutDirection GetLayoutDirection() const override {
+    return wxLayout_LeftToRight;
+  }
 
  private:
   std::unique_ptr<WxWindowedAppContext> app_context_;

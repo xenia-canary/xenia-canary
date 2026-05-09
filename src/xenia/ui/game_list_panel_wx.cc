@@ -81,8 +81,9 @@ std::string FormatLastPlayed(time_t timestamp) {
   return fmt::format("{:%Y-%m-%d %H:%M}", tm);
 }
 
-wxBitmapBundle MakeTextPlaceholder(const wxString& line1,
-                                   const wxString& line2) {
+// `text` may contain a single \n to split into two centered lines; translators
+// pick the break point. No newline = single centered line.
+wxBitmapBundle MakeTextPlaceholder(const wxString& text) {
   wxBitmap bmp(kIconSize, kIconSize, 32);
   wxMemoryDC dc(bmp);
   dc.SetBackground(wxBrush(wxColour(60, 60, 60)));
@@ -91,39 +92,46 @@ wxBitmapBundle MakeTextPlaceholder(const wxString& line1,
   font.Scale(0.85f);
   dc.SetFont(font);
   dc.SetTextForeground(wxColour(180, 180, 180));
+  wxString line1 = text.BeforeFirst('\n');
+  wxString line2 = text.AfterFirst('\n');
   wxSize l1 = dc.GetTextExtent(line1);
-  wxSize l2 = dc.GetTextExtent(line2);
-  int total_h = l1.y + l2.y + 2;
-  int y = (kIconSize - total_h) / 2;
-  dc.DrawText(line1, (kIconSize - l1.x) / 2, y);
-  dc.DrawText(line2, (kIconSize - l2.x) / 2, y + l1.y + 2);
+  if (line2.empty()) {
+    int y = (kIconSize - l1.y) / 2;
+    dc.DrawText(line1, (kIconSize - l1.x) / 2, y);
+  } else {
+    wxSize l2 = dc.GetTextExtent(line2);
+    int total_h = l1.y + l2.y + 2;
+    int y = (kIconSize - total_h) / 2;
+    dc.DrawText(line1, (kIconSize - l1.x) / 2, y);
+    dc.DrawText(line2, (kIconSize - l2.x) / 2, y + l1.y + 2);
+  }
   dc.SelectObject(wxNullBitmap);
   return wxBitmapBundle::FromBitmap(bmp);
 }
 
 const wxBitmapBundle& LoggedOutPlaceholder() {
-  static const wxBitmapBundle k = MakeTextPlaceholder("Not", "logged in");
+  static const wxBitmapBundle k = MakeTextPlaceholder(_("Not\nlogged in"));
   return k;
 }
 
 const wxBitmapBundle& NotPlayedPlaceholder() {
-  static const wxBitmapBundle k = MakeTextPlaceholder("Not", "played");
+  static const wxBitmapBundle k = MakeTextPlaceholder(_("Not\nplayed"));
   return k;
 }
 
-const char* CompatStateName(CompatState state) {
+wxString CompatStateName(CompatState state) {
   switch (state) {
     case CompatState::kPlayable:
-      return "Playable";
+      return _("Playable");
     case CompatState::kGameplay:
-      return "Gameplay";
+      return _("Gameplay");
     case CompatState::kLoads:
-      return "Loads";
+      return _("Loads");
     case CompatState::kUnplayable:
-      return "Unplayable";
+      return _("Unplayable");
     case CompatState::kUnknown:
     default:
-      return "Unknown";
+      return _("Unknown");
   }
 }
 
@@ -222,7 +230,7 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
     : wxPanel(parent, wxID_ANY), emulator_window_(emulator_window) {
   search_ = new wxSearchCtrl(this, wxID_ANY);
   search_->ShowCancelButton(true);
-  search_->SetDescriptiveText("Search games...");
+  search_->SetDescriptiveText(_("Search games..."));
   {
     wxFont f = search_->GetFont();
     f.Scale(1.4f);
@@ -249,14 +257,21 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   // either that or the fixed 64px icon.
   list_->SetRowHeight(
       std::max(kIconSize + 8, static_cast<int>(char_h * 1.6f) + 8));
-  list_->AppendBitmapColumn("Status", 0, wxDATAVIEW_CELL_INERT,
-                            col_w("Status", "Status"), wxALIGN_CENTER, 0);
-  list_->AppendBitmapColumn("Icon", 1, wxDATAVIEW_CELL_INERT, kIconSize + 8,
-                            wxALIGN_CENTER, 0);
+  const wxString status_header = _("Status");
+  const wxString icon_header = _("Icon");
+  const wxString title_header = _("Title");
+  const wxString achievements_header = _("Achievements");
+  const wxString gamerscore_header = _("Gamerscore");
+  const wxString last_played_header = _("Last Played");
+  list_->AppendBitmapColumn(status_header, 0, wxDATAVIEW_CELL_INERT,
+                            col_w(status_header, status_header), wxALIGN_CENTER,
+                            0);
+  list_->AppendBitmapColumn(icon_header, 1, wxDATAVIEW_CELL_INERT,
+                            kIconSize + 8, wxALIGN_CENTER, 0);
   // Title is the only flexible column; the rest are pinned at their measured
   // widths so a wider window doesn't stretch them.
   auto* title_col = list_->AppendTextColumn(
-      "Title", wxDATAVIEW_CELL_INERT, static_cast<int>(char_w * 30 * 1.5f),
+      title_header, wxDATAVIEW_CELL_INERT, static_cast<int>(char_w * 30 * 1.5f),
       wxALIGN_LEFT, 0);
   if (title_col) {
     if (auto* tr =
@@ -264,16 +279,17 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
       tr->EnableMarkup(true);
     }
   }
-  list_->AppendTextColumn("Achievements", wxDATAVIEW_CELL_INERT,
-                          col_w("Achievements", "9999/9999"), wxALIGN_LEFT, 0);
-  list_->AppendTextColumn("Gamerscore", wxDATAVIEW_CELL_INERT,
-                          col_w("Gamerscore", "99999/999999 G"), wxALIGN_LEFT,
+  list_->AppendTextColumn(achievements_header, wxDATAVIEW_CELL_INERT,
+                          col_w(achievements_header, "9999/9999"), wxALIGN_LEFT,
                           0);
+  list_->AppendTextColumn(gamerscore_header, wxDATAVIEW_CELL_INERT,
+                          col_w(gamerscore_header, "99999/999999 G"),
+                          wxALIGN_LEFT, 0);
   // Trim the standard padding a bit — Last Played is right-aligned, so the
   // header's sort arrow doesn't fight with the value text.
   const int last_played_width =
-      col_w("Last Played", "0000-00-00 00:00") - char_w * 2;
-  list_->AppendTextColumn("Last Played", wxDATAVIEW_CELL_INERT,
+      col_w(last_played_header, "0000-00-00 00:00") - char_w * 2;
+  list_->AppendTextColumn(last_played_header, wxDATAVIEW_CELL_INERT,
                           last_played_width, wxALIGN_RIGHT, 0);
 
   // wxDataViewCtrl always auto-expands the *last* column to fill leftover
@@ -477,27 +493,27 @@ void GameListPanel::LaunchOrPrompt(const std::filesystem::path& path) {
     launch_cb_(path);
     return;
   }
-  std::string warning = path.empty()
-                            ? "No file path is set for this title."
-                            : fmt::format("File not found:\n{}", path.string());
-  wxMessageDialog confirm(
-      this, wxString::FromUTF8(warning + "\n\nBrowse for the file?"),
-      "Title not found", wxYES_NO | wxICON_WARNING);
+  wxString warning = path.empty()
+                         ? _("No file path is set for this title.")
+                         : wxString::Format(_("File not found:\n%s"),
+                                            wxString::FromUTF8(path.string()));
+  wxMessageDialog confirm(this, warning + _("\n\nBrowse for the file?"),
+                          _("Title not found"), wxYES_NO | wxICON_WARNING);
   if (confirm.ShowModal() != wxID_YES) {
     return;
   }
   std::filesystem::path initial_dir =
       path.empty() ? std::filesystem::path() : path.parent_path();
-  wxFileDialog dlg(this, "Select Content Package",
+  wxFileDialog dlg(this, _("Select Content Package"),
                    initial_dir.empty()
                        ? wxString()
                        : wxString::FromUTF8(initial_dir.string()),
                    wxEmptyString,
-                   "Supported Files|*;*.iso;*.xex;*.zar|"
-                   "Disc Image (*.iso)|*.iso|"
-                   "Disc Archive (*.zar)|*.zar|"
-                   "Xbox Executable (*.xex)|*.xex|"
-                   "All Files (*.*)|*.*",
+                   _("Supported Files|*;*.iso;*.xex;*.zar|"
+                     "Disc Image (*.iso)|*.iso|"
+                     "Disc Archive (*.zar)|*.zar|"
+                     "Xbox Executable (*.xex)|*.xex|"
+                     "All Files (*.*)|*.*"),
                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (dlg.ShowModal() == wxID_OK) {
     launch_cb_(std::filesystem::path(dlg.GetPath().utf8_string()));
@@ -516,7 +532,7 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
 
   uint32_t title_id = entries_[entry_index].title_id;
 
-  wxDialog dlg(this, wxID_ANY, "Edit Discs", wxDefaultPosition,
+  wxDialog dlg(this, wxID_ANY, _("Edit Discs"), wxDefaultPosition,
                wxSize(500, 320), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   auto* sizer = new wxBoxSizer(wxVERTICAL);
 
@@ -530,10 +546,10 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
     size_t disc_num = 1;
     for (const auto& disc : entries_[entry_index].discs) {
       wxString label = disc.label.empty()
-                           ? wxString::Format("Disc %zu", disc_num)
+                           ? wxString::Format(_("Disc %zu"), disc_num)
                            : wxString::FromUTF8(disc.label);
       if (!default_path.empty() && disc.path == default_path) {
-        label += " (default)";
+        label += _(" (default)");
       }
       list->Append(label, new wxStringClientData(
                               wxString::FromUTF8(disc.path.string())));
@@ -544,9 +560,9 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
   refresh();
 
   auto* button_row = new wxBoxSizer(wxHORIZONTAL);
-  auto* rename = new wxButton(&dlg, wxID_ANY, "Rename...");
-  auto* remove = new wxButton(&dlg, wxID_ANY, "Remove");
-  auto* close = new wxButton(&dlg, wxID_CLOSE, "Close");
+  auto* rename = new wxButton(&dlg, wxID_ANY, _("Rename..."));
+  auto* remove = new wxButton(&dlg, wxID_ANY, _("Remove"));
+  auto* close = new wxButton(&dlg, wxID_CLOSE, _("Close"));
   button_row->Add(rename, 0, wxRIGHT, 4);
   button_row->Add(remove, 0, wxRIGHT, 4);
   button_row->AddStretchSpacer();
@@ -565,11 +581,12 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
     int sel = list->GetSelection();
     if (sel == wxNOT_FOUND) return;
     wxString current = list->GetString(sel);
-    wxTextEntryDialog input(&dlg, "Enter new label:", "Rename Disc", current);
+    wxTextEntryDialog input(&dlg, _("Enter new label:"), _("Rename Disc"),
+                            current);
     if (input.ShowModal() != wxID_OK) return;
     std::string new_label = input.GetValue().utf8_string();
     if (new_label.find("::") != std::string::npos) {
-      wxMessageDialog(&dlg, "Label cannot contain '::'.", "Invalid Label",
+      wxMessageDialog(&dlg, _("Label cannot contain '::'."), _("Invalid Label"),
                       wxOK | wxICON_WARNING)
           .ShowModal();
       return;
@@ -588,8 +605,8 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
     if (sel == wxNOT_FOUND) return;
     wxString label = list->GetString(sel);
     wxMessageDialog confirm(
-        &dlg, wxString::Format("Remove '%s' from the disc list?", label),
-        "Remove Disc", wxYES_NO | wxICON_WARNING);
+        &dlg, wxString::Format(_("Remove '%s' from the disc list?"), label),
+        _("Remove Disc"), wxYES_NO | wxICON_WARNING);
     if (confirm.ShowModal() != wxID_YES) return;
     profile->RemoveDiscPath(title_id, current_disc_path());
     if (entry_index < entries_.size() &&
@@ -664,7 +681,7 @@ void GameListPanel::OnListMouseMotion(wxMouseEvent& event) {
       if (idx < entries_.size()) {
         const auto& e = entries_[idx];
         if (pos == 0) {
-          text = wxString::FromUTF8(CompatStateName(GetEntryCompatState(e)));
+          text = CompatStateName(GetEntryCompatState(e));
         } else if (pos == 2 && !e.path.empty()) {
           text = wxString::FromUTF8(xe::path_to_utf8(e.path));
         }
@@ -698,7 +715,7 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
       size_t disc_num = 1;
       for (const auto& disc : entry.discs) {
         wxString label = disc.label.empty()
-                             ? wxString::Format("Disc %zu", disc_num)
+                             ? wxString::Format(_("Disc %zu"), disc_num)
                              : wxString::FromUTF8(disc.label);
         auto* item = launch_submenu->Append(wxID_ANY, label);
         menu.Bind(
@@ -707,20 +724,20 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
             item->GetId());
         ++disc_num;
       }
-      menu.AppendSubMenu(launch_submenu, "Launch");
-      auto* edit_discs = menu.Append(wxID_ANY, "Edit Discs...");
+      menu.AppendSubMenu(launch_submenu, _("Launch"));
+      auto* edit_discs = menu.Append(wxID_ANY, _("Edit Discs..."));
       menu.Bind(
           wxEVT_MENU,
           [this, idx](wxCommandEvent&) { ShowEditDiscsDialog(idx); },
           edit_discs->GetId());
     } else {
-      auto* launch = menu.Append(wxID_ANY, "Launch");
+      auto* launch = menu.Append(wxID_ANY, _("Launch"));
       menu.Bind(
           wxEVT_MENU,
           [this, path = entry.path](wxCommandEvent&) { LaunchOrPrompt(path); },
           launch->GetId());
     }
-    auto* open_folder = menu.Append(wxID_ANY, "Open containing folder");
+    auto* open_folder = menu.Append(wxID_ANY, _("Open containing folder"));
     menu.Bind(
         wxEVT_MENU,
         [open_path_in_explorer, parent = entry.path.parent_path()](
@@ -752,16 +769,16 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
             item->GetId());
       };
 
-      add_content_item("Saves",
+      add_content_item(_("Saves"),
                        profile_manager->GetProfileContentPath(
                            xuid, entry.title_id, XContentType::kSavedGame),
                        /*gated=*/!primary);
-      add_content_item("Title Updates",
+      add_content_item(_("Title Updates"),
                        profile_manager->GetProfileContentPath(
                            0, entry.title_id, XContentType::kInstaller),
                        false);
       add_content_item(
-          "DLC",
+          _("DLC"),
           profile_manager->GetProfileContentPath(
               0, entry.title_id, XContentType::kMarketplaceContent),
           false);
@@ -771,7 +788,7 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
   if (entry.title_id != 0) {
     auto bundled = xe::patcher::EnumerateBundledPatchesForTitle(entry.title_id);
     if (bundled.empty()) {
-      auto* item = menu.Append(wxID_ANY, "Patches");
+      auto* item = menu.Append(wxID_ANY, _("Patches"));
       item->Enable(false);
     } else {
       auto* patches_submenu = new wxMenu;
@@ -796,10 +813,10 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
             },
             item->GetId());
       }
-      menu.AppendSubMenu(patches_submenu, "Patches");
+      menu.AppendSubMenu(patches_submenu, _("Patches"));
     }
 
-    auto* config_overrides = menu.Append(wxID_ANY, "Config Overrides...");
+    auto* config_overrides = menu.Append(wxID_ANY, _("Config Overrides..."));
     menu.Bind(
         wxEVT_MENU,
         [this, title_id = entry.title_id,
@@ -814,8 +831,8 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
 
     menu.AppendSeparator();
     auto* compat = new wxMenu;
-    auto* canary = compat->Append(wxID_ANY, "Canary");
-    auto* master = compat->Append(wxID_ANY, "Master");
+    auto* canary = compat->Append(wxID_ANY, _("Canary"));
+    auto* master = compat->Append(wxID_ANY, _("Master"));
     menu.Bind(
         wxEVT_MENU,
         [title_id = entry.title_id](wxCommandEvent&) {
@@ -834,23 +851,22 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
               title_id));
         },
         master->GetId());
-    menu.AppendSubMenu(compat, "Compatibility");
+    menu.AppendSubMenu(compat, _("Compatibility"));
 
     menu.AppendSeparator();
-    auto* remove = menu.Append(wxID_ANY, "Remove from list");
+    auto* remove = menu.Append(wxID_ANY, _("Remove from list"));
     menu.Bind(
         wxEVT_MENU,
         [this, title_id = entry.title_id,
          display_name = entry.title_name](wxCommandEvent&) {
           wxString name = display_name.empty()
-                              ? wxString::Format("title %08X", title_id)
+                              ? wxString::Format(_("title %08X"), title_id)
                               : wxString::FromUTF8(display_name);
-          wxString message = "Remove ";
-          message += name;
-          message +=
-              " from the list?\n\nThis only clears it from the dashboard "
-              "records; game files on disk are kept.";
-          int reply = wxMessageBox(message, "Remove from list",
+          wxString message = wxString::Format(
+              _("Remove %s from the list?\n\nThis only clears it from the "
+                "dashboard records; game files on disk are kept."),
+              name);
+          int reply = wxMessageBox(message, _("Remove from list"),
                                    wxYES_NO | wxICON_QUESTION,
                                    wxGetTopLevelParent(this));
           if (reply != wxYES) return;
@@ -987,11 +1003,12 @@ void GameListPanel::Repopulate() {
       }
     }
 
-    std::string base_title =
-        e.title_name.empty() ? "File Corrupted" : e.title_name;
-    std::string disc_suffix;
+    wxString base_title = e.title_name.empty()
+                              ? _("File Corrupted")
+                              : wxString::FromUTF8(e.title_name);
+    wxString disc_suffix;
     if (e.discs.size() > 1) {
-      disc_suffix = fmt::format(" ({} discs)", e.discs.size());
+      disc_suffix = wxString::Format(_(" (%zu discs)"), e.discs.size());
     }
 
     wxVector<wxVariant> row;
@@ -1007,11 +1024,10 @@ void GameListPanel::Repopulate() {
       icon_variant << NotPlayedPlaceholder();
     }
     row.push_back(icon_variant);
-    wxString title_markup = "<b><span size='x-large'>" +
-                            EscapeMarkup(wxString::FromUTF8(base_title)) +
-                            "</span></b>";
+    wxString title_markup =
+        "<b><span size='x-large'>" + EscapeMarkup(base_title) + "</span></b>";
     if (!disc_suffix.empty()) {
-      title_markup += EscapeMarkup(wxString::FromUTF8(disc_suffix));
+      title_markup += EscapeMarkup(disc_suffix);
     }
     row.push_back(wxVariant(title_markup));
     std::string achievements_text;

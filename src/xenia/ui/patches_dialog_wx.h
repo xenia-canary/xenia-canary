@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <wx/dialog.h>
+#include <wx/string.h>
 
 #include "xenia/patcher/patch_db.h"
 
@@ -59,7 +60,7 @@ class PatchesDialog : public wxDialog {
   std::vector<PatchInfo> patches_;
   wxStaticText* info_label_ = nullptr;
   wxScrolledWindow* scroll_ = nullptr;
-  std::vector<std::pair<wxStaticText*, std::string>> desc_labels_;
+  std::vector<std::pair<wxStaticText*, wxString>> desc_labels_;
   int last_wrap_width_ = -1;
 };
 

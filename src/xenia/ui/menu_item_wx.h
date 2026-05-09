@@ -29,6 +29,21 @@ class WxMenuItem : public MenuItem {
              std::function<void(bool)> on_toggle);
   ~WxMenuItem() override;
 
+  // wxString factory overloads so _("...") drops in directly at call sites.
+  static std::unique_ptr<MenuItem> Create(MenuItem::Type type);
+  static std::unique_ptr<MenuItem> Create(MenuItem::Type type,
+                                          const wxString& text);
+  static std::unique_ptr<MenuItem> Create(MenuItem::Type type,
+                                          const wxString& text,
+                                          std::function<void()> callback);
+  static std::unique_ptr<MenuItem> Create(MenuItem::Type type,
+                                          const wxString& text,
+                                          const wxString& hotkey,
+                                          std::function<void()> callback);
+  static std::unique_ptr<MenuItem> CreateCheck(
+      const wxString& text, bool initially_checked,
+      std::function<void(bool)> on_toggle);
+
   // For kNormal type, returns the wxMenuBar.
   wxMenuBar* GetMenuBar() const { return menu_bar_; }
 

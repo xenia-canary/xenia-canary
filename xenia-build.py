@@ -755,6 +755,7 @@ def discover_commands(subparsers):
         "lint": LintCommand(subparsers),
         "format": FormatCommand(subparsers),
         "tidy": TidyCommand(subparsers),
+        "i18n": I18nCommand(subparsers),
         }
     return commands
 
@@ -1443,6 +1444,45 @@ class TidyCommand(Command):
         else:
             print("\nTidy completed successfully.")
             return 0
+
+class I18nCommand(Command):
+    """'i18n' command — regenerates assets/locale/xenia.pot from the wx UI
+    sources. Translators copy new msgids into each <lang>/xenia.po manually;
+    .mo compilation happens at build time and is not touched here.
+    """
+
+    # Sources scanned for _()/wxTRANSLATE/wxPLURAL.
+    SOURCE_GLOBS = (
+        "src/xenia/ui/*_wx.cc",
+        "src/xenia/app/emulator_window.cc",
+    )
+
+    def __init__(self, subparsers, *args, **kwargs):
+        super(I18nCommand, self).__init__(
+            subparsers,
+            name="i18n",
+            help_short="Regenerates assets/locale/xenia.pot from source.",
+            *args, **kwargs)
+
+    def execute(self, args, pass_args, cwd):
+        tools_dir = os.path.join(self_path, "tools", "build")
+        locale_dir = os.path.join(self_path, "assets", "locale")
+        pot_path = os.path.join(locale_dir, "xenia.pot")
+        os.makedirs(locale_dir, exist_ok=True)
+
+        print(f"- extracting strings -> {os.path.relpath(pot_path)}")
+        cmd = [sys.executable,
+               os.path.join(tools_dir, "extract_strings.py"),
+               pot_path]
+        cmd.extend(self.SOURCE_GLOBS)
+        ret = shell_call(cmd, throw_on_error=False)
+        if ret != 0:
+            print_error("extract_strings.py failed")
+            return ret
+
+        print_status(ResultStatus.SUCCESS)
+        return 0
+
 
 class DevenvCommand(Command):
     """'devenv' command.

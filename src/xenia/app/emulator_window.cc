@@ -297,6 +297,7 @@ using xe::ui::FileDropEvent;
 using xe::ui::KeyEvent;
 using xe::ui::MenuItem;
 using xe::ui::UIEvent;
+using xe::ui::WxMenuItem;
 
 using namespace xe::hid;
 using namespace xe::gpu;
@@ -654,33 +655,34 @@ bool EmulatorWindow::Initialize() {
       }
     }
 
-    auto main_menu = MenuItem::Create(MenuItem::Type::kNormal);
+    auto main_menu = WxMenuItem::Create(MenuItem::Type::kNormal);
 
-    auto file_menu = MenuItem::Create(MenuItem::Type::kPopup, "&File");
+    auto file_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&File"));
     {
       auto open_item =
-          MenuItem::Create(MenuItem::Type::kString, "&Open...", "Ctrl+O",
-                           std::bind(&EmulatorWindow::FileOpen, this));
+          WxMenuItem::Create(MenuItem::Type::kString, _("&Open..."), "Ctrl+O",
+                             std::bind(&EmulatorWindow::FileOpen, this));
       file_open_menu_item_ = open_item.get();
       file_menu->AddChild(std::move(open_item));
       auto stop_item =
-          MenuItem::Create(MenuItem::Type::kString, "&Stop Game",
-                           std::bind(&EmulatorWindow::FileClose, this));
+          WxMenuItem::Create(MenuItem::Type::kString, _("&Stop Game"),
+                             std::bind(&EmulatorWindow::FileClose, this));
       file_stop_menu_item_ = stop_item.get();
       file_menu->AddChild(std::move(stop_item));
-      file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-      file_menu->AddChild(MenuItem::Create(
-          MenuItem::Type::kString, "Show content directory...",
+      file_menu->AddChild(WxMenuItem::Create(MenuItem::Type::kSeparator));
+      file_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Show content directory..."),
           std::bind(&EmulatorWindow::ShowContentDirectory, this)));
-      file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+      file_menu->AddChild(WxMenuItem::Create(MenuItem::Type::kSeparator));
       file_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
-                           [this]() { window_->RequestClose(); }));
+          WxMenuItem::Create(MenuItem::Type::kString, _("E&xit"), "Alt+F4",
+                             [this]() { window_->RequestClose(); }));
     }
     main_menu->AddChild(std::move(file_menu));
 
     // Profile Menu
-    auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Profile");
+    auto profile_menu =
+        WxMenuItem::Create(MenuItem::Type::kPopup, _("&Profile"));
     profile_menu_ = profile_menu.get();
     main_menu->AddChild(std::move(profile_menu));
 
@@ -688,10 +690,11 @@ bool EmulatorWindow::Initialize() {
     // categories (D3D12, Linux, MacOS, …) only surface where their cvars are
     // actually compiled in.
     auto config_menu =
-        MenuItem::Create(MenuItem::Type::kPopup, "&Configuration");
-    config_menu->AddChild(MenuItem::Create(MenuItem::Type::kString, "&Main", "",
-                                           [this]() { ShowQuickSettings(); }));
-    config_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+        WxMenuItem::Create(MenuItem::Type::kPopup, _("&Configuration"));
+    config_menu->AddChild(
+        WxMenuItem::Create(MenuItem::Type::kString, _("&Main"), "",
+                           [this]() { ShowQuickSettings(); }));
+    config_menu->AddChild(WxMenuItem::Create(MenuItem::Type::kSeparator));
     if (cvar::ConfigVars) {
       std::set<std::string> categories;
       for (const auto& [name, var] : *cvar::ConfigVars) {
@@ -710,10 +713,10 @@ bool EmulatorWindow::Initialize() {
     main_menu->AddChild(std::move(config_menu));
 
     // View menu — toggles for chrome the user can hide.
-    auto view_menu = MenuItem::Create(MenuItem::Type::kPopup, "&View");
+    auto view_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&View"));
     {
-      auto show_toolbar_item = MenuItem::CreateCheck(
-          "Show &Toolbar", show_toolbar_,
+      auto show_toolbar_item = WxMenuItem::CreateCheck(
+          _("Show &Toolbar"), show_toolbar_,
           [this](bool checked) { SetToolbarVisible(checked); });
       view_show_toolbar_item_ = show_toolbar_item.get();
       view_menu->AddChild(std::move(show_toolbar_item));
@@ -721,29 +724,29 @@ bool EmulatorWindow::Initialize() {
     main_menu->AddChild(std::move(view_menu));
 
     // Tools menu.
-    auto tools_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Tools");
+    auto tools_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&Tools"));
     {
       tools_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Install Content...",
-                           std::bind(&EmulatorWindow::InstallContent, this)));
+          WxMenuItem::Create(MenuItem::Type::kString, _("&Install Content..."),
+                             std::bind(&EmulatorWindow::InstallContent, this)));
     }
     tools_menu_ = tools_menu.get();
     main_menu->AddChild(std::move(tools_menu));
 
     // Help menu.
-    auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Help");
+    auto help_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&Help"));
     {
       help_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "FA&Q...",
-                           std::bind(&EmulatorWindow::ShowFAQ, this)));
-      help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-      help_menu->AddChild(MenuItem::Create(
-          MenuItem::Type::kString, "Game &compatibility...",
+          WxMenuItem::Create(MenuItem::Type::kString, _("FA&Q..."),
+                             std::bind(&EmulatorWindow::ShowFAQ, this)));
+      help_menu->AddChild(WxMenuItem::Create(MenuItem::Type::kSeparator));
+      help_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Game &compatibility..."),
           std::bind(&EmulatorWindow::ShowCompatibility, this)));
-      help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+      help_menu->AddChild(WxMenuItem::Create(MenuItem::Type::kSeparator));
       help_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&About...",
-                           std::bind(&EmulatorWindow::ShowAbout, this)));
+          WxMenuItem::Create(MenuItem::Type::kString, _("&About..."),
+                             std::bind(&EmulatorWindow::ShowAbout, this)));
     }
     main_menu->AddChild(std::move(help_menu));
 
@@ -797,23 +800,23 @@ bool EmulatorWindow::Initialize() {
       wx_toolbar_state_->back_bundle =
           load_bundle(ui::embedded_icons::icons8_back_96_png_data,
                       ui::embedded_icons::icons8_back_96_png_size);
-      toolbar->AddTool(kToolIdOpenBack, "Open", wx_toolbar_state_->open_bundle,
-                       "Open a title");
+      toolbar->AddTool(kToolIdOpenBack, _("Open"),
+                       wx_toolbar_state_->open_bundle, _("Open a title"));
       auto settings_bundle =
           load_bundle(ui::embedded_icons::icons8_settings_96_png_data,
                       ui::embedded_icons::icons8_settings_96_png_size);
-      toolbar->AddTool(kToolIdSettings, "Settings", settings_bundle,
-                       "Settings");
+      toolbar->AddTool(kToolIdSettings, _("Settings"), settings_bundle,
+                       _("Settings"));
       toolbar->AddStretchSpacer(1);
       wx_toolbar_state_->profile_default_bundle =
           load_bundle(ui::embedded_icons::icons8_user_96_png_data,
                       ui::embedded_icons::icons8_user_96_png_size);
       wx_toolbar_state_->profile_label = new wxStaticText(
-          toolbar, wxID_ANY, "Not logged in", wxDefaultPosition,
+          toolbar, wxID_ANY, _("Not logged in"), wxDefaultPosition,
           wxSize(160, -1), wxALIGN_RIGHT | wxST_NO_AUTORESIZE);
       toolbar->AddControl(wx_toolbar_state_->profile_label);
-      toolbar->AddTool(kToolIdProfile, "Profile",
-                       wx_toolbar_state_->profile_default_bundle, "Profile");
+      toolbar->AddTool(kToolIdProfile, _("Profile"),
+                       wx_toolbar_state_->profile_default_bundle, _("Profile"));
       toolbar->Realize();
       wx_toolbar_state_->toolbar = toolbar;
       aui->AddPane(toolbar, wxAuiPaneInfo()
@@ -1434,15 +1437,16 @@ void EmulatorWindow::ApplyContentVisibility() {
     if (title_open) {
       tb->SetToolBitmap(kToolIdOpenBack, wx_toolbar_state_->back_bundle);
       tb->SetToolShortHelp(kToolIdOpenBack,
-                           "Stop the running title and return to the list");
+                           _("Stop the running title and return to the list"));
     } else {
       tb->SetToolBitmap(kToolIdOpenBack, wx_toolbar_state_->open_bundle);
-      tb->SetToolShortHelp(kToolIdOpenBack, "Open a title");
+      tb->SetToolShortHelp(kToolIdOpenBack, _("Open a title"));
     }
     // Settings tool stays visible during gameplay; its click handler
     // dispatches to the guide-button context menu when a title is running.
     if (auto* settings_item = tb->FindTool(kToolIdSettings)) {
-      tb->SetToolShortHelp(kToolIdSettings, title_open ? "Guide" : "Settings");
+      tb->SetToolShortHelp(kToolIdSettings,
+                           title_open ? _("Guide") : _("Settings"));
     }
     tb->Refresh();
   }
@@ -1674,21 +1678,24 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
         if (gamertag.empty()) gamertag = fmt::format("{:016X}", xuid);
         uint8_t logged_slot = pm->GetUserIndexAssignedToProfile(xuid);
         bool signed_in = logged_slot < 4;
-        std::string entry_label =
-            signed_in ? fmt::format("{} (Slot {})", gamertag, logged_slot + 1)
-                      : gamertag;
+        wxString entry_label =
+            signed_in ? wxString::Format(_("%s (Slot %d)"),
+                                         wxString::FromUTF8(gamertag),
+                                         logged_slot + 1)
+                      : wxString::FromUTF8(gamertag);
         auto entry =
-            ui::MenuItem::Create(ui::MenuItem::Type::kPopup, entry_label);
+            ui::WxMenuItem::Create(ui::MenuItem::Type::kPopup, entry_label);
 
-        auto login = ui::MenuItem::Create(ui::MenuItem::Type::kPopup, "Login");
+        auto login =
+            ui::WxMenuItem::Create(ui::MenuItem::Type::kPopup, _("Login"));
         for (uint8_t slot = 0; slot < 4; ++slot) {
           uint64_t this_xuid = xuid;
           uint8_t this_slot = slot;
-          std::string slot_label = fmt::format("Slot {}", slot + 1);
+          wxString slot_label = wxString::Format(_("Slot %d"), slot + 1);
           if (signed_in && slot == logged_slot) {
-            slot_label = "✓ " + slot_label;  // ✓
+            slot_label = wxT("✓ ") + slot_label;
           }
-          login->AddChild(ui::MenuItem::Create(
+          login->AddChild(ui::WxMenuItem::Create(
               ui::MenuItem::Type::kString, slot_label, "",
               [this, this_xuid, this_slot]() {
                 if (auto* xs = emulator_->kernel_state()
@@ -1707,8 +1714,8 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
         entry->AddChild(std::move(login));
 
         uint64_t this_xuid = xuid;
-        auto logout = ui::MenuItem::Create(
-            ui::MenuItem::Type::kString, "Logout", "", [this, this_xuid]() {
+        auto logout = ui::WxMenuItem::Create(
+            ui::MenuItem::Type::kString, _("Logout"), "", [this, this_xuid]() {
               if (auto* xs = emulator_->kernel_state()
                                  ? emulator_->kernel_state()->xam_state()
                                  : nullptr) {
@@ -1727,8 +1734,8 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
         logout_ptr->SetEnabled(signed_in);
 
         uint64_t edit_xuid = xuid;
-        auto edit_item = ui::MenuItem::Create(
-            ui::MenuItem::Type::kString, "Edit...", "", [this, edit_xuid]() {
+        auto edit_item = ui::WxMenuItem::Create(
+            ui::MenuItem::Type::kString, _("Edit..."), "", [this, edit_xuid]() {
               auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
               auto* dlg = new ProfileEditorDialog(
                   wx_window ? wx_window->frame() : nullptr, this, edit_xuid);
@@ -1746,13 +1753,13 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
     }
   }
 
-  parent->AddChild(ui::MenuItem::Create(ui::MenuItem::Type::kSeparator));
-  parent->AddChild(ui::MenuItem::Create(
-      ui::MenuItem::Type::kString, "Create new...", "", [this]() {
+  parent->AddChild(ui::WxMenuItem::Create(ui::MenuItem::Type::kSeparator));
+  parent->AddChild(ui::WxMenuItem::Create(
+      ui::MenuItem::Type::kString, _("Create new..."), "", [this]() {
         auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
-        wxTextEntryDialog dlg(
-            wx_window ? wx_window->frame() : nullptr,
-            "Enter gamertag for new profile:", "Create profile");
+        wxTextEntryDialog dlg(wx_window ? wx_window->frame() : nullptr,
+                              _("Enter gamertag for new profile:"),
+                              _("Create profile"));
         // Match the ImGui CreateProfileUI input cap (gamertag_[16]).
         dlg.SetMaxLength(15);
         if (dlg.ShowModal() != wxID_OK) return;
@@ -1760,7 +1767,7 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
         if (gamertag.IsEmpty()) return;
         std::string gt = gamertag.utf8_string();
         if (!kernel::xam::ProfileManager::IsGamertagValid(gt)) {
-          wxMessageBox("Invalid gamertag.", "Create profile",
+          wxMessageBox(_("Invalid gamertag."), _("Create profile"),
                        wxOK | wxICON_ERROR,
                        wx_window ? wx_window->frame() : nullptr);
           return;
@@ -1839,17 +1846,17 @@ void EmulatorWindow::RefreshProfileIcon() {
   tb->SetToolBitmap(kToolIdProfile, bundle);
 
   if (wx_toolbar_state_->profile_label) {
-    std::string text = "Not logged in";
+    wxString text = _("Not logged in");
     if (signed_in && pm) {
       auto* accounts = pm->GetAccounts();
       auto it = accounts ? accounts->find(signed_in->xuid())
                          : decltype(accounts->end())();
       if (accounts && it != accounts->end()) {
         std::string gt = it->second.GetGamertagString();
-        if (!gt.empty()) text = gt;
+        if (!gt.empty()) text = wxString::FromUTF8(gt);
       }
     }
-    wx_toolbar_state_->profile_label->SetLabel(wxString::FromUTF8(text));
+    wx_toolbar_state_->profile_label->SetLabel(text);
   }
   tb->Refresh();
 
@@ -1963,18 +1970,18 @@ void EmulatorWindow::ShowAbout() {
     }
   }
   info.SetName("Xenia Edge");
-  info.SetVersion(wxString::FromUTF8(fmt::format(
-      "{}@{} ({})", XE_BUILD_BRANCH, XE_BUILD_COMMIT_SHORT, XE_BUILD_DATE)));
-  info.SetDescription(wxString::FromUTF8(
-      fmt::format("Experimental fork of Xenia Canary.\n\n"
-                  "https://github.com/has207/xenia-edge\n\n"
-                  "Branch: {}\n"
-                  "Commit: {}\n"
-                  "Build Date: {}\n\n"
-                  "UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, "
-                  "SIL Open Font License 1.1).\n"
-                  "Icons by Icons8 (https://icons8.com).",
-                  XE_BUILD_BRANCH, XE_BUILD_COMMIT_SHORT, XE_BUILD_DATE)));
+  info.SetVersion(wxString::Format("%s@%s (%s)", XE_BUILD_BRANCH,
+                                   XE_BUILD_COMMIT_SHORT, XE_BUILD_DATE));
+  info.SetDescription(wxString::Format(
+      _("Experimental fork of Xenia Canary.\n\n"
+        "https://github.com/has207/xenia-edge\n\n"
+        "Branch: %s\n"
+        "Commit: %s\n"
+        "Build Date: %s\n\n"
+        "UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, "
+        "SIL Open Font License 1.1).\n"
+        "Icons by Icons8 (https://icons8.com)."),
+      XE_BUILD_BRANCH, XE_BUILD_COMMIT_SHORT, XE_BUILD_DATE));
 
   auto* wx_window = static_cast<ui::WxWindow*>(window_.get());
   wxAboutBox(info, wx_window ? wx_window->frame() : nullptr);

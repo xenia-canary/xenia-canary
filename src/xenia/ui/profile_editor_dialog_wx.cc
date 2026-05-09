@@ -49,137 +49,140 @@ using namespace kernel::xam;
 namespace {
 
 constexpr const char* kLanguageNames[] = {nullptr,
-                                          "English",
-                                          "Japanese",
-                                          "German",
-                                          "French",
-                                          "Spanish",
-                                          "Italian",
-                                          "Korean",
-                                          "Traditional Chinese",
-                                          "Portuguese",
-                                          "Simplified Chinese",
-                                          "Polish",
-                                          "Russian"};
+                                          wxTRANSLATE("English"),
+                                          wxTRANSLATE("Japanese"),
+                                          wxTRANSLATE("German"),
+                                          wxTRANSLATE("French"),
+                                          wxTRANSLATE("Spanish"),
+                                          wxTRANSLATE("Italian"),
+                                          wxTRANSLATE("Korean"),
+                                          wxTRANSLATE("Traditional Chinese"),
+                                          wxTRANSLATE("Portuguese"),
+                                          wxTRANSLATE("Simplified Chinese"),
+                                          wxTRANSLATE("Polish"),
+                                          wxTRANSLATE("Russian")};
 
 constexpr const char* kCountryNames[] = {nullptr,
-                                         "United Arab Emirates",
-                                         "Albania",
-                                         "Armenia",
-                                         "Argentina",
-                                         "Austria",
-                                         "Australia",
-                                         "Azerbaijan",
-                                         "Belgium",
-                                         "Bulgaria",
-                                         "Bahrain",
-                                         "Brunei Darussalam",
-                                         "Bolivia",
-                                         "Brazil",
-                                         "Belarus",
-                                         "Belize",
-                                         "Canada",
+                                         wxTRANSLATE("United Arab Emirates"),
+                                         wxTRANSLATE("Albania"),
+                                         wxTRANSLATE("Armenia"),
+                                         wxTRANSLATE("Argentina"),
+                                         wxTRANSLATE("Austria"),
+                                         wxTRANSLATE("Australia"),
+                                         wxTRANSLATE("Azerbaijan"),
+                                         wxTRANSLATE("Belgium"),
+                                         wxTRANSLATE("Bulgaria"),
+                                         wxTRANSLATE("Bahrain"),
+                                         wxTRANSLATE("Brunei Darussalam"),
+                                         wxTRANSLATE("Bolivia"),
+                                         wxTRANSLATE("Brazil"),
+                                         wxTRANSLATE("Belarus"),
+                                         wxTRANSLATE("Belize"),
+                                         wxTRANSLATE("Canada"),
                                          nullptr,
-                                         "Switzerland",
-                                         "Chile",
-                                         "China",
-                                         "Colombia",
-                                         "Costa Rica",
-                                         "Czech Republic",
-                                         "Germany",
-                                         "Denmark",
-                                         "Dominican Republic",
-                                         "Algeria",
-                                         "Ecuador",
-                                         "Estonia",
-                                         "Egypt",
-                                         "Spain",
-                                         "Finland",
-                                         "Faroe Islands",
-                                         "France",
-                                         "Great Britain",
-                                         "Georgia",
-                                         "Greece",
-                                         "Guatemala",
-                                         "Hong Kong",
-                                         "Honduras",
-                                         "Croatia",
-                                         "Hungary",
-                                         "Indonesia",
-                                         "Ireland",
-                                         "Israel",
-                                         "India",
-                                         "Iraq",
-                                         "Iran",
-                                         "Iceland",
-                                         "Italy",
-                                         "Jamaica",
-                                         "Jordan",
-                                         "Japan",
-                                         "Kenya",
-                                         "Kyrgyzstan",
-                                         "Korea",
-                                         "Kuwait",
-                                         "Kazakhstan",
-                                         "Lebanon",
-                                         "Liechtenstein",
-                                         "Lithuania",
-                                         "Luxembourg",
-                                         "Latvia",
-                                         "Libya",
-                                         "Morocco",
-                                         "Monaco",
-                                         "Macedonia",
-                                         "Mongolia",
-                                         "Macau",
-                                         "Maldives",
-                                         "Mexico",
-                                         "Malaysia",
-                                         "Nicaragua",
-                                         "Netherlands",
-                                         "Norway",
-                                         "New Zealand",
-                                         "Oman",
-                                         "Panama",
-                                         "Peru",
-                                         "Philippines",
-                                         "Pakistan",
-                                         "Poland",
-                                         "Puerto Rico",
-                                         "Portugal",
-                                         "Paraguay",
-                                         "Qatar",
-                                         "Romania",
-                                         "Russian Federation",
-                                         "Saudi Arabia",
-                                         "Sweden",
-                                         "Singapore",
-                                         "Slovenia",
-                                         "Slovak Republic",
+                                         wxTRANSLATE("Switzerland"),
+                                         wxTRANSLATE("Chile"),
+                                         wxTRANSLATE("China"),
+                                         wxTRANSLATE("Colombia"),
+                                         wxTRANSLATE("Costa Rica"),
+                                         wxTRANSLATE("Czech Republic"),
+                                         wxTRANSLATE("Germany"),
+                                         wxTRANSLATE("Denmark"),
+                                         wxTRANSLATE("Dominican Republic"),
+                                         wxTRANSLATE("Algeria"),
+                                         wxTRANSLATE("Ecuador"),
+                                         wxTRANSLATE("Estonia"),
+                                         wxTRANSLATE("Egypt"),
+                                         wxTRANSLATE("Spain"),
+                                         wxTRANSLATE("Finland"),
+                                         wxTRANSLATE("Faroe Islands"),
+                                         wxTRANSLATE("France"),
+                                         wxTRANSLATE("Great Britain"),
+                                         wxTRANSLATE("Georgia"),
+                                         wxTRANSLATE("Greece"),
+                                         wxTRANSLATE("Guatemala"),
+                                         wxTRANSLATE("Hong Kong"),
+                                         wxTRANSLATE("Honduras"),
+                                         wxTRANSLATE("Croatia"),
+                                         wxTRANSLATE("Hungary"),
+                                         wxTRANSLATE("Indonesia"),
+                                         wxTRANSLATE("Ireland"),
+                                         wxTRANSLATE("Israel"),
+                                         wxTRANSLATE("India"),
+                                         wxTRANSLATE("Iraq"),
+                                         wxTRANSLATE("Iran"),
+                                         wxTRANSLATE("Iceland"),
+                                         wxTRANSLATE("Italy"),
+                                         wxTRANSLATE("Jamaica"),
+                                         wxTRANSLATE("Jordan"),
+                                         wxTRANSLATE("Japan"),
+                                         wxTRANSLATE("Kenya"),
+                                         wxTRANSLATE("Kyrgyzstan"),
+                                         wxTRANSLATE("Korea"),
+                                         wxTRANSLATE("Kuwait"),
+                                         wxTRANSLATE("Kazakhstan"),
+                                         wxTRANSLATE("Lebanon"),
+                                         wxTRANSLATE("Liechtenstein"),
+                                         wxTRANSLATE("Lithuania"),
+                                         wxTRANSLATE("Luxembourg"),
+                                         wxTRANSLATE("Latvia"),
+                                         wxTRANSLATE("Libya"),
+                                         wxTRANSLATE("Morocco"),
+                                         wxTRANSLATE("Monaco"),
+                                         wxTRANSLATE("Macedonia"),
+                                         wxTRANSLATE("Mongolia"),
+                                         wxTRANSLATE("Macau"),
+                                         wxTRANSLATE("Maldives"),
+                                         wxTRANSLATE("Mexico"),
+                                         wxTRANSLATE("Malaysia"),
+                                         wxTRANSLATE("Nicaragua"),
+                                         wxTRANSLATE("Netherlands"),
+                                         wxTRANSLATE("Norway"),
+                                         wxTRANSLATE("New Zealand"),
+                                         wxTRANSLATE("Oman"),
+                                         wxTRANSLATE("Panama"),
+                                         wxTRANSLATE("Peru"),
+                                         wxTRANSLATE("Philippines"),
+                                         wxTRANSLATE("Pakistan"),
+                                         wxTRANSLATE("Poland"),
+                                         wxTRANSLATE("Puerto Rico"),
+                                         wxTRANSLATE("Portugal"),
+                                         wxTRANSLATE("Paraguay"),
+                                         wxTRANSLATE("Qatar"),
+                                         wxTRANSLATE("Romania"),
+                                         wxTRANSLATE("Russian Federation"),
+                                         wxTRANSLATE("Saudi Arabia"),
+                                         wxTRANSLATE("Sweden"),
+                                         wxTRANSLATE("Singapore"),
+                                         wxTRANSLATE("Slovenia"),
+                                         wxTRANSLATE("Slovak Republic"),
                                          nullptr,
-                                         "El Salvador",
-                                         "Syria",
-                                         "Thailand",
-                                         "Tunisia",
-                                         "Turkey",
-                                         "Trinidad And Tobago",
-                                         "Taiwan",
-                                         "Ukraine",
-                                         "United States",
-                                         "Uruguay",
-                                         "Uzbekistan",
-                                         "Venezuela",
-                                         "Viet Nam",
-                                         "Yemen",
-                                         "South Africa",
-                                         "Zimbabwe"};
+                                         wxTRANSLATE("El Salvador"),
+                                         wxTRANSLATE("Syria"),
+                                         wxTRANSLATE("Thailand"),
+                                         wxTRANSLATE("Tunisia"),
+                                         wxTRANSLATE("Turkey"),
+                                         wxTRANSLATE("Trinidad And Tobago"),
+                                         wxTRANSLATE("Taiwan"),
+                                         wxTRANSLATE("Ukraine"),
+                                         wxTRANSLATE("United States"),
+                                         wxTRANSLATE("Uruguay"),
+                                         wxTRANSLATE("Uzbekistan"),
+                                         wxTRANSLATE("Venezuela"),
+                                         wxTRANSLATE("Viet Nam"),
+                                         wxTRANSLATE("Yemen"),
+                                         wxTRANSLATE("South Africa"),
+                                         wxTRANSLATE("Zimbabwe")};
 
 constexpr const char* kSubscriptionTierNames[] = {
-    "None",  nullptr, nullptr, "Silver", nullptr,
-    nullptr, "Gold",  nullptr, nullptr,  "Family"};
+    wxTRANSLATE("None"),   nullptr, nullptr,
+    wxTRANSLATE("Silver"), nullptr, nullptr,
+    wxTRANSLATE("Gold"),   nullptr, nullptr,
+    wxTRANSLATE("Family")};
 
-constexpr const char* kGamerZoneNames[] = {"None", "Recreation", "Pro",
-                                           "Family", "Underground"};
+constexpr const char* kGamerZoneNames[] = {
+    wxTRANSLATE("None"), wxTRANSLATE("Recreation"), wxTRANSLATE("Pro"),
+    wxTRANSLATE("Family"), wxTRANSLATE("Underground")};
 
 // Indices of selectable entries in a sparse name table. Index 0 is always
 // included (rendered as a blank entry when names[0] is null) so the user can
@@ -195,7 +198,7 @@ std::vector<int> SparseValues(const char* const* names, size_t count) {
 void PopulateSparseChoice(wxChoice* combo, const char* const* names,
                           const std::vector<int>& values) {
   for (int v : values) {
-    combo->Append(names[v] ? wxString::FromUTF8(names[v]) : wxString());
+    combo->Append(names[v] ? wxGetTranslation(names[v]) : wxString());
   }
 }
 
@@ -260,13 +263,13 @@ std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
 ProfileEditorDialog::ProfileEditorDialog(wxWindow* parent,
                                          EmulatorWindow* emulator_window,
                                          uint64_t xuid)
-    : wxDialog(parent, wxID_ANY, "Gamercard Editor", wxDefaultPosition,
+    : wxDialog(parent, wxID_ANY, _("Gamercard Editor"), wxDefaultPosition,
                wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window),
       xuid_(xuid) {
   LoadProfileData();
-  SetTitle(wxString::FromUTF8(
-      fmt::format("Gamercard Editor — {}", current_data_.gamertag)));
+  SetTitle(wxString::Format(_("Gamercard Editor — %s"),
+                            wxString::FromUTF8(current_data_.gamertag)));
   Build();
 }
 
@@ -352,7 +355,7 @@ void ProfileEditorDialog::Build() {
   auto* root = new wxBoxSizer(wxVERTICAL);
 
   // Profile Settings group.
-  auto* profile_box = new wxStaticBox(this, wxID_ANY, "Profile Settings");
+  auto* profile_box = new wxStaticBox(this, wxID_ANY, _("Profile Settings"));
   auto* profile_sizer = new wxStaticBoxSizer(profile_box, wxVERTICAL);
 
   auto* icon_row = new wxBoxSizer(wxHORIZONTAL);
@@ -362,24 +365,26 @@ void ProfileEditorDialog::Build() {
   // Pad to match the label-column width so buttons line up with the input
   // column on the field rows below.
   icon_row->AddSpacer(110 - 64 - 4);
-  change_icon_button_ = new wxButton(profile_box, wxID_ANY, "Change Icon...");
+  change_icon_button_ =
+      new wxButton(profile_box, wxID_ANY, _("Change Icon..."));
   change_icon_button_->Enable(signed_in && kernel_state &&
                               !kernel_state->title_id());
   if (kernel_state && kernel_state->title_id()) {
     change_icon_button_->SetToolTip(
-        "Icon change is disabled while a title is running.");
+        _("Icon change is disabled while a title is running."));
   } else if (!signed_in) {
     change_icon_button_->SetToolTip(
-        "Profile must be signed in to change the icon.");
+        _("Profile must be signed in to change the icon."));
   } else {
     change_icon_button_->SetToolTip(
-        "PNG, 64x64 or 32x32. Refresh after re-login.");
+        _("PNG, 64x64 or 32x32. Refresh after re-login."));
   }
   change_icon_button_->Bind(wxEVT_BUTTON,
                             [this](wxCommandEvent&) { OnChangeIcon(); });
   icon_row->Add(change_icon_button_,
                 wxSizerFlags().CenterVertical().Border(wxALL, 4));
-  auto* clear_icon_button = new wxButton(profile_box, wxID_ANY, "Clear Icon");
+  auto* clear_icon_button =
+      new wxButton(profile_box, wxID_ANY, _("Clear Icon"));
   clear_icon_button->Enable(signed_in);
   clear_icon_button->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     current_data_.profile_icon.clear();
@@ -390,7 +395,7 @@ void ProfileEditorDialog::Build() {
   profile_sizer->Add(icon_row);
   RefreshIconBitmap();
 
-  auto add_field = [&](const char* label, wxWindow* widget) {
+  auto add_field = [&](const wxString& label, wxWindow* widget) {
     auto* row = new wxBoxSizer(wxHORIZONTAL);
     row->Add(new wxStaticText(profile_box, wxID_ANY, label, wxDefaultPosition,
                               wxSize(110, -1)),
@@ -404,7 +409,7 @@ void ProfileEditorDialog::Build() {
   gamertag_edit_->SetMaxLength(15);
   gamertag_edit_->Bind(wxEVT_TEXT,
                        [this](wxCommandEvent&) { UpdateGamertagValidation(); });
-  add_field("Gamertag:", gamertag_edit_);
+  add_field(_("Gamertag:"), gamertag_edit_);
 
   gamertag_validation_ = new wxStaticText(profile_box, wxID_ANY, "");
   gamertag_validation_->SetForegroundColour(*wxRED);
@@ -415,44 +420,45 @@ void ProfileEditorDialog::Build() {
       profile_box, wxID_ANY, wxString::FromUTF8(current_data_.gamer_name));
   gamer_name_edit_->SetMaxLength(130);
   gamer_name_edit_->Enable(signed_in);
-  add_field("Gamer Name:", gamer_name_edit_);
+  add_field(_("Gamer Name:"), gamer_name_edit_);
 
   gamer_motto_edit_ = new wxTextCtrl(
       profile_box, wxID_ANY, wxString::FromUTF8(current_data_.gamer_motto));
   gamer_motto_edit_->SetMaxLength(22);
   gamer_motto_edit_->Enable(signed_in);
-  add_field("Gamer Motto:", gamer_motto_edit_);
+  add_field(_("Gamer Motto:"), gamer_motto_edit_);
 
   gamer_bio_edit_ = new wxTextCtrl(
       profile_box, wxID_ANY, wxString::FromUTF8(current_data_.gamer_bio),
       wxDefaultPosition, wxSize(-1, 100), wxTE_MULTILINE);
   gamer_bio_edit_->SetMaxLength(500);
   gamer_bio_edit_->Enable(signed_in);
-  add_field("Gamer Bio:", gamer_bio_edit_);
+  add_field(_("Gamer Bio:"), gamer_bio_edit_);
 
   language_combo_ = new wxChoice(profile_box, wxID_ANY);
   PopulateSparseChoice(language_combo_, kLanguageNames, LanguageValues());
   SelectByValue(language_combo_, LanguageValues(),
                 static_cast<int>(current_data_.language));
-  add_field("Language:", language_combo_);
+  add_field(_("Language:"), language_combo_);
 
   country_combo_ = new wxChoice(profile_box, wxID_ANY);
   PopulateSparseChoice(country_combo_, kCountryNames, CountryValues());
   SelectByValue(country_combo_, CountryValues(),
                 static_cast<int>(current_data_.country));
-  add_field("Country:", country_combo_);
+  add_field(_("Country:"), country_combo_);
 
   root->Add(profile_sizer, wxSizerFlags().Expand().Border(wxALL, 8));
 
   // Online Profile Settings group.
-  auto* online_box = new wxStaticBox(this, wxID_ANY, "Online Profile Settings");
+  auto* online_box =
+      new wxStaticBox(this, wxID_ANY, _("Online Profile Settings"));
   auto* online_sizer = new wxStaticBoxSizer(online_box, wxVERTICAL);
 
-  live_enabled_check_ = new wxCheckBox(online_box, wxID_ANY, "Live Enabled");
+  live_enabled_check_ = new wxCheckBox(online_box, wxID_ANY, _("Live Enabled"));
   live_enabled_check_->SetValue(current_data_.is_live_enabled);
   online_sizer->Add(live_enabled_check_, wxSizerFlags().Border(wxALL, 4));
 
-  auto add_online_field = [&](const char* label, wxWindow* widget) {
+  auto add_online_field = [&](const wxString& label, wxWindow* widget) {
     auto* row = new wxBoxSizer(wxHORIZONTAL);
     row->Add(new wxStaticText(online_box, wxID_ANY, label, wxDefaultPosition,
                               wxSize(110, -1)),
@@ -464,12 +470,12 @@ void ProfileEditorDialog::Build() {
   online_xuid_edit_ = new wxTextCtrl(
       online_box, wxID_ANY, wxString::FromUTF8(current_data_.online_xuid),
       wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
-  add_online_field("Online XUID:", online_xuid_edit_);
+  add_online_field(_("Online XUID:"), online_xuid_edit_);
 
   online_domain_edit_ = new wxTextCtrl(
       online_box, wxID_ANY, wxString::FromUTF8(current_data_.online_domain),
       wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
-  add_online_field("Online Domain:", online_domain_edit_);
+  add_online_field(_("Online Domain:"), online_domain_edit_);
 
   gamer_zone_combo_ = new wxChoice(online_box, wxID_ANY);
   PopulateSparseChoice(gamer_zone_combo_, kGamerZoneNames, GamerZoneValues());
@@ -481,7 +487,7 @@ void ProfileEditorDialog::Build() {
     }
   }
   gamer_zone_combo_->Enable(current_data_.is_live_enabled && signed_in);
-  add_online_field("Gamer Zone:", gamer_zone_combo_);
+  add_online_field(_("Gamer Zone:"), gamer_zone_combo_);
 
   subscription_tier_combo_ = new wxChoice(online_box, wxID_ANY);
   PopulateSparseChoice(subscription_tier_combo_, kSubscriptionTierNames,
@@ -489,7 +495,7 @@ void ProfileEditorDialog::Build() {
   SelectByValue(subscription_tier_combo_, SubscriptionTierValues(),
                 static_cast<int>(current_data_.account_subscription_tier));
   subscription_tier_combo_->Enable(current_data_.is_live_enabled);
-  add_online_field("Subscription Tier:", subscription_tier_combo_);
+  add_online_field(_("Subscription Tier:"), subscription_tier_combo_);
 
   live_enabled_check_->Bind(wxEVT_CHECKBOX, [this, signed_in](wxCommandEvent&) {
     bool checked = live_enabled_check_->GetValue();
@@ -503,9 +509,9 @@ void ProfileEditorDialog::Build() {
   // Buttons.
   auto* button_row = new wxBoxSizer(wxHORIZONTAL);
   button_row->AddStretchSpacer(1);
-  save_button_ = new wxButton(this, wxID_OK, "Save");
+  save_button_ = new wxButton(this, wxID_OK, _("Save"));
   save_button_->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnSave(); });
-  auto* cancel = new wxButton(this, wxID_CANCEL, "Cancel");
+  auto* cancel = new wxButton(this, wxID_CANCEL, _("Cancel"));
   button_row->Add(save_button_, wxSizerFlags().Border(wxRIGHT, 4));
   button_row->Add(cancel);
   root->Add(button_row,
@@ -544,19 +550,20 @@ void ProfileEditorDialog::UpdateGamertagValidation() {
   if (!gamertag_edit_ || !gamertag_validation_ || !save_button_) return;
   bool valid = IsGamertagValid();
   bool empty = gamertag_edit_->IsEmpty();
-  gamertag_validation_->SetLabel(valid || empty ? "" : "Invalid gamertag");
+  gamertag_validation_->SetLabel(valid || empty ? wxString()
+                                                : _("Invalid gamertag"));
   save_button_->Enable(valid);
 }
 
 void ProfileEditorDialog::OnChangeIcon() {
-  wxFileDialog dlg(this, "Select PNG image", "", "",
-                   "PNG Images (*.png)|*.png|All Files (*.*)|*.*",
+  wxFileDialog dlg(this, _("Select PNG image"), "", "",
+                   _("PNG Images (*.png)|*.png|All Files (*.*)|*.*"),
                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (dlg.ShowModal() != wxID_OK) return;
   std::filesystem::path path(dlg.GetPath().wc_str());
   if (!IsPng(path)) {
-    wxMessageBox("Selected file is not a valid PNG image.", "Invalid file",
-                 wxOK | wxICON_WARNING, this);
+    wxMessageBox(_("Selected file is not a valid PNG image."),
+                 _("Invalid file"), wxOK | wxICON_WARNING, this);
     return;
   }
   auto bytes = ReadFileBytes(path);
@@ -564,16 +571,16 @@ void ProfileEditorDialog::OnChangeIcon() {
   wxMemoryInputStream stream(bytes.data(), bytes.size());
   wxImage img;
   if (!img.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
-    wxMessageBox("Could not decode the selected image.", "Invalid file",
+    wxMessageBox(_("Could not decode the selected image."), _("Invalid file"),
                  wxOK | wxICON_WARNING, this);
     return;
   }
   if ((img.GetWidth() != 64 || img.GetHeight() != 64) &&
       (img.GetWidth() != 32 || img.GetHeight() != 32)) {
-    wxMessageBox(wxString::Format("Profile icon must be 64x64 or 32x32. "
-                                  "Selected image is %dx%d.",
+    wxMessageBox(wxString::Format(_("Profile icon must be 64x64 or 32x32. "
+                                    "Selected image is %dx%d."),
                                   img.GetWidth(), img.GetHeight()),
-                 "Invalid resolution", wxOK | wxICON_WARNING, this);
+                 _("Invalid resolution"), wxOK | wxICON_WARNING, this);
     return;
   }
   current_data_.profile_icon = std::move(bytes);

@@ -91,7 +91,7 @@ EditorBuild BuildEditor(wxWindow* parent, cvar::IConfigVar* var,
       auto* hsizer = new wxBoxSizer(wxHORIZONTAL);
       auto* text = new wxTextCtrl(container, wxID_ANY,
                                   wxString::FromUTF8(current_value));
-      auto* browse = new wxButton(container, wxID_ANY, "Browse...");
+      auto* browse = new wxButton(container, wxID_ANY, _("Browse..."));
       std::string name = var->name();
       browse->Bind(wxEVT_BUTTON, [container, text, name](wxCommandEvent&) {
         const auto* info = xe::ui::GetCvarPathInfo(name);
@@ -101,12 +101,15 @@ EditorBuild BuildEditor(wxWindow* parent, cvar::IConfigVar* var,
           long flags = info->kind == xe::ui::CvarPathKind::kFileSave
                            ? (wxFD_SAVE | wxFD_OVERWRITE_PROMPT)
                            : (wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-          wxFileDialog dlg(container, wxString::FromUTF8("Select " + name), "",
-                           current, wxString::FromUTF8(info->wildcard), flags);
+          wxFileDialog dlg(
+              container,
+              wxString::Format(_("Select %s"), wxString::FromUTF8(name)), "",
+              current, wxString::FromUTF8(info->wildcard), flags);
           if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
         } else {
           wxDirDialog dlg(container,
-                          wxString::FromUTF8("Select directory for " + name),
+                          wxString::Format(_("Select directory for %s"),
+                                           wxString::FromUTF8(name)),
                           current);
           if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
         }
@@ -171,13 +174,13 @@ std::string ToLowerAscii(std::string s) {
 std::string PickCvarWithFilter(wxWindow* parent,
                                const std::vector<std::string>& names,
                                const std::vector<std::string>& display) {
-  wxDialog dlg(parent, wxID_ANY, "Add Override", wxDefaultPosition,
+  wxDialog dlg(parent, wxID_ANY, _("Add Override"), wxDefaultPosition,
                wxSize(520, 420), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   auto* sizer = new wxBoxSizer(wxVERTICAL);
 
   auto* search = new wxSearchCtrl(&dlg, wxID_ANY);
   search->ShowCancelButton(true);
-  search->SetDescriptiveText("Filter cvars");
+  search->SetDescriptiveText(_("Filter cvars"));
   sizer->Add(search, wxSizerFlags().Expand().Border(wxALL, 8));
 
   wxArrayString choices;
@@ -257,13 +260,15 @@ void InsertTypedValue(toml::table& dest, const std::string& key,
 GameConfigDialog::GameConfigDialog(wxWindow* parent,
                                    EmulatorWindow* emulator_window,
                                    uint32_t title_id, std::string game_title)
-    : wxDialog(parent, wxID_ANY,
-               wxString::FromUTF8(fmt::format(
-                   "{} ({:08X}) — Config Overrides",
-                   game_title.empty() ? std::to_string(title_id) : game_title,
-                   title_id)),
-               wxDefaultPosition, wxSize(720, 500),
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+    : wxDialog(
+          parent, wxID_ANY,
+          wxString::Format(
+              _("%s (%08X) — Config Overrides"),
+              wxString::FromUTF8(game_title.empty() ? std::to_string(title_id)
+                                                    : game_title),
+              title_id),
+          wxDefaultPosition, wxSize(720, 500),
+          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window),
       title_id_(title_id),
       game_title_(std::move(game_title)) {
@@ -281,13 +286,13 @@ void GameConfigDialog::Build() {
   sizer->Add(scroll_, wxSizerFlags(1).Expand().Border(wxALL, 8));
 
   auto* button_row = new wxBoxSizer(wxHORIZONTAL);
-  auto* add_btn = new wxButton(this, wxID_ANY, "Add...");
+  auto* add_btn = new wxButton(this, wxID_ANY, _("Add..."));
   add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnAdd(); });
   button_row->Add(add_btn);
   button_row->AddStretchSpacer(1);
 
-  auto* save_btn = new wxButton(this, wxID_OK, "Save");
-  auto* cancel_btn = new wxButton(this, wxID_CANCEL, "Cancel");
+  auto* save_btn = new wxButton(this, wxID_OK, _("Save"));
+  auto* cancel_btn = new wxButton(this, wxID_CANCEL, _("Cancel"));
   save_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     SaveOverrides();
     EndModal(wxID_OK);
@@ -318,7 +323,7 @@ void GameConfigDialog::AddRow(const std::string& name,
   auto* del_btn =
       new wxBitmapButton(scroll_, wxID_ANY, kCancelBitmap, wxDefaultPosition,
                          wxDefaultSize, wxBORDER_NONE | wxBU_EXACTFIT);
-  del_btn->SetToolTip("Remove this override");
+  del_btn->SetToolTip(_("Remove this override"));
   del_btn->Bind(wxEVT_BUTTON, [this, row](wxCommandEvent&) { RemoveRow(row); });
   row->sizer->Add(label, wxSizerFlags().CenterVertical().Border(wxALL, 4));
   row->sizer->Add(row->editor,
@@ -395,8 +400,8 @@ void GameConfigDialog::SaveOverrides() {
     config::SaveGameConfig(title_id_, out);
   } catch (const std::exception& e) {
     wxMessageBox(
-        wxString::FromUTF8(fmt::format("Failed to save: {}", e.what())),
-        "Error", wxOK | wxICON_ERROR, this);
+        wxString::Format(_("Failed to save: %s"), wxString::FromUTF8(e.what())),
+        _("Error"), wxOK | wxICON_ERROR, this);
     return;
   }
   dirty_ = false;
@@ -421,7 +426,7 @@ void GameConfigDialog::OnAdd() {
     display.push_back(fmt::format("{} ({})", n, var->category()));
   }
   if (names.empty()) {
-    wxMessageBox("All cvars are already overridden.", "Add Override",
+    wxMessageBox(_("All cvars are already overridden."), _("Add Override"),
                  wxOK | wxICON_INFORMATION, this);
     return;
   }

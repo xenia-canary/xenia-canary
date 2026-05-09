@@ -32,14 +32,15 @@ namespace app {
 PatchesDialog::PatchesDialog(wxWindow* parent, EmulatorWindow* emulator_window,
                              uint32_t title_id,
                              patcher::BundledPatchFile bundled)
-    : wxDialog(parent, wxID_ANY,
-               wxString::FromUTF8(fmt::format("{} ({:08X})",
-                                              bundled.entry.title_name.empty()
+    : wxDialog(
+          parent, wxID_ANY,
+          wxString::Format(_("%s (%08X)"),
+                           wxString::FromUTF8(bundled.entry.title_name.empty()
                                                   ? bundled.filename
-                                                  : bundled.entry.title_name,
-                                              title_id)),
-               wxDefaultPosition, wxSize(640, 480),
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+                                                  : bundled.entry.title_name),
+                           title_id),
+          wxDefaultPosition, wxSize(640, 480),
+          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window),
       title_id_(title_id),
       bundled_(std::move(bundled)) {
@@ -98,12 +99,14 @@ void PatchesDialog::Build() {
       if (auto v = (*tbl)["desc"].value<std::string>()) info.description = *v;
       if (auto v = (*tbl)["author"].value<std::string>()) info.author = *v;
       if (auto v = (*tbl)["is_enabled"].value<bool>()) info.is_enabled = *v;
+      wxString display_name;
       if (info.name.empty()) {
-        info.name = fmt::format("Patch #{}", info.patch_index + 1);
+        display_name = wxString::Format(_("Patch #%zu"), info.patch_index + 1);
+      } else {
+        display_name = wxString::FromUTF8(info.name);
       }
 
-      info.checkbox =
-          new wxCheckBox(scroll, wxID_ANY, wxString::FromUTF8(info.name));
+      info.checkbox = new wxCheckBox(scroll, wxID_ANY, display_name);
       info.checkbox->SetValue(info.is_enabled);
       info.checkbox->Bind(
           wxEVT_CHECKBOX,
@@ -114,18 +117,20 @@ void PatchesDialog::Build() {
                         wxSizerFlags().Border(wxLEFT | wxTOP, 8));
 
       if (!info.description.empty() || !info.author.empty()) {
-        std::string detail;
-        if (!info.description.empty()) detail = info.description;
-        if (!info.author.empty()) {
-          if (!detail.empty()) detail += "\n";
-          detail += "by " + info.author;
+        wxString detail;
+        if (!info.description.empty()) {
+          detail = wxString::FromUTF8(info.description);
         }
-        auto* lbl =
-            new wxStaticText(scroll, wxID_ANY, wxString::FromUTF8(detail));
+        if (!info.author.empty()) {
+          if (!detail.empty()) detail += wxT("\n");
+          detail +=
+              wxString::Format(_("by %s"), wxString::FromUTF8(info.author));
+        }
+        auto* lbl = new wxStaticText(scroll, wxID_ANY, detail);
         lbl->SetForegroundColour(*wxLIGHT_GREY);
         scroll_sizer->Add(lbl,
                           wxSizerFlags().Border(wxLEFT | wxRIGHT, 32).Expand());
-        desc_labels_.emplace_back(lbl, std::move(detail));
+        desc_labels_.emplace_back(lbl, detail);
       }
 
       patches_.push_back(std::move(info));
@@ -136,8 +141,8 @@ void PatchesDialog::Build() {
   scroll->Bind(wxEVT_SIZE, &PatchesDialog::OnScrollSize, this);
   sizer->Add(scroll, wxSizerFlags(1).Expand().Border(wxALL, 8));
 
-  info_label_ =
-      new wxStaticText(this, wxID_ANY, "Toggles take effect on next launch.");
+  info_label_ = new wxStaticText(this, wxID_ANY,
+                                 _("Toggles take effect on next launch."));
   sizer->Add(info_label_, wxSizerFlags().Border(wxLEFT | wxRIGHT, 12));
 
   auto* button_sizer = CreateButtonSizer(wxCLOSE);
@@ -194,7 +199,7 @@ void PatchesDialog::OnToggle(size_t patch_index, bool new_value) {
     XELOGE("PatchesDialog: failed to flip is_enabled for patch #{}",
            patch_index + 1);
     if (info_label_) {
-      info_label_->SetLabel("Failed to update patch state.");
+      info_label_->SetLabel(_("Failed to update patch state."));
     }
     return;
   }
@@ -205,7 +210,7 @@ void PatchesDialog::OnToggle(size_t patch_index, bool new_value) {
     XELOGE("PatchesDialog: failed to write {}",
            xe::path_to_utf8(storage_path_));
     if (info_label_) {
-      info_label_->SetLabel("Failed to save changes.");
+      info_label_->SetLabel(_("Failed to save changes."));
     }
     return;
   }
@@ -214,7 +219,7 @@ void PatchesDialog::OnToggle(size_t patch_index, bool new_value) {
     if (i + 1 < lines_.size()) out << "\n";
   }
   if (info_label_) {
-    info_label_->SetLabel("Saved. Takes effect on next launch.");
+    info_label_->SetLabel(_("Saved. Takes effect on next launch."));
   }
 }
 
@@ -231,7 +236,7 @@ void PatchesDialog::RewrapDescriptions() {
   if (width == last_wrap_width_) return;
   last_wrap_width_ = width;
   for (auto& [label, text] : desc_labels_) {
-    label->SetLabel(wxString::FromUTF8(text));
+    label->SetLabel(text);
     label->Wrap(width);
   }
   if (auto* s = scroll_->GetSizer()) {

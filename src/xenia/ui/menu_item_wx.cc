@@ -28,6 +28,36 @@ std::unique_ptr<MenuItem> MenuItem::CreateCheck(
                                       std::move(on_toggle));
 }
 
+std::unique_ptr<MenuItem> WxMenuItem::Create(MenuItem::Type type) {
+  return MenuItem::Create(type);
+}
+
+std::unique_ptr<MenuItem> WxMenuItem::Create(MenuItem::Type type,
+                                             const wxString& text) {
+  return MenuItem::Create(type, text.utf8_string());
+}
+
+std::unique_ptr<MenuItem> WxMenuItem::Create(MenuItem::Type type,
+                                             const wxString& text,
+                                             std::function<void()> callback) {
+  return MenuItem::Create(type, text.utf8_string(), std::move(callback));
+}
+
+std::unique_ptr<MenuItem> WxMenuItem::Create(MenuItem::Type type,
+                                             const wxString& text,
+                                             const wxString& hotkey,
+                                             std::function<void()> callback) {
+  return MenuItem::Create(type, text.utf8_string(), hotkey.utf8_string(),
+                          std::move(callback));
+}
+
+std::unique_ptr<MenuItem> WxMenuItem::CreateCheck(
+    const wxString& text, bool initially_checked,
+    std::function<void(bool)> on_toggle) {
+  return MenuItem::CreateCheck(text.utf8_string(), initially_checked,
+                               std::move(on_toggle));
+}
+
 int WxMenuItem::AllocateId() {
   static std::atomic<int> next_id{wxID_HIGHEST + 1};
   return next_id.fetch_add(1);

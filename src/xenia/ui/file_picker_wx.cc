@@ -56,7 +56,7 @@ class WxFilePicker : public FilePicker {
 wxString WxFilePicker::BuildWildcard() const {
   auto exts = extensions();
   if (exts.empty()) {
-    return wxT("All Files|*.*");
+    return _("All Files") + wxT("|*.*");
   }
   wxString wildcard;
   for (size_t i = 0; i < exts.size(); ++i) {
