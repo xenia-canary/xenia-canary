@@ -24,11 +24,17 @@ namespace apps {
  * https://github.com/NicolasDe/AlienSwarm/blob/master/src/common/xbox/xboxstubs.h
  */
 
-struct XGI_XUSER_ACHIEVEMENT {
+struct X_USER_ACHIEVEMENT {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> achievement_id;
 };
-static_assert_size(XGI_XUSER_ACHIEVEMENT, 0x8);
+static_assert_size(X_USER_ACHIEVEMENT, 0x8);
+
+struct XGI_WRITEACHIEVEMENT {
+  xe::be<uint32_t> num_achievements;
+  xe::be<uint32_t> achievements_ptr;  // X_USER_ACHIEVEMENT*
+};
+static_assert_size(XGI_WRITEACHIEVEMENT, 0x8);
 
 struct XGI_XUSER_GET_PROPERTY {
   xe::be<uint32_t> user_index;
@@ -151,19 +157,27 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     }
     case 0x000B0008: {
       assert_true(!buffer_length ||
-                  buffer_length == sizeof(XGI_XUSER_ACHIEVEMENT));
-      uint32_t achievement_count = xe::load_and_swap<uint32_t>(buffer + 0);
-      uint32_t achievements_ptr = xe::load_and_swap<uint32_t>(buffer + 4);
-      XELOGD("XGIUserWriteAchievements({:08X}, {:08X})", achievement_count,
-             achievements_ptr);
+                  buffer_length == sizeof(X_USER_ACHIEVEMENT));
 
-      auto* achievement =
-          memory_->TranslateVirtual<XGI_XUSER_ACHIEVEMENT*>(achievements_ptr);
-      for (uint32_t i = 0; i < achievement_count; i++, achievement++) {
+      const XGI_WRITEACHIEVEMENT* write_achievements =
+          reinterpret_cast<const XGI_WRITEACHIEVEMENT*>(buffer);
+
+      const X_USER_ACHIEVEMENT* achievements =
+          memory_->TranslateVirtual<X_USER_ACHIEVEMENT*>(
+              write_achievements->achievements_ptr);
+
+      XELOGD("XGIUserWriteAchievements({:08X}, {:08X})",
+             write_achievements->num_achievements.get(),
+             write_achievements->achievements_ptr.get());
+
+      for (uint32_t i = 0; i < write_achievements->num_achievements; i++) {
+        const X_USER_ACHIEVEMENT& achievement = achievements[i];
+
         kernel_state_->achievement_manager()->EarnAchievement(
-            achievement->user_index, kernel_state_->title_id(),
-            achievement->achievement_id);
+            achievement.user_index, kernel_state_->title_id(),
+            achievement.achievement_id);
       }
+
       return X_E_SUCCESS;
     }
     case 0x000B0010: {
