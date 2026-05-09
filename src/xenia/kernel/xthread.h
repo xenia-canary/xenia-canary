@@ -501,6 +501,7 @@ class XThread : public XObject, public cpu::Thread {
     pending_mutant_acquires_.push_back(mutant);
   }
   void SetCurrentThread();
+  void OnHostThreadExitCleanup();
 
  protected:
   bool AllocateStack(uint32_t size);

@@ -9,6 +9,9 @@
 
 #include "xenia/kernel/xthread.h"
 
+#if XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC
+#include <pthread.h>
+#endif
 #if !XE_PLATFORM_WIN32
 #include <signal.h>
 #endif
@@ -102,6 +105,12 @@ XThread::~XThread() {
 
 thread_local XThread* current_xthread_tls_ = nullptr;
 
+namespace {
+void HostThreadExitCleanupThunk(void* argument) {
+  static_cast<XThread*>(argument)->OnHostThreadExitCleanup();
+}
+}  // namespace
+
 bool XThread::IsInThread() { return Thread::IsInThread(); }
 
 bool XThread::IsInThread(XThread* other) {
@@ -124,6 +133,14 @@ uint32_t XThread::GetCurrentThreadHandle() {
 uint32_t XThread::GetCurrentThreadId() {
   XThread* thread = XThread::GetCurrentThread();
   return thread->guest_object<X_KTHREAD>()->thread_id;
+}
+
+void XThread::OnHostThreadExitCleanup() {
+  running_ = false;
+  current_thread_ = nullptr;
+  current_xthread_tls_ = nullptr;
+  xe::Profiler::ThreadExit();
+  ReleaseHandle();
 }
 
 uint32_t XThread::GetLastError() {
@@ -427,15 +444,15 @@ X_STATUS XThread::Create() {
     current_thread_ = this;
     cpu::ThreadState::Bind(this->thread_state());
     running_ = true;
+
+#if XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC
+    pthread_cleanup_push(HostThreadExitCleanupThunk, this);
     Execute();
-    running_ = false;
-    current_thread_ = nullptr;
-    current_xthread_tls_ = nullptr;
-
-    xe::Profiler::ThreadExit();
-
-    // Release the self-reference to the thread.
-    ReleaseHandle();
+    pthread_cleanup_pop(1);
+#else
+    Execute();
+    OnHostThreadExitCleanup();
+#endif
   });
 
   if (!thread_) {
@@ -502,12 +519,15 @@ X_STATUS XThread::Exit(int exit_code) {
   emulator()->processor()->OnThreadExit(thread_id_);
 
   // NOTE: unless PlatformExit fails, expect it to never return!
+#if !(XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC)
   current_xthread_tls_ = nullptr;
   current_thread_ = nullptr;
   xe::Profiler::ThreadExit();
-
+#endif
   running_ = false;
+#if !(XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC)
   ReleaseHandle();
+#endif
 
   // NOTE: this does not return!
   xe::threading::Thread::Exit(exit_code);
@@ -527,11 +547,15 @@ X_STATUS XThread::Terminate(int exit_code) {
 
   running_ = false;
   if (XThread::IsInThread(this)) {
+#if !(XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC)
     ReleaseHandle();
+#endif
     xe::threading::Thread::Exit(exit_code);
   } else {
     thread_->Terminate(exit_code);
+#if !(XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC)
     ReleaseHandle();
+#endif
   }
 
   return X_STATUS_SUCCESS;
@@ -1198,16 +1222,16 @@ object_ref<XThread> XThread::Restore(KernelState* kernel_state,
       // Execute user code.
       thread->running_ = true;
 
+#if XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC
+      pthread_cleanup_push(HostThreadExitCleanupThunk, thread);
       uint32_t pc = state.context.pc;
       thread->kernel_state_->processor()->ExecuteRaw(thread->thread_state_, pc);
-
-      current_thread_ = nullptr;
-      current_xthread_tls_ = nullptr;
-
-      xe::Profiler::ThreadExit();
-
-      // Release the self-reference to the thread.
-      thread->ReleaseHandle();
+      pthread_cleanup_pop(1);
+#else
+      uint32_t pc = state.context.pc;
+      thread->kernel_state_->processor()->ExecuteRaw(thread->thread_state_, pc);
+      thread->OnHostThreadExitCleanup();
+#endif
     });
     assert_not_null(thread->thread_);
 
