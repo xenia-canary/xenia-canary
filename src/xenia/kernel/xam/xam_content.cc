@@ -678,6 +678,38 @@ dword_result_t XamContentDeleteInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentDeleteInternal, kContent, kImplemented);
 
+dword_result_t XamPackageManagerFindPackageContainingIndexedXEX_entry(
+    lpstring_t file_name, lpstring_t path_ptr, dword_t path_size, dword_t unk) {
+  if (!unk) {
+    return X_E_INVALIDARG;
+  }
+
+  std::memset(path_ptr, 0, path_size);
+  const std::filesystem::path content_path =
+      kernel_state()->emulator()->content_root() / "0000000000000000" /
+      "FFFE07DF";
+
+  const auto found_files =
+      xe::filesystem::FindFileWithName(content_path, file_name.value(), true);
+
+  if (found_files.empty()) {
+    return X_E_FUNCTION_FAILED;
+  }
+
+  // We only can return first entry, so return that one, but first cut path to
+  // only include path from content
+  const auto relative_path = found_files.at(0).path.lexically_relative(
+      kernel_state()->emulator()->content_root().parent_path());
+
+  const auto guest_path =
+      xe::utf8::fix_guest_path_separators(xe::path_to_utf8(relative_path));
+
+  xe::string_util::copy_truncating(path_ptr, guest_path, path_size);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamPackageManagerFindPackageContainingIndexedXEX, kContent,
+                    kImplemented);
+
 typedef struct {
   xe::be<uint32_t> stringTitlePtr;
   xe::be<uint32_t> stringTextPtr;

@@ -153,6 +153,12 @@ static constexpr const char* AccountSubscription[] = {
 static constexpr const char* XGamerzoneName[] = {"None", "Recreation", "Pro",
                                                  "Family", "Underground"};
 
+static constexpr const char* XTenureLevel[] = {
+    "None", "1",  "2",  "3",  "4",  "5",  "6",  "7",  "8",  "9",
+    "10",   "11", "12", "13", "14", "15", "16", "17", "18", "19"};
+
+static constexpr const char* XMilestoneLevel[] = {"None", "1", "2", "3"};
+
 static constexpr const char* PreferredColorOptions[] = {
     "None", "Black",  "White", "Yellow", "Orange", "Pink",
     "Red",  "Purple", "Blue",  "Green",  "Brown",  "Silver"};
@@ -184,7 +190,7 @@ static constexpr const char* GamerTypeOptions[] = {"None",
                                                    "NXE Launch Team",
                                                    "360 + NXE Launch Team"};
 
-constexpr std::array<UserSettingId, 19> UserSettingsToLoad = {
+constexpr std::array<UserSettingId, 21> UserSettingsToLoad = {
     UserSettingId::XPROFILE_GAMER_TYPE,
     UserSettingId::XPROFILE_GAMER_YAXIS_INVERSION,
     UserSettingId::XPROFILE_OPTION_CONTROLLER_VIBRATION,
@@ -203,7 +209,9 @@ constexpr std::array<UserSettingId, 19> UserSettingsToLoad = {
     UserSettingId::XPROFILE_GAMER_RACE_ACCELERATOR_CONTROL,
     UserSettingId::XPROFILE_GAMERCARD_USER_NAME,
     UserSettingId::XPROFILE_GAMERCARD_USER_BIO,
-    UserSettingId::XPROFILE_GAMERCARD_MOTTO};
+    UserSettingId::XPROFILE_GAMERCARD_MOTTO,
+    UserSettingId::XPROFILE_TENURE_LEVEL,
+    UserSettingId::XPROFILE_TENURE_MILESTONE};
 
 GamercardUI::GamercardUI(xe::ui::Window* window,
                          xe::ui::ImGuiDrawer* imgui_drawer,
@@ -460,6 +468,15 @@ void GamercardUI::DrawOnlineSettings(ImGuiIO& io) {
       "###Subscription",
       reinterpret_cast<int*>(&gamercardValues_.account_subscription_tier),
       AccountSubscription, static_cast<int>(std::size(AccountSubscription)));
+
+  DrawSettingComboBox(UserSettingId::XPROFILE_TENURE_LEVEL, "Tenure Level",
+                      XTenureLevel, static_cast<int>(std::size(XTenureLevel)),
+                      leftSideTextObjectAlignment);
+
+  DrawSettingComboBox(UserSettingId::XPROFILE_TENURE_MILESTONE,
+                      "Tenure Milestone", XMilestoneLevel,
+                      static_cast<int>(std::size(XMilestoneLevel)),
+                      leftSideTextObjectAlignment);
 
   ImGui::EndDisabled();
 }
