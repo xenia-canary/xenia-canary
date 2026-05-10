@@ -40,15 +40,21 @@ std::string StripQuotes(std::string v) {
 }
 
 cvar::IConfigVar* FindCvar(const std::string& name) {
-  if (!cvar::ConfigVars) return nullptr;
+  if (!cvar::ConfigVars) {
+    return nullptr;
+  }
   auto it = cvar::ConfigVars->find(name);
-  if (it == cvar::ConfigVars->end()) return nullptr;
+  if (it == cvar::ConfigVars->end()) {
+    return nullptr;
+  }
   return static_cast<cvar::IConfigVar*>(it->second);
 }
 
 std::string ReadCvarString(const std::string& name) {
   auto* var = FindCvar(name);
-  if (!var) return {};
+  if (!var) {
+    return {};
+  }
   return StripQuotes(var->config_value());
 }
 
@@ -57,8 +63,12 @@ const std::string& VrrCvarName(const std::string& gpu) {
   static const std::string kD3d12 =
       "d3d12_allow_variable_refresh_rate_and_tearing";
   static const std::string kMetal = "metal_allow_tearing";
-  if (gpu == "vulkan") return kVulkan;
-  if (gpu == "metal") return kMetal;
+  if (gpu == "vulkan") {
+    return kVulkan;
+  }
+  if (gpu == "metal") {
+    return kMetal;
+  }
   return kD3d12;
 }
 
@@ -93,7 +103,9 @@ void QuickSettingsDialog::Build() {
                        const std::vector<std::string>* items) {
     auto* combo = new wxChoice(box, wxID_ANY);
     if (items) {
-      for (const auto& s : *items) combo->Append(wxString::FromUTF8(s));
+      for (const auto& s : *items) {
+        combo->Append(wxString::FromUTF8(s));
+      }
     }
     combo->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnAnyChanged(); });
     Option opt;
@@ -332,7 +344,9 @@ void QuickSettingsDialog::Build() {
       auto reply =
           wxMessageBox(_("You have unsaved changes. Discard them?"),
                        _("Unsaved Changes"), wxYES_NO | wxICON_QUESTION, this);
-      if (reply != wxYES) return;
+      if (reply != wxYES) {
+        return;
+      }
     }
     EndModal(wxID_CANCEL);
   });
@@ -350,7 +364,9 @@ void QuickSettingsDialog::LoadValuesFromCvars() {
   // Pull current cvar values into the editors.
   auto set_combo_text = [](wxChoice* combo, const std::string& text) {
     int idx = combo->FindString(wxString::FromUTF8(text));
-    if (idx >= 0) combo->SetSelection(idx);
+    if (idx >= 0) {
+      combo->SetSelection(idx);
+    }
   };
   auto set_combo_int = [](wxChoice* combo, intptr_t value) {
     for (unsigned int i = 0; i < combo->GetCount(); ++i) {
@@ -428,15 +444,21 @@ void QuickSettingsDialog::LoadValuesFromCvars() {
 
 std::string QuickSettingsDialog::ReadEditor(const Option& opt) {
   if (opt.cvar_name == "guest_refresh_rate") {
-    if (refresh_50hz_->GetValue()) return "1";
-    if (refresh_60hz_->GetValue()) return "2";
+    if (refresh_50hz_->GetValue()) {
+      return "1";
+    }
+    if (refresh_60hz_->GetValue()) {
+      return "2";
+    }
     return "0";
   }
   if (auto* combo = dynamic_cast<wxChoice*>(opt.editor)) {
     if (opt.cvar_name == "draw_resolution_scale" ||
         opt.cvar_name == "license_mask") {
       int sel = combo->GetSelection();
-      if (sel < 0) return "0";
+      if (sel < 0) {
+        return "0";
+      }
       auto v = reinterpret_cast<intptr_t>(combo->GetClientData(sel));
       return std::to_string(static_cast<int>(v));
     }
@@ -452,7 +474,9 @@ std::string QuickSettingsDialog::ReadEditor(const Option& opt) {
 }
 
 void QuickSettingsDialog::UpdateLabelBold(Option& opt) {
-  if (!opt.label) return;
+  if (!opt.label) {
+    return;
+  }
   bool modified = (opt.pending_value != opt.current_value);
   auto font = opt.label->GetFont();
   font.SetWeight(modified ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
@@ -468,7 +492,9 @@ void QuickSettingsDialog::OnAnyChanged() {
 }
 
 void QuickSettingsDialog::Save() {
-  if (!cvar::ConfigVars) return;
+  if (!cvar::ConfigVars) {
+    return;
+  }
   auto apply = [](cvar::IConfigVar* var, const toml::node& tv) {
     var->LoadConfigValue(&tv);
     var->ClearGameConfigValue();
@@ -480,8 +506,12 @@ void QuickSettingsDialog::Save() {
       try {
         int v = std::stoi(opt.pending_value);
         toml::value tv(v);
-        if (auto* x = FindCvar("draw_resolution_scale_x")) apply(x, tv);
-        if (auto* y = FindCvar("draw_resolution_scale_y")) apply(y, tv);
+        if (auto* x = FindCvar("draw_resolution_scale_x")) {
+          apply(x, tv);
+        }
+        if (auto* y = FindCvar("draw_resolution_scale_y")) {
+          apply(y, tv);
+        }
       } catch (...) {
       }
       continue;
@@ -514,7 +544,9 @@ void QuickSettingsDialog::Save() {
     }
 
     auto* var = FindCvar(name);
-    if (!var) continue;
+    if (!var) {
+      continue;
+    }
     if (name == "framerate_limit") {
       try {
         apply(var, toml::value(
@@ -542,16 +574,24 @@ void QuickSettingsDialog::ResetToDefaults() {
   auto reply = wxMessageBox(
       _("Reset all settings on this dialog to their default values?"),
       _("Reset to Defaults"), wxYES_NO | wxICON_QUESTION, this);
-  if (reply != wxYES) return;
-  if (!cvar::ConfigVars) return;
+  if (reply != wxYES) {
+    return;
+  }
+  if (!cvar::ConfigVars) {
+    return;
+  }
   // Snapshot the on-disk current_value so we can show the bold-modified state
   // after replaying defaults into the UI.
   std::map<std::string, std::string> originals;
-  for (auto& [name, opt] : options_) originals[name] = opt.current_value;
+  for (auto& [name, opt] : options_) {
+    originals[name] = opt.current_value;
+  }
   for (auto& [name, var] : *cvar::ConfigVars) {
     // Don't clear which profile is logged into which slot — those are not
     // user-facing "settings", just persisted login state.
-    if (name.find("logged_profile_slot_") != std::string::npos) continue;
+    if (name.find("logged_profile_slot_") != std::string::npos) {
+      continue;
+    }
     static_cast<cvar::IConfigVar*>(var)->ResetConfigValueToDefault();
   }
   LoadValuesFromCvars();
@@ -569,8 +609,12 @@ void QuickSettingsDialog::OnAdvanced() {
           "settings?"),
         _("Unsaved Changes"),
         wxYES_NO | wxCANCEL | wxICON_QUESTION | wxYES_DEFAULT, this);
-    if (reply == wxCANCEL) return;
-    if (reply == wxYES) Save();
+    if (reply == wxCANCEL) {
+      return;
+    }
+    if (reply == wxYES) {
+      Save();
+    }
   }
   EndModal(kReturnAdvancedRequested);
 }

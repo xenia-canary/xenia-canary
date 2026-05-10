@@ -60,7 +60,9 @@ wxString WxFilePicker::BuildWildcard() const {
   }
   wxString wildcard;
   for (size_t i = 0; i < exts.size(); ++i) {
-    if (i > 0) wildcard += wxT("|");
+    if (i > 0) {
+      wildcard += wxT("|");
+    }
     wildcard += wxString::FromUTF8(exts[i].first) + wxT("|") +
                 wxString::FromUTF8(exts[i].second);
   }

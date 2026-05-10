@@ -8732,8 +8732,12 @@ fragment TransferDepthOut transfer_ps(
   MTL::Function* ps = lib->newFunction(ps_name);
   if (!vs || !ps) {
     XELOGE("GetOrCreateTransferPipelines: failed to get transfer shader entry");
-    if (vs) vs->release();
-    if (ps) ps->release();
+    if (vs) {
+      vs->release();
+    }
+    if (ps) {
+      ps->release();
+    }
     lib->release();
     return nullptr;
   }

@@ -128,7 +128,9 @@ ProcessAudioResult ProcessAudioLoop(AudioMediaPlayer* player,
         }
 
         ret = avcodec_receive_frame(avctx, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+          break;
+        }
         if (ret < 0) {
           XELOGW("Error during decoding: {:X}", ret);
           break;

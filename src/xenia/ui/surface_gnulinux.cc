@@ -72,10 +72,14 @@ GtkSurfaceFactory::~GtkSurfaceFactory() {
 std::unique_ptr<Surface> GtkSurfaceFactory::Create(
     void* gtk_widget_ptr, Surface::TypeFlags allowed_types) {
   GtkWidget* widget = static_cast<GtkWidget*>(gtk_widget_ptr);
-  if (!widget) return nullptr;
+  if (!widget) {
+    return nullptr;
+  }
   gtk_widget_realize(widget);
   GdkWindow* gdk_window = gtk_widget_get_window(widget);
-  if (!gdk_window) return nullptr;
+  if (!gdk_window) {
+    return nullptr;
+  }
   GdkDisplay* display = gdk_window_get_display(gdk_window);
 
 #ifdef GDK_WINDOWING_WAYLAND
@@ -86,7 +90,9 @@ std::unique_ptr<Surface> GtkSurfaceFactory::Create(
     GdkWindow* parent_gdk = gtk_widget_get_window(toplevel_widget);
     wl_surface* parent_surf =
         parent_gdk ? gdk_wayland_window_get_wl_surface(parent_gdk) : nullptr;
-    if (!wl_dpy || !parent_surf) return nullptr;
+    if (!wl_dpy || !parent_surf) {
+      return nullptr;
+    }
 
     struct RegistryState {
       wl_compositor* compositor = nullptr;
@@ -173,9 +179,13 @@ std::unique_ptr<Surface> GtkSurfaceFactory::Create(
 
 void GtkSurfaceFactory::OnResize(void* gtk_widget_ptr) {
 #ifdef GDK_WINDOWING_WAYLAND
-  if (!wl_render_subsurface_) return;
+  if (!wl_render_subsurface_) {
+    return;
+  }
   GtkWidget* widget = static_cast<GtkWidget*>(gtk_widget_ptr);
-  if (!widget) return;
+  if (!widget) {
+    return;
+  }
   GtkWidget* toplevel = gtk_widget_get_toplevel(widget);
   int sub_x = 0, sub_y = 0;
   gtk_widget_translate_coordinates(widget, toplevel, 0, 0, &sub_x, &sub_y);

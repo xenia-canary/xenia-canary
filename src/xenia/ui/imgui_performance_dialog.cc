@@ -95,13 +95,19 @@ void ImGuiPerformanceDialog::ShowNotification(const std::string& title,
 
 void ImGuiPerformanceDialog::OnReadbackResolveChanged(int value) {
   auto emulator = emulator_window_->emulator();
-  if (!emulator) return;
+  if (!emulator) {
+    return;
+  }
 
   auto graphics_system = emulator->graphics_system();
-  if (!graphics_system) return;
+  if (!graphics_system) {
+    return;
+  }
 
   auto command_processor = graphics_system->command_processor();
-  if (!command_processor) return;
+  if (!command_processor) {
+    return;
+  }
 
   gpu::ReadbackResolveMode mode;
   switch (value) {
@@ -161,13 +167,19 @@ void ImGuiPerformanceDialog::OnEmulatedDisplayUncappedChanged(bool uncapped) {
 
 void ImGuiPerformanceDialog::OnOcclusionQueryChanged(int value) {
   auto emulator = emulator_window_->emulator();
-  if (!emulator) return;
+  if (!emulator) {
+    return;
+  }
 
   auto graphics_system = emulator->graphics_system();
-  if (!graphics_system) return;
+  if (!graphics_system) {
+    return;
+  }
 
   auto command_processor = graphics_system->command_processor();
-  if (!command_processor) return;
+  if (!command_processor) {
+    return;
+  }
 
   gpu::ZPDMode mode;
   switch (value) {
@@ -256,7 +268,9 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
         ImGui::PopStyleColor();
       }
 
-      if (i < 3) ImGui::SameLine();
+      if (i < 3) {
+        ImGui::SameLine();
+      }
     }
     ImGui::PopID();
     ImGui::Unindent(10);
@@ -293,7 +307,9 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
         ImGui::PopStyleColor();
       }
 
-      if (i < 2) ImGui::SameLine();
+      if (i < 2) {
+        ImGui::SameLine();
+      }
     }
     ImGui::PopID();
     ImGui::Unindent(10);
@@ -329,7 +345,9 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
         ImGui::PopStyleColor();
       }
 
-      if (i < 2) ImGui::SameLine();
+      if (i < 2) {
+        ImGui::SameLine();
+      }
     }
     ImGui::PopID();
     ImGui::Unindent(10);

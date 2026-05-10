@@ -108,7 +108,9 @@ constexpr char kGeometryKeyMaximized[] = "/window/maximized";
 
 static wxPoint ReadInitialFramePositionFromConfig() {
   auto* config = wxConfigBase::Get();
-  if (!config) return wxDefaultPosition;
+  if (!config) {
+    return wxDefaultPosition;
+  }
   long x = 0, y = 0;
   if (config->Read(kGeometryKeyX, &x) && config->Read(kGeometryKeyY, &y)) {
     return wxPoint(int(x), int(y));
@@ -117,9 +119,13 @@ static wxPoint ReadInitialFramePositionFromConfig() {
 }
 
 void WxWindow::SaveGeometryToConfig() {
-  if (!frame_ || frame_->IsFullScreen()) return;
+  if (!frame_ || frame_->IsFullScreen()) {
+    return;
+  }
   auto* config = wxConfigBase::Get();
-  if (!config) return;
+  if (!config) {
+    return;
+  }
   bool maximized = frame_->IsMaximized();
   config->Write(kGeometryKeyMaximized, maximized);
   if (!maximized) {
@@ -132,9 +138,13 @@ void WxWindow::SaveGeometryToConfig() {
 
 void WxWindow::RestoreGeometryFromConfig() {
   // Position is applied at frame construction; only maximized state remains.
-  if (!frame_) return;
+  if (!frame_) {
+    return;
+  }
   auto* config = wxConfigBase::Get();
-  if (!config) return;
+  if (!config) {
+    return;
+  }
   bool maximized = false;
   if (config->Read(kGeometryKeyMaximized, &maximized) && maximized) {
     frame_->Maximize(true);
@@ -159,7 +169,9 @@ class WxWindow::FileDropTargetImpl : public wxFileDropTarget {
       FileDropEvent drop_event(window_, std::move(path));
       WindowDestructionReceiver destruction_receiver(window_);
       window_->OnFileDrop(drop_event, destruction_receiver);
-      if (destruction_receiver.IsWindowDestroyed()) break;
+      if (destruction_receiver.IsWindowDestroyed()) {
+        break;
+      }
     }
     return true;
   }
@@ -397,7 +409,9 @@ void WxWindow::RequestCloseImpl() {
 uint32_t WxWindow::GetLatestDpiImpl() const { return dpi_; }
 
 void WxWindow::ApplyNewFullscreen() {
-  if (!frame_) return;
+  if (!frame_) {
+    return;
+  }
   bool fullscreen = IsFullscreen();
   if (fullscreen && !frame_->IsFullScreen()) {
     SaveGeometryToConfig();
@@ -413,8 +427,12 @@ void WxWindow::SetContentVisibilityCallback(std::function<void()> cb) {
 }
 
 void WxWindow::EnsureInitialRenderSurfaceSize() {
-  if (!frame_ || !render_panel_) return;
-  if (frame_->IsMaximized() || frame_->IsFullScreen()) return;
+  if (!frame_ || !render_panel_) {
+    return;
+  }
+  if (frame_->IsMaximized() || frame_->IsFullScreen()) {
+    return;
+  }
   // Match render surface 1:1 with the cvar resolution (no DPI scaling).
   uint32_t target_w = GetDesiredLogicalWidth();
   uint32_t target_h = GetDesiredLogicalHeight();
@@ -428,13 +446,17 @@ void WxWindow::EnsureInitialRenderSurfaceSize() {
 }
 
 void WxWindow::ApplyNewTitle() {
-  if (!frame_) return;
+  if (!frame_) {
+    return;
+  }
   frame_->SetTitle(wxString::FromUTF8(GetTitle()));
 }
 
 void WxWindow::LoadAndApplyIcon(const void* buffer, size_t size,
                                 bool can_apply_state_in_current_phase) {
-  if (!frame_ || !can_apply_state_in_current_phase) return;
+  if (!frame_ || !can_apply_state_in_current_phase) {
+    return;
+  }
   if (!buffer || !size) {
 #if XE_PLATFORM_WIN32
     HICON hicon = LoadIconW(GetModuleHandle(nullptr), L"MAINICON");
@@ -460,7 +482,9 @@ void WxWindow::LoadAndApplyIcon(const void* buffer, size_t size,
 }
 
 void WxWindow::ApplyNewMainMenu(MenuItem* old_main_menu) {
-  if (!frame_) return;
+  if (!frame_) {
+    return;
+  }
   if (IsFullscreen()) {
     return;
   }
@@ -489,7 +513,9 @@ void WxWindow::ApplyNewMouseRelease() {
 }
 
 void WxWindow::ApplyNewCursorVisibility(CursorVisibility old_visibility) {
-  if (!frame_) return;
+  if (!frame_) {
+    return;
+  }
 
   if (GetCursorVisibility() == CursorVisibility::kVisible) {
     cursor_auto_hide_timer_.Stop();
@@ -508,7 +534,9 @@ void WxWindow::FocusImpl() { render_target()->SetFocus(); }
 
 std::unique_ptr<Surface> WxWindow::CreateSurfaceImpl(
     Surface::TypeFlags allowed_types) {
-  if (!render_panel_) return nullptr;
+  if (!render_panel_) {
+    return nullptr;
+  }
 
 #if XE_PLATFORM_WIN32
   if (allowed_types & Surface::kTypeFlag_Win32Hwnd) {
@@ -527,7 +555,9 @@ std::unique_ptr<Surface> WxWindow::CreateSurfaceImpl(
     // wx's WXWidget and our forward-declared NSView are unrelated opaque
     // structs at the C++ level; both alias the same underlying Obj-C pointer.
     NSView* view = reinterpret_cast<NSView*>(render_panel_->GetHandle());
-    if (!view) return nullptr;
+    if (!view) {
+      return nullptr;
+    }
     DropStartupCoverIfPresent();
     return std::make_unique<MacNSViewSurface>(view);
   }
@@ -575,7 +605,9 @@ void WxWindow::OnFrameClose(wxCloseEvent& event) {
 
   WindowDestructionReceiver destruction_receiver(this);
   OnBeforeClose(destruction_receiver);
-  if (destruction_receiver.IsWindowDestroyed()) return;
+  if (destruction_receiver.IsWindowDestroyed()) {
+    return;
+  }
   OnAfterClose();
 }
 
@@ -609,7 +641,9 @@ void WxWindow::OnFrameDpiChanged(wxDPIChangedEvent& event) {
   WindowDestructionReceiver destruction_receiver(this);
   UISetupEvent e(this);
   OnDpiChanged(e, destruction_receiver);
-  if (destruction_receiver.IsWindowDestroyed()) return;
+  if (destruction_receiver.IsWindowDestroyed()) {
+    return;
+  }
   event.Skip();
 }
 
@@ -705,20 +739,25 @@ void WxWindow::OnPanelChar(wxKeyEvent& event) {
 
 static MouseEvent::Button WxMouseButtonToXenia(const wxMouseEvent& event) {
   if (event.LeftIsDown() || event.GetEventType() == wxEVT_LEFT_DOWN ||
-      event.GetEventType() == wxEVT_LEFT_UP)
+      event.GetEventType() == wxEVT_LEFT_UP) {
     return MouseEvent::Button::kLeft;
+  }
   if (event.RightIsDown() || event.GetEventType() == wxEVT_RIGHT_DOWN ||
-      event.GetEventType() == wxEVT_RIGHT_UP)
+      event.GetEventType() == wxEVT_RIGHT_UP) {
     return MouseEvent::Button::kRight;
+  }
   if (event.MiddleIsDown() || event.GetEventType() == wxEVT_MIDDLE_DOWN ||
-      event.GetEventType() == wxEVT_MIDDLE_UP)
+      event.GetEventType() == wxEVT_MIDDLE_UP) {
     return MouseEvent::Button::kMiddle;
+  }
   if (event.Aux1IsDown() || event.GetEventType() == wxEVT_AUX1_DOWN ||
-      event.GetEventType() == wxEVT_AUX1_UP)
+      event.GetEventType() == wxEVT_AUX1_UP) {
     return MouseEvent::Button::kX1;
+  }
   if (event.Aux2IsDown() || event.GetEventType() == wxEVT_AUX2_DOWN ||
-      event.GetEventType() == wxEVT_AUX2_UP)
+      event.GetEventType() == wxEVT_AUX2_UP) {
     return MouseEvent::Button::kX2;
+  }
   return MouseEvent::Button::kNone;
 }
 
@@ -741,7 +780,9 @@ void WxWindow::OnPanelMouseMove(wxMouseEvent& event) {
                          event.GetY());
   WindowDestructionReceiver destruction_receiver(this);
   OnMouseMove(mouse_event, destruction_receiver);
-  if (destruction_receiver.IsWindowDestroyed()) return;
+  if (destruction_receiver.IsWindowDestroyed()) {
+    return;
+  }
 
   if (cursor_currently_auto_hidden_) {
     cursor_currently_auto_hidden_ = false;
@@ -838,8 +879,12 @@ void WxWindow::UnbindFrameAndPanelEvents() {
 }
 
 VirtualKey WxWindow::TranslateKeyCode(int wx_key) {
-  if (wx_key >= 'A' && wx_key <= 'Z') return static_cast<VirtualKey>(wx_key);
-  if (wx_key >= '0' && wx_key <= '9') return static_cast<VirtualKey>(wx_key);
+  if (wx_key >= 'A' && wx_key <= 'Z') {
+    return static_cast<VirtualKey>(wx_key);
+  }
+  if (wx_key >= '0' && wx_key <= '9') {
+    return static_cast<VirtualKey>(wx_key);
+  }
 
   switch (wx_key) {
     case WXK_BACK:

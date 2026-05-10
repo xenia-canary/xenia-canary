@@ -39,10 +39,14 @@ constexpr int kIconSize = 80;
 constexpr int kTimerMs = 100;
 
 wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data) {
-  if (data.empty()) return {};
+  if (data.empty()) {
+    return {};
+  }
   wxMemoryInputStream stream(data.data(), data.size());
   wxImage image;
-  if (!image.LoadFile(stream, wxBITMAP_TYPE_ANY)) return {};
+  if (!image.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
+    return {};
+  }
   if (image.GetWidth() != kIconSize || image.GetHeight() != kIconSize) {
     image.Rescale(kIconSize, kIconSize, wxIMAGE_QUALITY_HIGH);
   }
@@ -279,11 +283,15 @@ void InstallProgressDialog::Tick() {
     };
     if (is_zarchive_mode_) {
       for (auto& e : *zarchive_entries_) {
-        if (is_installed(e)) ++success_count;
+        if (is_installed(e)) {
+          ++success_count;
+        }
       }
     } else {
       for (auto& e : *content_entries_) {
-        if (is_installed(e)) ++success_count;
+        if (is_installed(e)) {
+          ++success_count;
+        }
       }
     }
     if (success_count > 0) {
@@ -313,9 +321,13 @@ void InstallProgressDialog::OnCancel() {
     }
   };
   if (is_zarchive_mode_) {
-    for (auto& e : *zarchive_entries_) cancel_if_active(e);
+    for (auto& e : *zarchive_entries_) {
+      cancel_if_active(e);
+    }
   } else {
-    for (auto& e : *content_entries_) cancel_if_active(e);
+    for (auto& e : *content_entries_) {
+      cancel_if_active(e);
+    }
   }
   cancel_button_->Disable();
   cancel_button_->SetLabel(_("Cancelling..."));
@@ -323,25 +335,35 @@ void InstallProgressDialog::OnCancel() {
 
 bool InstallProgressDialog::IsEverythingDone() const {
   auto entry_done = [](auto& e) {
-    if (e.cancelled_.load()) return true;
+    if (e.cancelled_.load()) {
+      return true;
+    }
     Emulator::InstallState state;
     {
       std::lock_guard<std::mutex> lock(*e.mutex_);
       state = e.installation_state_;
     }
-    if (state == Emulator::InstallState::failed) return true;
+    if (state == Emulator::InstallState::failed) {
+      return true;
+    }
     uint64_t total = e.content_size_.load();
     uint64_t current = e.currently_installed_size_.load();
-    if (total > 0 && current == total) return true;
+    if (total > 0 && current == total) {
+      return true;
+    }
     return false;
   };
   if (is_zarchive_mode_) {
     for (auto& e : *zarchive_entries_) {
-      if (!entry_done(e)) return false;
+      if (!entry_done(e)) {
+        return false;
+      }
     }
   } else {
     for (auto& e : *content_entries_) {
-      if (!entry_done(e)) return false;
+      if (!entry_done(e)) {
+        return false;
+      }
     }
   }
   return true;

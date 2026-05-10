@@ -698,9 +698,15 @@ bool EmulatorWindow::Initialize() {
     if (cvar::ConfigVars) {
       std::set<std::string> categories;
       for (const auto& [name, var] : *cvar::ConfigVars) {
-        if (var->is_transient()) continue;
-        if (var->category() == "Config") continue;
-        if (!var->category().empty()) categories.insert(var->category());
+        if (var->is_transient()) {
+          continue;
+        }
+        if (var->category() == "Config") {
+          continue;
+        }
+        if (!var->category().empty()) {
+          categories.insert(var->category());
+        }
       }
       for (const auto& category : categories) {
         std::string cat_copy = category;
@@ -1175,7 +1181,9 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
         imgui_drawer(), "Return to Game List",
         "Really stop title? Unsaved progress will be lost.",
         [this](bool confirmed) {
-          if (confirmed) StopTitleAndReturnToList();
+          if (confirmed) {
+            StopTitleAndReturnToList();
+          }
         },
         input_sys);
   });
@@ -1350,7 +1358,9 @@ void EmulatorWindow::FileClose() {
       imgui_drawer(), "Stop title",
       "Really stop title? Unsaved progress will be lost.",
       [this](bool confirmed) {
-        if (confirmed) StopTitleAndReturnToList();
+        if (confirmed) {
+          StopTitleAndReturnToList();
+        }
       },
       emulator_->input_system());
 }
@@ -1405,10 +1415,14 @@ void EmulatorWindow::StopTitleAndReturnToList() {
 
 void EmulatorWindow::ApplyContentVisibility() {
   auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
-  if (!wx_window) return;
+  if (!wx_window) {
+    return;
+  }
   auto* aui = wx_window->aui_manager();
   auto* render_pane = wx_window->render_panel();
-  if (!aui || !render_pane || !game_list_panel_) return;
+  if (!aui || !render_pane || !game_list_panel_) {
+    return;
+  }
 
   bool fullscreen = window_->IsFullscreen();
   bool title_open = emulator_ && emulator_->is_title_open();
@@ -1418,8 +1432,12 @@ void EmulatorWindow::ApplyContentVisibility() {
 
   auto& render_info = aui->GetPane(render_pane);
   auto& list_info = aui->GetPane(game_list_panel_);
-  if (render_info.IsOk()) render_info.Show(show_render);
-  if (list_info.IsOk()) list_info.Show(show_list);
+  if (render_info.IsOk()) {
+    render_info.Show(show_render);
+  }
+  if (list_info.IsOk()) {
+    list_info.Show(show_list);
+  }
   // Hide the toolbar in fullscreen so only the render surface is visible;
   // outside fullscreen, honor the user's View > Show Toolbar preference.
   wxWindow* toolbar_window =
@@ -1465,12 +1483,20 @@ void EmulatorWindow::ApplyContentVisibility() {
     tb->Refresh();
   }
 
-  if (file_open_menu_item_) file_open_menu_item_->SetEnabled(!title_open);
-  if (file_stop_menu_item_) file_stop_menu_item_->SetEnabled(title_open);
+  if (file_open_menu_item_) {
+    file_open_menu_item_->SetEnabled(!title_open);
+  }
+  if (file_stop_menu_item_) {
+    file_stop_menu_item_->SetEnabled(title_open);
+  }
   // Subsystem-affecting cvars and tools (install/zar) only make sense between
   // launches.
-  if (config_menu_) config_menu_->SetEnabled(!title_open);
-  if (tools_menu_) tools_menu_->SetEnabled(!title_open);
+  if (config_menu_) {
+    config_menu_->SetEnabled(!title_open);
+  }
+  if (tools_menu_) {
+    tools_menu_->SetEnabled(!title_open);
+  }
 }
 
 void EmulatorWindow::ShowQuickSettings() {
@@ -1670,7 +1696,9 @@ void EmulatorWindow::TogglePerformanceTuningDialog() {
 }
 
 void EmulatorWindow::RefreshProfileMenu() {
-  if (!profile_menu_) return;
+  if (!profile_menu_) {
+    return;
+  }
   while (profile_menu_->child_count() > 0) {
     profile_menu_->RemoveChild(profile_menu_->child(0));
   }
@@ -1680,7 +1708,9 @@ void EmulatorWindow::RefreshProfileMenu() {
 }
 
 void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
-  if (!parent) return;
+  if (!parent) {
+    return;
+  }
   auto* kernel_state = emulator_->kernel_state();
   auto* xam_state = kernel_state ? kernel_state->xam_state() : nullptr;
   auto* pm = xam_state ? xam_state->profile_manager() : nullptr;
@@ -1689,7 +1719,9 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
     if (accounts) {
       for (const auto& [xuid, account_info] : *accounts) {
         std::string gamertag = account_info.GetGamertagString();
-        if (gamertag.empty()) gamertag = fmt::format("{:016X}", xuid);
+        if (gamertag.empty()) {
+          gamertag = fmt::format("{:016X}", xuid);
+        }
         uint8_t logged_slot = pm->GetUserIndexAssignedToProfile(xuid);
         bool signed_in = logged_slot < 4;
         wxString entry_label =
@@ -1735,7 +1767,9 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
                                  : nullptr) {
                 if (auto* m = xs->profile_manager()) {
                   uint8_t s = m->GetUserIndexAssignedToProfile(this_xuid);
-                  if (s < 4) m->Logout(s);
+                  if (s < 4) {
+                    m->Logout(s);
+                  }
                 }
               }
               if (game_list_panel_ && !emulator_->is_title_open()) {
@@ -1776,9 +1810,13 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
                               _("Create profile"));
         // Match the ImGui CreateProfileUI input cap (gamertag_[16]).
         dlg.SetMaxLength(15);
-        if (dlg.ShowModal() != wxID_OK) return;
+        if (dlg.ShowModal() != wxID_OK) {
+          return;
+        }
         wxString gamertag = dlg.GetValue();
-        if (gamertag.IsEmpty()) return;
+        if (gamertag.IsEmpty()) {
+          return;
+        }
         std::string gt = gamertag.utf8_string();
         if (!kernel::xam::ProfileManager::IsGamertagValid(gt)) {
           wxMessageBox(_("Invalid gamertag."), _("Create profile"),
@@ -1798,22 +1836,30 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
 }
 
 void EmulatorWindow::ShowProfilePopupMenu() {
-  if (!wx_toolbar_state_ || !wx_toolbar_state_->toolbar) return;
+  if (!wx_toolbar_state_ || !wx_toolbar_state_->toolbar) {
+    return;
+  }
   // Build a fresh, detached menu — wxWidgets forbids popping up a wxMenu
   // while it's attached to the menu bar.
   auto popup = ui::MenuItem::Create(ui::MenuItem::Type::kPopup, "");
   PopulateProfileMenu(popup.get());
   auto* wx_popup = dynamic_cast<ui::WxMenuItem*>(popup.get());
-  if (!wx_popup) return;
+  if (!wx_popup) {
+    return;
+  }
   auto* menu = wx_popup->GetMenu();
-  if (!menu) return;
+  if (!menu) {
+    return;
+  }
   auto* tb = wx_toolbar_state_->toolbar;
   auto rect = tb->GetToolRect(kToolIdProfile);
   tb->PopupMenu(menu, rect.GetLeft(), rect.GetBottom());
 }
 
 void EmulatorWindow::RefreshProfileIcon() {
-  if (!wx_toolbar_state_ || !wx_toolbar_state_->toolbar) return;
+  if (!wx_toolbar_state_ || !wx_toolbar_state_->toolbar) {
+    return;
+  }
   auto* tb = wx_toolbar_state_->toolbar;
 
   auto* kernel_state = emulator_->kernel_state();
@@ -1830,10 +1876,14 @@ void EmulatorWindow::RefreshProfileIcon() {
   }
 
   auto decode_to_bundle = [](std::span<const uint8_t> data) -> wxBitmapBundle {
-    if (data.empty()) return {};
+    if (data.empty()) {
+      return {};
+    }
     wxMemoryInputStream stream(data.data(), data.size());
     wxImage img;
-    if (!img.LoadFile(stream, wxBITMAP_TYPE_ANY)) return {};
+    if (!img.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
+      return {};
+    }
     if (img.GetWidth() != kToolbarIconSize ||
         img.GetHeight() != kToolbarIconSize) {
       img.Rescale(kToolbarIconSize, kToolbarIconSize, wxIMAGE_QUALITY_HIGH);
@@ -1851,7 +1901,9 @@ void EmulatorWindow::RefreshProfileIcon() {
                       kernel::xam::XTileType::kPersonalGamerTileSmall,
                       kernel::xam::XTileType::kGamerTileSmall}) {
       bundle = decode_to_bundle(signed_in->GetProfileIcon(tile));
-      if (bundle.IsOk()) break;
+      if (bundle.IsOk()) {
+        break;
+      }
     }
   }
   if (!bundle.IsOk()) {
@@ -1867,7 +1919,9 @@ void EmulatorWindow::RefreshProfileIcon() {
                          : decltype(accounts->end())();
       if (accounts && it != accounts->end()) {
         std::string gt = it->second.GetGamertagString();
-        if (!gt.empty()) text = wxString::FromUTF8(gt);
+        if (!gt.empty()) {
+          text = wxString::FromUTF8(gt);
+        }
       }
     }
     wx_toolbar_state_->profile_label->SetLabel(text);
@@ -2425,7 +2479,9 @@ void EmulatorWindow::GamepadHotKeys() {
             if (pressed & (X_INPUT_GAMEPAD_DPAD_UP | X_INPUT_GAMEPAD_DPAD_DOWN |
                            X_INPUT_GAMEPAD_A)) {
               app_context_.CallInUIThread([this, pressed]() {
-                if (!game_list_panel_) return;
+                if (!game_list_panel_) {
+                  return;
+                }
                 if (pressed & X_INPUT_GAMEPAD_DPAD_UP) {
                   game_list_panel_->MoveSelection(-1);
                 } else if (pressed & X_INPUT_GAMEPAD_DPAD_DOWN) {
@@ -2486,9 +2542,13 @@ void EmulatorWindow::ToggleGPUSetting(gpu::GPUSetting setting) {
 
 void EmulatorWindow::CycleReadbackResolve() {
   auto* graphics_system = emulator_->graphics_system();
-  if (!graphics_system) return;
+  if (!graphics_system) {
+    return;
+  }
   auto* command_processor = graphics_system->command_processor();
-  if (!command_processor) return;
+  if (!command_processor) {
+    return;
+  }
 
   gpu::ReadbackResolveMode current =
       command_processor->GetReadbackResolveMode();

@@ -284,9 +284,13 @@ class EmulatorApp final : public xe::ui::WindowedApp {
         return nullptr;
       } else {
         for (const auto& creator : creators_) {
-          if (!creator.is_available()) continue;
+          if (!creator.is_available()) {
+            continue;
+          }
           auto instance = creator.instantiate(std::forward<Args>(args)...);
-          if (!instance) continue;
+          if (!instance) {
+            continue;
+          }
           return instance;
         }
         return nullptr;
@@ -304,7 +308,9 @@ class EmulatorApp final : public xe::ui::WindowedApp {
 
       auto is_always_on = [&](std::string_view n) {
         for (auto a : kAlwaysOn) {
-          if (n == a) return true;
+          if (n == a) {
+            return true;
+          }
         }
         return false;
       };

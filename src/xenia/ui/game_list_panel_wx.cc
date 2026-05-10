@@ -299,11 +299,15 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   list_->Bind(wxEVT_SIZE, [this, last_played_width, min_title_width,
                            char_w](wxSizeEvent& event) {
     event.Skip();
-    if (list_->GetColumnCount() < 6) return;
+    if (list_->GetColumnCount() < 6) {
+      return;
+    }
     list_->GetColumn(5)->SetWidth(last_played_width);
     int fixed = 0;
     for (unsigned i = 0; i < list_->GetColumnCount(); ++i) {
-      if (i == 2) continue;
+      if (i == 2) {
+        continue;
+      }
       fixed += list_->GetColumn(i)->GetWidth();
     }
     int avail = list_->GetClientSize().GetWidth();
@@ -393,19 +397,31 @@ void GameListPanel::Reload() {
 }
 
 void GameListPanel::LoadTimestampsFromProfiles() {
-  if (!emulator_window_ || !emulator_window_->emulator()) return;
+  if (!emulator_window_ || !emulator_window_->emulator()) {
+    return;
+  }
   auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) return;
+  if (!kernel_state) {
+    return;
+  }
   auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) return;
+  if (!xam_state) {
+    return;
+  }
   auto* profile_manager = xam_state->profile_manager();
-  if (!profile_manager) return;
+  if (!profile_manager) {
+    return;
+  }
 
   for (uint8_t user_index = 0; user_index < 4; ++user_index) {
     auto* profile = profile_manager->GetProfile(user_index);
-    if (!profile) continue;
+    if (!profile) {
+      continue;
+    }
     const auto& dashboard = profile->dashboard_gpd();
-    if (!dashboard.IsValid()) continue;
+    if (!dashboard.IsValid()) {
+      continue;
+    }
     auto title_infos = dashboard.GetTitlesInfo();
     for (auto& entry : entries_) {
       for (const auto& info : title_infos) {
@@ -430,20 +446,32 @@ void GameListPanel::LoadTimestampsFromProfiles() {
 
 void GameListPanel::StartIconLoad() {
   ++icon_load_generation_;
-  if (entries_.empty()) return;
+  if (entries_.empty()) {
+    return;
+  }
   int gen = icon_load_generation_;
   CallAfter([this, gen]() { ProcessIconChunk(0, gen); });
 }
 
 void GameListPanel::ProcessIconChunk(size_t start, int gen) {
-  if (gen != icon_load_generation_) return;
-  if (!emulator_window_ || !emulator_window_->emulator()) return;
+  if (gen != icon_load_generation_) {
+    return;
+  }
+  if (!emulator_window_ || !emulator_window_->emulator()) {
+    return;
+  }
   auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) return;
+  if (!kernel_state) {
+    return;
+  }
   auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) return;
+  if (!xam_state) {
+    return;
+  }
   auto* profile_manager = xam_state->profile_manager();
-  if (!profile_manager) return;
+  if (!profile_manager) {
+    return;
+  }
 
   // Tune so each chunk stays well under one frame (~16ms): a PNG decode +
   // rescale is a few ms, so 8 per chunk keeps the UI responsive.
@@ -451,16 +479,24 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
   size_t end = std::min(start + kChunkSize, entries_.size());
   for (size_t i = start; i < end; ++i) {
     auto& entry = entries_[i];
-    if (entry.icon.IsOk()) continue;
+    if (entry.icon.IsOk()) {
+      continue;
+    }
     std::vector<uint8_t> data;
     for (uint8_t user_index = 0; user_index < 4 && data.empty(); ++user_index) {
       auto* profile = profile_manager->GetProfile(user_index);
-      if (!profile) continue;
+      if (!profile) {
+        continue;
+      }
       data = profile->GetTitleIcon(entry.title_id);
     }
-    if (data.empty()) continue;
+    if (data.empty()) {
+      continue;
+    }
     entry.icon = DecodeIcon(data);
-    if (!entry.icon.IsOk()) continue;
+    if (!entry.icon.IsOk()) {
+      continue;
+    }
     for (size_t r = 0; r < visible_indices_.size(); ++r) {
       if (visible_indices_[r] == i) {
         wxVariant v;
@@ -476,7 +512,9 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
 }
 
 void GameListPanel::SetProfileSignedIn(bool signed_in) {
-  if (profile_signed_in_ == signed_in) return;
+  if (profile_signed_in_ == signed_in) {
+    return;
+  }
   profile_signed_in_ = signed_in;
   Repopulate();
 }
@@ -487,7 +525,9 @@ void GameListPanel::OnSearch(wxCommandEvent&) {
 }
 
 void GameListPanel::LaunchOrPrompt(const std::filesystem::path& path) {
-  if (!launch_cb_) return;
+  if (!launch_cb_) {
+    return;
+  }
   std::error_code ec;
   if (!path.empty() && std::filesystem::exists(path, ec)) {
     launch_cb_(path);
@@ -521,14 +561,24 @@ void GameListPanel::LaunchOrPrompt(const std::filesystem::path& path) {
 }
 
 void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
-  if (entry_index >= entries_.size()) return;
-  if (!emulator_window_ || !emulator_window_->emulator()) return;
+  if (entry_index >= entries_.size()) {
+    return;
+  }
+  if (!emulator_window_ || !emulator_window_->emulator()) {
+    return;
+  }
   auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state || !kernel_state->xam_state()) return;
+  if (!kernel_state || !kernel_state->xam_state()) {
+    return;
+  }
   auto* profile_manager = kernel_state->xam_state()->profile_manager();
-  if (!profile_manager) return;
+  if (!profile_manager) {
+    return;
+  }
   auto* profile = profile_manager->GetProfile(static_cast<uint8_t>(0));
-  if (!profile) return;
+  if (!profile) {
+    return;
+  }
 
   uint32_t title_id = entries_[entry_index].title_id;
 
@@ -541,7 +591,9 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
 
   auto refresh = [&]() {
     list->Clear();
-    if (entry_index >= entries_.size()) return;
+    if (entry_index >= entries_.size()) {
+      return;
+    }
     const auto& default_path = entries_[entry_index].path;
     size_t disc_num = 1;
     for (const auto& disc : entries_[entry_index].discs) {
@@ -555,7 +607,9 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
                               wxString::FromUTF8(disc.path.string())));
       ++disc_num;
     }
-    if (list->GetCount() > 0) list->SetSelection(0);
+    if (list->GetCount() > 0) {
+      list->SetSelection(0);
+    }
   };
   refresh();
 
@@ -571,7 +625,9 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
 
   auto current_disc_path = [&]() -> std::filesystem::path {
     int sel = list->GetSelection();
-    if (sel == wxNOT_FOUND) return {};
+    if (sel == wxNOT_FOUND) {
+      return {};
+    }
     auto* data = static_cast<wxStringClientData*>(list->GetClientObject(sel));
     return data ? std::filesystem::path(data->GetData().utf8_string())
                 : std::filesystem::path{};
@@ -579,11 +635,15 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
 
   rename->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     int sel = list->GetSelection();
-    if (sel == wxNOT_FOUND) return;
+    if (sel == wxNOT_FOUND) {
+      return;
+    }
     wxString current = list->GetString(sel);
     wxTextEntryDialog input(&dlg, _("Enter new label:"), _("Rename Disc"),
                             current);
-    if (input.ShowModal() != wxID_OK) return;
+    if (input.ShowModal() != wxID_OK) {
+      return;
+    }
     std::string new_label = input.GetValue().utf8_string();
     if (new_label.find("::") != std::string::npos) {
       wxMessageDialog(&dlg, _("Label cannot contain '::'."), _("Invalid Label"),
@@ -602,12 +662,16 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
 
   remove->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     int sel = list->GetSelection();
-    if (sel == wxNOT_FOUND) return;
+    if (sel == wxNOT_FOUND) {
+      return;
+    }
     wxString label = list->GetString(sel);
     wxMessageDialog confirm(
         &dlg, wxString::Format(_("Remove '%s' from the disc list?"), label),
         _("Remove Disc"), wxYES_NO | wxICON_WARNING);
-    if (confirm.ShowModal() != wxID_YES) return;
+    if (confirm.ShowModal() != wxID_YES) {
+      return;
+    }
     profile->RemoveDiscPath(title_id, current_disc_path());
     if (entry_index < entries_.size() &&
         size_t(sel) < entries_[entry_index].discs.size()) {
@@ -656,7 +720,9 @@ CompatState GameListPanel::GetEntryCompatState(const Entry& e) const {
     pct = std::max(pct, static_cast<float>(e.gamerscore_earned) /
                             static_cast<float>(e.gamerscore_total));
   }
-  if (pct >= 0.80f) return CompatState::kPlayable;
+  if (pct >= 0.80f) {
+    return CompatState::kPlayable;
+  }
   if (base == CompatState::kUnknown && pct >= 0.10f) {
     return CompatState::kGameplay;
   }
@@ -665,7 +731,9 @@ CompatState GameListPanel::GetEntryCompatState(const Entry& e) const {
 
 void GameListPanel::OnListMouseMotion(wxMouseEvent& event) {
   event.Skip();
-  if (!list_) return;
+  if (!list_) {
+    return;
+  }
   // HitTest expects coords in list_'s frame regardless of event origin.
   wxPoint pt = list_->ScreenToClient(::wxGetMousePosition());
   wxDataViewItem item;
@@ -688,7 +756,9 @@ void GameListPanel::OnListMouseMotion(wxMouseEvent& event) {
       }
     }
   }
-  if (text == last_tooltip_text_) return;
+  if (text == last_tooltip_text_) {
+    return;
+  }
   last_tooltip_text_ = text;
   if (text.empty()) {
     list_->UnsetToolTip();
@@ -699,9 +769,13 @@ void GameListPanel::OnListMouseMotion(wxMouseEvent& event) {
 
 void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
   int row = list_->ItemToRow(event.GetItem());
-  if (row < 0 || row >= static_cast<int>(visible_indices_.size())) return;
+  if (row < 0 || row >= static_cast<int>(visible_indices_.size())) {
+    return;
+  }
   size_t idx = visible_indices_[row];
-  if (idx >= entries_.size()) return;
+  if (idx >= entries_.size()) {
+    return;
+  }
   const Entry& entry = entries_[idx];
 
   auto open_path_in_explorer = [](std::filesystem::path path) {
@@ -869,12 +943,18 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
           int reply = wxMessageBox(message, _("Remove from list"),
                                    wxYES_NO | wxICON_QUESTION,
                                    wxGetTopLevelParent(this));
-          if (reply != wxYES) return;
-          if (!emulator_window_ || !emulator_window_->emulator()) return;
+          if (reply != wxYES) {
+            return;
+          }
+          if (!emulator_window_ || !emulator_window_->emulator()) {
+            return;
+          }
           auto* kernel_state = emulator_window_->emulator()->kernel_state();
           auto* xam_state = kernel_state ? kernel_state->xam_state() : nullptr;
           auto* pm = xam_state ? xam_state->profile_manager() : nullptr;
-          if (!pm) return;
+          if (!pm) {
+            return;
+          }
           pm->RemoveTitleFromAllProfiles(title_id);
           Reload();
         },
@@ -891,16 +971,24 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
 }
 
 std::filesystem::path GameListPanel::GetSelectedPath() const {
-  if (!list_) return {};
+  if (!list_) {
+    return {};
+  }
   int row = list_->GetSelectedRow();
-  if (row < 0 || row >= static_cast<int>(visible_indices_.size())) return {};
+  if (row < 0 || row >= static_cast<int>(visible_indices_.size())) {
+    return {};
+  }
   size_t idx = visible_indices_[row];
-  if (idx >= entries_.size()) return {};
+  if (idx >= entries_.size()) {
+    return {};
+  }
   return entries_[idx].path;
 }
 
 void GameListPanel::MoveSelection(int delta) {
-  if (!list_ || visible_indices_.empty()) return;
+  if (!list_ || visible_indices_.empty()) {
+    return;
+  }
   int row_count = static_cast<int>(visible_indices_.size());
   int row = list_->GetSelectedRow();
   if (row < 0) {
@@ -944,7 +1032,9 @@ void GameListPanel::OnColumnHeaderClick(wxDataViewEvent& event) {
 }
 
 void GameListPanel::SortEntries() {
-  if (sort_column_ < 0) return;
+  if (sort_column_ < 0) {
+    return;
+  }
   auto cmp = [this](const Entry& a, const Entry& b) -> bool {
     auto less_then = [this](bool a_lt_b) {
       return sort_descending_ ? !a_lt_b : a_lt_b;
@@ -953,7 +1043,9 @@ void GameListPanel::SortEntries() {
       case 0: {  // Compat — ascending puts best (Playable) at top.
         auto sa = static_cast<uint8_t>(GetEntryCompatState(a));
         auto sb = static_cast<uint8_t>(GetEntryCompatState(b));
-        if (sa != sb) return less_then(sa > sb);
+        if (sa != sb) {
+          return less_then(sa > sb);
+        }
         // Tiebreak by title so order within a bucket is stable and reverse
         // sort flips cleanly (no equal-element comparator ambiguity).
         auto la = ToLower(a.title_name);

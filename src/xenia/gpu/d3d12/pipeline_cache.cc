@@ -1172,9 +1172,15 @@ void PipelineCache::TranslateShadersForStorage(
       }
     }
 
-    if (dxc_compiler) dxc_compiler->Release();
-    if (dxc_utils) dxc_utils->Release();
-    if (dxbc_converter) dxbc_converter->Release();
+    if (dxc_compiler) {
+      dxc_compiler->Release();
+    }
+    if (dxc_utils) {
+      dxc_utils->Release();
+    }
+    if (dxbc_converter) {
+      dxbc_converter->Release();
+    }
   };
 
   size_t logical_processor_count = xe::threading::logical_processor_count();
@@ -3291,9 +3297,15 @@ void PipelineCache::CreationThread(size_t thread_index) {
         }
         if (thread_index >= creation_threads_shutdown_from_) {
           // Cleanup thread-local resources.
-          if (dxc_compiler) dxc_compiler->Release();
-          if (dxc_utils) dxc_utils->Release();
-          if (dxbc_converter) dxbc_converter->Release();
+          if (dxc_compiler) {
+            dxc_compiler->Release();
+          }
+          if (dxc_utils) {
+            dxc_utils->Release();
+          }
+          if (dxbc_converter) {
+            dxbc_converter->Release();
+          }
           return;
         }
         creation_request_cond_.wait(lock);

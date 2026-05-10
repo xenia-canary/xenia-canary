@@ -46,7 +46,9 @@ namespace {
 #if XE_PLATFORM_LINUX
 bool IsCommandAvailable(const std::string& command) {
   const char* path_env = std::getenv("PATH");
-  if (!path_env || !*path_env) return false;
+  if (!path_env || !*path_env) {
+    return false;
+  }
   std::string p(path_env);
   size_t start = 0;
   while (start <= p.size()) {
@@ -58,7 +60,9 @@ bool IsCommandAvailable(const std::string& command) {
         return true;
       }
     }
-    if (end == std::string::npos) break;
+    if (end == std::string::npos) {
+      break;
+    }
     start = end + 1;
   }
   return false;
@@ -67,7 +71,9 @@ bool IsCommandAvailable(const std::string& command) {
 
 std::string TrimWhitespace(std::string s) {
   size_t a = s.find_first_not_of(" \t\n\r");
-  if (a == std::string::npos) return {};
+  if (a == std::string::npos) {
+    return {};
+  }
   size_t b = s.find_last_not_of(" \t\n\r");
   return s.substr(a, b - a + 1);
 }
@@ -122,17 +128,23 @@ void AdvancedSettingsDialog::LoadConfigValues() {
   categories_.clear();
   category_order_.clear();
   has_unsaved_changes_ = false;
-  if (!cvar::ConfigVars) return;
+  if (!cvar::ConfigVars) {
+    return;
+  }
 
   // Reserve so VarInfo* pointers stored in categories_ stay valid as we push.
   size_t total = 0;
   for (const auto& [_, var] : *cvar::ConfigVars) {
-    if (!var->is_transient() && var->category() != "Config") ++total;
+    if (!var->is_transient() && var->category() != "Config") {
+      ++total;
+    }
   }
   config_vars_.reserve(total);
 
   for (const auto& [name, var] : *cvar::ConfigVars) {
-    if (var->is_transient() || var->category() == "Config") continue;
+    if (var->is_transient() || var->category() == "Config") {
+      continue;
+    }
     VarInfo info;
     info.var = var;
     info.name = var->name();
@@ -145,7 +157,9 @@ void AdvancedSettingsDialog::LoadConfigValues() {
 
   for (auto& info : config_vars_) {
     auto& bucket = categories_[info.category];
-    if (bucket.empty()) category_order_.push_back(info.category);
+    if (bucket.empty()) {
+      category_order_.push_back(info.category);
+    }
     bucket.push_back(&info);
   }
 
@@ -172,7 +186,9 @@ void AdvancedSettingsDialog::Build() {
       new wxListBox(this, wxID_ANY, wxDefaultPosition, wxSize(170, -1));
   category_list_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& evt) {
     int sel = evt.GetSelection();
-    if (sel >= 0) settings_stack_->SetSelection(static_cast<size_t>(sel));
+    if (sel >= 0) {
+      settings_stack_->SetSelection(static_cast<size_t>(sel));
+    }
   });
   split->Add(category_list_, 0, wxEXPAND | wxALL, 4);
 
@@ -195,7 +211,9 @@ void AdvancedSettingsDialog::Build() {
   auto* save = new wxButton(this, wxID_ANY, _("Save Changes"));
   save->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     Save();
-    if (!has_unsaved_changes_) EndModal(wxID_OK);
+    if (!has_unsaved_changes_) {
+      EndModal(wxID_OK);
+    }
   });
   buttons->Add(save, 0, wxALL, 4);
   auto* discard = new wxButton(this, wxID_ANY, _("Discard Changes"));
@@ -269,7 +287,9 @@ wxWindow* AdvancedSettingsDialog::CreateEditor(wxWindow* parent,
         sel = static_cast<int>(i);
       }
     }
-    if (sel >= 0) combo->SetSelection(sel);
+    if (sel >= 0) {
+      combo->SetSelection(sel);
+    }
     combo->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnAnyChanged(); });
     return combo;
   }
@@ -292,7 +312,9 @@ wxWindow* AdvancedSettingsDialog::CreateEditor(wxWindow* parent,
             wxEmptyString, text->GetValue(),
             wxString::FromUTF8(path_info->wildcard),
             wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-        if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
+        if (dlg.ShowModal() == wxID_OK) {
+          picked = dlg.GetPath();
+        }
       } else if (path_info && path_info->kind == ui::CvarPathKind::kFileSave) {
         wxFileDialog dlg(
             this,
@@ -300,13 +322,17 @@ wxWindow* AdvancedSettingsDialog::CreateEditor(wxWindow* parent,
             wxEmptyString, text->GetValue(),
             wxString::FromUTF8(path_info->wildcard),
             wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
-        if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
+        if (dlg.ShowModal() == wxID_OK) {
+          picked = dlg.GetPath();
+        }
       } else {
         wxDirDialog dlg(this,
                         wxString::Format(_("Select directory for %s"),
                                          wxString::FromUTF8(info->name)),
                         text->GetValue());
-        if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
+        if (dlg.ShowModal() == wxID_OK) {
+          picked = dlg.GetPath();
+        }
       }
       if (!picked.IsEmpty()) {
         text->ChangeValue(picked);
@@ -364,7 +390,9 @@ std::string AdvancedSettingsDialog::ReadEditor(VarInfo* info) {
 
 void AdvancedSettingsDialog::OnAnyChanged() {
   for (auto& info : config_vars_) {
-    if (!info.editor) continue;
+    if (!info.editor) {
+      continue;
+    }
     info.pending_value = ReadEditor(&info);
     info.is_modified = info.pending_value != info.current_value;
     UpdateLabelBold(&info);
@@ -376,7 +404,9 @@ void AdvancedSettingsDialog::OnAnyChanged() {
 }
 
 void AdvancedSettingsDialog::UpdateLabelBold(VarInfo* info) {
-  if (!info->label) return;
+  if (!info->label) {
+    return;
+  }
   auto font = info->label->GetFont();
   font.SetWeight(info->is_modified ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
   info->label->SetFont(font);
@@ -388,10 +418,14 @@ void AdvancedSettingsDialog::UpdateModifiedTitle() {
 }
 
 void AdvancedSettingsDialog::Save() {
-  if (!cvar::ConfigVars) return;
+  if (!cvar::ConfigVars) {
+    return;
+  }
   bool any_applied = false;
   for (auto& info : config_vars_) {
-    if (!info.is_modified) continue;
+    if (!info.is_modified) {
+      continue;
+    }
     auto* var = info.var;
     std::string trimmed = TrimWhitespace(info.pending_value);
     toml::table tbl;
@@ -419,7 +453,9 @@ void AdvancedSettingsDialog::Save() {
              info.pending_value);
       inserted = false;
     }
-    if (!inserted) continue;
+    if (!inserted) {
+      continue;
+    }
     if (auto* node = tbl.get(var->name())) {
       var->LoadConfigValue(node);
       var->ClearGameConfigValue();
@@ -445,7 +481,9 @@ void AdvancedSettingsDialog::DoReset() {
   }
   for (auto& info : config_vars_) {
     // Don't blow away which profile is logged into which slot.
-    if (info.name.find("logged_profile_slot_") != std::string::npos) continue;
+    if (info.name.find("logged_profile_slot_") != std::string::npos) {
+      continue;
+    }
     info.var->ResetConfigValueToDefault();
     info.pending_value = GetCurrentValue(info.var);
     info.is_modified = info.pending_value != info.current_value;
@@ -458,7 +496,9 @@ void AdvancedSettingsDialog::DoReset() {
         check->SetValue(info.pending_value == "true");
       } else if (auto* combo = dynamic_cast<wxChoice*>(info.editor)) {
         int idx = combo->FindString(wxString::FromUTF8(info.pending_value));
-        if (idx >= 0) combo->SetSelection(idx);
+        if (idx >= 0) {
+          combo->SetSelection(idx);
+        }
       } else if (auto* spin = dynamic_cast<wxSpinCtrl*>(info.editor)) {
         try {
           spin->SetValue(std::stoi(info.pending_value));
@@ -484,20 +524,26 @@ void AdvancedSettingsDialog::DoReset() {
 }
 
 void AdvancedSettingsDialog::Discard() {
-  if (!has_unsaved_changes_) return;
+  if (!has_unsaved_changes_) {
+    return;
+  }
   if (wxMessageBox(_("Discard all unsaved changes?"), _("Discard Changes"),
                    wxYES_NO | wxICON_QUESTION, this) != wxYES) {
     return;
   }
   for (auto& info : config_vars_) {
-    if (!info.editor) continue;
+    if (!info.editor) {
+      continue;
+    }
     info.pending_value = info.current_value;
     info.is_modified = false;
     if (auto* check = dynamic_cast<wxCheckBox*>(info.editor)) {
       check->SetValue(info.pending_value == "true");
     } else if (auto* combo = dynamic_cast<wxChoice*>(info.editor)) {
       int idx = combo->FindString(wxString::FromUTF8(info.pending_value));
-      if (idx >= 0) combo->SetSelection(idx);
+      if (idx >= 0) {
+        combo->SetSelection(idx);
+      }
     } else if (auto* spin = dynamic_cast<wxSpinCtrl*>(info.editor)) {
       try {
         spin->SetValue(std::stoi(info.pending_value));

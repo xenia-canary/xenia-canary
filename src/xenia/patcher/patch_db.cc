@@ -50,7 +50,9 @@ void PatchDB::LoadPatches() {
       continue;
     }
     std::ifstream f(fi.path / fi.name, std::ios::binary);
-    if (!f.is_open()) continue;
+    if (!f.is_open()) {
+      continue;
+    }
     std::stringstream ss;
     ss << f.rdbuf();
     PatchFileEntry loaded = ReadPatchFromString(filename, ss.str());
@@ -315,9 +317,13 @@ const BundledIndex& GetBundledIndex() {
     PatchDB scratch{std::filesystem::path()};
     bundle.ForEach([&](std::string_view name, std::string_view data) {
       std::string filename(name);
-      if (!filename.ends_with(".patch.toml")) return;
+      if (!filename.ends_with(".patch.toml")) {
+        return;
+      }
       PatchFileEntry entry = scratch.ReadPatchFromString(filename, data);
-      if (entry.title_id == static_cast<uint32_t>(-1)) return;
+      if (entry.title_id == static_cast<uint32_t>(-1)) {
+        return;
+      }
       BundledPatchFile bpf;
       bpf.filename = std::move(filename);
       bpf.toml_content = std::string(data);
@@ -341,10 +347,14 @@ const BundledIndex& GetBundledIndex() {
 std::vector<BundledPatchFile> EnumerateBundledPatchesForTitle(
     uint32_t title_id) {
   std::vector<BundledPatchFile> out;
-  if (title_id == 0) return out;
+  if (title_id == 0) {
+    return out;
+  }
   const auto& idx = GetBundledIndex();
   auto it = idx.by_title.find(title_id);
-  if (it == idx.by_title.end()) return out;
+  if (it == idx.by_title.end()) {
+    return out;
+  }
   out.reserve(it->second.size());
   for (size_t i : it->second) {
     out.push_back(idx.all[i]);

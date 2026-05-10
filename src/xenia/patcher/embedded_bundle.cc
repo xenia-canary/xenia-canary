@@ -72,19 +72,27 @@ void EmbeddedBundle::ForEach(const VisitFn& visit) const {
   p += sizeof(count);
 
   for (uint32_t i = 0; i < count; ++i) {
-    if (p + sizeof(uint32_t) > end) return;
+    if (p + sizeof(uint32_t) > end) {
+      return;
+    }
     uint32_t name_len;
     std::memcpy(&name_len, p, sizeof(name_len));
     p += sizeof(name_len);
-    if (p + name_len > end) return;
+    if (p + name_len > end) {
+      return;
+    }
     std::string_view name(reinterpret_cast<const char*>(p), name_len);
     p += name_len;
 
-    if (p + sizeof(uint32_t) > end) return;
+    if (p + sizeof(uint32_t) > end) {
+      return;
+    }
     uint32_t data_len;
     std::memcpy(&data_len, p, sizeof(data_len));
     p += sizeof(data_len);
-    if (p + data_len > end) return;
+    if (p + data_len > end) {
+      return;
+    }
     std::string_view data(reinterpret_cast<const char*>(p), data_len);
     p += data_len;
 

@@ -388,9 +388,10 @@ DECLARE_XBOXKRNL_EXPORT1(KeSetDisableBoostThread, kThreading, kImplemented);
 uint32_t xeKeGetCurrentProcessType(cpu::ppc::PPCContext* context) {
   auto pcr = context->TranslateVirtualGPR<X_KPCR*>(context->r[13]);
 
-  if (!pcr->prcb_data.dpc_active)
+  if (!pcr->prcb_data.dpc_active) {
     return context->TranslateVirtual(pcr->prcb_data.current_thread)
         ->process_type;
+  }
   return pcr->processtype_value_in_dpc;
 }
 void xeKeSetCurrentProcessType(uint32_t type, cpu::ppc::PPCContext* context) {

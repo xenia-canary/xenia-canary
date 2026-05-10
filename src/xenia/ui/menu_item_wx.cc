@@ -97,7 +97,9 @@ WxMenuItem::~WxMenuItem() {
 }
 
 void WxMenuItem::SetEnabled(bool enabled) {
-  if (!parent_item_) return;
+  if (!parent_item_) {
+    return;
+  }
   auto* parent_wx = static_cast<WxMenuItem*>(parent_item_);
   if ((type_ == Type::kString || type_ == Type::kCheck) && parent_wx->menu_) {
     parent_wx->menu_->Enable(wx_id_, enabled);
@@ -164,7 +166,9 @@ void WxMenuItem::OnChildAdded(MenuItem* child_item) {
 
 void WxMenuItem::OnChildRemoved(MenuItem* child_item) {
   auto* child = static_cast<WxMenuItem*>(child_item);
-  if (!menu_) return;
+  if (!menu_) {
+    return;
+  }
   if (child->wx_id_ != wxID_NONE) {
     menu_->Unbind(wxEVT_MENU, &WxMenuItem::OnMenuItemSelected, this,
                   child->wx_id_);
@@ -178,7 +182,9 @@ void WxMenuItem::OnChildRemoved(MenuItem* child_item) {
 
 void WxMenuItem::OnMenuItemSelected(wxCommandEvent& event) {
   auto it = id_to_child_.find(event.GetId());
-  if (it == id_to_child_.end()) return;
+  if (it == id_to_child_.end()) {
+    return;
+  }
   WxMenuItem* child = it->second;
   if (child->type() == Type::kCheck) {
     child->OnToggled();

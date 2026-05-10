@@ -293,13 +293,17 @@ class object_ref {
   }
   explicit object_ref(const object_ref& right) noexcept {
     reset(right.get());
-    if (value_) value_->Retain();
+    if (value_) {
+      value_->Retain();
+    }
   }
   template <class V>
     requires std::is_convertible_v<V*, T*>
   object_ref(const object_ref<V>& right) noexcept {
     reset(right.get());
-    if (value_) value_->Retain();
+    if (value_) {
+      value_->Retain();
+    }
   }
 
   object_ref(object_ref&& right) noexcept : value_(right.release()) {}
@@ -395,7 +399,9 @@ object_ref<T> make_object(Args&&... args) {
 
 template <typename T>
 object_ref<T> retain_object(T* ptr) {
-  if (ptr) ptr->Retain();
+  if (ptr) {
+    ptr->Retain();
+  }
   return object_ref<T>(ptr);
 }
 

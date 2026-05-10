@@ -49,7 +49,9 @@ static float Half2Float(uint16_t h) {
   uint32_t frac = (h & 0x03FF);
 
   if (exp == 0) {
-    if (frac == 0) return 0.0f;  // Zero
+    if (frac == 0) {
+      return 0.0f;  // Zero
+    }
     // Denormalized
     exp = 1;
     while ((frac & 0x0400) == 0) {

@@ -79,15 +79,21 @@ void ImGuiContextMenu::ShowAt(float x, float y) {
 }
 
 int ImGuiContextMenu::GetNextSelectableItem(int current, int direction) {
-  if (items_.empty()) return -1;
+  if (items_.empty()) {
+    return -1;
+  }
 
   int count = static_cast<int>(items_.size());
   int next = current;
 
   for (int i = 0; i < count; i++) {
     next += direction;
-    if (next < 0) next = count - 1;
-    if (next >= count) next = 0;
+    if (next < 0) {
+      next = count - 1;
+    }
+    if (next >= count) {
+      next = 0;
+    }
 
     if (!items_[next].is_separator) {
       return next;

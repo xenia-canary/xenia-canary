@@ -1227,7 +1227,9 @@ std::string GDBStub::HandleGDBCommand(GDBClient& client,
              std::unique_lock<std::mutex> lock(mtx_);
              std::string result;
              for (auto& thread : cache_.thread_debug_infos) {
-               if (!result.empty()) result += ",";
+               if (!result.empty()) {
+                 result += ",";
+               }
                result += std::to_string(thread->thread_id);
              }
              return "m" + result;

@@ -94,15 +94,20 @@ class Instr {
       TPredicate&& pred) {
     auto src1_value = src1.value;
     auto src2_value = src2.value;
-    if (!src1_value || !src2_value) return {nullptr, nullptr};
+    if (!src1_value || !src2_value) {
+      return {nullptr, nullptr};
+    }
 
-    if (!GetOpcodeInfo()) return {nullptr, nullptr};  // impossible!
+    if (!GetOpcodeInfo()) {
+      return {nullptr, nullptr};  // impossible!
+    }
 
     // check if binary opcode taking two values. we dont care if the dest is a
     // value
 
-    if (!IsOpcodeBinaryValue(GetOpcodeInfo()->signature))
+    if (!IsOpcodeBinaryValue(GetOpcodeInfo()->signature)) {
       return {nullptr, nullptr};
+    }
 
     if (pred(src1_value)) {
       if (pred(src2_value)) {
@@ -142,7 +147,9 @@ if both are constant, return nullptr, nullptr
       const OpcodeInfo* op_ptr) {
     auto result = BinaryValueArrangeByDefiningOpcode(op_ptr);
 
-    if (!result.first) return result;
+    if (!result.first) {
+      return result;
+    }
     if (!result.second->IsConstant()) {
       return {nullptr, nullptr};
     }

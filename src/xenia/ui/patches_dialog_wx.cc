@@ -95,10 +95,18 @@ void PatchesDialog::Build() {
       }
       PatchInfo info;
       info.patch_index = patch_index++;
-      if (auto v = (*tbl)["name"].value<std::string>()) info.name = *v;
-      if (auto v = (*tbl)["desc"].value<std::string>()) info.description = *v;
-      if (auto v = (*tbl)["author"].value<std::string>()) info.author = *v;
-      if (auto v = (*tbl)["is_enabled"].value<bool>()) info.is_enabled = *v;
+      if (auto v = (*tbl)["name"].value<std::string>()) {
+        info.name = *v;
+      }
+      if (auto v = (*tbl)["desc"].value<std::string>()) {
+        info.description = *v;
+      }
+      if (auto v = (*tbl)["author"].value<std::string>()) {
+        info.author = *v;
+      }
+      if (auto v = (*tbl)["is_enabled"].value<bool>()) {
+        info.is_enabled = *v;
+      }
       wxString display_name;
       if (info.name.empty()) {
         display_name = wxString::Format(_("Patch #%zu"), info.patch_index + 1);
@@ -122,7 +130,9 @@ void PatchesDialog::Build() {
           detail = wxString::FromUTF8(info.description);
         }
         if (!info.author.empty()) {
-          if (!detail.empty()) detail += wxT("\n");
+          if (!detail.empty()) {
+            detail += wxT("\n");
+          }
           detail +=
               wxString::Format(_("by %s"), wxString::FromUTF8(info.author));
         }
@@ -165,7 +175,9 @@ bool PatchesDialog::UpdateEnabledLine(size_t patch_index, bool new_value) {
   bool in_patch = false;
   for (size_t i = 0; i < lines_.size(); ++i) {
     const std::string& line = lines_[i];
-    if (std::regex_match(line, comment_line)) continue;
+    if (std::regex_match(line, comment_line)) {
+      continue;
+    }
     if (std::regex_match(line, patch_header)) {
       in_patch = true;
       continue;
@@ -216,7 +228,9 @@ void PatchesDialog::OnToggle(size_t patch_index, bool new_value) {
   }
   for (size_t i = 0; i < lines_.size(); ++i) {
     out << lines_[i];
-    if (i + 1 < lines_.size()) out << "\n";
+    if (i + 1 < lines_.size()) {
+      out << "\n";
+    }
   }
   if (info_label_) {
     info_label_->SetLabel(_("Saved. Takes effect on next launch."));
@@ -229,11 +243,17 @@ void PatchesDialog::OnScrollSize(wxSizeEvent& event) {
 }
 
 void PatchesDialog::RewrapDescriptions() {
-  if (!scroll_ || desc_labels_.empty()) return;
+  if (!scroll_ || desc_labels_.empty()) {
+    return;
+  }
   // 32px left + 32px right border on each label inside the scroll viewport.
   int width = scroll_->GetClientSize().GetWidth() - 64;
-  if (width <= 0) return;
-  if (width == last_wrap_width_) return;
+  if (width <= 0) {
+    return;
+  }
+  if (width == last_wrap_width_) {
+    return;
+  }
   last_wrap_width_ = width;
   for (auto& [label, text] : desc_labels_) {
     label->SetLabel(text);

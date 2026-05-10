@@ -25,15 +25,25 @@ namespace app {
 namespace {
 
 CompatState ParseState(std::string_view s) {
-  if (s == "Playable") return CompatState::kPlayable;
-  if (s == "Gameplay") return CompatState::kGameplay;
-  if (s == "Loads") return CompatState::kLoads;
-  if (s == "Unplayable") return CompatState::kUnplayable;
+  if (s == "Playable") {
+    return CompatState::kPlayable;
+  }
+  if (s == "Gameplay") {
+    return CompatState::kGameplay;
+  }
+  if (s == "Loads") {
+    return CompatState::kLoads;
+  }
+  if (s == "Unplayable") {
+    return CompatState::kUnplayable;
+  }
   return CompatState::kUnknown;
 }
 
 uint32_t ParseTitleId(const char* hex, size_t len) {
-  if (len != 8) return 0;
+  if (len != 8) {
+    return 0;
+  }
   uint32_t v = 0;
   for (size_t i = 0; i < len; ++i) {
     char c = hex[i];
@@ -64,7 +74,9 @@ const std::unordered_map<uint32_t, CompatState>& GetCompatIndex() {
     }
     // Merge canary and stable: most-optimistic state across all sources wins.
     bundle.ForEach([&](std::string_view name, std::string_view data) {
-      if (name != "canary.json" && name != "stable.json") return;
+      if (name != "canary.json" && name != "stable.json") {
+        return;
+      }
       rapidjson::Document doc;
       doc.Parse(data.data(), data.size());
       if (doc.HasParseError() || !doc.IsArray()) {
@@ -72,16 +84,22 @@ const std::unordered_map<uint32_t, CompatState>& GetCompatIndex() {
         return;
       }
       for (const auto& entry : doc.GetArray()) {
-        if (!entry.IsObject()) continue;
+        if (!entry.IsObject()) {
+          continue;
+        }
         auto id_it = entry.FindMember("id");
         auto state_it = entry.FindMember("state");
         if (id_it == entry.MemberEnd() || state_it == entry.MemberEnd()) {
           continue;
         }
-        if (!id_it->value.IsString() || !state_it->value.IsString()) continue;
+        if (!id_it->value.IsString() || !state_it->value.IsString()) {
+          continue;
+        }
         uint32_t title_id = ParseTitleId(id_it->value.GetString(),
                                          id_it->value.GetStringLength());
-        if (title_id == 0) continue;
+        if (title_id == 0) {
+          continue;
+        }
         CompatState s = ParseState(std::string_view(
             state_it->value.GetString(), state_it->value.GetStringLength()));
         auto& slot = map[title_id];
@@ -98,10 +116,14 @@ const std::unordered_map<uint32_t, CompatState>& GetCompatIndex() {
 }  // namespace
 
 CompatState GetCompatState(uint32_t title_id) {
-  if (title_id == 0) return CompatState::kUnknown;
+  if (title_id == 0) {
+    return CompatState::kUnknown;
+  }
   const auto& idx = GetCompatIndex();
   auto it = idx.find(title_id);
-  if (it == idx.end()) return CompatState::kUnknown;
+  if (it == idx.end()) {
+    return CompatState::kUnknown;
+  }
   return it->second;
 }
 

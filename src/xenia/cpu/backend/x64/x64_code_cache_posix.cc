@@ -55,7 +55,9 @@ static size_t WriteULEB128(uint8_t* p, uint64_t value) {
   do {
     uint8_t byte = value & 0x7F;
     value >>= 7;
-    if (value) byte |= 0x80;
+    if (value) {
+      byte |= 0x80;
+    }
     p[count++] = byte;
   } while (value);
   return count;

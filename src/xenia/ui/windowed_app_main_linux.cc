@@ -29,7 +29,9 @@ int main(int argc, char** argv) {
     pid_t wait_pid = static_cast<pid_t>(std::atoi(wait_pid_str));
     if (wait_pid > 0) {
       for (int waited_us = 0; waited_us < 5'000'000; waited_us += 20'000) {
-        if (kill(wait_pid, 0) != 0) break;
+        if (kill(wait_pid, 0) != 0) {
+          break;
+        }
         usleep(20'000);
       }
     }

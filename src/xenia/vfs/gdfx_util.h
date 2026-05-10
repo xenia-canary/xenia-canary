@@ -73,13 +73,21 @@ struct GdfxFileLocation {
 
 inline bool GdfxEqualsIgnoreCase(const char* a, size_t a_len, const char* b,
                                  size_t b_len) {
-  if (a_len != b_len) return false;
+  if (a_len != b_len) {
+    return false;
+  }
   for (size_t i = 0; i < a_len; i++) {
     char ca = a[i];
     char cb = b[i];
-    if (ca >= 'A' && ca <= 'Z') ca += 32;
-    if (cb >= 'A' && cb <= 'Z') cb += 32;
-    if (ca != cb) return false;
+    if (ca >= 'A' && ca <= 'Z') {
+      ca += 32;
+    }
+    if (cb >= 'A' && cb <= 'Z') {
+      cb += 32;
+    }
+    if (ca != cb) {
+      return false;
+    }
   }
   return true;
 }

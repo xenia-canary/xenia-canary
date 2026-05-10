@@ -3270,7 +3270,9 @@ bool MetalCommandProcessor::IssueDrawMsl(
       uint32_t m = b & 0x7FFFFFu;
       if (e <= 0) {
         // Subnormal or zero in half precision.
-        if (e < -10) return s;  // Too small, flush to signed zero.
+        if (e < -10) {
+          return s;  // Too small, flush to signed zero.
+        }
         // Subnormal half: shift mantissa (with implicit leading 1) right.
         m = (m | 0x800000u) >> (1 - e);
         // Round to nearest even.
@@ -3295,7 +3297,9 @@ bool MetalCommandProcessor::IssueDrawMsl(
         if (m & 0x800000u) {
           m = 0;
           e++;
-          if (e >= 31) return uint16_t(s | 0x7C00u);
+          if (e >= 31) {
+            return uint16_t(s | 0x7C00u);
+          }
         }
       }
       return uint16_t(s | (e << 10) | (m >> 13));
@@ -4752,7 +4756,9 @@ MetalCommandProcessor::GetCurrentRenderPassDescriptor() {
 #include "xenia/gpu/metal/msl_tess_factor_kernels.h"
 
 bool MetalCommandProcessor::InitializeMslTessellation() {
-  if (!device_) return false;
+  if (!device_) {
+    return false;
+  }
 
   auto compile_kernel =
       [&](const char* source,
@@ -4820,7 +4826,9 @@ bool MetalCommandProcessor::InitializeMslTessellation() {
 
 void MetalCommandProcessor::ShutdownMslTessellation() {
   for (auto& [key, pso] : msl_tess_pipeline_cache_) {
-    if (pso) pso->release();
+    if (pso) {
+      pso->release();
+    }
   }
   msl_tess_pipeline_cache_.clear();
   if (tess_factor_buffer_) {

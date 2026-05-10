@@ -606,10 +606,11 @@ static void EmitFmaWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1, DReg s2,
   e.b(VS, nan_path);
 
   // Fast path: no NaN input → hardware FMA.
-  if (is_sub)
+  if (is_sub) {
     e.fnmsub(dest, s1, s2, s3);
-  else
+  } else {
     e.fmadd(dest, s1, s2, s3);
+  }
   // If result is NaN (0*inf or inf-inf), canonicalize to PPC default.
   e.fcmp(dest, dest);
   e.b(VC, done);
@@ -656,10 +657,11 @@ static void EmitFmaWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1, SReg s2,
   e.fccmp(s3, s3, 0b0001, VC);
   e.b(VS, nan_path);
 
-  if (is_sub)
+  if (is_sub) {
     e.fnmsub(dest, s1, s2, s3);
-  else
+  } else {
     e.fmadd(dest, s1, s2, s3);
+  }
   e.fcmp(dest, dest);
   e.b(VC, done);
   e.mov(e.w0, static_cast<uint64_t>(0xFFC00000u));
@@ -1074,7 +1076,9 @@ struct ADD_CARRY_I16
       e.add(e.w0, e.w0, i.src2);
     }
     if (i.src3.is_constant) {
-      if (i.src3.constant()) e.add(e.w0, e.w0, 1);
+      if (i.src3.constant()) {
+        e.add(e.w0, e.w0, 1);
+      }
     } else {
       e.add(e.w0, e.w0, i.src3);
     }
@@ -1098,7 +1102,9 @@ struct ADD_CARRY_I32
       e.add(e.w0, e.w0, i.src2);
     }
     if (i.src3.is_constant) {
-      if (i.src3.constant()) e.add(e.w0, e.w0, 1);
+      if (i.src3.constant()) {
+        e.add(e.w0, e.w0, 1);
+      }
     } else {
       e.add(e.w0, e.w0, i.src3);
     }
@@ -1120,7 +1126,9 @@ struct ADD_CARRY_I64
       e.add(e.x0, e.x0, i.src2);
     }
     if (i.src3.is_constant) {
-      if (i.src3.constant()) e.add(e.x0, e.x0, 1);
+      if (i.src3.constant()) {
+        e.add(e.x0, e.x0, 1);
+      }
     } else {
       // Zero-extend the I8 carry to 64-bit.
       e.mov(e.w1, i.src3);
@@ -1920,7 +1928,9 @@ struct SHL_V128 : Sequence<SHL_V128, I<OPCODE_SHL, V128Op, V128Op, I8Op>> {
     if (i.src2.is_constant) {
       uint8_t sh = i.src2.constant() & 0x7;
       if (sh == 0) {
-        if (d != s) e.mov(VReg(d).b16, VReg(s).b16);
+        if (d != s) {
+          e.mov(VReg(d).b16, VReg(s).b16);
+        }
         return;
       }
       // Read carry before writing result (handles dest==src aliasing).
@@ -2045,7 +2055,9 @@ struct SHR_V128 : Sequence<SHR_V128, I<OPCODE_SHR, V128Op, V128Op, I8Op>> {
     if (i.src2.is_constant) {
       uint8_t sh = i.src2.constant() & 0x7;
       if (sh == 0) {
-        if (d != s) e.mov(VReg(d).b16, VReg(s).b16);
+        if (d != s) {
+          e.mov(VReg(d).b16, VReg(s).b16);
+        }
         return;
       }
       // Read carry before writing result (handles dest==src aliasing).
@@ -3972,7 +3984,9 @@ struct MUL_ADD_V128
 
       // Flush s3 → v3, save to stack slot 2.
       int s3 = SrcVReg(e, i.src3, 3);
-      if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
+      if (s3 != 3) {
+        e.mov(VReg(3).b16, VReg(s3).b16);
+      }
       if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
         FlushDenormals_V128(e, 3, 0, 1);
       }
@@ -4060,7 +4074,9 @@ struct MUL_SUB_V128
 
       // Flush s3 → v3, save un-negated for NaN fixup.
       int s3 = SrcVReg(e, i.src3, 3);
-      if (s3 != 3) e.mov(VReg(3).b16, VReg(s3).b16);
+      if (s3 != 3) {
+        e.mov(VReg(3).b16, VReg(s3).b16);
+      }
       if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
         FlushDenormals_V128(e, 3, 0, 1);
       }
@@ -4493,7 +4509,9 @@ static uint32_t PpcVrsqrtefpLane(uint32_t bits) {
   uint32_t mantissa = bits & 0x007FFFFF;
 
   // -Inf → QNaN
-  if (bits == 0xFF800000u) return 0x7FC00000u;
+  if (bits == 0xFF800000u) {
+    return 0x7FC00000u;
+  }
 
   // Denormal or zero (exp == 0)
   if (biased_exp == 0) {
@@ -4512,7 +4530,9 @@ static uint32_t PpcVrsqrtefpLane(uint32_t bits) {
   }
 
   // Negative normal → QNaN
-  if (sign) return 0x7FC00000u;
+  if (sign) {
+    return 0x7FC00000u;
+  }
 
   // Normal positive: table lookup + interpolation
   int32_t unbiased_exp = (int32_t)biased_exp - 127;
@@ -4545,7 +4565,9 @@ static uint32_t PpcVrsqrtefpLane(uint32_t bits) {
   }
 
   // Rounding
-  if ((raw & 5) && (raw & 2)) raw += 4;
+  if ((raw & 5) && (raw & 2)) {
+    raw += 4;
+  }
 
   // Assemble result
   uint32_t res_exp = (uint32_t)((result_exp << 23) + 0x3F800000);

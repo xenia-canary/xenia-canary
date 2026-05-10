@@ -580,7 +580,9 @@ TEST_CASE("LOAD_VECTOR_LEFT", "[memory]") {
   uint32_t aligned_addr = (guest_addr + 15) & ~15u;
   auto* host_ptr =
       reinterpret_cast<uint8_t*>(test.memory->TranslateVirtual(aligned_addr));
-  for (int i = 0; i < 16; ++i) host_ptr[i] = static_cast<uint8_t>(0x10 + i);
+  for (int i = 0; i < 16; ++i) {
+    host_ptr[i] = static_cast<uint8_t>(0x10 + i);
+  }
 
   // LVL at aligned address — should load data (not crash).
   test.Run([&](PPCContext* ctx) { ctx->r[4] = aligned_addr; },
@@ -604,7 +606,9 @@ TEST_CASE("LOAD_VECTOR_RIGHT", "[memory]") {
   uint32_t aligned_addr = (guest_addr + 15) & ~15u;
   auto* host_ptr =
       reinterpret_cast<uint8_t*>(test.memory->TranslateVirtual(aligned_addr));
-  for (int i = 0; i < 16; ++i) host_ptr[i] = static_cast<uint8_t>(0x20 + i);
+  for (int i = 0; i < 16; ++i) {
+    host_ptr[i] = static_cast<uint8_t>(0x20 + i);
+  }
 
   // LVR at aligned address returns zero (no bytes before alignment boundary).
   test.Run([&](PPCContext* ctx) { ctx->r[4] = aligned_addr; },

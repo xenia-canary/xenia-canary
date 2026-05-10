@@ -1366,15 +1366,18 @@ void KernelState::SetProcessTLSVars(X_KPROCESS* process, int num_slots,
   }
 
   // set remainder of bitset
-  if (((num_slots + 3) & 0x1C) != 0)
+  if (((num_slots + 3) & 0x1C) != 0) {
     process->tls_slot_bitmap[count_div32] = -1
                                             << (32 - ((num_slots + 3) & 0x1C));
+  }
 }
 void AllocateThread(PPCContext* context) {
   uint32_t thread_mem_size = static_cast<uint32_t>(context->r[3]);
   uint32_t a2 = static_cast<uint32_t>(context->r[4]);
   uint32_t a3 = static_cast<uint32_t>(context->r[5]);
-  if (thread_mem_size <= 0xFD8) thread_mem_size += 8;
+  if (thread_mem_size <= 0xFD8) {
+    thread_mem_size += 8;
+  }
   uint32_t result =
       xboxkrnl::xeAllocatePoolTypeWithTag(context, thread_mem_size, a2, a3);
   if (((unsigned short)result & 0xFFF) != 0) {

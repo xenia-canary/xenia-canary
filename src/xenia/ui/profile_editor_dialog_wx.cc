@@ -190,7 +190,9 @@ constexpr const char* kGamerZoneNames[] = {
 std::vector<int> SparseValues(const char* const* names, size_t count) {
   std::vector<int> values;
   for (size_t i = 0; i < count; ++i) {
-    if (i == 0 || names[i]) values.push_back(static_cast<int>(i));
+    if (i == 0 || names[i]) {
+      values.push_back(static_cast<int>(i));
+    }
   }
   return values;
 }
@@ -233,16 +235,22 @@ void SelectByValue(wxChoice* combo, const std::vector<int>& values, int v) {
 int CurrentValue(wxChoice* combo, const std::vector<int>& values,
                  int fallback) {
   int sel = combo->GetSelection();
-  if (sel < 0 || sel >= static_cast<int>(values.size())) return fallback;
+  if (sel < 0 || sel >= static_cast<int>(values.size())) {
+    return fallback;
+  }
   return values[sel];
 }
 
 bool IsPng(const std::filesystem::path& path) {
   std::ifstream f(path, std::ios::binary);
-  if (!f.is_open()) return false;
+  if (!f.is_open()) {
+    return false;
+  }
   unsigned char sig[8];
   f.read(reinterpret_cast<char*>(sig), 8);
-  if (f.gcount() != 8) return false;
+  if (f.gcount() != 8) {
+    return false;
+  }
   static const unsigned char kPngSig[8] = {0x89, 0x50, 0x4E, 0x47,
                                            0x0D, 0x0A, 0x1A, 0x0A};
   return std::memcmp(sig, kPngSig, 8) == 0;
@@ -250,7 +258,9 @@ bool IsPng(const std::filesystem::path& path) {
 
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
   std::ifstream f(path, std::ios::binary);
-  if (!f.is_open()) return {};
+  if (!f.is_open()) {
+    return {};
+  }
   f.seekg(0, std::ios::end);
   std::vector<uint8_t> data(f.tellg());
   f.seekg(0, std::ios::beg);
@@ -274,16 +284,26 @@ ProfileEditorDialog::ProfileEditorDialog(wxWindow* parent,
 }
 
 void ProfileEditorDialog::LoadProfileData() {
-  if (!emulator_window_ || !emulator_window_->emulator()) return;
+  if (!emulator_window_ || !emulator_window_->emulator()) {
+    return;
+  }
   auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) return;
+  if (!kernel_state) {
+    return;
+  }
   auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) return;
+  if (!xam_state) {
+    return;
+  }
   auto* pm = xam_state->profile_manager();
-  if (!pm) return;
+  if (!pm) {
+    return;
+  }
 
   const auto* account_data = pm->GetAccount(xuid_);
-  if (!account_data) return;
+  if (!account_data) {
+    return;
+  }
 
   original_data_.gamertag = account_data->GetGamertagString();
   original_data_.country = account_data->GetCountry();
@@ -320,7 +340,9 @@ void ProfileEditorDialog::LoadProfileData() {
     }
     auto load_string = [&](UserSettingId id, std::string& target) {
       auto it = original_data_.gpd_settings.find(id);
-      if (it == original_data_.gpd_settings.end()) return;
+      if (it == original_data_.gpd_settings.end()) {
+        return;
+      }
       if (auto* s = std::get_if<std::u16string>(&it->second)) {
         target = xe::to_utf8(*s);
       }
@@ -523,7 +545,9 @@ void ProfileEditorDialog::Build() {
 }
 
 void ProfileEditorDialog::RefreshIconBitmap() {
-  if (!icon_bitmap_) return;
+  if (!icon_bitmap_) {
+    return;
+  }
   if (current_data_.profile_icon.empty()) {
     icon_bitmap_->SetBitmap(wxBitmapBundle());
     return;
@@ -547,7 +571,9 @@ bool ProfileEditorDialog::IsGamertagValid() const {
 }
 
 void ProfileEditorDialog::UpdateGamertagValidation() {
-  if (!gamertag_edit_ || !gamertag_validation_ || !save_button_) return;
+  if (!gamertag_edit_ || !gamertag_validation_ || !save_button_) {
+    return;
+  }
   bool valid = IsGamertagValid();
   bool empty = gamertag_edit_->IsEmpty();
   gamertag_validation_->SetLabel(valid || empty ? wxString()
@@ -559,7 +585,9 @@ void ProfileEditorDialog::OnChangeIcon() {
   wxFileDialog dlg(this, _("Select PNG image"), "", "",
                    _("PNG Images (*.png)|*.png|All Files (*.*)|*.*"),
                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-  if (dlg.ShowModal() != wxID_OK) return;
+  if (dlg.ShowModal() != wxID_OK) {
+    return;
+  }
   std::filesystem::path path(dlg.GetPath().wc_str());
   if (!IsPng(path)) {
     wxMessageBox(_("Selected file is not a valid PNG image."),
@@ -588,13 +616,21 @@ void ProfileEditorDialog::OnChangeIcon() {
 }
 
 void ProfileEditorDialog::OnSave() {
-  if (!emulator_window_ || !emulator_window_->emulator()) return;
+  if (!emulator_window_ || !emulator_window_->emulator()) {
+    return;
+  }
   auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) return;
+  if (!kernel_state) {
+    return;
+  }
   auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) return;
+  if (!xam_state) {
+    return;
+  }
   auto* pm = xam_state->profile_manager();
-  if (!pm) return;
+  if (!pm) {
+    return;
+  }
 
   auto* profile = xam_state->GetUserProfile(xuid_);
   bool signed_in = profile != nullptr;
@@ -625,9 +661,13 @@ void ProfileEditorDialog::OnSave() {
                        static_cast<int>(account.GetSubscriptionTier()))));
 
   if (std::memcmp(&account, &account_original, sizeof(X_XAMACCOUNTINFO)) != 0) {
-    if (!signed_in) pm->MountProfile(xuid_);
+    if (!signed_in) {
+      pm->MountProfile(xuid_);
+    }
     pm->UpdateAccount(xuid_, &account);
-    if (!signed_in) pm->DismountProfile(xuid_);
+    if (!signed_in) {
+      pm->DismountProfile(xuid_);
+    }
   }
 
   if (current_data_.profile_icon != original_data_.profile_icon) {
@@ -654,14 +694,20 @@ void ProfileEditorDialog::OnSave() {
     auto save_string_setting = [&](UserSettingId id, const wxString& text,
                                    size_t max_chars) {
       std::u16string value = xe::to_utf16(text.utf8_string());
-      if (value.length() > max_chars) value.resize(max_chars);
+      if (value.length() > max_chars) {
+        value.resize(max_chars);
+      }
       std::u16string swapped;
       swapped.reserve(value.size());
-      for (auto ch : value) swapped.push_back(xe::byte_swap(ch));
+      for (auto ch : value) {
+        swapped.push_back(xe::byte_swap(ch));
+      }
       auto it = current_data_.gpd_settings.find(id);
       if (it != current_data_.gpd_settings.end()) {
         if (auto* prev = std::get_if<std::u16string>(&it->second)) {
-          if (*prev == swapped) return;
+          if (*prev == swapped) {
+            return;
+          }
         }
       }
       UserSetting updated(id, swapped);

@@ -229,7 +229,9 @@ void ImGuiPostProcessingDialog::OnDraw(ImGuiIO& io) {
         ImGui::PopStyleColor();
       }
 
-      if (i < 2) ImGui::SameLine();
+      if (i < 2) {
+        ImGui::SameLine();
+      }
     }
     ImGui::Unindent(10);
 
@@ -264,7 +266,9 @@ void ImGuiPostProcessingDialog::OnDraw(ImGuiIO& io) {
         ImGui::PopStyleColor();
       }
 
-      if (i < 2) ImGui::SameLine();
+      if (i < 2) {
+        ImGui::SameLine();
+      }
     }
     ImGui::Unindent(10);
 

@@ -52,7 +52,9 @@ const std::map<uint32_t, int> supported_levels = {{0xFFFF, SOL_SOCKET},
 // understand. Needs POSIX -> WSAError mapping for proper cross-platform
 // support.
 uint32_t AsioErrorToWSAError(const asio::error_code& ec) {
-  if (!ec) return 0;
+  if (!ec) {
+    return 0;
+  }
   return static_cast<uint32_t>(ec.value());
 }
 

@@ -719,9 +719,13 @@ void XThread::SetPriority(int32_t increment) {
 }
 
 void XThread::CheckQuantumAndDecay() {
-  if (cvars::ignore_thread_priorities) return;
+  if (cvars::ignore_thread_priorities) {
+    return;
+  }
   // Real-time threads (current priority >= 0x12) don't decay on Xenon.
-  if (priority_ >= 18) return;
+  if (priority_ >= 18) {
+    return;
+  }
 
   uint64_t now = Clock::QueryHostUptimeMillis();
   uint64_t elapsed = now - quantum_start_ms_;
@@ -731,7 +735,9 @@ void XThread::CheckQuantumAndDecay() {
   // effective priority by exactly 1 and resets quantum.  We approximate
   // this by decaying 1 priority level per 20ms of elapsed wall-clock time.
   constexpr uint64_t kQuantumPeriodMs = 20;
-  if (elapsed < kQuantumPeriodMs) return;
+  if (elapsed < kQuantumPeriodMs) {
+    return;
+  }
 
   int32_t decay_steps = static_cast<int32_t>(elapsed / kQuantumPeriodMs);
   // On the first decay step, drain the accumulated priority boost as well.
@@ -756,7 +762,9 @@ void XThread::CheckQuantumAndDecay() {
 }
 
 void XThread::BoostOnWake(int32_t increment) {
-  if (cvars::ignore_thread_priorities) return;
+  if (cvars::ignore_thread_priorities) {
+    return;
+  }
 
   // Real-time threads (priority >= 0x12) just get their quantum reset.
   if (priority_ >= 18) {

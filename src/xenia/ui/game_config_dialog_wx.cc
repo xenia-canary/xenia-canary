@@ -78,9 +78,13 @@ EditorBuild BuildEditor(wxWindow* parent, cvar::IConfigVar* var,
       int sel = -1;
       for (size_t i = 0; i < it->second.size(); ++i) {
         choice->Append(wxString::FromUTF8(it->second[i]));
-        if (it->second[i] == current_value) sel = static_cast<int>(i);
+        if (it->second[i] == current_value) {
+          sel = static_cast<int>(i);
+        }
       }
-      if (sel >= 0) choice->SetSelection(sel);
+      if (sel >= 0) {
+        choice->SetSelection(sel);
+      }
       return {choice, [choice]() {
                 return choice->GetStringSelection().utf8_string();
               }};
@@ -105,15 +109,21 @@ EditorBuild BuildEditor(wxWindow* parent, cvar::IConfigVar* var,
               container,
               wxString::Format(_("Select %s"), wxString::FromUTF8(name)), "",
               current, wxString::FromUTF8(info->wildcard), flags);
-          if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
+          if (dlg.ShowModal() == wxID_OK) {
+            picked = dlg.GetPath();
+          }
         } else {
           wxDirDialog dlg(container,
                           wxString::Format(_("Select directory for %s"),
                                            wxString::FromUTF8(name)),
                           current);
-          if (dlg.ShowModal() == wxID_OK) picked = dlg.GetPath();
+          if (dlg.ShowModal() == wxID_OK) {
+            picked = dlg.GetPath();
+          }
         }
-        if (!picked.IsEmpty()) text->SetValue(picked);
+        if (!picked.IsEmpty()) {
+          text->SetValue(picked);
+        }
       });
       hsizer->Add(text, wxSizerFlags(1).CenterVertical());
       hsizer->Add(browse, wxSizerFlags().CenterVertical().Border(wxLEFT, 4));
@@ -184,7 +194,9 @@ std::string PickCvarWithFilter(wxWindow* parent,
   sizer->Add(search, wxSizerFlags().Expand().Border(wxALL, 8));
 
   wxArrayString choices;
-  for (const auto& d : display) choices.Add(wxString::FromUTF8(d));
+  for (const auto& d : display) {
+    choices.Add(wxString::FromUTF8(d));
+  }
   auto* list = new wxListBox(&dlg, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                              choices, wxLB_SINGLE);
   sizer->Add(list, wxSizerFlags(1).Expand().Border(wxLEFT | wxRIGHT, 8));
@@ -197,7 +209,9 @@ std::string PickCvarWithFilter(wxWindow* parent,
 
   std::vector<int> visible;
   visible.reserve(names.size());
-  for (int i = 0; i < static_cast<int>(names.size()); ++i) visible.push_back(i);
+  for (int i = 0; i < static_cast<int>(names.size()); ++i) {
+    visible.push_back(i);
+  }
 
   auto refilter = [&](const std::string& filter) {
     list->Clear();
@@ -210,7 +224,9 @@ std::string PickCvarWithFilter(wxWindow* parent,
       list->Append(wxString::FromUTF8(display[i]));
       visible.push_back(i);
     }
-    if (!visible.empty()) list->SetSelection(0);
+    if (!visible.empty()) {
+      list->SetSelection(0);
+    }
   };
 
   search->Bind(wxEVT_TEXT, [&](wxCommandEvent&) {
@@ -221,9 +237,13 @@ std::string PickCvarWithFilter(wxWindow* parent,
              [&](wxCommandEvent&) { dlg.EndModal(wxID_OK); });
 
   search->SetFocus();
-  if (dlg.ShowModal() != wxID_OK) return {};
+  if (dlg.ShowModal() != wxID_OK) {
+    return {};
+  }
   int sel = list->GetSelection();
-  if (sel < 0 || sel >= static_cast<int>(visible.size())) return {};
+  if (sel < 0 || sel >= static_cast<int>(visible.size())) {
+    return {};
+  }
   return names[visible[sel]];
 }
 
@@ -337,7 +357,9 @@ void GameConfigDialog::AddRow(const std::string& name,
 
 void GameConfigDialog::RemoveRow(Row* row) {
   auto it = std::find(rows_.begin(), rows_.end(), row);
-  if (it == rows_.end()) return;
+  if (it == rows_.end()) {
+    return;
+  }
   rows_sizer_->Detach(row->sizer);
   row->sizer->Clear(true);
   delete row->sizer;
@@ -364,13 +386,17 @@ void GameConfigDialog::LoadOverrides() {
     XELOGE("GameConfigDialog: failed to load config: {}", e.what());
     return;
   }
-  if (!cvar::ConfigVars) return;
+  if (!cvar::ConfigVars) {
+    return;
+  }
   std::map<std::string, std::string> rows;
   for (auto& [name, var] : *cvar::ConfigVars) {
     auto* config_var = static_cast<cvar::IConfigVar*>(var);
     auto path = toml::path(config_var->category() + "." + config_var->name());
     auto node = table.at_path(path);
-    if (!node) continue;
+    if (!node) {
+      continue;
+    }
     void* saved = config_var->SaveConfigValueState();
     config_var->LoadConfigValue(node.node());
     std::string value = StripTomlQuotes(config_var->config_value());
@@ -388,9 +414,13 @@ void GameConfigDialog::SaveOverrides() {
   std::map<std::string, toml::table> by_category;
   for (auto* row : rows_) {
     std::string value = row->get_value ? row->get_value() : std::string();
-    if (row->name.empty()) continue;
+    if (row->name.empty()) {
+      continue;
+    }
     auto* var = cvar::ConfigVars ? (*cvar::ConfigVars)[row->name] : nullptr;
-    if (!var || var->is_transient()) continue;
+    if (!var || var->is_transient()) {
+      continue;
+    }
     InsertTypedValue(by_category[var->category()], row->name, value);
   }
   for (auto& [cat, tbl] : by_category) {
@@ -408,15 +438,23 @@ void GameConfigDialog::SaveOverrides() {
 }
 
 void GameConfigDialog::OnAdd() {
-  if (!cvar::ConfigVars) return;
+  if (!cvar::ConfigVars) {
+    return;
+  }
   std::set<std::string> existing;
-  for (auto* row : rows_) existing.insert(row->name);
+  for (auto* row : rows_) {
+    existing.insert(row->name);
+  }
 
   std::vector<std::string> names;
   std::vector<std::string> display;
   for (auto& [name, var] : *cvar::ConfigVars) {
-    if (var->is_transient()) continue;
-    if (existing.count(name)) continue;
+    if (var->is_transient()) {
+      continue;
+    }
+    if (existing.count(name)) {
+      continue;
+    }
     names.push_back(name);
   }
   std::sort(names.begin(), names.end());
@@ -431,7 +469,9 @@ void GameConfigDialog::OnAdd() {
     return;
   }
   std::string name = PickCvarWithFilter(this, names, display);
-  if (name.empty()) return;
+  if (name.empty()) {
+    return;
+  }
   auto* var = (*cvar::ConfigVars)[name];
   std::string default_value = StripTomlQuotes(var->config_value());
   AddRow(name, default_value);

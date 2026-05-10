@@ -254,13 +254,22 @@ X_STATUS Emulator::Setup(
 
   // Store parameters for reuse across Shutdown/Setup cycles.
   // Only overwrite if non-null so re-calls after Shutdown keep prior values.
-  if (display_window) display_window_ = display_window;
-  if (imgui_drawer) imgui_drawer_ = imgui_drawer;
+  if (display_window) {
+    display_window_ = display_window;
+  }
+  if (imgui_drawer) {
+    imgui_drawer_ = imgui_drawer;
+  }
   require_cpu_backend_ = require_cpu_backend;
-  if (audio_system_factory) audio_system_factory_ = audio_system_factory;
-  if (graphics_system_factory)
+  if (audio_system_factory) {
+    audio_system_factory_ = audio_system_factory;
+  }
+  if (graphics_system_factory) {
     graphics_system_factory_ = graphics_system_factory;
-  if (input_driver_factory) input_driver_factory_ = input_driver_factory;
+  }
+  if (input_driver_factory) {
+    input_driver_factory_ = input_driver_factory;
+  }
 
   // Initialize clock.
   // 360 uses a 50MHz clock.
@@ -1397,7 +1406,9 @@ X_STATUS Emulator::CreateZarchivePackage(ZarchiveEntry& entry) {
           size_t bytes_read = 0;
           vfs_file->ReadSync(std::span<uint8_t>(buffer.data(), buffer.size()),
                              offset, &bytes_read);
-          if (bytes_read == 0) break;
+          if (bytes_read == 0) {
+            break;
+          }
 
           zWriter.AppendData(buffer.data(), bytes_read);
           offset += bytes_read;
@@ -2035,11 +2046,12 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   if (ex->code() == Exception::Code::kAccessViolation) {
     const char* op_str = "unknown";
     if (ex->access_violation_operation() ==
-        Exception::AccessViolationOperation::kRead)
+        Exception::AccessViolationOperation::kRead) {
       op_str = "read";
-    else if (ex->access_violation_operation() ==
-             Exception::AccessViolationOperation::kWrite)
+    } else if (ex->access_violation_operation() ==
+               Exception::AccessViolationOperation::kWrite) {
       op_str = "write";
+    }
     crash_msg.append(fmt::format("Access Violation: {} at 0x{:016X}\n", op_str,
                                  ex->fault_address()));
   } else if (ex->code() == Exception::Code::kIllegalInstruction) {
@@ -2314,12 +2326,16 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       const std::vector<kernel::util::GameInfoDatabase::Property>
           properties_list = game_info_database_->GetProperties();
 
+      // 4D5307DC SPA contains a lot of properties, limit properties to log.
+      const auto properties_list_limit =
+          properties_list | std::views::take(150);
+
       table = tabulate::Table();
       table.format().multi_byte_characters(true);
       table.add_row({"ID", "Name", "Matchmaking", "Data Size"});
 
       for (const kernel::util::GameInfoDatabase::Property& entry :
-           properties_list) {
+           properties_list_limit) {
         std::string label =
             string_util::remove_eol(string_util::trim(entry.description));
 
@@ -2327,8 +2343,17 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                        entry.is_matchmaking ? "True" : "False",
                        fmt::format("{}", entry.data_size)});
       }
-      XELOGI("\n-------------------- PROPERTIES --------------------\n{}",
-             table.str());
+
+      std::string properties_totals;
+
+      if (properties_list.size() > properties_list_limit.size()) {
+        properties_totals =
+            fmt::format("\nProperties: {}/{}", properties_list_limit.size(),
+                        properties_list.size());
+      }
+
+      XELOGI("\n-------------------- PROPERTIES --------------------{}\n{}",
+             properties_totals.c_str(), table.str());
 
       const std::vector<kernel::util::GameInfoDatabase::Context> contexts_list =
           game_info_database_->GetContexts();
@@ -2378,14 +2403,14 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                        entry.view.online_only ? "True" : "False"});
       }
 
-      std::string totals;
+      std::string stats_view_totals;
 
       if (stats_views.size() > stats_views_limit.size()) {
-        totals = fmt::format("\nViews: {}/{}", stats_views_limit.size(),
-                             stats_views.size());
+        stats_view_totals = fmt::format(
+            "\nViews: {}/{}", stats_views_limit.size(), stats_views.size());
       }
-      XELOGI("\n-------------------- Stats Views --------------------{}\n{}",
-             totals.c_str(), table.str());
+      XELOGI("\n-------------------- STATS VIEWS --------------------{}\n{}",
+             stats_view_totals.c_str(), table.str());
 
       const std::vector<kernel::util::GameInfoDatabase::PresenceMode>
           presence_modes = game_info_database_->GetPresenceModes();
