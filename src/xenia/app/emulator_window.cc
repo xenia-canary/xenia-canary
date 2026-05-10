@@ -1170,12 +1170,26 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
 
   context_menu->AddSeparator();
 
-  context_menu->AddAction("Stop Game", [this, input_sys]() {
+  context_menu->AddAction("Return to Game List", [this, input_sys]() {
     new ui::ImGuiConfirmDialog(
-        imgui_drawer(), "Stop Game",
+        imgui_drawer(), "Return to Game List",
         "Really stop title? Unsaved progress will be lost.",
         [this](bool confirmed) {
           if (confirmed) StopTitleAndReturnToList();
+        },
+        input_sys);
+  });
+
+  context_menu->AddAction("Quit Xenia", [this, input_sys]() {
+    new ui::ImGuiConfirmDialog(
+        imgui_drawer(), "Quit Xenia",
+        "Really quit Xenia? Unsaved progress will be lost.",
+        [this](bool confirmed) {
+          if (!confirmed) {
+            return;
+          }
+          app_context_.CallInUIThreadDeferred(
+              [this]() { window_->RequestClose(); });
         },
         input_sys);
   });
