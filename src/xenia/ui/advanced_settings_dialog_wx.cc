@@ -26,6 +26,7 @@
 #include <wx/spinctrl.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
+#include <wx/tooltip.h>
 
 #include "third_party/tomlplusplus/toml.hpp"
 #include "xenia/base/filesystem.h"
@@ -95,9 +96,15 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(wxWindow* parent,
     : wxDialog(parent, wxID_ANY, _("Configuration Manager"), wxDefaultPosition,
                wxSize(900, 650), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window) {
+  wxToolTip::SetAutoPop(30000);
   LoadConfigValues();
   Build();
   Centre();
+}
+
+AdvancedSettingsDialog::~AdvancedSettingsDialog() {
+  // No getter on wxToolTip; restore the documented wx default.
+  wxToolTip::SetAutoPop(5000);
 }
 
 void AdvancedSettingsDialog::SelectCategory(const std::string& category_name) {

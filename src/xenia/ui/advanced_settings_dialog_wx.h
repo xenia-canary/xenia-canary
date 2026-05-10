@@ -34,6 +34,7 @@ class EmulatorWindow;
 class AdvancedSettingsDialog : public wxDialog {
  public:
   AdvancedSettingsDialog(wxWindow* parent, EmulatorWindow* emulator_window);
+  ~AdvancedSettingsDialog() override;
 
   // Selects the named category in the list. Safe to call before/after Show.
   void SelectCategory(const std::string& category_name);
