@@ -406,6 +406,7 @@ int main(int argc, char** argv) {
         "-x",
         "metal",
         "-std=macos-metal2.3",
+        "-mmacosx-version-min=" XE_METAL_MIN_OS,
         "-D",
         "SHADING_LANGUAGE_MSL_XE=1",
         "-w",

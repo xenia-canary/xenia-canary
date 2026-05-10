@@ -305,7 +305,9 @@ target_include_directories(xenia-shader-cc PRIVATE
 set_target_properties(xenia-shader-cc PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/host_tools")
 if(APPLE)
-  target_compile_definitions(xenia-shader-cc PRIVATE XE_SHADER_CC_METAL=1)
+  target_compile_definitions(xenia-shader-cc PRIVATE
+    XE_SHADER_CC_METAL=1
+    XE_METAL_MIN_OS="${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 if(MSVC)
   target_compile_options(xenia-shader-cc PRIVATE /EHsc)
