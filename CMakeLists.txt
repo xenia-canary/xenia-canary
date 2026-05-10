@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
 
+# Must be set before project() so the toolchain bakes -mmacosx-version-min
+# into every compile/link; setting it later only updates the variable.
+if(APPLE)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS version")
+endif()
+
 # Suppress macOS ranlib warnings for empty object files. wxWidgets's vendored
 # libpng compiles Intel/MIPS/PowerPC sources that are empty on ARM64.
 if(APPLE)
@@ -312,7 +318,6 @@ else()
 
   if(APPLE)
     # macOS-specific settings
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS version")
     add_compile_options(
       -Wno-unknown-warning-option
       $<$<COMPILE_LANGUAGE:CXX>:-Wno-shorten-64-to-32>
