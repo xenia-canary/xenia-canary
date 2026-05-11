@@ -1410,7 +1410,7 @@ void EmulatorWindow::CreateZarchive() {
     file_picker->set_mode(ui::FilePicker::Mode::kSave);
     file_picker->set_type(ui::FilePicker::Type::kFile);
     file_picker->set_multi_selection(false);
-    file_picker->set_file_name(content_dirs.front().stem().string());
+    file_picker->set_file_name(content_dirs.front().filename().string());
     file_picker->set_default_extension("zar");
     file_picker->set_title("Zarchive File");
     file_picker->set_extensions({
@@ -1439,7 +1439,7 @@ void EmulatorWindow::CreateZarchive() {
 
     if (content_dirs.size() > 1) {
       abs_zarchive_file = std::filesystem::absolute(
-          (zarchive_dir / abs_content_dir.stem()).replace_extension("zar"));
+          (zarchive_dir / abs_content_dir.filename().concat(".zar")));
     } else {
       abs_zarchive_file = std::filesystem::absolute(zarchive_dir);
     }
