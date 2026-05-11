@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/patcher/embedded_bundle.h"
+#include "xenia/base/embedded_bundle.h"
 
 #include <cstring>
 
@@ -15,7 +15,6 @@
 #include "xenia/base/logging.h"
 
 namespace xe {
-namespace patcher {
 
 EmbeddedBundle::EmbeddedBundle(const unsigned char* compressed_data,
                                size_t compressed_size) {
@@ -100,5 +99,4 @@ void EmbeddedBundle::ForEach(const VisitFn& visit) const {
   }
 }
 
-}  // namespace patcher
 }  // namespace xe

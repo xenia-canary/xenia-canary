@@ -25,11 +25,17 @@ def main():
     parts = [b""]  # placeholder for count
     count = 0
     if os.path.isdir(src_dir):
-        for entry in sorted(os.scandir(src_dir), key=lambda e: e.name):
-            if not entry.is_file():
-                continue
-            name = entry.name.encode("utf-8")
-            with open(entry.path, "rb") as f:
+        # Recurse so nested layouts (e.g. locale/<lang>/<domain>.mo) keep
+        # their structure in the entry name. Flat dirs land as basenames.
+        files = []
+        for root, _, fs in os.walk(src_dir):
+            for f in fs:
+                full = os.path.join(root, f)
+                rel = os.path.relpath(full, src_dir).replace(os.sep, "/")
+                files.append((rel, full))
+        for rel, full in sorted(files):
+            name = rel.encode("utf-8")
+            with open(full, "rb") as f:
                 data = f.read()
             parts.append(struct.pack("<I", len(name)))
             parts.append(name)

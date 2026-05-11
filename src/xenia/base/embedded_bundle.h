@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_PATCHER_EMBEDDED_BUNDLE_H_
-#define XENIA_PATCHER_EMBEDDED_BUNDLE_H_
+#ifndef XENIA_BASE_EMBEDDED_BUNDLE_H_
+#define XENIA_BASE_EMBEDDED_BUNDLE_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -17,7 +17,6 @@
 #include <vector>
 
 namespace xe {
-namespace patcher {
 
 // Decompresses a zlib-compressed concat blob produced by tools/build/
 // embed_bundle.py and exposes a callback iteration over (name, data) entries.
@@ -37,7 +36,6 @@ class EmbeddedBundle {
   std::vector<uint8_t> raw_;
 };
 
-}  // namespace patcher
 }  // namespace xe
 
-#endif  // XENIA_PATCHER_EMBEDDED_BUNDLE_H_
+#endif  // XENIA_BASE_EMBEDDED_BUNDLE_H_

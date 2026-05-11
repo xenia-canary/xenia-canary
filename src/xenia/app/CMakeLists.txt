@@ -190,41 +190,9 @@ endif()
 
 xe_target_defaults(xenia-app)
 
-# Compile assets/locale/<lang>/xenia.po -> <exe-dir>/locale/<lang>/xenia.mo
-# for wxLocale::AddCatalogLookupPathPrefix in wx_locale.cc.
-file(GLOB _xe_po_files "${PROJECT_SOURCE_DIR}/assets/locale/*/xenia.po")
-set(_xe_mo_outputs "")
-foreach(_xe_po ${_xe_po_files})
-  get_filename_component(_xe_po_dir "${_xe_po}" DIRECTORY)
-  get_filename_component(_xe_lang "${_xe_po_dir}" NAME)
-  set(_xe_mo_out "${CMAKE_CURRENT_BINARY_DIR}/locale/${_xe_lang}/xenia.mo")
-  add_custom_command(
-    OUTPUT "${_xe_mo_out}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            "${CMAKE_CURRENT_BINARY_DIR}/locale/${_xe_lang}"
-    COMMAND ${Python3_EXECUTABLE}
-            "${PROJECT_SOURCE_DIR}/tools/build/compile_po.py"
-            "${_xe_po}" "${_xe_mo_out}"
-    DEPENDS "${_xe_po}"
-            "${PROJECT_SOURCE_DIR}/tools/build/compile_po.py"
-    VERBATIM)
-  list(APPEND _xe_mo_outputs "${_xe_mo_out}")
-  add_custom_command(TARGET xenia-app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:xenia-app>/locale/${_xe_lang}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_xe_mo_out}"
-            "$<TARGET_FILE_DIR:xenia-app>/locale/${_xe_lang}/xenia.mo"
-    VERBATIM)
-endforeach()
-if(_xe_mo_outputs)
-  add_custom_target(xenia-locale ALL DEPENDS ${_xe_mo_outputs})
-  add_dependencies(xenia-app xenia-locale)
-endif()
-
 # Sign the bundle last, after every POST_BUILD step that drops files into
-# it (locales, etc.) — otherwise Gatekeeper rejects the downloaded artifact
-# with "a sealed resource is missing or invalid".
+# it — otherwise Gatekeeper rejects the downloaded artifact with "a sealed
+# resource is missing or invalid".
 if(APPLE)
   add_custom_command(TARGET xenia-app POST_BUILD
     COMMAND codesign --force --deep --sign -

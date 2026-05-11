@@ -14,11 +14,11 @@
 #include <unordered_map>
 
 #include "xenia/base/cvar.h"
+#include "xenia/base/embedded_bundle.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/config.h"
 #include "xenia/memory.h"
-#include "xenia/patcher/embedded_bundle.h"
 
 #include "embedded_bundle_patches.h"
 

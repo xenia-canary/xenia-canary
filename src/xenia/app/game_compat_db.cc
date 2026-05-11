@@ -14,8 +14,8 @@
 
 #include "rapidjson/document.h"
 
+#include "xenia/base/embedded_bundle.h"
 #include "xenia/base/logging.h"
-#include "xenia/patcher/embedded_bundle.h"
 
 #include "embedded_bundle_game_compat.h"
 
@@ -65,9 +65,8 @@ uint32_t ParseTitleId(const char* hex, size_t len) {
 const std::unordered_map<uint32_t, CompatState>& GetCompatIndex() {
   static const std::unordered_map<uint32_t, CompatState> index = []() {
     std::unordered_map<uint32_t, CompatState> map;
-    xe::patcher::EmbeddedBundle bundle(
-        xe::embedded_bundle_game_compat::kBundleData,
-        xe::embedded_bundle_game_compat::kBundleSize);
+    xe::EmbeddedBundle bundle(xe::embedded_bundle_game_compat::kBundleData,
+                              xe::embedded_bundle_game_compat::kBundleSize);
     if (!bundle.ok()) {
       XELOGE("CompatDb: bundle decompress failed");
       return map;
