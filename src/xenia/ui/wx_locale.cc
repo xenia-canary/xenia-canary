@@ -65,5 +65,12 @@ void InitializeWxLocale() {
   }
 }
 
+std::string GetActiveLocaleCanonicalName() {
+  if (!g_locale) {
+    return {};
+  }
+  return g_locale->GetCanonicalName().ToStdString(wxConvUTF8);
+}
+
 }  // namespace ui
 }  // namespace xe

@@ -14,8 +14,10 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "third_party/tomlplusplus/toml.hpp"
+#include "xenia/xbox.h"
 
 namespace xe {
 namespace vfs {
@@ -35,11 +37,17 @@ struct StfsMetadata {
   uint8_t disc_number = 0;
   uint8_t disc_count = 0;
 
+  // Raw bytes of the embedded title_thumbnail (PNG). Empty if absent.
+  std::vector<uint8_t> icon_data;
+
   toml::table ToToml() const;
 };
 
+// `language` selects which localized title/description slot to read.
+// Falls back to English automatically if the requested slot is empty.
 std::optional<StfsMetadata> ExtractStfsMetadata(
-    const std::filesystem::path& path);
+    const std::filesystem::path& path,
+    XLanguage language = XLanguage::kEnglish);
 
 }  // namespace vfs
 }  // namespace xe

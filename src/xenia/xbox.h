@@ -10,9 +10,11 @@
 #ifndef XENIA_XBOX_H_
 #define XENIA_XBOX_H_
 
+#include <cctype>
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
 
 #include "xenia/base/assert.h"
 // clang-format off
@@ -317,6 +319,64 @@ enum class XLanguage : uint32_t {
   // STFS headers can't support any more languages than these
   kMaxLanguages = 13
 };
+
+// Maps an IETF / POSIX locale code (e.g. "en_US", "ja", "zh_TW", "pt-BR") to
+// the closest XLanguage slot. Falls back to English on unknown codes.
+inline XLanguage XLanguageFromLocaleCode(std::string_view code) {
+  auto lower = [](char c) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  };
+  if (code.size() < 2) {
+    return XLanguage::kEnglish;
+  }
+  char a = lower(code[0]);
+  char b = lower(code[1]);
+  if (a == 'e' && b == 'n') {
+    return XLanguage::kEnglish;
+  }
+  if (a == 'j' && b == 'a') {
+    return XLanguage::kJapanese;
+  }
+  if (a == 'd' && b == 'e') {
+    return XLanguage::kGerman;
+  }
+  if (a == 'f' && b == 'r') {
+    return XLanguage::kFrench;
+  }
+  if (a == 'e' && b == 's') {
+    return XLanguage::kSpanish;
+  }
+  if (a == 'i' && b == 't') {
+    return XLanguage::kItalian;
+  }
+  if (a == 'k' && b == 'o') {
+    return XLanguage::kKorean;
+  }
+  if (a == 'p' && b == 't') {
+    return XLanguage::kPortuguese;
+  }
+  if (a == 'p' && b == 'l') {
+    return XLanguage::kPolish;
+  }
+  if (a == 'r' && b == 'u') {
+    return XLanguage::kRussian;
+  }
+  if (a == 'z' && b == 'h') {
+    // Chinese script disambiguation: zh_TW / zh_HK / zh-Hant → Traditional;
+    // anything else (zh_CN, zh-Hans, bare "zh") → Simplified.
+    if (code.size() >= 5) {
+      std::string rest;
+      for (size_t i = 3; i < code.size() && rest.size() < 4; ++i) {
+        rest.push_back(lower(code[i]));
+      }
+      if (rest == "tw" || rest == "hk" || rest.compare(0, 4, "hant") == 0) {
+        return XLanguage::kTChinese;
+      }
+    }
+    return XLanguage::kSChinese;
+  }
+  return XLanguage::kEnglish;
+}
 
 enum class XOnlineCountry : uint32_t {
   kUnitedArabEmirates = 1,

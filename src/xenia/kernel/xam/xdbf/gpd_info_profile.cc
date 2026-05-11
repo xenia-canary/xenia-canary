@@ -69,17 +69,24 @@ std::u16string GpdInfoProfile::GetTitleName(const uint32_t title_id) const {
 }
 
 void GpdInfoProfile::AddNewTitle(const SpaInfo* title_data) {
-  const X_XDBF_GPD_TITLE_PLAYED title_gpd_data =
-      FillTitlePlayedData(title_data);
+  AddNewTitle(title_data->title_id(), xe::to_utf16(title_data->title_name()),
+              title_data->achievement_count(), title_data->total_gamerscore());
+}
 
-  const std::u16string title_name = xe::to_utf16(title_data->title_name());
+void GpdInfoProfile::AddNewTitle(uint32_t title_id,
+                                 const std::u16string& title_name,
+                                 uint32_t achievement_count,
+                                 uint32_t total_gamerscore) {
+  X_XDBF_GPD_TITLE_PLAYED title_gpd_data = {};
+  title_gpd_data.title_id = title_id;
+  title_gpd_data.achievements_count = achievement_count;
+  title_gpd_data.gamerscore_total = total_gamerscore;
 
   const uint32_t entry_size =
       sizeof(X_XDBF_GPD_TITLE_PLAYED) +
       static_cast<uint32_t>(string_util::size_in_bytes(title_name));
 
-  Entry entry(title_data->title_id(), static_cast<uint16_t>(GpdSection::kTitle),
-              entry_size);
+  Entry entry(title_id, static_cast<uint16_t>(GpdSection::kTitle), entry_size);
 
   memcpy(entry.data.data(), &title_gpd_data, sizeof(X_XDBF_GPD_TITLE_PLAYED));
 
@@ -115,17 +122,6 @@ bool GpdInfoProfile::RemoveTitle(const uint32_t title_id) {
 
   DeleteEntry(entry_to_delete);
   return true;
-}
-
-X_XDBF_GPD_TITLE_PLAYED GpdInfoProfile::FillTitlePlayedData(
-    const SpaInfo* title_data) const {
-  X_XDBF_GPD_TITLE_PLAYED title_gpd_data = {};
-
-  title_gpd_data.title_id = title_data->title_id();
-  title_gpd_data.achievements_count = title_data->achievement_count();
-  title_gpd_data.gamerscore_total = title_data->total_gamerscore();
-
-  return title_gpd_data;
 }
 
 void GpdInfoProfile::UpdateTitleInfo(const uint32_t title_id,

@@ -32,6 +32,11 @@ class GpdInfoProfile : public GpdInfo {
   ~GpdInfoProfile() = default;
 
   void AddNewTitle(const SpaInfo* title_data);
+  // SPA-less overload. achievement_count / total_gamerscore default to 0
+  // and get filled in on the next real launch via UpdateProfileGpd.
+  void AddNewTitle(uint32_t title_id, const std::u16string& title_name,
+                   uint32_t achievement_count = 0,
+                   uint32_t total_gamerscore = 0);
   bool RemoveTitle(const uint32_t title_id);
   void UpdateTitleInfo(const uint32_t title_id,
                        X_XDBF_GPD_TITLE_PLAYED* title_data);
@@ -58,9 +63,6 @@ class GpdInfoProfile : public GpdInfo {
   std::string GetDiscLabel(uint32_t title_id,
                            const std::filesystem::path& path) const;
   void RemoveDiscPath(uint32_t title_id, const std::filesystem::path& path);
-
- private:
-  X_XDBF_GPD_TITLE_PLAYED FillTitlePlayedData(const SpaInfo* title_data) const;
 };
 
 }  // namespace xam

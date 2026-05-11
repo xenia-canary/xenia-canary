@@ -11,6 +11,7 @@
 
 #include "xenia/ui/advanced_settings_dialog_wx.h"
 #include "xenia/ui/game_list_panel_wx.h"
+#include "xenia/ui/game_scan_progress_dialog_wx.h"
 #include "xenia/ui/install_progress_dialog_wx.h"
 #include "xenia/ui/profile_editor_dialog_wx.h"
 #include "xenia/ui/quick_settings_dialog_wx.h"
@@ -18,6 +19,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
+#include <span>
 #include <sstream>
 #include <thread>
 
@@ -664,6 +666,11 @@ bool EmulatorWindow::Initialize() {
                              std::bind(&EmulatorWindow::FileOpen, this));
       file_open_menu_item_ = open_item.get();
       file_menu->AddChild(std::move(open_item));
+      auto add_games_item =
+          WxMenuItem::Create(MenuItem::Type::kString, _("&Add Games..."),
+                             std::bind(&EmulatorWindow::FileAddGames, this));
+      file_add_games_menu_item_ = add_games_item.get();
+      file_menu->AddChild(std::move(add_games_item));
       auto stop_item =
           WxMenuItem::Create(MenuItem::Type::kString, _("&Stop Game"),
                              std::bind(&EmulatorWindow::FileClose, this));
@@ -1348,6 +1355,114 @@ void EmulatorWindow::FileOpen() {
   }
 }
 
+void EmulatorWindow::FileAddGames() {
+  auto file_picker = xe::ui::FilePicker::Create();
+  file_picker->set_mode(ui::FilePicker::Mode::kOpen);
+  file_picker->set_type(ui::FilePicker::Type::kDirectory);
+  file_picker->set_title("Select directory to scan for games");
+
+  auto initial_dir = GetFilePickerInitialDirectory();
+  if (!initial_dir.empty()) {
+    file_picker->set_initial_directory(initial_dir);
+  }
+
+  if (!file_picker->Show(window_.get())) {
+    return;
+  }
+  auto selected = file_picker->selected_files();
+  if (selected.empty()) {
+    return;
+  }
+  std::filesystem::path root = selected[0];
+
+  ui::GameScanProgressDialog::InstalledTitleMap already_installed;
+  bool any_profile_signed_in = false;
+  if (auto* ks = emulator_->kernel_state()) {
+    if (auto* xs = ks->xam_state()) {
+      if (auto* pm = xs->profile_manager()) {
+        for (const auto& info : pm->ScanAllProfilesForTitles()) {
+          auto& discs = already_installed[info.title_id];
+          for (const auto& d : info.all_discs) {
+            discs.push_back({d.path, d.label});
+          }
+        }
+        for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
+          if (pm->GetProfile(slot)) {
+            any_profile_signed_in = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  wxString import_disabled_reason;
+  if (!any_profile_signed_in) {
+    import_disabled_reason =
+        _("Sign in to a profile (Profile menu) to enable importing.");
+  }
+
+  using PendingImport = ui::GameScanProgressDialog::PendingImport;
+  auto import_cb =
+      [this](std::vector<std::vector<PendingImport>> groups) -> bool {
+    auto* ks = emulator_->kernel_state();
+    auto* xs = ks ? ks->xam_state() : nullptr;
+    auto* pm = xs ? xs->profile_manager() : nullptr;
+    auto* ut = xs ? xs->user_tracker() : nullptr;
+    if (!ut || !pm) {
+      XELOGE("FileAddGames: no user tracker / profile manager");
+      wxMessageBox(_("Xenia is not fully initialized yet. Try again "
+                     "after the app finishes starting up."),
+                   _("Import failed"), wxOK | wxICON_ERROR);
+      return false;
+    }
+    bool any_signed_in = false;
+    for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
+      if (pm->GetProfile(slot)) {
+        any_signed_in = true;
+        break;
+      }
+    }
+    if (!any_signed_in) {
+      XELOGW("FileAddGames: no signed-in profile to import into");
+      wxMessageBox(
+          _("No signed-in profile to import into. Create or sign in to "
+            "a profile (Profile menu), then try again."),
+          _("Import failed"), wxOK | wxICON_WARNING);
+      return false;
+    }
+    size_t imported = 0;
+    for (const auto& group : groups) {
+      if (group.empty()) {
+        continue;
+      }
+      const auto& primary = group.front().game;
+      const std::u16string title_name_u16 =
+          xe::to_utf16(app::PreferredName(primary));
+      // Group's icon — all discs of one title share the same image.
+      std::span<const uint8_t> icon(primary.icon_png.data(),
+                                    primary.icon_png.size());
+      for (const auto& pi : group) {
+        ut->AddDiscoveredTitleToAllTrackedUsers(pi.game.title_id,
+                                                title_name_u16, pi.game.path,
+                                                icon, pi.disc_label);
+      }
+      ++imported;
+    }
+    XELOGI("FileAddGames: imported {} new title(s)", imported);
+    if (game_list_panel_ && !emulator_->is_title_open()) {
+      game_list_panel_->Reload();
+    }
+    return true;
+  };
+
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  ui::GameScanProgressDialog dlg(wx_window ? wx_window->frame() : nullptr, root,
+                                 std::move(already_installed),
+                                 std::move(import_cb),
+                                 std::move(import_disabled_reason));
+  dlg.ShowModal();
+}
+
 void EmulatorWindow::FileClose() {
   if (!emulator_->is_title_open()) {
     return;
@@ -1489,6 +1604,7 @@ void EmulatorWindow::ApplyContentVisibility() {
   if (file_stop_menu_item_) {
     file_stop_menu_item_->SetEnabled(title_open);
   }
+  UpdateAddGamesMenuState();
   // Subsystem-affecting cvars and tools (install/zar) only make sense between
   // launches.
   if (config_menu_) {
@@ -1705,6 +1821,28 @@ void EmulatorWindow::RefreshProfileMenu() {
   PopulateProfileMenu(profile_menu_);
   window_->CompleteMainMenuItemsUpdate();
   RefreshProfileIcon();
+  UpdateAddGamesMenuState();
+}
+
+void EmulatorWindow::UpdateAddGamesMenuState() {
+  if (!file_add_games_menu_item_) {
+    return;
+  }
+  bool any_signed_in = false;
+  if (auto* ks = emulator_ ? emulator_->kernel_state() : nullptr) {
+    if (auto* xs = ks->xam_state()) {
+      if (auto* pm = xs->profile_manager()) {
+        for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
+          if (pm->GetProfile(slot)) {
+            any_signed_in = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  const bool title_open = emulator_ && emulator_->is_title_open();
+  file_add_games_menu_item_->SetEnabled(!title_open && any_signed_in);
 }
 
 void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {

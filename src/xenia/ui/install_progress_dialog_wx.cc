@@ -16,9 +16,7 @@
 #include <wx/button.h>
 #include <wx/gauge.h>
 #include <wx/hyperlink.h>
-#include <wx/image.h>
 #include <wx/msgdlg.h>
-#include <wx/mstream.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
 #include <wx/statbmp.h>
@@ -28,6 +26,7 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/system.h"
+#include "xenia/ui/icon_decode.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -37,21 +36,6 @@ namespace {
 
 constexpr int kIconSize = 80;
 constexpr int kTimerMs = 100;
-
-wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data) {
-  if (data.empty()) {
-    return {};
-  }
-  wxMemoryInputStream stream(data.data(), data.size());
-  wxImage image;
-  if (!image.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
-    return {};
-  }
-  if (image.GetWidth() != kIconSize || image.GetHeight() != kIconSize) {
-    image.Rescale(kIconSize, kIconSize, wxIMAGE_QUALITY_HIGH);
-  }
-  return wxBitmapBundle::FromBitmap(wxBitmap(image));
-}
 
 }  // namespace
 
@@ -124,9 +108,11 @@ void InstallProgressDialog::Build() {
     widgets.icon = new wxStaticBitmap(row_box, wxID_ANY, wxBitmapBundle());
     widgets.icon->SetMinSize(wxSize(kIconSize, kIconSize));
     if (is_zarchive_mode_) {
-      widgets.icon->SetBitmap(DecodeIcon((*zarchive_entries_)[i].icon_data_));
+      widgets.icon->SetBitmap(
+          DecodePngIcon((*zarchive_entries_)[i].icon_data_, kIconSize));
     } else {
-      widgets.icon->SetBitmap(DecodeIcon((*content_entries_)[i].icon_data_));
+      widgets.icon->SetBitmap(
+          DecodePngIcon((*content_entries_)[i].icon_data_, kIconSize));
     }
     row_sizer->Add(widgets.icon, 0, wxALL, 6);
 

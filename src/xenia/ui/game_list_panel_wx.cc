@@ -24,7 +24,6 @@
 #include <wx/listbox.h>
 #include <wx/menu.h>
 #include <wx/msgdlg.h>
-#include <wx/mstream.h>
 #include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/textdlg.h>
@@ -49,6 +48,7 @@
 #include "xenia/kernel/xam/xdbf/gpd_info_profile.h"
 #include "xenia/patcher/patch_db.h"
 #include "xenia/ui/game_config_dialog_wx.h"
+#include "xenia/ui/icon_decode.h"
 #include "xenia/ui/patches_dialog_wx.h"
 #include "xenia/xbox.h"
 
@@ -196,24 +196,6 @@ wxString EscapeMarkup(const wxString& s) {
     }
   }
   return out;
-}
-
-wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data, int size_px,
-                          double scale) {
-  if (data.empty()) {
-    return wxBitmapBundle();
-  }
-  wxMemoryInputStream stream(data.data(), data.size());
-  wxImage image;
-  if (!image.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
-    return wxBitmapBundle();
-  }
-  if (image.GetWidth() != size_px || image.GetHeight() != size_px) {
-    image.Rescale(size_px, size_px, wxIMAGE_QUALITY_HIGH);
-  }
-  wxBitmap bmp(image);
-  bmp.SetScaleFactor(scale);
-  return wxBitmapBundle::FromBitmap(bmp);
 }
 
 }  // namespace
@@ -502,7 +484,7 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
     if (data.empty()) {
       continue;
     }
-    entry.icon = DecodeIcon(data, icon_size_px_, dpi_scale_);
+    entry.icon = ui::DecodePngIcon(data, icon_size_px_, dpi_scale_);
     if (!entry.icon.IsOk()) {
       continue;
     }
@@ -1132,13 +1114,18 @@ void GameListPanel::Repopulate() {
       title_markup += EscapeMarkup(disc_suffix);
     }
     row.push_back(wxVariant(title_markup));
+    // SPA-driven totals aren't known until first launch — "?" instead of
+    // a misleading 0/0 for titles that have never been launched.
     std::string achievements_text;
     std::string gamerscore_text;
-    if (e.achievements_total > 0) {
+    if (e.achievements_total > 0 || e.last_run_time != 0) {
       achievements_text =
           fmt::format("{}/{}", e.achievements_unlocked, e.achievements_total);
       gamerscore_text =
           fmt::format("{}/{} G", e.gamerscore_earned, e.gamerscore_total);
+    } else {
+      achievements_text = "?";
+      gamerscore_text = "?";
     }
     row.push_back(wxVariant(wxString::FromUTF8(achievements_text)));
     row.push_back(wxVariant(wxString::FromUTF8(gamerscore_text)));

@@ -124,7 +124,9 @@ XContentContainerDevice::ReadContainerHeader(
     return {};
   }
 
-  return ReadContainerHeader(header_file);
+  auto header = ReadContainerHeader(header_file);
+  fclose(header_file);
+  return header;
 }
 
 std::unique_ptr<XContentContainerHeader>

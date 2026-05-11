@@ -10,11 +10,17 @@
 #ifndef XENIA_UI_WX_LOCALE_H_
 #define XENIA_UI_WX_LOCALE_H_
 
+#include <string>
+
 namespace xe {
 namespace ui {
 
 // Initializes wxLocale from cvars::ui_locale. Call once at app init.
 void InitializeWxLocale();
+
+// Canonical name of the currently-active wxLocale (e.g. "en_US", "ja_JP").
+// Empty if InitializeWxLocale has not been called.
+std::string GetActiveLocaleCanonicalName();
 
 }  // namespace ui
 }  // namespace xe

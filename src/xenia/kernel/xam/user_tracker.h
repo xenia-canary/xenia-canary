@@ -89,6 +89,13 @@ class UserTracker {
   void AddTitleToPlayedList(uint64_t xuid, const std::filesystem::path& path);
   void AddDiscPathToAllTrackedUsers(uint32_t title_id,
                                     const std::filesystem::path& path);
+  // Scan-time variant of the launch write path (no SpaInfo available). The
+  // optional icon_png seeds the per-title GPD so the game list can render
+  // the icon before first launch; the launch flow fills in everything else.
+  void AddDiscoveredTitleToAllTrackedUsers(
+      uint32_t title_id, const std::u16string& title_name,
+      const std::filesystem::path& path, std::span<const uint8_t> icon_png = {},
+      const std::string& disc_label = {});
   void RemoveTitleFromPlayedList(uint64_t xuid, uint32_t title_id);
   std::vector<TitleInfo> GetPlayedTitles(uint64_t xuid) const;
   std::optional<TitleInfo> GetUserTitleInfo(uint64_t xuid,

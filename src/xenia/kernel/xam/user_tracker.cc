@@ -282,6 +282,44 @@ void UserTracker::AddDiscPathToAllTrackedUsers(
   }
 }
 
+void UserTracker::AddDiscoveredTitleToAllTrackedUsers(
+    uint32_t title_id, const std::u16string& title_name,
+    const std::filesystem::path& path, std::span<const uint8_t> icon_png,
+    const std::string& disc_label) {
+  if (path.empty()) {
+    return;
+  }
+  for (uint64_t xuid : tracked_xuids_) {
+    auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+    if (!user) {
+      continue;
+    }
+    if (!user->dashboard_gpd_.GetTitleInfo(title_id)) {
+      user->dashboard_gpd_.AddNewTitle(title_id, title_name);
+    }
+    AddDiscPathToUserProfile(user, title_id, path);
+    // AddDiscPathToUserProfile only auto-labels for explicit disc_count > 1;
+    // fill in the caller's hint (e.g. media_id hex) when it didn't.
+    if (!disc_label.empty() &&
+        user->dashboard_gpd_.GetDiscLabel(title_id, path).empty()) {
+      user->dashboard_gpd_.SetDiscLabel(title_id, path, disc_label);
+    }
+    user->WriteGpd(kDashboardID);
+
+    // Seed the per-title GPD with the icon so the game list can render it
+    // before first launch. AddImage no-ops on existing entries.
+    if (!icon_png.empty()) {
+      auto game_gpd = user->games_gpd_.find(title_id);
+      if (game_gpd == user->games_gpd_.end()) {
+        game_gpd =
+            user->games_gpd_.emplace(title_id, GpdInfoTitle(title_id)).first;
+      }
+      game_gpd->second.AddImage(kXdbfIdTitle, icon_png);
+      user->WriteGpd(title_id);
+    }
+  }
+}
+
 void UserTracker::RemoveTitleFromPlayedList(uint64_t xuid, uint32_t title_id) {
   auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
