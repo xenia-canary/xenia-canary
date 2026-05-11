@@ -381,6 +381,27 @@ void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
 }
 
 void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
+                           const char* cvar_name, int32_t value) {
+  if (!emulator || !emulator->is_title_open()) {
+    return;
+  }
+
+  uint32_t title_id = emulator->title_id();
+  toml::table config_table = LoadGameConfig(title_id);
+
+  if (!config_table.contains(section)) {
+    config_table.insert(section, toml::table{});
+  }
+
+  auto* section_table = config_table[section].as_table();
+  if (section_table) {
+    section_table->insert_or_assign(cvar_name, value);
+  }
+
+  SaveGameConfig(title_id, config_table);
+}
+
+void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
                            const char* cvar_name, uint32_t value) {
   if (!emulator || !emulator->is_title_open()) {
     return;

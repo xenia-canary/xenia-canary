@@ -39,6 +39,7 @@
 #include "xenia/config.h"
 #include "xenia/ui/imgui_confirm_dialog.h"
 #include "xenia/ui/imgui_context_menu.h"
+#include "xenia/ui/imgui_debug_dialog.h"
 #include "xenia/ui/imgui_performance_dialog.h"
 #include "xenia/ui/imgui_postprocessing_dialog.h"
 #include "xenia/ui/imgui_xmp_dialog.h"
@@ -1086,6 +1087,9 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
     case ui::VirtualKey::kF7: {
       TogglePerformanceTuningDialog();
     } break;
+    case ui::VirtualKey::kF8: {
+      ToggleDebugSettingsDialog();
+    } break;
     case ui::VirtualKey::kF11: {
       ToggleFullscreen();
     } break;
@@ -1172,6 +1176,9 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
   context_menu->AddAction(
       "Performance Settings", [this]() { TogglePerformanceTuningDialog(); },
       "F7");
+
+  context_menu->AddAction(
+      "Debug Settings", [this]() { ToggleDebugSettingsDialog(); }, "F8");
 
   context_menu->AddSeparator();
 
@@ -1809,6 +1816,18 @@ void EmulatorWindow::TogglePerformanceTuningDialog() {
       imgui_drawer(), this, emulator()->input_system());
   performance_dialog_->SetOnCloseCallback(
       [this]() { performance_dialog_ = nullptr; });
+}
+
+void EmulatorWindow::ToggleDebugSettingsDialog() {
+  if (debug_dialog_) {
+    debug_dialog_->CloseDialog();
+    debug_dialog_ = nullptr;
+    return;
+  }
+
+  debug_dialog_ = new ui::ImGuiDebugDialog(imgui_drawer(), this,
+                                           emulator()->input_system());
+  debug_dialog_->SetOnCloseCallback([this]() { debug_dialog_ = nullptr; });
 }
 
 void EmulatorWindow::RefreshProfileMenu() {
@@ -3023,6 +3042,10 @@ void EmulatorWindow::ClearDialogs() {
   if (performance_dialog_) {
     performance_dialog_->CloseDialog();
     performance_dialog_ = nullptr;
+  }
+  if (debug_dialog_) {
+    debug_dialog_->CloseDialog();
+    debug_dialog_ = nullptr;
   }
   if (xmp_dialog_) {
     xmp_dialog_->CloseDialog();

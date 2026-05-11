@@ -38,6 +38,8 @@ void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
 void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
                            const char* cvar_name, bool value);
 void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
+                           const char* cvar_name, int32_t value);
+void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
                            const char* cvar_name, uint32_t value);
 void SaveGameConfigSetting(xe::Emulator* emulator, const char* section,
                            const char* cvar_name, double value);

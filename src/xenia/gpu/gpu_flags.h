@@ -58,6 +58,8 @@ DECLARE_string(render_target_path);
 
 DECLARE_bool(no_discard_stencil_in_transfer_pipelines);
 
+DECLARE_bool(submit_on_primary_buffer_end);
+
 DECLARE_bool(async_shader_compilation);
 
 DECLARE_bool(readback_resolve_half_pixel_offset);

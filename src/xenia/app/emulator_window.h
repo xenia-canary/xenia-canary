@@ -17,6 +17,7 @@
 #include "xenia/gpu/command_processor.h"
 #include "xenia/ui/imgui_confirm_dialog.h"
 #include "xenia/ui/imgui_context_menu.h"
+#include "xenia/ui/imgui_debug_dialog.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/imgui_performance_dialog.h"
@@ -210,6 +211,7 @@ class EmulatorWindow {
   void GpuClearCaches();
   void ToggleDisplayConfigDialog();
   void TogglePerformanceTuningDialog();
+  void ToggleDebugSettingsDialog();
   void ToggleContextMenu(bool use_cursor_position = true);
   void ShowCompatibility();
   void ShowFAQ();
@@ -251,6 +253,7 @@ class EmulatorWindow {
 
   ui::ImGuiPostProcessingDialog* postprocessing_dialog_ = nullptr;
   ui::ImGuiPerformanceDialog* performance_dialog_ = nullptr;
+  ui::ImGuiDebugDialog* debug_dialog_ = nullptr;
   ProfileConfigDialog* profile_dialog_ = nullptr;
   ui::ImGuiContextMenu* context_menu_ = nullptr;
   ui::ImGuiXmpDialog* xmp_dialog_ = nullptr;
