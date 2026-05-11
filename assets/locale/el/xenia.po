@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (%zu δίσκοι)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:553
-msgid " (default)"
-msgstr " (προεπιλογή)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "Αφιερωμένο νήμα:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "Προεπιλογή"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "Κουβέιτ"
 msgid "Kyrgyzstan"
 msgstr "Κιργιστάν"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "Ετικέτα"
+
 #: src/xenia/ui/game_list_panel_wx.cc:590
 msgid "Label cannot contain '::'."
 msgstr "Η ετικέτα δεν μπορεί να περιέχει '::'."
@@ -941,6 +945,10 @@ msgstr "Patch #%zu"
 msgid "Patches"
 msgstr "Patches"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "Διαδρομή"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "Περού"
@@ -1033,13 +1041,13 @@ msgstr "Αφαίρεση από τη λίστα"
 msgid "Remove this override"
 msgstr "Αφαίρεση αυτής της παράκαμψης"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
-msgid "Rename Disc"
-msgstr "Μετονομασία δίσκου"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "Μετονομασία ετικέτας"
 
-#: src/xenia/ui/game_list_panel_wx.cc:564
-msgid "Rename..."
-msgstr "Μετονομασία…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "Μετονομασία ετικέτας…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1399,3 +1407,4 @@ msgstr "   %zu ήδη εγκατεστημένα"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu κατάλογοι σαρώθηκαν   %zu αρχεία ελέγχθηκαν   %zu παιχνίδια βρέθηκαν"
+

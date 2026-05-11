@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (%zu lemez)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:553
-msgid " (default)"
-msgstr " (alapértelmezett)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "Dedikált szál:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "Alapértelmezett"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "Kuvait"
 msgid "Kyrgyzstan"
 msgstr "Kirgizisztán"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "Címke"
+
 #: src/xenia/ui/game_list_panel_wx.cc:590
 msgid "Label cannot contain '::'."
 msgstr "A címke nem tartalmazhat „::” karaktereket."
@@ -941,6 +945,10 @@ msgstr "#%zu javítás"
 msgid "Patches"
 msgstr "Javítások"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "Útvonal"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "Peru"
@@ -1033,13 +1041,13 @@ msgstr "Eltávolítás a listáról"
 msgid "Remove this override"
 msgstr "Felülbírálat eltávolítása"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
-msgid "Rename Disc"
-msgstr "Lemez átnevezése"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "Címke átnevezése"
 
-#: src/xenia/ui/game_list_panel_wx.cc:564
-msgid "Rename..."
-msgstr "Átnevezés…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "Címke átnevezése…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1398,3 +1406,4 @@ msgstr "   %zu már telepítve"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu könyvtár átvizsgálva   %zu fájl ellenőrizve   %zu játék találva"
+

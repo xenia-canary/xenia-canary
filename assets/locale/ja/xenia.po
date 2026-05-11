@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (ディスク数: %zu)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:545
-msgid " (default)"
-msgstr " (デフォルト)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "専用スレッド:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "デフォルト"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "クウェート"
 msgid "Kyrgyzstan"
 msgstr "キルギス"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "ラベル"
+
 #: src/xenia/ui/game_list_panel_wx.cc:582
 msgid "Label cannot contain '::'."
 msgstr "ラベルに '::' は使用できません。"
@@ -937,6 +941,10 @@ msgstr "パッチ #%zu"
 msgid "Patches"
 msgstr "パッチ"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "パス"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "ペルー"
@@ -1029,13 +1037,13 @@ msgstr "リストから削除"
 msgid "Remove this override"
 msgstr "このオーバーライドを削除"
 
-#: src/xenia/ui/game_list_panel_wx.cc:577
-msgid "Rename Disc"
-msgstr "ディスク名の変更"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "ラベルの変更"
 
-#: src/xenia/ui/game_list_panel_wx.cc:556
-msgid "Rename..."
-msgstr "名前を変更…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "ラベルを変更…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1394,3 +1402,4 @@ msgstr "   %zu 件はインストール済"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu 件のディレクトリをスキャン   %zu 件のファイルを調査   %zu 件のゲームを検出"
+

@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (broj diskova: %zu)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:553
-msgid " (default)"
-msgstr " (zadano)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "Namjenska dretva:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "Zadano"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "Kuvajt"
 msgid "Kyrgyzstan"
 msgstr "Kirgistan"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "Oznaka"
+
 #: src/xenia/ui/game_list_panel_wx.cc:590
 msgid "Label cannot contain '::'."
 msgstr "Oznaka ne smije sadržavati „::”."
@@ -937,6 +941,10 @@ msgstr "Zakrpa #%zu"
 msgid "Patches"
 msgstr "Zakrpe"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "Putanja"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "Peru"
@@ -1029,13 +1037,13 @@ msgstr "Ukloni s popisa"
 msgid "Remove this override"
 msgstr "Ukloni ovu zamjenu"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
-msgid "Rename Disc"
-msgstr "Preimenuj disk"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "Preimenuj oznaku"
 
-#: src/xenia/ui/game_list_panel_wx.cc:564
-msgid "Rename..."
-msgstr "Preimenuj…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "Preimenuj oznaku…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1394,3 +1402,4 @@ msgstr "   već instalirano: %zu"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "pretraženih mapa: %zu   provjerenih datoteka: %zu   pronađenih igara: %zu"
+

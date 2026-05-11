@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (光碟數: %zu)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:545
-msgid " (default)"
-msgstr " (預設)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "專用執行緒:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "預設"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "科威特"
 msgid "Kyrgyzstan"
 msgstr "吉爾吉斯"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "標籤"
+
 #: src/xenia/ui/game_list_panel_wx.cc:582
 msgid "Label cannot contain '::'."
 msgstr "標籤不能包含 '::'。"
@@ -937,6 +941,10 @@ msgstr "修補檔 #%zu"
 msgid "Patches"
 msgstr "修補檔"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "路徑"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "秘魯"
@@ -1029,13 +1037,13 @@ msgstr "從清單移除"
 msgid "Remove this override"
 msgstr "移除此覆寫"
 
-#: src/xenia/ui/game_list_panel_wx.cc:577
-msgid "Rename Disc"
-msgstr "重新命名光碟"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "重新命名標籤"
 
-#: src/xenia/ui/game_list_panel_wx.cc:556
-msgid "Rename..."
-msgstr "重新命名…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "重新命名標籤…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1394,3 +1402,4 @@ msgstr "   %zu 個已安裝"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "已掃描 %zu 個目錄   已探查 %zu 個檔案   找到 %zu 個遊戲"
+

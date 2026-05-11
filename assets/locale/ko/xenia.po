@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (디스크 %zu개)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:545
-msgid " (default)"
-msgstr " (기본)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "전용 스레드:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "기본"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "쿠웨이트"
 msgid "Kyrgyzstan"
 msgstr "키르기스스탄"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "레이블"
+
 #: src/xenia/ui/game_list_panel_wx.cc:582
 msgid "Label cannot contain '::'."
 msgstr "레이블에 '::'을(를) 포함할 수 없습니다."
@@ -937,6 +941,10 @@ msgstr "패치 #%zu"
 msgid "Patches"
 msgstr "패치"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "경로"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "페루"
@@ -1029,13 +1037,13 @@ msgstr "목록에서 제거"
 msgid "Remove this override"
 msgstr "이 재정의 제거"
 
-#: src/xenia/ui/game_list_panel_wx.cc:577
-msgid "Rename Disc"
-msgstr "디스크 이름 변경"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "레이블 변경"
 
-#: src/xenia/ui/game_list_panel_wx.cc:556
-msgid "Rename..."
-msgstr "이름 바꾸기…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "레이블 바꾸기…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1394,3 +1402,4 @@ msgstr "   %zu개 이미 설치됨"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "디렉터리 %zu개 검색됨   파일 %zu개 확인됨   게임 %zu개 발견됨"
+

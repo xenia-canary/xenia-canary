@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (تعداد دیسک: %zu)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:545
-msgid " (default)"
-msgstr " (پیش‌فرض)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "نخ اختصاصی:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "پیش‌فرض"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "کویت"
 msgid "Kyrgyzstan"
 msgstr "قرقیزستان"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "برچسب"
+
 #: src/xenia/ui/game_list_panel_wx.cc:582
 msgid "Label cannot contain '::'."
 msgstr "برچسب نمی‌تواند شامل '::' باشد."
@@ -937,6 +941,10 @@ msgstr "وصله #%zu"
 msgid "Patches"
 msgstr "وصله‌ها"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "مسیر"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "پرو"
@@ -1029,13 +1037,13 @@ msgstr "حذف از لیست"
 msgid "Remove this override"
 msgstr "حذف این بازنویسی"
 
-#: src/xenia/ui/game_list_panel_wx.cc:577
-msgid "Rename Disc"
-msgstr "تغییر نام دیسک"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "تغییر برچسب"
 
-#: src/xenia/ui/game_list_panel_wx.cc:556
-msgid "Rename..."
-msgstr "تغییر نام…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "تغییر برچسب…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1394,3 +1402,4 @@ msgstr "   %zu مورد از قبل نصب‌شده"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu پوشه بررسی شد   %zu فایل آزموده شد   %zu بازی یافت شد"
+

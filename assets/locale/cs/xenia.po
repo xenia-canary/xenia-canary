@@ -24,10 +24,6 @@ msgstr ""
 msgid " (%zu discs)"
 msgstr " (počet disků: %zu)"
 
-#: src/xenia/ui/game_list_panel_wx.cc:553
-msgid " (default)"
-msgstr " (výchozí)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:252
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
@@ -313,6 +309,10 @@ msgstr "DLC"
 #: src/xenia/ui/quick_settings_dialog_wx.cc:257
 msgid "Dedicated Thread:"
 msgstr "Vyhrazené vlákno:"
+
+#: src/xenia/ui/game_list_panel_wx.cc:617
+msgid "Default"
+msgstr "Výchozí"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -702,6 +702,10 @@ msgstr "Kuvajt"
 msgid "Kyrgyzstan"
 msgstr "Kyrgyzstán"
 
+#: src/xenia/ui/game_list_panel_wx.cc:618
+msgid "Label"
+msgstr "Popisek"
+
 #: src/xenia/ui/game_list_panel_wx.cc:590
 msgid "Label cannot contain '::'."
 msgstr "Popisek nesmí obsahovat „::“."
@@ -939,6 +943,10 @@ msgstr "Patch #%zu"
 msgid "Patches"
 msgstr "Patche"
 
+#: src/xenia/ui/game_list_panel_wx.cc:619
+msgid "Path"
+msgstr "Cesta"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:144
 msgid "Peru"
 msgstr "Peru"
@@ -1031,13 +1039,13 @@ msgstr "Odebrat ze seznamu"
 msgid "Remove this override"
 msgstr "Odebrat toto přepsání"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
-msgid "Rename Disc"
-msgstr "Přejmenovat disk"
+#: src/xenia/ui/game_list_panel_wx.cc:681
+msgid "Rename Label"
+msgstr "Přejmenovat popisek"
 
-#: src/xenia/ui/game_list_panel_wx.cc:564
-msgid "Rename..."
-msgstr "Přejmenovat…"
+#: src/xenia/ui/game_list_panel_wx.cc:655
+msgid "Rename Label..."
+msgstr "Přejmenovat popisek…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Rendering:"
@@ -1396,3 +1404,4 @@ msgstr "   již nainstalováno: %zu"
 
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "prohledaných složek: %zu   prozkoumaných souborů: %zu   nalezených her: %zu"
+
