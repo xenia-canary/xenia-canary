@@ -41,6 +41,12 @@ struct kPacketInfo {
   }
 };
 
+struct kPacketHandle {
+  uint32_t buffer_index_ = 0;
+  uint32_t packet_index_ = 0;
+  bool is_valid_ = false;
+};
+
 static constexpr int kIdToSampleRate[4] = {24000, 32000, 44100, 48000};
 
 class XmaContextNew : public XmaContext {
@@ -72,11 +78,24 @@ class XmaContextNew : public XmaContext {
   const uint32_t GetAmountOfBitsToRead(const uint32_t remaining_stream_bits,
                                        const uint32_t frame_size);
 
+  kPacketHandle GetPacketHandle(XMA_CONTEXT_DATA* data, uint32_t buffer_index,
+                                uint32_t packet_index,
+                                uint32_t current_input_packet_count);
+
   const uint8_t* GetNextPacket(XMA_CONTEXT_DATA* data,
                                uint32_t next_packet_index,
                                uint32_t current_input_packet_count);
 
+  // Single-buffer version of GetNextPacketReadOffset: scans `buffer`
+  // from start_packet_index for the first packet whose frame_offset
+  // header is valid (<= kMaxFrameSizeinBits).
+  // Returns the bit offset of that frame in the buffer,
+  // Or kBitsPerPacketHeader when no valid frame is found.
   const uint32_t GetNextPacketReadOffset(uint8_t* buffer,
+                                         uint32_t next_packet_index,
+                                         uint32_t current_input_packet_count);
+
+  const uint32_t GetNextPacketReadOffset(XMA_CONTEXT_DATA* data,
                                          uint32_t next_packet_index,
                                          uint32_t current_input_packet_count);
 
