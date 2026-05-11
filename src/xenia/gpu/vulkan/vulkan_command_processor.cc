@@ -6235,6 +6235,22 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
         primitive_processing_result.guest_index_base;
   }
 
+  // Guest-side vertex index count, used for bounds-safe shared-memory loads in
+  // VS expansion (kPointListAsTriangleStrip / kRectangleListAsTriangleStrip)
+  // and in the full 32-bit index DMA load path. Out-of-bounds lanes read 0
+  // instead of random memory, which otherwise produces scattered/skewed
+  // geometry when expansion fans out past the guest draw count.
+  const bool is_vs_expansion_draw =
+      primitive_processing_result.host_vertex_shader_type ==
+          Shader::HostVertexShaderType::kPointListAsTriangleStrip ||
+      primitive_processing_result.host_vertex_shader_type ==
+          Shader::HostVertexShaderType::kRectangleListAsTriangleStrip;
+  const uint32_t vertex_index_count =
+      is_vs_expansion_draw ? primitive_processing_result.guest_draw_vertex_count
+                           : primitive_processing_result.host_draw_vertex_count;
+  dirty |= system_constants_.vertex_index_count != vertex_index_count;
+  system_constants_.vertex_index_count = vertex_index_count;
+
   // Index or tessellation edge factor buffer endianness.
   dirty |= system_constants_.vertex_index_endian !=
            primitive_processing_result.host_shader_index_endian;
