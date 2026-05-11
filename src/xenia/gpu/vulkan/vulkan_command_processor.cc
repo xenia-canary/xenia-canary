@@ -3114,11 +3114,15 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     // compute.
     // Skip unsupported host vertex shader types (but allow tessellation types
     // through - they will be handled in pipeline creation or rejected there if
-    // not fully supported yet).
+    // not fully supported yet). Both AsTriangleStrip fallbacks are needed on
+    // hosts without geometry shader support (MoltenVK / MoltenVK-like); the
+    // SPIR-V translator and pipeline cache both handle them end-to-end.
     if (primitive_processing_result.host_vertex_shader_type !=
             Shader::HostVertexShaderType::kVertex &&
         primitive_processing_result.host_vertex_shader_type !=
             Shader::HostVertexShaderType::kPointListAsTriangleStrip &&
+        primitive_processing_result.host_vertex_shader_type !=
+            Shader::HostVertexShaderType::kRectangleListAsTriangleStrip &&
         !Shader::IsHostVertexShaderTypeDomain(
             primitive_processing_result.host_vertex_shader_type)) {
       return false;
