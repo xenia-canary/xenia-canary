@@ -1334,3 +1334,63 @@ msgstr "készítette: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "%08X cím"
+
+msgid "Scan for Games"
+msgstr "Játékok keresése"
+
+msgid "Scanning: %s"
+msgstr "Vizsgálat: %s"
+
+msgid "Loading titles..."
+msgstr "Címek betöltése…"
+
+msgid "Cancelled."
+msgstr "Megszakítva."
+
+msgid "(unknown title)"
+msgstr "(ismeretlen cím)"
+
+msgid "Type: %s"
+msgstr "Típus: %s"
+
+msgid "Publisher: %s"
+msgstr "Kiadó: %s"
+
+msgid "Module: %s"
+msgstr "Modul: %s"
+
+msgid "Version: %s"
+msgstr "Verzió: %s"
+
+msgid "Status: Installed"
+msgstr "Állapot: telepítve"
+
+msgid "(Installed) "
+msgstr "(telepítve) "
+
+msgid "Import"
+msgstr "Importálás"
+
+msgid "Import %zu New Items"
+msgstr "%zu új elem importálása"
+
+msgid "Import failed"
+msgstr "Az importálás sikertelen"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "A Xenia még nem inicializálódott teljesen. Próbálja újra, miután az alkalmazás befejezte az indulást."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Nincs olyan profil bejelentkezve, amelybe importálni lehetne. Hozzon létre egy profilt vagy jelentkezzen be (Profil menü), majd próbálja újra."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Az importálás engedélyezéséhez jelentkezzen be egy profilba (Profil menü)."
+
+msgid "&Add Games..."
+msgstr "Játékok hozzáadása(&J)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu már telepítve"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu könyvtár átvizsgálva   %zu fájl ellenőrizve   %zu játék találva"

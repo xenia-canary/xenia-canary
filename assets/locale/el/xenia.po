@@ -1334,3 +1334,64 @@ msgstr "από %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "τίτλος %08X"
+
+
+msgid "Scan for Games"
+msgstr "Σάρωση για παιχνίδια"
+
+msgid "Scanning: %s"
+msgstr "Σάρωση: %s"
+
+msgid "Loading titles..."
+msgstr "Φόρτωση τίτλων…"
+
+msgid "Cancelled."
+msgstr "Ακυρώθηκε."
+
+msgid "(unknown title)"
+msgstr "(άγνωστος τίτλος)"
+
+msgid "Type: %s"
+msgstr "Τύπος: %s"
+
+msgid "Publisher: %s"
+msgstr "Εκδότης: %s"
+
+msgid "Module: %s"
+msgstr "Άρθρωμα: %s"
+
+msgid "Version: %s"
+msgstr "Έκδοση: %s"
+
+msgid "Status: Installed"
+msgstr "Κατάσταση: Εγκατεστημένο"
+
+msgid "(Installed) "
+msgstr "(Εγκατεστημένο) "
+
+msgid "Import"
+msgstr "Εισαγωγή"
+
+msgid "Import %zu New Items"
+msgstr "Εισαγωγή %zu νέων στοιχείων"
+
+msgid "Import failed"
+msgstr "Η εισαγωγή απέτυχε"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Το Xenia δεν έχει αρχικοποιηθεί πλήρως ακόμη. Δοκιμάστε ξανά αφού ολοκληρωθεί η εκκίνηση της εφαρμογής."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Δεν υπάρχει συνδεδεμένο προφίλ για εισαγωγή. Δημιουργήστε ή συνδεθείτε σε ένα προφίλ (μενού Προφίλ), και δοκιμάστε ξανά."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Συνδεθείτε σε ένα προφίλ (μενού Προφίλ) για να ενεργοποιήσετε την εισαγωγή."
+
+msgid "&Add Games..."
+msgstr "Προσθήκη παιχνιδιών(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu ήδη εγκατεστημένα"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu κατάλογοι σαρώθηκαν   %zu αρχεία ελέγχθηκαν   %zu παιχνίδια βρέθηκαν"

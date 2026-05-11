@@ -1334,3 +1334,63 @@ msgstr "автор: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "игра %08X"
+
+msgid "Scan for Games"
+msgstr "Поиск игр"
+
+msgid "Scanning: %s"
+msgstr "Сканирование: %s"
+
+msgid "Loading titles..."
+msgstr "Загрузка игр…"
+
+msgid "Cancelled."
+msgstr "Отменено."
+
+msgid "(unknown title)"
+msgstr "(неизвестная игра)"
+
+msgid "Type: %s"
+msgstr "Тип: %s"
+
+msgid "Publisher: %s"
+msgstr "Издатель: %s"
+
+msgid "Module: %s"
+msgstr "Модуль: %s"
+
+msgid "Version: %s"
+msgstr "Версия: %s"
+
+msgid "Status: Installed"
+msgstr "Статус: установлено"
+
+msgid "(Installed) "
+msgstr "(установлено) "
+
+msgid "Import"
+msgstr "Импорт"
+
+msgid "Import %zu New Items"
+msgstr "Импортировать новых элементов: %zu"
+
+msgid "Import failed"
+msgstr "Ошибка импорта"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia ещё не полностью инициализирована. Повторите попытку после завершения запуска приложения."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Нет активного профиля для импорта. Создайте профиль или войдите в него (меню «Профиль»), затем повторите попытку."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Войдите в профиль (меню «Профиль»), чтобы включить импорт."
+
+msgid "&Add Games..."
+msgstr "&Добавить игры…"
+
+msgid "   %zu already installed"
+msgstr "   уже установлено: %zu"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "просканировано папок: %zu   проверено файлов: %zu   найдено игр: %zu"

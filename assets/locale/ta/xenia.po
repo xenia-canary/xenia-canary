@@ -1330,3 +1330,63 @@ msgstr "%s மூலம்"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "தலைப்பு %08X"
+
+msgid "Scan for Games"
+msgstr "விளையாட்டுகளுக்காக ஸ்கேன் செய்"
+
+msgid "Scanning: %s"
+msgstr "ஸ்கேன் செய்யப்படுகிறது: %s"
+
+msgid "Loading titles..."
+msgstr "தலைப்புகள் ஏற்றப்படுகின்றன…"
+
+msgid "Cancelled."
+msgstr "ரத்து செய்யப்பட்டது."
+
+msgid "(unknown title)"
+msgstr "(தெரியாத தலைப்பு)"
+
+msgid "Type: %s"
+msgstr "வகை: %s"
+
+msgid "Publisher: %s"
+msgstr "வெளியீட்டாளர்: %s"
+
+msgid "Module: %s"
+msgstr "தொகுதி: %s"
+
+msgid "Version: %s"
+msgstr "பதிப்பு: %s"
+
+msgid "Status: Installed"
+msgstr "நிலை: நிறுவப்பட்டது"
+
+msgid "(Installed) "
+msgstr "(நிறுவப்பட்டது) "
+
+msgid "Import"
+msgstr "இறக்குமதி செய்"
+
+msgid "Import %zu New Items"
+msgstr "%zu புதிய உருப்படிகளை இறக்குமதி செய்"
+
+msgid "Import failed"
+msgstr "இறக்குமதி தோல்வியடைந்தது"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia இன்னும் முழுமையாக துவக்கப்படவில்லை. பயன்பாடு தொடங்கி முடிந்த பிறகு மீண்டும் முயற்சிக்கவும்."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "இறக்குமதி செய்ய உள்நுழைந்த சுயவிவரம் எதுவும் இல்லை. ஒரு சுயவிவரத்தை உருவாக்கவும் அல்லது அதில் உள்நுழையவும் (சுயவிவர மெனு), பிறகு மீண்டும் முயற்சிக்கவும்."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "இறக்குமதியை செயல்படுத்த ஒரு சுயவிவரத்தில் உள்நுழையவும் (சுயவிவர மெனு)."
+
+msgid "&Add Games..."
+msgstr "விளையாட்டுகளைச் சேர்(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu ஏற்கனவே நிறுவப்பட்டுள்ளது"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu கோப்பகங்கள் ஸ்கேன் செய்யப்பட்டன   %zu கோப்புகள் ஆராயப்பட்டன   %zu விளையாட்டுகள் கண்டறியப்பட்டன"

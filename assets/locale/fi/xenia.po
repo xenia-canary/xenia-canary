@@ -1334,3 +1334,63 @@ msgstr "tekijä: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "nimike %08X"
+
+msgid "Scan for Games"
+msgstr "Etsi pelejä"
+
+msgid "Scanning: %s"
+msgstr "Tutkitaan: %s"
+
+msgid "Loading titles..."
+msgstr "Ladataan nimikkeitä…"
+
+msgid "Cancelled."
+msgstr "Peruutettu."
+
+msgid "(unknown title)"
+msgstr "(tuntematon nimike)"
+
+msgid "Type: %s"
+msgstr "Tyyppi: %s"
+
+msgid "Publisher: %s"
+msgstr "Julkaisija: %s"
+
+msgid "Module: %s"
+msgstr "Moduuli: %s"
+
+msgid "Version: %s"
+msgstr "Versio: %s"
+
+msgid "Status: Installed"
+msgstr "Tila: Asennettu"
+
+msgid "(Installed) "
+msgstr "(Asennettu) "
+
+msgid "Import"
+msgstr "Tuo"
+
+msgid "Import %zu New Items"
+msgstr "Tuo %zu uutta kohdetta"
+
+msgid "Import failed"
+msgstr "Tuonti epäonnistui"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xeniaa ei ole vielä alustettu kokonaan. Yritä uudelleen, kun sovellus on käynnistynyt loppuun."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Ei kirjautunutta profiilia, johon tuoda. Luo profiili tai kirjaudu sisään (Profiili-valikko) ja yritä uudelleen."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Kirjaudu profiiliin (Profiili-valikko) ottaaksesi tuonnin käyttöön."
+
+msgid "&Add Games..."
+msgstr "Lisää pelejä(&L)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu jo asennettu"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu hakemistoa tutkittu   %zu tiedostoa tarkistettu   %zu peliä löytyi"

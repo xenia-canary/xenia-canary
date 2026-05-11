@@ -1330,3 +1330,63 @@ msgstr "بواسطة %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "اللعبة %08X"
+
+msgid "Scan for Games"
+msgstr "البحث عن الألعاب"
+
+msgid "Scanning: %s"
+msgstr "جارٍ الفحص: %s"
+
+msgid "Loading titles..."
+msgstr "جارٍ تحميل الألعاب…"
+
+msgid "Cancelled."
+msgstr "تم الإلغاء."
+
+msgid "(unknown title)"
+msgstr "(لعبة غير معروفة)"
+
+msgid "Type: %s"
+msgstr "النوع: %s"
+
+msgid "Publisher: %s"
+msgstr "الناشر: %s"
+
+msgid "Module: %s"
+msgstr "الوحدة: %s"
+
+msgid "Version: %s"
+msgstr "الإصدار: %s"
+
+msgid "Status: Installed"
+msgstr "الحالة: مثبتة"
+
+msgid "(Installed) "
+msgstr "(مثبتة) "
+
+msgid "Import"
+msgstr "استيراد"
+
+msgid "Import %zu New Items"
+msgstr "استيراد %zu عنصر جديد"
+
+msgid "Import failed"
+msgstr "فشل الاستيراد"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "لم يكتمل تهيئة Xenia بعد. حاول مرة أخرى بعد انتهاء بدء تشغيل التطبيق."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "لا يوجد ملف شخصي مسجَّل الدخول للاستيراد إليه. أنشئ ملفًا شخصيًا أو سجّل الدخول إليه (قائمة الملف الشخصي)، ثم حاول مرة أخرى."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "سجّل الدخول إلى ملف شخصي (قائمة الملف الشخصي) لتمكين الاستيراد."
+
+msgid "&Add Games..."
+msgstr "إضافة ألعاب(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu مثبتة مسبقًا"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu مجلد تم فحصه   %zu ملف تم فحصه   %zu لعبة تم العثور عليها"

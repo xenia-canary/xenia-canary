@@ -1330,3 +1330,63 @@ msgstr "โดย %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "เกม %08X"
+
+msgid "Scan for Games"
+msgstr "สแกนหาเกม"
+
+msgid "Scanning: %s"
+msgstr "กำลังสแกน: %s"
+
+msgid "Loading titles..."
+msgstr "กำลังโหลดเกม…"
+
+msgid "Cancelled."
+msgstr "ยกเลิกแล้ว"
+
+msgid "(unknown title)"
+msgstr "(ไม่ทราบชื่อเกม)"
+
+msgid "Type: %s"
+msgstr "ประเภท: %s"
+
+msgid "Publisher: %s"
+msgstr "ผู้เผยแพร่: %s"
+
+msgid "Module: %s"
+msgstr "โมดูล: %s"
+
+msgid "Version: %s"
+msgstr "เวอร์ชัน: %s"
+
+msgid "Status: Installed"
+msgstr "สถานะ: ติดตั้งแล้ว"
+
+msgid "(Installed) "
+msgstr "(ติดตั้งแล้ว) "
+
+msgid "Import"
+msgstr "นำเข้า"
+
+msgid "Import %zu New Items"
+msgstr "นำเข้ารายการใหม่ %zu รายการ"
+
+msgid "Import failed"
+msgstr "นำเข้าล้มเหลว"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia ยังเริ่มต้นไม่สมบูรณ์ ลองอีกครั้งหลังจากแอปเริ่มทำงานเสร็จ"
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "ไม่มีโปรไฟล์ที่เข้าสู่ระบบสำหรับนำเข้า สร้างหรือเข้าสู่ระบบโปรไฟล์ (เมนูโปรไฟล์) แล้วลองอีกครั้ง"
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "เข้าสู่ระบบโปรไฟล์ (เมนูโปรไฟล์) เพื่อเปิดใช้งานการนำเข้า"
+
+msgid "&Add Games..."
+msgstr "เพิ่มเกม(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   ติดตั้งแล้ว %zu รายการ"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "สแกนไดเรกทอรี %zu รายการ   ตรวจสอบไฟล์ %zu รายการ   พบเกม %zu รายการ"

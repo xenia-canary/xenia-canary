@@ -1330,3 +1330,63 @@ msgstr "اثر %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "بازی %08X"
+
+msgid "Scan for Games"
+msgstr "جستجوی بازی‌ها"
+
+msgid "Scanning: %s"
+msgstr "در حال جستجو: %s"
+
+msgid "Loading titles..."
+msgstr "در حال بارگذاری بازی‌ها…"
+
+msgid "Cancelled."
+msgstr "لغو شد."
+
+msgid "(unknown title)"
+msgstr "(بازی ناشناخته)"
+
+msgid "Type: %s"
+msgstr "نوع: %s"
+
+msgid "Publisher: %s"
+msgstr "ناشر: %s"
+
+msgid "Module: %s"
+msgstr "ماژول: %s"
+
+msgid "Version: %s"
+msgstr "نسخه: %s"
+
+msgid "Status: Installed"
+msgstr "وضعیت: نصب‌شده"
+
+msgid "(Installed) "
+msgstr "(نصب‌شده) "
+
+msgid "Import"
+msgstr "وارد کردن"
+
+msgid "Import %zu New Items"
+msgstr "وارد کردن %zu مورد جدید"
+
+msgid "Import failed"
+msgstr "وارد کردن ناموفق بود"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia هنوز به‌طور کامل راه‌اندازی نشده است. پس از پایان راه‌اندازی برنامه دوباره تلاش کنید."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "هیچ نمایه واردشده‌ای برای وارد کردن وجود ندارد. یک نمایه ایجاد کنید یا به آن وارد شوید (منوی نمایه)، سپس دوباره تلاش کنید."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "برای فعال‌سازی وارد کردن، به یک نمایه وارد شوید (منوی نمایه)."
+
+msgid "&Add Games..."
+msgstr "افزودن بازی‌ها(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu مورد از قبل نصب‌شده"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu پوشه بررسی شد   %zu فایل آزموده شد   %zu بازی یافت شد"

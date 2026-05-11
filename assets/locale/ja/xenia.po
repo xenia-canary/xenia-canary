@@ -1330,3 +1330,63 @@ msgstr "作者: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "タイトル %08X"
+
+msgid "Scan for Games"
+msgstr "ゲームをスキャン"
+
+msgid "Scanning: %s"
+msgstr "スキャン中: %s"
+
+msgid "Loading titles..."
+msgstr "タイトルを読み込み中…"
+
+msgid "Cancelled."
+msgstr "キャンセルされました。"
+
+msgid "(unknown title)"
+msgstr "(不明なタイトル)"
+
+msgid "Type: %s"
+msgstr "種別: %s"
+
+msgid "Publisher: %s"
+msgstr "発行元: %s"
+
+msgid "Module: %s"
+msgstr "モジュール: %s"
+
+msgid "Version: %s"
+msgstr "バージョン: %s"
+
+msgid "Status: Installed"
+msgstr "状態: インストール済"
+
+msgid "(Installed) "
+msgstr "(インストール済) "
+
+msgid "Import"
+msgstr "インポート"
+
+msgid "Import %zu New Items"
+msgstr "%zu 件の新規項目をインポート"
+
+msgid "Import failed"
+msgstr "インポートに失敗しました"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia の初期化がまだ完了していません。アプリの起動が完了してから再試行してください。"
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "インポート先となるサインイン済みのプロフィールがありません。プロフィールを作成またはサインインしてから (プロフィールメニュー)、再試行してください。"
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "インポートを有効にするにはプロフィールにサインインしてください (プロフィールメニュー)。"
+
+msgid "&Add Games..."
+msgstr "ゲームを追加(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu 件はインストール済"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu 件のディレクトリをスキャン   %zu 件のファイルを調査   %zu 件のゲームを検出"

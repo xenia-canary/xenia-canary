@@ -1332,3 +1332,63 @@ msgstr "od %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "titul %08X"
+
+msgid "Scan for Games"
+msgstr "Vyhľadať hry"
+
+msgid "Scanning: %s"
+msgstr "Vyhľadáva sa: %s"
+
+msgid "Loading titles..."
+msgstr "Načítavajú sa tituly…"
+
+msgid "Cancelled."
+msgstr "Zrušené."
+
+msgid "(unknown title)"
+msgstr "(neznámy titul)"
+
+msgid "Type: %s"
+msgstr "Typ: %s"
+
+msgid "Publisher: %s"
+msgstr "Vydavateľ: %s"
+
+msgid "Module: %s"
+msgstr "Modul: %s"
+
+msgid "Version: %s"
+msgstr "Verzia: %s"
+
+msgid "Status: Installed"
+msgstr "Stav: nainštalované"
+
+msgid "(Installed) "
+msgstr "(nainštalované) "
+
+msgid "Import"
+msgstr "Importovať"
+
+msgid "Import %zu New Items"
+msgstr "Importovať %zu nových položiek"
+
+msgid "Import failed"
+msgstr "Import zlyhal"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia ešte nie je úplne pripravená. Skúste to znova po dokončení spúšťania aplikácie."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Žiadny prihlásený profil, do ktorého možno importovať. Vytvorte profil alebo sa prihláste (ponuka Profil) a skúste to znova."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Na povolenie importu sa prihláste do profilu (ponuka Profil)."
+
+msgid "&Add Games..."
+msgstr "Pridať hry(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu už nainštalovaných"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "Prehľadaných adresárov: %zu   preskúmaných súborov: %zu   nájdených hier: %zu"

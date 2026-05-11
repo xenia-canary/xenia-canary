@@ -1330,3 +1330,63 @@ msgstr "작성자: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "게임 %08X"
+
+msgid "Scan for Games"
+msgstr "게임 검색"
+
+msgid "Scanning: %s"
+msgstr "검색 중: %s"
+
+msgid "Loading titles..."
+msgstr "게임 불러오는 중…"
+
+msgid "Cancelled."
+msgstr "취소됨."
+
+msgid "(unknown title)"
+msgstr "(알 수 없는 게임)"
+
+msgid "Type: %s"
+msgstr "유형: %s"
+
+msgid "Publisher: %s"
+msgstr "배급사: %s"
+
+msgid "Module: %s"
+msgstr "모듈: %s"
+
+msgid "Version: %s"
+msgstr "버전: %s"
+
+msgid "Status: Installed"
+msgstr "상태: 설치됨"
+
+msgid "(Installed) "
+msgstr "(설치됨) "
+
+msgid "Import"
+msgstr "가져오기"
+
+msgid "Import %zu New Items"
+msgstr "새 항목 %zu개 가져오기"
+
+msgid "Import failed"
+msgstr "가져오기 실패"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia가 아직 완전히 초기화되지 않았습니다. 앱이 시작을 완료한 후 다시 시도하세요."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "가져올 로그인된 프로필이 없습니다. 프로필을 만들거나 로그인한 후(프로필 메뉴) 다시 시도하세요."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "가져오기를 활성화하려면 프로필에 로그인하세요(프로필 메뉴)."
+
+msgid "&Add Games..."
+msgstr "게임 추가(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu개 이미 설치됨"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "디렉터리 %zu개 검색됨   파일 %zu개 확인됨   게임 %zu개 발견됨"

@@ -1334,3 +1334,63 @@ msgstr "tarafından %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "oyun %08X"
+
+msgid "Scan for Games"
+msgstr "Oyunları Tara"
+
+msgid "Scanning: %s"
+msgstr "Taranıyor: %s"
+
+msgid "Loading titles..."
+msgstr "Oyunlar yükleniyor…"
+
+msgid "Cancelled."
+msgstr "İptal edildi."
+
+msgid "(unknown title)"
+msgstr "(bilinmeyen oyun)"
+
+msgid "Type: %s"
+msgstr "Tür: %s"
+
+msgid "Publisher: %s"
+msgstr "Yayıncı: %s"
+
+msgid "Module: %s"
+msgstr "Modül: %s"
+
+msgid "Version: %s"
+msgstr "Sürüm: %s"
+
+msgid "Status: Installed"
+msgstr "Durum: Kuruldu"
+
+msgid "(Installed) "
+msgstr "(Kuruldu) "
+
+msgid "Import"
+msgstr "İçe Aktar"
+
+msgid "Import %zu New Items"
+msgstr "%zu Yeni Öğeyi İçe Aktar"
+
+msgid "Import failed"
+msgstr "İçe aktarma başarısız"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia henüz tamamen başlatılmadı. Uygulama başlatılmayı tamamladıktan sonra tekrar deneyin."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "İçe aktarılacak oturum açmış profil yok. Bir profil oluşturun veya bir profile giriş yapın (Profil menüsü), sonra tekrar deneyin."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "İçe aktarmayı etkinleştirmek için bir profile giriş yapın (Profil menüsü)."
+
+msgid "&Add Games..."
+msgstr "Oyun &Ekle…"
+
+msgid "   %zu already installed"
+msgstr "   %zu zaten kurulu"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu dizin tarandı   %zu dosya incelendi   %zu oyun bulundu"

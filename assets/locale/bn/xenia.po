@@ -1334,3 +1334,63 @@ msgstr "%s দ্বারা"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "টাইটেল %08X"
+
+msgid "Scan for Games"
+msgstr "গেম স্ক্যান করুন"
+
+msgid "Scanning: %s"
+msgstr "স্ক্যান করা হচ্ছে: %s"
+
+msgid "Loading titles..."
+msgstr "টাইটেল লোড করা হচ্ছে…"
+
+msgid "Cancelled."
+msgstr "বাতিল করা হয়েছে।"
+
+msgid "(unknown title)"
+msgstr "(অজানা টাইটেল)"
+
+msgid "Type: %s"
+msgstr "টাইপ: %s"
+
+msgid "Publisher: %s"
+msgstr "প্রকাশক: %s"
+
+msgid "Module: %s"
+msgstr "মডিউল: %s"
+
+msgid "Version: %s"
+msgstr "সংস্করণ: %s"
+
+msgid "Status: Installed"
+msgstr "অবস্থা: ইনস্টল করা হয়েছে"
+
+msgid "(Installed) "
+msgstr "(ইনস্টল করা হয়েছে) "
+
+msgid "Import"
+msgstr "ইম্পোর্ট"
+
+msgid "Import %zu New Items"
+msgstr "%zuটি নতুন আইটেম ইম্পোর্ট করুন"
+
+msgid "Import failed"
+msgstr "ইম্পোর্ট ব্যর্থ"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia এখনও পুরোপুরি চালু হয়নি। অ্যাপ চালু হওয়া শেষ হলে আবার চেষ্টা করুন।"
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "ইম্পোর্ট করার জন্য কোনো সাইন ইন করা প্রোফাইল নেই। একটি প্রোফাইল তৈরি বা সাইন ইন করুন (প্রোফাইল মেনু), তারপর আবার চেষ্টা করুন।"
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "ইম্পোর্ট সক্রিয় করতে একটি প্রোফাইলে সাইন ইন করুন (প্রোফাইল মেনু)।"
+
+msgid "&Add Games..."
+msgstr "গেম যোগ করুন(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zuটি ইতিমধ্যে ইনস্টল করা"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zuটি ডিরেক্টরি স্ক্যান করা   %zuটি ফাইল পরীক্ষা করা   %zuটি গেম পাওয়া গেছে"

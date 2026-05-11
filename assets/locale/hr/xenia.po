@@ -1330,3 +1330,63 @@ msgstr "od %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "naslov %08X"
+
+msgid "Scan for Games"
+msgstr "Traži igre"
+
+msgid "Scanning: %s"
+msgstr "Pretražujem: %s"
+
+msgid "Loading titles..."
+msgstr "Učitavanje naslova..."
+
+msgid "Cancelled."
+msgstr "Otkazano."
+
+msgid "(unknown title)"
+msgstr "(nepoznat naslov)"
+
+msgid "Type: %s"
+msgstr "Vrsta: %s"
+
+msgid "Publisher: %s"
+msgstr "Izdavač: %s"
+
+msgid "Module: %s"
+msgstr "Modul: %s"
+
+msgid "Version: %s"
+msgstr "Verzija: %s"
+
+msgid "Status: Installed"
+msgstr "Stanje: Instalirano"
+
+msgid "(Installed) "
+msgstr "(Instalirano) "
+
+msgid "Import"
+msgstr "Uvezi"
+
+msgid "Import %zu New Items"
+msgstr "Uvezi novih stavki: %zu"
+
+msgid "Import failed"
+msgstr "Uvoz nije uspio"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia još nije potpuno pokrenuta. Pokušajte ponovno nakon što aplikacija završi pokretanje."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Nema prijavljenog profila za uvoz. Stvorite profil ili se prijavite (izbornik Profil), zatim pokušajte ponovno."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Prijavite se u profil (izbornik Profil) za omogućavanje uvoza."
+
+msgid "&Add Games..."
+msgstr "&Dodaj igre..."
+
+msgid "   %zu already installed"
+msgstr "   već instalirano: %zu"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "pretraženih mapa: %zu   provjerenih datoteka: %zu   pronađenih igara: %zu"

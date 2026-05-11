@@ -1334,3 +1334,63 @@ msgstr "bởi %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "tựa game %08X"
+
+msgid "Scan for Games"
+msgstr "Quét tìm trò chơi"
+
+msgid "Scanning: %s"
+msgstr "Đang quét: %s"
+
+msgid "Loading titles..."
+msgstr "Đang nạp tựa game…"
+
+msgid "Cancelled."
+msgstr "Đã huỷ."
+
+msgid "(unknown title)"
+msgstr "(tựa game không rõ)"
+
+msgid "Type: %s"
+msgstr "Loại: %s"
+
+msgid "Publisher: %s"
+msgstr "Nhà phát hành: %s"
+
+msgid "Module: %s"
+msgstr "Mô-đun: %s"
+
+msgid "Version: %s"
+msgstr "Phiên bản: %s"
+
+msgid "Status: Installed"
+msgstr "Trạng thái: Đã cài đặt"
+
+msgid "(Installed) "
+msgstr "(Đã cài đặt) "
+
+msgid "Import"
+msgstr "Nhập"
+
+msgid "Import %zu New Items"
+msgstr "Nhập %zu mục mới"
+
+msgid "Import failed"
+msgstr "Nhập thất bại"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia chưa khởi tạo xong. Hãy thử lại sau khi ứng dụng khởi động xong."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Không có hồ sơ đã đăng nhập để nhập vào. Hãy tạo hoặc đăng nhập một hồ sơ (menu Hồ sơ), rồi thử lại."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Đăng nhập một hồ sơ (menu Hồ sơ) để bật chức năng nhập."
+
+msgid "&Add Games..."
+msgstr "Thêm trò chơi(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu đã được cài đặt"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu thư mục đã quét   %zu tệp đã dò   %zu trò chơi tìm thấy"

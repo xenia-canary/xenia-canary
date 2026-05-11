@@ -1334,3 +1334,63 @@ msgstr "ni %s"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "title %08X"
+
+msgid "Scan for Games"
+msgstr "Mag-scan ng mga Laro"
+
+msgid "Scanning: %s"
+msgstr "Sina-scan: %s"
+
+msgid "Loading titles..."
+msgstr "Nilo-load ang mga title…"
+
+msgid "Cancelled."
+msgstr "Kinansela."
+
+msgid "(unknown title)"
+msgstr "(hindi kilalang title)"
+
+msgid "Type: %s"
+msgstr "Uri: %s"
+
+msgid "Publisher: %s"
+msgstr "Publisher: %s"
+
+msgid "Module: %s"
+msgstr "Module: %s"
+
+msgid "Version: %s"
+msgstr "Bersyon: %s"
+
+msgid "Status: Installed"
+msgstr "Status: Naka-install"
+
+msgid "(Installed) "
+msgstr "(Naka-install) "
+
+msgid "Import"
+msgstr "Mag-import"
+
+msgid "Import %zu New Items"
+msgstr "Mag-import ng %zu (na) Bagong Item"
+
+msgid "Import failed"
+msgstr "Nabigo ang pag-import"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Hindi pa lubos na na-initialize ang Xenia. Subukan ulit pagkatapos matapos ang pagsisimula ng app."
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "Walang naka-sign in na profile na puwedeng pag-import-an. Gumawa o mag-sign in sa isang profile (Profile menu), tapos subukan ulit."
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "Mag-sign in sa isang profile (Profile menu) para paganahin ang pag-import."
+
+msgid "&Add Games..."
+msgstr "Magdagdag ng mga Laro(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu ang naka-install na"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu (na) directory ang na-scan   %zu (na) file ang nasuri   %zu (na) laro ang nahanap"

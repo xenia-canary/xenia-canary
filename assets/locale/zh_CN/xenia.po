@@ -1330,3 +1330,63 @@ msgstr "作者: %s"
 #: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "title %08X"
 msgstr "游戏 %08X"
+
+msgid "Scan for Games"
+msgstr "扫描游戏"
+
+msgid "Scanning: %s"
+msgstr "正在扫描: %s"
+
+msgid "Loading titles..."
+msgstr "正在加载游戏…"
+
+msgid "Cancelled."
+msgstr "已取消。"
+
+msgid "(unknown title)"
+msgstr "(未知游戏)"
+
+msgid "Type: %s"
+msgstr "类型: %s"
+
+msgid "Publisher: %s"
+msgstr "发行商: %s"
+
+msgid "Module: %s"
+msgstr "模块: %s"
+
+msgid "Version: %s"
+msgstr "版本: %s"
+
+msgid "Status: Installed"
+msgstr "状态: 已安装"
+
+msgid "(Installed) "
+msgstr "(已安装) "
+
+msgid "Import"
+msgstr "导入"
+
+msgid "Import %zu New Items"
+msgstr "导入 %zu 个新项目"
+
+msgid "Import failed"
+msgstr "导入失败"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia 尚未完全初始化。请在应用启动完成后重试。"
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "没有可导入的已登录档案。请创建或登录一个档案（档案菜单），然后重试。"
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "登录档案（档案菜单）以启用导入。"
+
+msgid "&Add Games..."
+msgstr "添加游戏(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   已安装 %zu 个"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "已扫描 %zu 个目录   已探测 %zu 个文件   找到 %zu 个游戏"

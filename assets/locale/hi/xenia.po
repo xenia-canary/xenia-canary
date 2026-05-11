@@ -1330,3 +1330,63 @@ msgstr "%s द्वारा"
 #: src/xenia/ui/game_list_panel_wx.cc:864
 msgid "title %08X"
 msgstr "टाइटल %08X"
+
+msgid "Scan for Games"
+msgstr "गेम के लिए स्कैन करें"
+
+msgid "Scanning: %s"
+msgstr "स्कैन हो रहा है: %s"
+
+msgid "Loading titles..."
+msgstr "टाइटल लोड हो रहे हैं…"
+
+msgid "Cancelled."
+msgstr "रद्द किया गया।"
+
+msgid "(unknown title)"
+msgstr "(अज्ञात टाइटल)"
+
+msgid "Type: %s"
+msgstr "प्रकार: %s"
+
+msgid "Publisher: %s"
+msgstr "प्रकाशक: %s"
+
+msgid "Module: %s"
+msgstr "मॉड्यूल: %s"
+
+msgid "Version: %s"
+msgstr "संस्करण: %s"
+
+msgid "Status: Installed"
+msgstr "स्थिति: इंस्टॉल किया गया"
+
+msgid "(Installed) "
+msgstr "(इंस्टॉल किया गया) "
+
+msgid "Import"
+msgstr "आयात करें"
+
+msgid "Import %zu New Items"
+msgstr "%zu नए आइटम आयात करें"
+
+msgid "Import failed"
+msgstr "आयात विफल"
+
+msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
+msgstr "Xenia अभी पूरी तरह से प्रारंभ नहीं हुआ है। ऐप के चालू होने के बाद पुनः प्रयास करें।"
+
+msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
+msgstr "आयात करने के लिए कोई साइन-इन प्रोफ़ाइल नहीं है। एक प्रोफ़ाइल बनाएँ या साइन इन करें (प्रोफ़ाइल मेनू), फिर पुनः प्रयास करें।"
+
+msgid "Sign in to a profile (Profile menu) to enable importing."
+msgstr "आयात सक्षम करने हेतु किसी प्रोफ़ाइल में साइन इन करें (प्रोफ़ाइल मेनू)।"
+
+msgid "&Add Games..."
+msgstr "गेम जोड़ें(&A)…"
+
+msgid "   %zu already installed"
+msgstr "   %zu पहले से इंस्टॉल किए गए"
+
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr "%zu निर्देशिकाएँ स्कैन की गईं   %zu फ़ाइलें जाँची गईं   %zu गेम मिले"
