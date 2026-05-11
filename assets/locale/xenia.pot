@@ -4,7 +4,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: xenia-edge\n"
-"POT-Creation-Date: 2026-05-11 14:03+0000\n"
+"POT-Creation-Date: 2026-05-11 14:32+0000\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -32,12 +32,16 @@ msgstr ""
 msgid " - %s (%08X)"
 msgstr ""
 
+#: src/xenia/ui/game_config_dialog_wx.cc:286
+msgid "%08X - Config Overrides"
+msgstr ""
+
 #: src/xenia/ui/patches_dialog_wx.cc:37
 msgid "%s (%08X)"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%s (%08X) — Config Overrides"
+#: src/xenia/ui/game_config_dialog_wx.cc:287
+msgid "%s (%08X) - Config Overrides"
 msgstr ""
 
 #: src/xenia/app/emulator_window.cc:1866
@@ -117,11 +121,11 @@ msgid "Achievements"
 msgstr ""
 
 #: src/xenia/ui/game_config_dialog_wx.cc:187
-#: src/xenia/ui/game_config_dialog_wx.cc:467
+#: src/xenia/ui/game_config_dialog_wx.cc:466
 msgid "Add Override"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:309
+#: src/xenia/ui/game_config_dialog_wx.cc:308
 msgid "Add..."
 msgstr ""
 
@@ -145,7 +149,7 @@ msgstr ""
 msgid "All Files"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:467
+#: src/xenia/ui/game_config_dialog_wx.cc:466
 msgid "All cvars are already overridden."
 msgstr ""
 
@@ -226,7 +230,7 @@ msgstr ""
 msgid "Canary"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:315
+#: src/xenia/ui/game_config_dialog_wx.cc:314
 #: src/xenia/ui/game_scan_progress_dialog_wx.cc:193
 #: src/xenia/ui/install_progress_dialog_wx.cc:157
 #: src/xenia/ui/profile_editor_dialog_wx.cc:536
@@ -407,7 +411,7 @@ msgstr ""
 msgid "Enter new label:"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:434
+#: src/xenia/ui/game_config_dialog_wx.cc:433
 msgid "Error"
 msgstr ""
 
@@ -441,7 +445,7 @@ msgstr ""
 msgid "Failed to save changes."
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:433
+#: src/xenia/ui/game_config_dialog_wx.cc:432
 msgid "Failed to save: %s"
 msgstr ""
 
@@ -529,7 +533,7 @@ msgid "Gamercard Editor"
 msgstr ""
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:281
-msgid "Gamercard Editor — %s"
+msgid "Gamercard Editor - %s"
 msgstr ""
 
 #: src/xenia/ui/game_list_panel_wx.cc:255
@@ -1058,7 +1062,7 @@ msgstr ""
 msgid "Remove from list"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:346
+#: src/xenia/ui/game_config_dialog_wx.cc:345
 msgid "Remove this override"
 msgstr ""
 
@@ -1112,7 +1116,7 @@ msgstr ""
 msgid "Saudi Arabia"
 msgstr ""
 
-#: src/xenia/ui/game_config_dialog_wx.cc:314
+#: src/xenia/ui/game_config_dialog_wx.cc:313
 #: src/xenia/ui/profile_editor_dialog_wx.cc:534
 #: src/xenia/ui/quick_settings_dialog_wx.cc:336
 msgid "Save"

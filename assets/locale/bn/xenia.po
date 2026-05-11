@@ -36,8 +36,12 @@ msgstr " — %s (%08X)"
 msgid "%s (%08X)"
 msgstr "%s (%08X)"
 
+#: src/xenia/ui/game_config_dialog_wx.cc:286
+msgid "%08X - Config Overrides"
+msgstr ""
+
 #: src/xenia/ui/game_config_dialog_wx.cc:266
-msgid "%s (%08X) — Config Overrides"
+msgid "%s (%08X) - Config Overrides"
 msgstr "%s (%08X) — কনফিগ ওভাররাইড"
 
 #: src/xenia/app/emulator_window.cc:1683
@@ -518,7 +522,7 @@ msgid "Gamercard Editor"
 msgstr "গেমারকার্ড সম্পাদক"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:271
-msgid "Gamercard Editor — %s"
+msgid "Gamercard Editor - %s"
 msgstr "গেমারকার্ড সম্পাদক — %s"
 
 #: src/xenia/ui/game_list_panel_wx.cc:264

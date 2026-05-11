@@ -280,15 +280,13 @@ void InsertTypedValue(toml::table& dest, const std::string& key,
 GameConfigDialog::GameConfigDialog(wxWindow* parent,
                                    EmulatorWindow* emulator_window,
                                    uint32_t title_id, std::string game_title)
-    : wxDialog(
-          parent, wxID_ANY,
-          wxString::Format(
-              _("%s (%08X) — Config Overrides"),
-              wxString::FromUTF8(game_title.empty() ? std::to_string(title_id)
-                                                    : game_title),
-              title_id),
-          wxDefaultPosition, wxSize(720, 500),
-          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+    : wxDialog(parent, wxID_ANY,
+               game_title.empty()
+                   ? wxString::Format(_("%08X - Config Overrides"), title_id)
+                   : wxString::Format(_("%s (%08X) - Config Overrides"),
+                                      wxString::FromUTF8(game_title), title_id),
+               wxDefaultPosition, wxSize(720, 500),
+               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       emulator_window_(emulator_window),
       title_id_(title_id),
       game_title_(std::move(game_title)) {

@@ -278,7 +278,7 @@ ProfileEditorDialog::ProfileEditorDialog(wxWindow* parent,
       emulator_window_(emulator_window),
       xuid_(xuid) {
   LoadProfileData();
-  SetTitle(wxString::Format(_("Gamercard Editor — %s"),
+  SetTitle(wxString::Format(_("Gamercard Editor - %s"),
                             wxString::FromUTF8(current_data_.gamertag)));
   Build();
 }

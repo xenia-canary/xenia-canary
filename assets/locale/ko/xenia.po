@@ -36,8 +36,12 @@ msgstr " - %s (%08X)"
 msgid "%s (%08X)"
 msgstr "%s (%08X)"
 
+#: src/xenia/ui/game_config_dialog_wx.cc:286
+msgid "%08X - Config Overrides"
+msgstr ""
+
 #: src/xenia/ui/game_config_dialog_wx.cc:266
-msgid "%s (%08X) — Config Overrides"
+msgid "%s (%08X) - Config Overrides"
 msgstr "%s (%08X) — 설정 재정의"
 
 #: src/xenia/app/emulator_window.cc:1683
@@ -518,7 +522,7 @@ msgid "Gamercard Editor"
 msgstr "게이머카드 편집기"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:271
-msgid "Gamercard Editor — %s"
+msgid "Gamercard Editor - %s"
 msgstr "게이머카드 편집기 — %s"
 
 #: src/xenia/ui/game_list_panel_wx.cc:256
