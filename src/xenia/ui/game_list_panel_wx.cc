@@ -59,7 +59,10 @@ namespace app {
 
 namespace {
 
+// Icon dimensions are expressed as logical DIPs at 96 DPI; the constructor
+// converts to device pixels via FromDIP() for the current monitor.
 constexpr int kIconSize = 64;
+constexpr int kCompatBallSize = 28;
 
 std::string ToLower(std::string_view s) {
   std::string out(s);
@@ -82,41 +85,36 @@ std::string FormatLastPlayed(time_t timestamp) {
 }
 
 // `text` may contain a single \n to split into two centered lines; translators
-// pick the break point. No newline = single centered line.
-wxBitmapBundle MakeTextPlaceholder(const wxString& text) {
-  wxBitmap bmp(kIconSize, kIconSize, 32);
+// pick the break point. No newline = single centered line. `size_px` is the
+// device-pixel size; `scale` is the DPI scale factor so the bundle reports a
+// 1x logical size of `size_px / scale` instead of upscaling the source.
+wxBitmapBundle MakeTextPlaceholder(const wxString& text, int size_px,
+                                   double scale) {
+  wxBitmap bmp(size_px, size_px, 32);
   wxMemoryDC dc(bmp);
   dc.SetBackground(wxBrush(wxColour(60, 60, 60)));
   dc.Clear();
   wxFont font = dc.GetFont();
-  font.Scale(0.85f);
+  font.Scale(0.85f * static_cast<float>(scale));
   dc.SetFont(font);
   dc.SetTextForeground(wxColour(180, 180, 180));
   wxString line1 = text.BeforeFirst('\n');
   wxString line2 = text.AfterFirst('\n');
   wxSize l1 = dc.GetTextExtent(line1);
+  const int gap = std::max(1, static_cast<int>(2 * scale));
   if (line2.empty()) {
-    int y = (kIconSize - l1.y) / 2;
-    dc.DrawText(line1, (kIconSize - l1.x) / 2, y);
+    int y = (size_px - l1.y) / 2;
+    dc.DrawText(line1, (size_px - l1.x) / 2, y);
   } else {
     wxSize l2 = dc.GetTextExtent(line2);
-    int total_h = l1.y + l2.y + 2;
-    int y = (kIconSize - total_h) / 2;
-    dc.DrawText(line1, (kIconSize - l1.x) / 2, y);
-    dc.DrawText(line2, (kIconSize - l2.x) / 2, y + l1.y + 2);
+    int total_h = l1.y + l2.y + gap;
+    int y = (size_px - total_h) / 2;
+    dc.DrawText(line1, (size_px - l1.x) / 2, y);
+    dc.DrawText(line2, (size_px - l2.x) / 2, y + l1.y + gap);
   }
   dc.SelectObject(wxNullBitmap);
+  bmp.SetScaleFactor(scale);
   return wxBitmapBundle::FromBitmap(bmp);
-}
-
-const wxBitmapBundle& LoggedOutPlaceholder() {
-  static const wxBitmapBundle k = MakeTextPlaceholder(_("Not\nlogged in"));
-  return k;
-}
-
-const wxBitmapBundle& NotPlayedPlaceholder() {
-  static const wxBitmapBundle k = MakeTextPlaceholder(_("Not\nplayed"));
-  return k;
 }
 
 wxString CompatStateName(CompatState state) {
@@ -151,44 +149,35 @@ wxColour CompatColor(CompatState state) {
 }
 
 // Pixel-AA filled circle on a transparent bitmap; portable across themes.
-wxBitmapBundle MakeCompatBall(CompatState state) {
-  constexpr int kSize = 28;
-  constexpr float kRadius = 7.0f;
+// `size_px` and `scale` follow the same contract as MakeTextPlaceholder.
+wxBitmapBundle MakeCompatBall(CompatState state, int size_px, double scale) {
+  const float radius = (kCompatBallSize * 0.25f) * static_cast<float>(scale);
   wxColour color = CompatColor(state);
-  wxImage image(kSize, kSize);
+  wxImage image(size_px, size_px);
   image.SetAlpha();
   unsigned char* rgb = image.GetData();
   unsigned char* alpha = image.GetAlpha();
-  std::memset(alpha, 0, kSize * kSize);
-  const float cx = kSize * 0.5f;
-  const float cy = kSize * 0.5f;
-  for (int y = 0; y < kSize; ++y) {
-    for (int x = 0; x < kSize; ++x) {
+  std::memset(alpha, 0, static_cast<size_t>(size_px) * size_px);
+  const float cx = size_px * 0.5f;
+  const float cy = size_px * 0.5f;
+  for (int y = 0; y < size_px; ++y) {
+    for (int x = 0; x < size_px; ++x) {
       float dx = x + 0.5f - cx;
       float dy = y + 0.5f - cy;
       float d = std::sqrt(dx * dx + dy * dy);
-      float a = std::clamp(kRadius - d + 0.5f, 0.0f, 1.0f);
+      float a = std::clamp(radius - d + 0.5f, 0.0f, 1.0f);
       if (a > 0.0f) {
-        size_t pi = (static_cast<size_t>(y) * kSize + x) * 3;
+        size_t pi = (static_cast<size_t>(y) * size_px + x) * 3;
         rgb[pi + 0] = color.Red();
         rgb[pi + 1] = color.Green();
         rgb[pi + 2] = color.Blue();
-        alpha[y * kSize + x] = static_cast<unsigned char>(a * 255.0f + 0.5f);
+        alpha[y * size_px + x] = static_cast<unsigned char>(a * 255.0f + 0.5f);
       }
     }
   }
-  return wxBitmapBundle::FromBitmap(wxBitmap(image));
-}
-
-const wxBitmapBundle& CompatBall(CompatState state) {
-  static const wxBitmapBundle kBalls[] = {
-      MakeCompatBall(CompatState::kUnknown),
-      MakeCompatBall(CompatState::kUnplayable),
-      MakeCompatBall(CompatState::kLoads),
-      MakeCompatBall(CompatState::kGameplay),
-      MakeCompatBall(CompatState::kPlayable),
-  };
-  return kBalls[static_cast<size_t>(state)];
+  wxBitmap bmp(image);
+  bmp.SetScaleFactor(scale);
+  return wxBitmapBundle::FromBitmap(bmp);
 }
 
 wxString EscapeMarkup(const wxString& s) {
@@ -209,7 +198,8 @@ wxString EscapeMarkup(const wxString& s) {
   return out;
 }
 
-wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data) {
+wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data, int size_px,
+                          double scale) {
   if (data.empty()) {
     return wxBitmapBundle();
   }
@@ -218,10 +208,12 @@ wxBitmapBundle DecodeIcon(const std::vector<uint8_t>& data) {
   if (!image.LoadFile(stream, wxBITMAP_TYPE_ANY)) {
     return wxBitmapBundle();
   }
-  if (image.GetWidth() != kIconSize || image.GetHeight() != kIconSize) {
-    image.Rescale(kIconSize, kIconSize, wxIMAGE_QUALITY_HIGH);
+  if (image.GetWidth() != size_px || image.GetHeight() != size_px) {
+    image.Rescale(size_px, size_px, wxIMAGE_QUALITY_HIGH);
   }
-  return wxBitmapBundle::FromBitmap(wxBitmap(image));
+  wxBitmap bmp(image);
+  bmp.SetScaleFactor(scale);
+  return wxBitmapBundle::FromBitmap(bmp);
 }
 
 }  // namespace
@@ -241,6 +233,23 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
                                  wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
   list_->SetMinSize(wxSize(0, 0));
 
+  // The wxDataViewCtrl MSW backend treats column widths and the row height as
+  // device pixels (the value flows straight through to ListView_SetColumnWidth
+  // / SetRowHeight). Resolve our DIP-denominated sizes once for the current
+  // monitor so the layout matches the actual rendered icon size.
+  dpi_scale_ = GetDPIScaleFactor();
+  icon_size_px_ = FromDIP(kIconSize);
+  const int icon_pad_px = FromDIP(8);
+  logged_out_placeholder_ =
+      MakeTextPlaceholder(_("Not\nlogged in"), icon_size_px_, dpi_scale_);
+  not_played_placeholder_ =
+      MakeTextPlaceholder(_("Not\nplayed"), icon_size_px_, dpi_scale_);
+  const int ball_size_px = FromDIP(kCompatBallSize);
+  for (size_t i = 0; i < compat_balls_.size(); ++i) {
+    compat_balls_[i] =
+        MakeCompatBall(static_cast<CompatState>(i), ball_size_px, dpi_scale_);
+  }
+
   // Derive sizes from the list's actual font so the layout grows with the
   // user's Windows text-scaling setting instead of clipping at fixed pixels.
   wxClientDC dc(this);
@@ -254,9 +263,9 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
     return std::max(hw, sw) + char_w * 4;
   };
   // Title is rendered with x-large markup (~1.5x base font); row must fit
-  // either that or the fixed 64px icon.
-  list_->SetRowHeight(
-      std::max(kIconSize + 8, static_cast<int>(char_h * 1.6f) + 8));
+  // either that or the DPI-scaled icon.
+  list_->SetRowHeight(std::max(icon_size_px_ + icon_pad_px,
+                               static_cast<int>(char_h * 1.6f) + icon_pad_px));
   const wxString status_header = _("Status");
   const wxString icon_header = _("Icon");
   const wxString title_header = _("Title");
@@ -267,7 +276,7 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
                             col_w(status_header, status_header), wxALIGN_CENTER,
                             0);
   list_->AppendBitmapColumn(icon_header, 1, wxDATAVIEW_CELL_INERT,
-                            kIconSize + 8, wxALIGN_CENTER, 0);
+                            icon_size_px_ + icon_pad_px, wxALIGN_CENTER, 0);
   // Title is the only flexible column; the rest are pinned at their measured
   // widths so a wider window doesn't stretch them.
   auto* title_col = list_->AppendTextColumn(
@@ -493,7 +502,7 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
     if (data.empty()) {
       continue;
     }
-    entry.icon = DecodeIcon(data);
+    entry.icon = DecodeIcon(data, icon_size_px_, dpi_scale_);
     if (!entry.icon.IsOk()) {
       continue;
     }
@@ -1105,15 +1114,16 @@ void GameListPanel::Repopulate() {
 
     wxVector<wxVariant> row;
     wxVariant compat_variant;
-    compat_variant << CompatBall(GetEntryCompatState(e));
+    compat_variant
+        << compat_balls_[static_cast<size_t>(GetEntryCompatState(e))];
     row.push_back(compat_variant);
     wxVariant icon_variant;
     if (!profile_signed_in_) {
-      icon_variant << LoggedOutPlaceholder();
+      icon_variant << logged_out_placeholder_;
     } else if (e.icon.IsOk()) {
       icon_variant << e.icon;
     } else {
-      icon_variant << NotPlayedPlaceholder();
+      icon_variant << not_played_placeholder_;
     }
     row.push_back(icon_variant);
     wxString title_markup =

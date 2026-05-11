@@ -10,6 +10,7 @@
 #ifndef XENIA_UI_GAME_LIST_PANEL_WX_H_
 #define XENIA_UI_GAME_LIST_PANEL_WX_H_
 
+#include <array>
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
@@ -109,6 +110,14 @@ class GameListPanel : public wxPanel {
   // Bumped on each Reload so in-flight icon-load chunks abort.
   int icon_load_generation_ = 0;
   bool profile_signed_in_ = false;
+  // Resolved at construction time from the panel's monitor; used for sizing
+  // bitmaps, column widths, and the row height so the list grows with the
+  // current display's DPI scale.
+  int icon_size_px_ = 0;
+  double dpi_scale_ = 1.0;
+  wxBitmapBundle logged_out_placeholder_;
+  wxBitmapBundle not_played_placeholder_;
+  std::array<wxBitmapBundle, 5> compat_balls_;
 };
 
 }  // namespace app
