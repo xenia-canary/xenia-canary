@@ -29,6 +29,10 @@ class SpirvBuilder : public spv::Builder {
                spv::SpvBuildLogger* logger)
       : spv::Builder(spv_version, user_number, logger) {}
 
+  // When true, createNoContraction* helpers emit plain operations.
+  void SetAllowContraction(bool allow) { allow_contraction_ = allow; }
+  bool AllowsContraction() const { return allow_contraction_; }
+
   // Make public rather than protected.
   using spv::Builder::createSelectionMerge;
 
@@ -188,6 +192,9 @@ class SpirvBuilder : public spv::Builder {
 
     Branch current_branch_ = Branch::kSelection;
   };
+
+ private:
+  bool allow_contraction_ = false;
 };
 
 }  // namespace gpu

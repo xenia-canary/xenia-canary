@@ -50,6 +50,13 @@ DEFINE_bool(
     "interpolated values. Requires VK_KHR_fragment_shader_barycentric.",
     "GPU");
 
+DEFINE_bool(
+    spirv_moltenvk_allow_contraction, true,
+    "When translating SPIR-V for MoltenVK, omit NoContraction decorations so "
+    "SPIRV-Cross doesn't emit MSL NoContraction helper wrappers with "
+    "[[clang::optnone]]. Other Vulkan drivers keep NoContraction enabled.",
+    "GPU");
+
 namespace xe {
 namespace gpu {
 
@@ -155,7 +162,10 @@ SpirvShaderTranslator::Features::Features(
       demote_to_helper_invocation(
           vulkan_device->properties().shaderDemoteToHelperInvocation),
       fragment_shader_barycentric(
-          vulkan_device->properties().fragmentShaderBarycentric) {
+          vulkan_device->properties().fragmentShaderBarycentric),
+      allow_float_contraction(cvars::spirv_moltenvk_allow_contraction &&
+                              vulkan_device->properties().driverID ==
+                                  VK_DRIVER_ID_MOLTENVK) {
   // Check for SPIR-V version override from CVAR.
   const std::string& override_version = cvars::spirv_version_override;
   if (override_version == "1.0") {
@@ -310,6 +320,7 @@ void SpirvShaderTranslator::StartTranslation() {
   // TODO(Triang3l): Logger.
   builder_ = std::make_unique<SpirvBuilder>(
       features_.spirv_version, (kSpirvMagicToolId << 16) | 1, nullptr);
+  builder_->SetAllowContraction(features_.allow_float_contraction);
 
   builder_->addCapability(IsSpirvTessEvalShader() ? spv::CapabilityTessellation
                                                   : spv::CapabilityShader);

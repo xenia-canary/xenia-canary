@@ -416,6 +416,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
     bool demote_to_helper_invocation;
 
     bool fragment_shader_barycentric;
+
+    bool allow_float_contraction = false;
   };
 
   SpirvShaderTranslator(const Features& features,
