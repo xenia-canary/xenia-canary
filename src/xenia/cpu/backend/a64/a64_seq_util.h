@@ -51,31 +51,20 @@ inline void EmitWithVmxFpcr(A64Emitter& e, Fn&& emit_op) {
   emit_op();
 }
 
-// Try to see if the provided 64-bit value can be compressed into an 8-bit
-// value for the movi instruction.
-// The 8-bit immediate "a:b:c:d:e:f:g:h" maps to the 64-bit value:
-// "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffffgggggggghhhhhhhh"
-inline bool TryMovi64Imm(uint64_t value, uint8_t& imm8) {
-  // Common cases
-  if (value == 0) {
-    // 00000...
-    imm8 = 0;
-    return true;
-  } else if (value == ~uint64_t(0)) {
-    // 11111...
-    imm8 = 0xFF;
+// True iff the 64-bit value is encodable as a MOVI Dn, #imm8 immediate.
+// MOVI replicates the 8-bit immediate "a:b:c:d:e:f:g:h" into the bytes
+// "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffffgggggggghhhhhhhh", so
+// every byte of the input must be 0x00 or 0xFF.
+inline bool IsMovi64Imm(uint64_t value) {
+  if (value == 0 || value == ~uint64_t(0)) {
     return true;
   }
-  uint8_t compressed = 0;
   for (int shift = 0; shift < 8; ++shift) {
     const uint8_t shift_u8 = static_cast<uint8_t>(value >> (shift * 8));
-    if (shift_u8 == 0xFF || shift_u8 == 0) {
-      compressed |= (shift_u8 == 0xFF) << shift;
-    } else {
+    if (shift_u8 != 0 && shift_u8 != 0xFF) {
       return false;
     }
   }
-  imm8 = compressed;
   return true;
 }
 
@@ -235,8 +224,8 @@ inline void LoadV128Const(A64Emitter& e, int vreg_idx, const vec128_t& val,
   const uint64_t splat_u64 = val.u64[0];
   const double splat_f64 = val.f64[0];
   if (all_equal_u64) {
-    if (uint8_t movi_imm; TryMovi64Imm(val.low, movi_imm)) {
-      e.movi(VReg2D(vreg_idx), movi_imm);
+    if (IsMovi64Imm(val.low)) {
+      e.movi(VReg2D(vreg_idx), val.low);
     } else if (IsFmov64Imm(splat_f64)) {
       e.fmov(VReg(vreg_idx).d2, splat_f64);
     } else {
