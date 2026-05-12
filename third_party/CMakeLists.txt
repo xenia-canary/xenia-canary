@@ -272,8 +272,8 @@ endif()
 endif()  # NOT _xe_use_host_shader_cc (SPIRV-Tools + glslang block)
 
 # ==============================================================================
-# SPIRV-Cross (Apple only — used at runtime by xenia-gpu-metal to translate
-# guest SPIR-V to MSL via MslShader)
+# SPIRV-Cross (Apple only — used at runtime by xenia-gpu-metal for SPIR-V → MSL
+# via MslShader, and by MoltenVKShaderConverter below)
 # ==============================================================================
 if(APPLE)
   add_library(spirv-cross STATIC
@@ -284,12 +284,116 @@ if(APPLE)
     SPIRV-Cross/spirv_cross_util.cpp
     SPIRV-Cross/spirv_glsl.cpp
     SPIRV-Cross/spirv_msl.cpp
+    SPIRV-Cross/spirv_reflect.cpp
   )
   target_include_directories(spirv-cross PUBLIC SPIRV-Cross)
   target_compile_features(spirv-cross PUBLIC cxx_std_17)
   if(MSVC)
     target_compile_options(spirv-cross PRIVATE /EHsc)
   endif()
+endif()
+
+# ==============================================================================
+# MoltenVK (Apple only — Vulkan-on-Metal driver, statically linked into
+# xenia-ui-vulkan so the macOS build needs no MoltenVK install at runtime)
+# ==============================================================================
+# Mirrors the layout of MoltenVK's own CMakeLists.txt (Common +
+# MoltenVKShaderConverter + MoltenVK) but builds against our in-tree
+# Vulkan-Headers / SPIRV-Cross / SPIRV-Tools instead of fetching its own copies
+# via CPM.cmake. The SPIRV-Cross submodule is pinned to MoltenVK's expected
+# revision so the spirv_msl ABI matches.
+if(APPLE)
+  # Record the MoltenVK submodule revision for MVKDevice's identification
+  # string (MoltenVK's own CMake runs `git rev-parse` here; we just shell
+  # out once at configure time and bake the string into a generated header).
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK rev-parse --short HEAD
+    OUTPUT_VARIABLE MVK_GIT_REV
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if(NOT MVK_GIT_REV)
+    set(MVK_GIT_REV "00000000")
+  endif()
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/Templates/cmake/mvkGitRevDerived.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/MoltenVK-gen/mvkGitRevDerived.h
+    @ONLY)
+
+  # MoltenVK::Common — OS/Foundation/Metal helpers shared by core + converter.
+  file(GLOB _mvk_common_src
+    "MoltenVK/Common/*.c"
+    "MoltenVK/Common/*.cpp"
+    "MoltenVK/Common/*.m"
+    "MoltenVK/Common/*.mm")
+  add_library(MoltenVK_Common STATIC ${_mvk_common_src})
+  add_library(MoltenVK::Common ALIAS MoltenVK_Common)
+  target_include_directories(MoltenVK_Common PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/Common
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include)
+  target_compile_features(MoltenVK_Common PUBLIC cxx_std_17)
+  target_compile_options(MoltenVK_Common PUBLIC
+    -Wno-deprecated-declarations
+    -Wno-vla-cxx-extension)
+  target_compile_definitions(MoltenVK_Common PUBLIC
+    MVK_CONFIG_LOG_LEVEL=1          # error-only at runtime
+    MVK_USE_METAL_PRIVATE_API=1     # primitive-restart disable + legacy SPI
+    MVK_USE_CEREAL=0)               # skip pipeline-cache-control serialization
+
+  # MoltenVK::ShaderConverter — wraps SPIRV-Cross + SPIRV-Tools to produce MSL.
+  file(GLOB _mvk_sc_src
+    "MoltenVK/MoltenVKShaderConverter/MoltenVKShaderConverter/*.c"
+    "MoltenVK/MoltenVKShaderConverter/MoltenVKShaderConverter/*.cpp"
+    "MoltenVK/MoltenVKShaderConverter/MoltenVKShaderConverter/*.m"
+    "MoltenVK/MoltenVKShaderConverter/MoltenVKShaderConverter/*.mm")
+  add_library(MoltenVK_ShaderConverter STATIC ${_mvk_sc_src})
+  add_library(MoltenVK::ShaderConverter ALIAS MoltenVK_ShaderConverter)
+  target_include_directories(MoltenVK_ShaderConverter PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVKShaderConverter
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Headers/include)
+  target_link_libraries(MoltenVK_ShaderConverter PUBLIC
+    MoltenVK::Common spirv-cross SPIRV-Tools-static)
+
+  # MoltenVK — the core driver. .mm files compile with manual retain/release;
+  # don't let any inherited -fobjc-arc flag flip them.
+  file(GLOB_RECURSE _mvk_core_src
+    "MoltenVK/MoltenVK/MoltenVK/*.c"
+    "MoltenVK/MoltenVK/MoltenVK/*.cpp"
+    "MoltenVK/MoltenVK/MoltenVK/*.m"
+    "MoltenVK/MoltenVK/MoltenVK/*.mm")
+  add_library(MoltenVK STATIC ${_mvk_core_src})
+  target_include_directories(MoltenVK PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/include
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/API
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Commands
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/GPUObjects
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Layers
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/OS
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Utility
+    ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Vulkan
+    ${CMAKE_CURRENT_BINARY_DIR}/MoltenVK-gen)
+  # Unquoted: MoltenVK runs MVK_STRINGIFY on this and compares to
+  # "$MAJOR.$MINOR.$PATCH" — quotes here would survive into the stringify.
+  target_compile_definitions(MoltenVK PUBLIC
+    MVK_FRAMEWORK_VERSION=1.4.2)
+  target_link_libraries(MoltenVK PUBLIC
+    MoltenVK::ShaderConverter
+    "-framework Foundation"
+    "-framework Metal"
+    "-framework AppKit"
+    "-framework IOKit"
+    "-framework IOSurface"
+    "-framework QuartzCore"
+    "-framework CoreGraphics")
+  # MoltenVK's OS/ TUs define Objective-C categories on MTLSamplerDescriptor,
+  # MTLRenderPipelineDescriptor, CAMetalLayer, and NSString. Static archive
+  # members that only contribute categories are dropped by ld (no external
+  # symbol references them), so at runtime calls like setBorderColorMVK: raise
+  # "unrecognized selector". Force-load the archive so every member ships in
+  # the final binary.
+  target_link_options(MoltenVK INTERFACE
+    "LINKER:-force_load,$<TARGET_FILE:MoltenVK>")
 endif()
 
 # ==============================================================================

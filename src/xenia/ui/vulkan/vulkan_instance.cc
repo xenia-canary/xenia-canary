@@ -21,10 +21,20 @@
 #include "xenia/base/platform.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 
-#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#if XE_PLATFORM_LINUX
 #include <dlfcn.h>
 #elif XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
+#elif XE_PLATFORM_MAC
+// MoltenVK is statically linked; declare the two entry points we resolve at
+// load time (vulkan_api.h sets VK_NO_PROTOTYPES, so the prototypes from
+// vulkan.h aren't visible).
+extern "C" {
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
+vkGetInstanceProcAddr(VkInstance instance, const char* pName);
+VKAPI_ATTR void VKAPI_CALL
+vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator);
+}
 #endif
 
 DEFINE_bool(
@@ -67,42 +77,8 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
       (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
       nullptr;
 #elif XE_PLATFORM_MAC
-  std::vector<const char*> loader_library_names;
-  const char* const moltenvk_path = std::getenv("MOLTENVK_ICD_DYLIB_PATH");
-  if (moltenvk_path && moltenvk_path[0]) {
-    loader_library_names.push_back(moltenvk_path);
-  }
-  loader_library_names.insert(
-      loader_library_names.end(),
-      {
-          "@executable_path/../Frameworks/MoltenVK.framework/MoltenVK",
-          "@loader_path/../Frameworks/MoltenVK.framework/MoltenVK",
-          "@executable_path/../Frameworks/libMoltenVK.dylib",
-          "@loader_path/../Frameworks/libMoltenVK.dylib",
-          "libMoltenVK.dylib",
-          "/opt/homebrew/lib/libMoltenVK.dylib",
-          "/usr/local/lib/libMoltenVK.dylib",
-          "libvulkan.1.dylib",
-          "libvulkan.dylib",
-      });
-  for (const char* const loader_library_name : loader_library_names) {
-    vulkan_instance->loader_ =
-        dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
-    if (vulkan_instance->loader_) {
-      XELOGI("Loaded Vulkan loader {}", loader_library_name);
-      break;
-    }
-  }
-  if (!vulkan_instance->loader_) {
-    XELOGE(
-        "Failed to load MoltenVK or the Vulkan loader. Install MoltenVK or "
-        "set MOLTENVK_ICD_DYLIB_PATH to the MoltenVK dynamic library path.");
-    return nullptr;
-  }
-#define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
-  functions_loaded &=                                                    \
-      (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
-      nullptr;
+  // MoltenVK is statically linked; the vk* entry points are real symbols.
+#define XE_VULKAN_LOAD_LOADER_FUNCTION(name) ifn.name = &::name;
 #elif XE_PLATFORM_WIN32
   vulkan_instance->loader_ = LoadLibraryW(L"vulkan-1.dll");
   if (!vulkan_instance->loader_) {
@@ -639,7 +615,7 @@ VulkanInstance::~VulkanInstance() {
     functions_.vkDestroyInstance(instance_, nullptr);
   }
 
-#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#if XE_PLATFORM_LINUX
   if (loader_) {
     dlclose(loader_);
   }

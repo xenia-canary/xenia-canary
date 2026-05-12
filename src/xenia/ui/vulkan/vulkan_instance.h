@@ -130,7 +130,7 @@ class VulkanInstance {
 
   std::unique_ptr<RenderDocAPI> renderdoc_api_;
 
-#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#if XE_PLATFORM_LINUX
   void* loader_ = nullptr;
 #elif XE_PLATFORM_WIN32
   HMODULE loader_ = nullptr;

@@ -126,3 +126,6 @@
 	path = third_party/wxWidgets
 	url = https://github.com/wxWidgets/wxWidgets.git
 	branch = v3.3.2
+[submodule "third_party/MoltenVK"]
+	path = third_party/MoltenVK
+	url = https://github.com/KhronosGroup/MoltenVK.git
