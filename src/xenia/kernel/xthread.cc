@@ -687,11 +687,15 @@ void XThread::LeaveCriticalRegion() {
 
 void XThread::EnqueueApc(uint32_t normal_routine, uint32_t normal_context,
                          uint32_t arg1, uint32_t arg2) {
-  // don't use thread_state_ -> context() ! we're not running on the thread
-  // we're enqueuing to
-  uint32_t success = xboxkrnl::xeNtQueueApcThread(
-      this->handle(), normal_routine, normal_context, arg1, arg2,
-      cpu::ThreadState::Get()->context());
+  // Most APC queue sites run on a guest thread and can use the caller's bound
+  // PPC context. Host timer callbacks may run without a bound guest
+  // ThreadState, so fall back to the target thread context in that case.
+  auto* queue_thread_state = cpu::ThreadState::Get();
+  auto* queue_context = queue_thread_state ? queue_thread_state->context()
+                                           : thread_state_->context();
+  uint32_t success =
+      xboxkrnl::xeNtQueueApcThread(this->handle(), normal_routine,
+                                   normal_context, arg1, arg2, queue_context);
 
   xenia_assert(success == X_STATUS_SUCCESS);
 }
