@@ -73,7 +73,7 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
       uint64_t time = xe::Clock::QueryGuestSystemTime();
       uint32_t time_low = static_cast<uint32_t>(time);
       uint32_t time_high = static_cast<uint32_t>(time >> 32);
-      XELOGI(
+      XELOGD(
           "XTimer enqueuing timer callback to {:08X}({:08X}, {:08X}, {:08X})",
           cb_routine, cb_routine_arg, time_low, time_high);
       cb_thread->EnqueueApc(cb_routine, cb_routine_arg, time_low, time_high);
