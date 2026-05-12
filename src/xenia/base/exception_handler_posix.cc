@@ -10,7 +10,10 @@
 #include "xenia/base/exception_handler.h"
 
 #include <signal.h>
+#include <unistd.h>
+#include <atomic>
 #include <cstdint>
+#include <cstdio>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/host_thread_context.h"
@@ -176,14 +179,30 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
 #if XE_PLATFORM_MAC
       {
         // On Darwin, determine access direction from the faulting instruction.
+        uint64_t fault_pc = mcontext->__ss.__pc;
+        uint32_t fault_insn = *reinterpret_cast<const uint32_t*>(fault_pc);
         bool instruction_is_store;
-        if (IsArm64LoadPrefetchStore(
-                *reinterpret_cast<const uint32_t*>(mcontext->__ss.__pc),
-                instruction_is_store)) {
+        if (IsArm64LoadPrefetchStore(fault_insn, instruction_is_store)) {
           access_violation_operation =
               instruction_is_store ? Exception::AccessViolationOperation::kWrite
                                    : Exception::AccessViolationOperation::kRead;
         } else {
+          // Crash-safe diagnostic: write directly to stderr so the line
+          // survives an unhandled fault. Rate-limited to avoid flooding.
+          static std::atomic<int> unclassified_log_remaining{16};
+          if (unclassified_log_remaining.fetch_sub(
+                  1, std::memory_order_relaxed) > 0) {
+            char buf[160];
+            int n = std::snprintf(
+                buf, sizeof(buf),
+                "[arm64] unclassified fault: pc=0x%llx insn=0x%08x addr=%p\n",
+                (unsigned long long)fault_pc, fault_insn, signal_info->si_addr);
+            if (n > 0) {
+              size_t to_write =
+                  (n < int(sizeof(buf) - 1)) ? size_t(n) : sizeof(buf) - 1;
+              (void)::write(STDERR_FILENO, buf, to_write);
+            }
+          }
           access_violation_operation =
               Exception::AccessViolationOperation::kUnknown;
         }

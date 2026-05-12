@@ -43,12 +43,35 @@ bool IsArm64LoadPrefetchStore(uint32_t instruction, bool& is_store_out) {
   if ((instruction & kArm64LoadLiteralFMask) == kArm64LoadLiteralFixed) {
     return true;
   }
+  if ((instruction & kArm64SystemSysFMask) == kArm64SystemSysFixed) {
+    is_store_out = true;
+    return true;
+  }
   if ((instruction & kArm64LoadStoreAnyFMask) != kArm64LoadStoreAnyFixed) {
     return false;
   }
   if ((instruction & kArm64LoadStorePairAnyFMask) ==
       kArm64LoadStorePairAnyFixed) {
     is_store_out = !(instruction & kArm64LoadStorePairLoadBit);
+    return true;
+  }
+  if ((instruction & kArm64LoadStoreExclusiveFMask) ==
+      kArm64LoadStoreExclusiveFixed) {
+    if ((instruction & kArm64CompareAndSwapFMask) ==
+        kArm64CompareAndSwapFixed) {
+      is_store_out = true;
+    } else {
+      is_store_out = !(instruction & kArm64LoadStoreExclusiveLoadBit);
+    }
+    return true;
+  }
+  if ((instruction & kArm64AtomicMemoryFMask) == kArm64AtomicMemoryFixed) {
+    is_store_out = true;
+    return true;
+  }
+  if ((instruction & kArm64NeonLoadStoreStructFMask) ==
+      kArm64NeonLoadStoreStructFixed) {
+    is_store_out = !(instruction & kArm64NeonLoadStoreStructLoadBit);
     return true;
   }
   switch (Arm64LoadStoreOp(instruction & kArm64LoadStoreMask)) {
