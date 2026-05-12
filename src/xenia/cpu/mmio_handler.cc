@@ -440,15 +440,15 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
     // clears the watch we just hit).
     // Do this under the lock so we don't introduce another race condition.
     auto lock = global_critical_region_.Acquire();
-#if XE_PLATFORM_LINUX
-    // On Linux, exception handling runs inside a signal handler (SIGSEGV).
-    // QueryProtect uses std::ifstream to read /proc/self/maps, which is NOT
-    // async-signal-safe and can corrupt heap state or deadlock if the signal
-    // interrupted malloc or another non-reentrant function.
-    // Instead, skip the race-condition check and go straight to the callback.
-    // The callback will handle it correctly — if watches were already cleared,
-    // TriggerCallbacks will find no watches and the page will be unprotected
-    // by the time the instruction retries.
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+    // POSIX exception handling runs inside a signal handler (SIGSEGV / SIGBUS).
+    // QueryProtect is not async-signal-safe on either platform: Linux reads
+    // /proc/self/maps via std::ifstream, and macOS issues a mach_msg via
+    // mach_vm_region. Either can deadlock or corrupt state if the signal
+    // interrupted malloc, the C++ runtime, or another mach reply-port use.
+    // Skip the race-condition check and go straight to the callback — if
+    // watches were already cleared by another thread, TriggerCallbacks finds
+    // no watches and the page is unprotected by the time we retry.
     if (access_violation_callback_) {
       return access_violation_callback_(std::move(lock),
                                         access_violation_callback_context_,
