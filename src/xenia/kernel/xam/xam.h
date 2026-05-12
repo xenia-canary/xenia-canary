@@ -348,6 +348,11 @@ enum class UserContextDevice : uint32_t {
   Microphone = 4,
 };
 
+enum class WriteTileType {
+  Tile = 1,  // Public
+  Personal = 2,
+};
+
 constexpr uint32_t XMP_MAX_METADATA_STRING = 40;
 constexpr uint32_t XMP_MAX_USER_PLAYLIST_ID = 572;
 constexpr uint32_t XMP_USER_PLAYLIST_RESERVED_FIELD_SIZE = 168;

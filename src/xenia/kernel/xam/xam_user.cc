@@ -10,6 +10,7 @@
 #include <ranges>
 
 #include "xenia/base/logging.h"
+#include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/user_profile.h"
@@ -878,18 +879,102 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
 }
 DECLARE_XAM_EXPORT1(XamReadTileToTexture, kUserProfiles, kStub);
 
-dword_result_t XamWriteGamerTile_entry(dword_t user_index, dword_t title_id,
-                                       dword_t small_tile_id,
-                                       dword_t big_tile_id, dword_t arg5,
-                                       dword_t overlapped_ptr) {
-  if (overlapped_ptr) {
-    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
-                                                X_ERROR_SUCCESS);
-    return X_ERROR_IO_PENDING;
+// Alias XUserAwardGamerPicture
+dword_result_t XamWriteGamerTile_entry(
+    dword_t user_index, dword_t title_id, dword_t big_tile_id,
+    dword_t small_tile_id, dword_t for_enumerate,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_E_INVALIDARG;
   }
-  return X_ERROR_SUCCESS;
+
+  // What is 0x10 flag?
+  const uint32_t flags = (for_enumerate != 0 ? 0 : 0x10) | 1;
+
+  const WriteTileType tile_type = static_cast<WriteTileType>((flags & 0xF));
+
+  auto WriteGamerTileByKey = [=](uint32_t& extended_error, uint32_t& length) {
+    extended_error = X_ERROR_SUCCESS;
+    length = 0;
+
+    auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (!user) {
+      extended_error = X_E_INVALIDARG;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    const uint32_t content_title_id =
+        title_id ? title_id.value() : kernel_state()->title_id();
+
+    const std::string gamerpic_key =
+        fmt::format("{:08x}{:08x}{:08x}", content_title_id, big_tile_id.value(),
+                    small_tile_id.value());
+
+    const std::string big_gamerpic_filename =
+        fmt::format("64_{}.png", gamerpic_key);
+
+    const std::string small_gamerpic_filename =
+        fmt::format("32_{}.png", gamerpic_key);
+
+    const std::string common_content_str = fmt::format("{:016X}", 0);
+    const std::string content_type_str =
+        fmt::format("{:08X}", uint32_t(XContentType::kGamerPicture));
+    const std::string content_title_id_str =
+        fmt::format("{:08x}", content_title_id);
+
+    const std::filesystem::path gamer_pictures_storage_path =
+        kernel_state()->emulator()->content_root() / common_content_str /
+        kDashboardStringID / content_type_str / content_title_id_str;
+
+    const std::filesystem::path big_gamerpic_path =
+        gamer_pictures_storage_path / big_gamerpic_filename;
+
+    const std::filesystem::path small_gamerpic_path =
+        gamer_pictures_storage_path / small_gamerpic_filename;
+
+    const auto gamerpic_big_png =
+        kernel_state()->xam_state()->spa_info()->GetIcon(big_tile_id);
+
+    const auto gamerpic_small_png =
+        kernel_state()->xam_state()->spa_info()->GetIcon(small_tile_id);
+
+    FILE* big_gamerpic_file = xe::filesystem::OpenFile(big_gamerpic_path, "ab");
+    FILE* small_gamerpic_file =
+        xe::filesystem::OpenFile(small_gamerpic_path, "ab");
+
+    X_RESULT result = X_ERROR_SUCCESS;
+
+    if (!big_gamerpic_file || !small_gamerpic_file) {
+      extended_error = X_E_FUNCTION_FAILED;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    fwrite(gamerpic_big_png.data(), 1, gamerpic_big_png.size(),
+           big_gamerpic_file);
+    fclose(big_gamerpic_file);
+
+    fwrite(gamerpic_small_png.data(), 1, gamerpic_small_png.size(),
+           small_gamerpic_file);
+    fclose(small_gamerpic_file);
+
+    XELOGI("Player: {} Unlocked Gamerpic: {}", user->name(),
+           big_gamerpic_filename);
+
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    X_RESULT result = WriteGamerTileByKey(extended_error, length);
+
+    return result == X_ERROR_SUCCESS ? result : extended_error;
+  }
+
+  kernel_state()->CompleteOverlappedDeferredEx(WriteGamerTileByKey,
+                                               overlapped_ptr);
+  return X_ERROR_IO_PENDING;
 }
-DECLARE_XAM_EXPORT1(XamWriteGamerTile, kUserProfiles, kStub);
+DECLARE_XAM_EXPORT1(XamWriteGamerTile, kUserProfiles, kSketchy);
 
 dword_result_t XamSessionCreateHandle_entry(lpdword_t handle_ptr) {
   *handle_ptr = 0xCAFEDEAD;
