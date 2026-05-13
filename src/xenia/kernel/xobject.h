@@ -84,6 +84,9 @@ struct X_OBJECT_HEADER {
   // (There's actually a body field here which is the object itself)
 };
 
+// Pre-header pad in CreateNative so the body lands 32-byte aligned.
+constexpr uint32_t kGuestObjectPrePad = 8;
+
 // https://www.nirsoft.net/kernel_struct/vista/OBJECT_CREATE_INFORMATION.html
 struct X_OBJECT_CREATE_INFORMATION {
   xe::be<uint32_t> attributes;                  // 0x0

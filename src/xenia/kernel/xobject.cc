@@ -52,15 +52,15 @@ XObject::~XObject() {
   assert_zero(pointer_ref_count_);
 
   if (allocated_guest_object_) {
-    uint32_t ptr = guest_object_ptr_ - sizeof(X_OBJECT_HEADER);
-    auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(ptr);
+    uint32_t header_addr = guest_object_ptr_ - sizeof(X_OBJECT_HEADER);
+    auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(header_addr);
 
     // Free the object creation info
     if (header->object_type_ptr) {
       memory()->SystemHeapFree(header->object_type_ptr);
     }
 
-    memory()->SystemHeapFree(ptr);
+    memory()->SystemHeapFree(header_addr - kGuestObjectPrePad);
   }
 }
 
@@ -348,7 +348,9 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
 uint8_t* XObject::CreateNative(uint32_t size) {
   auto global_lock = xe::global_critical_region::AcquireDirect();
 
-  uint32_t total_size = size + sizeof(X_OBJECT_HEADER);
+  static_assert((kGuestObjectPrePad + sizeof(X_OBJECT_HEADER)) % 32 == 0);
+
+  uint32_t total_size = kGuestObjectPrePad + sizeof(X_OBJECT_HEADER) + size;
 
   auto mem = memory()->SystemHeapAlloc(total_size);
   if (!mem) {
@@ -358,9 +360,10 @@ uint8_t* XObject::CreateNative(uint32_t size) {
 
   allocated_guest_object_ = true;
   memory()->Zero(mem, total_size);
-  SetNativePointer(mem + sizeof(X_OBJECT_HEADER), true);
+  uint32_t header_addr = mem + kGuestObjectPrePad;
+  SetNativePointer(header_addr + sizeof(X_OBJECT_HEADER), true);
 
-  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(mem);
+  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(header_addr);
 
   auto object_type = memory()->SystemHeapAlloc(sizeof(X_OBJECT_TYPE));
   if (object_type) {
