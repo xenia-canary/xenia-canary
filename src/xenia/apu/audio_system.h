@@ -11,6 +11,7 @@
 #define XENIA_APU_AUDIO_SYSTEM_H_
 
 #include <atomic>
+#include <mutex>
 #include <queue>
 
 #include "xenia/base/mutex.h"
@@ -101,6 +102,8 @@ class AudioSystem {
     std::atomic<uint32_t> frames_submitted{0};
     std::atomic<uint32_t> frames_processed{0};
     std::atomic<uint32_t> frames_dropped{0};
+    // Held by worker during Execute; UnregisterClient waits on it.
+    std::mutex callback_mutex;
   } clients_[kMaximumClientCount];
 
   int FindFreeClient();

@@ -129,10 +129,18 @@ void AudioSystem::WorkerThreadMain() {
     if (result.first == xe::threading::WaitResult::kSuccess) {
       auto index = result.second;
 
-      auto global_lock = global_critical_region_.Acquire();
-      uint32_t client_callback = clients_[index].callback;
-      uint32_t client_callback_arg = clients_[index].wrapped_callback_arg;
-      global_lock.unlock();
+      // UnregisterClient waits on this after clearing in_use.
+      std::lock_guard<std::mutex> cb_lk(clients_[index].callback_mutex);
+
+      uint32_t client_callback = 0;
+      uint32_t client_callback_arg = 0;
+      {
+        auto global_lock = global_critical_region_.Acquire();
+        if (clients_[index].in_use) {
+          client_callback = clients_[index].callback;
+          client_callback_arg = clients_[index].wrapped_callback_arg;
+        }
+      }
 
       if (client_callback) {
         SCOPE_profile_cpu_i("apu", "xe::apu::AudioSystem->client_callback");
@@ -293,21 +301,32 @@ bool AudioSystem::GetClientPerformance(size_t index,
 void AudioSystem::UnregisterClient(size_t index) {
   SCOPE_profile_cpu_f("apu");
 
-  auto global_lock = global_critical_region_.Acquire();
   assert_true(index < kMaximumClientCount);
-  XELOGI("AudioSystem::UnregisterClient: index={}, driver={:p}", index,
-         index < kMaximumClientCount ? (void*)clients_[index].driver : nullptr);
-  DestroyDriver(clients_[index].driver);
-  memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
+  AudioDriver* driver_to_destroy;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    XELOGI(
+        "AudioSystem::UnregisterClient: index={}, driver={:p}", index,
+        index < kMaximumClientCount ? (void*)clients_[index].driver : nullptr);
+    driver_to_destroy = clients_[index].driver;
+    // Leak wrapped_callback_arg: in-flight callback may hold this pointer.
+    clients_[index].driver = nullptr;
+    clients_[index].callback = 0;
+    clients_[index].callback_arg = 0;
+    clients_[index].wrapped_callback_arg = 0;
+    clients_[index].in_use = false;
+    clients_[index].frames_submitted.store(0);
+    clients_[index].frames_processed.store(0);
+    clients_[index].frames_dropped.store(0);
+  }
 
-  clients_[index].driver = nullptr;
-  clients_[index].callback = 0;
-  clients_[index].callback_arg = 0;
-  clients_[index].wrapped_callback_arg = 0;
-  clients_[index].in_use = false;
-  clients_[index].frames_submitted.store(0);
-  clients_[index].frames_processed.store(0);
-  clients_[index].frames_dropped.store(0);
+  // Wait for any in-flight callback; can't hold global lock (callback
+  // re-enters).
+  {
+    std::lock_guard<std::mutex> lk(clients_[index].callback_mutex);
+  }
+
+  DestroyDriver(driver_to_destroy);
 
   // Drain the semaphore of its count.
   auto client_semaphore = client_semaphores_[index].get();
