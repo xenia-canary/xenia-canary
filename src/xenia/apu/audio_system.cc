@@ -263,6 +263,9 @@ void AudioSystem::SubmitFrame(size_t index, float* samples) {
       static float silence[apu::AudioDriver::kFrameSamplesMax] = {0};
       clients_[index].frames_dropped++;
       (clients_[index].driver)->SubmitFrame(silence);
+    } else if (index < kMaximumClientCount) {
+      // Tick the semaphore so the worker doesn't stall on a dead client.
+      client_semaphores_[index]->Release(1, nullptr);
     }
     return;
   }
@@ -292,6 +295,8 @@ void AudioSystem::UnregisterClient(size_t index) {
 
   auto global_lock = global_critical_region_.Acquire();
   assert_true(index < kMaximumClientCount);
+  XELOGI("AudioSystem::UnregisterClient: index={}, driver={:p}", index,
+         index < kMaximumClientCount ? (void*)clients_[index].driver : nullptr);
   DestroyDriver(clients_[index].driver);
   memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
 
