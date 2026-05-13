@@ -27,6 +27,10 @@
 #include <ctime>
 #include <limits>
 
+#if defined(__GLIBCXX__)
+#include <cxxabi.h>
+#endif
+
 #include "xenia/base/logging.h"
 
 #if XE_PLATFORM_MAC
@@ -1532,7 +1536,22 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
         lock, [thread] { return thread->handle_.suspend_count_ == 0; });
   }
 
-  start_routine();
+  try {
+    start_routine();
+  }
+#if defined(__GLIBCXX__)
+  // pthread_exit/cancel sentinel; must propagate.
+  catch (abi::__forced_unwind&) {
+    throw;
+  }
+#endif
+  catch (const std::exception& e) {
+    XELOGE("Host thread '{}' terminated by uncaught exception: {}",
+           thread->handle_.name(), e.what());
+  } catch (...) {
+    XELOGE("Host thread '{}' terminated by unknown exception",
+           thread->handle_.name());
+  }
 
   {
     std::unique_lock lock(thread->handle_.state_mutex_);
