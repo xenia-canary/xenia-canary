@@ -33,6 +33,7 @@
 #include "xenia/ui/window_listener.h"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context.h"
+#include "xenia/ui/wx_locale.h"
 
 // Available audio systems:
 #include "xenia/apu/nop/nop_audio_system.h"
@@ -590,6 +591,9 @@ bool EmulatorApp::OnInitialize() {
   XELOGI("Storage root: {}", storage_root);
 
   config::SetupConfig(storage_root);
+
+  // Must follow SetupConfig so cvars::ui_locale from the TOML is visible.
+  xe::ui::InitializeWxLocale();
 
   // Load game-specific config if a target is specified.
   if (!cvars::target.empty()) {

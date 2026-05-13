@@ -25,7 +25,6 @@
 #include "xenia/base/logging.h"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_wx.h"
-#include "xenia/ui/wx_locale.h"
 
 #if XE_PLATFORM_WIN32
 DECLARE_bool(enable_console);
@@ -92,8 +91,6 @@ bool XeniaWxApp::OnInit() {
                  [](unsigned char c) { return std::tolower(c); });
   SetAppName(wxString::FromUTF8(id));
   SetVendorName(wxString::FromUTF8(app_->GetName()));
-
-  InitializeWxLocale();
 
   if (!app_->OnInitialize()) {
     return false;
