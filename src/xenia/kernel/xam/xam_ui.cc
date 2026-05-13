@@ -332,7 +332,14 @@ static dword_result_t XamShowMessageBoxUi(
     uint32_t button_ptr = button_ptrs[i];
     auto button = xe::load_and_swap<std::u16string>(
         kernel_state()->memory()->TranslateVirtual(button_ptr));
-    buttons.push_back(xe::to_utf8(button));
+
+    if (!button.empty()) {
+      buttons.push_back(xe::to_utf8(button));
+    }
+  }
+
+  if (buttons.empty()) {
+    buttons.push_back("OK");
   }
 
   X_RESULT result;
