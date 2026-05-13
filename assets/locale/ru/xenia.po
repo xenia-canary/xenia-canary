@@ -38,7 +38,7 @@ msgstr ""
 
 #: src/xenia/ui/game_config_dialog_wx.cc:266
 msgid "%s (%08X) - Config Overrides"
-msgstr "%s (%08X) — переопределения конфигурации"
+msgstr "%s (%08X) — настройки для этой игры"
 
 #: src/xenia/app/emulator_window.cc:1683
 msgid "%s (Slot %d)"
@@ -50,7 +50,7 @@ msgstr "&О программе…"
 
 #: src/xenia/app/emulator_window.cc:693
 msgid "&Configuration"
-msgstr "&Настройка"
+msgstr "&Настройки"
 
 #: src/xenia/app/emulator_window.cc:660
 msgid "&File"
@@ -66,7 +66,7 @@ msgstr "&Установить контент…"
 
 #: src/xenia/app/emulator_window.cc:695
 msgid "&Main"
-msgstr "&Главное"
+msgstr "Основны&е"
 
 #: src/xenia/app/emulator_window.cc:663
 msgid "&Open..."
@@ -103,7 +103,7 @@ msgstr "Достижения"
 #: src/xenia/ui/game_config_dialog_wx.cc:178
 #: src/xenia/ui/game_config_dialog_wx.cc:430
 msgid "Add Override"
-msgstr "Добавить переопределение"
+msgstr "Добавить настройку"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:290
 msgid "Add..."
@@ -131,7 +131,7 @@ msgstr "Все файлы"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:430
 msgid "All cvars are already overridden."
-msgstr "Все cvar уже переопределены."
+msgstr "Уже использованы все настройки."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:69
 msgid "Argentina"
@@ -223,7 +223,7 @@ msgstr "Отмена…"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:369
 msgid "Change Icon..."
-msgstr "Сменить значок…"
+msgstr "Сменить аватар…"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:84
 msgid "Chile"
@@ -235,7 +235,7 @@ msgstr "Китай"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:387
 msgid "Clear Icon"
-msgstr "Удалить значок"
+msgstr "Удалить аватар"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:201
 #: src/xenia/ui/game_list_panel_wx.cc:558
@@ -257,7 +257,7 @@ msgstr "Завершено"
 
 #: src/xenia/ui/game_list_panel_wx.cc:812
 msgid "Config Overrides..."
-msgstr "Переопределения конфигурации…"
+msgstr "Настроить эту игру…"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:95
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:380
@@ -374,7 +374,7 @@ msgstr "Эмулируемая частота обновления:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:69
 msgid "Emulator Settings"
-msgstr "Настройки эмулятора"
+msgstr "Основные настройки эмулятора"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:52
 msgid "English"
@@ -418,7 +418,7 @@ msgstr ""
 "Дата сборки: %s\n"
 "\n"
 "Шрифт: Inter, автор Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
-"Значки: Icons8 (https://icons8.com)."
+"Иконки: Icons8 (https://icons8.com)."
 
 #: src/xenia/ui/install_progress_dialog_wx.cc:239
 msgid "Extract To: "
@@ -463,7 +463,7 @@ msgstr ""
 
 #: src/xenia/ui/game_config_dialog_wx.cc:184
 msgid "Filter cvars"
-msgstr "Фильтр cvar"
+msgstr "Поиск настроек"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:97
 msgid "Finland"
@@ -591,15 +591,15 @@ msgstr "Исландия"
 
 #: src/xenia/ui/game_list_panel_wx.cc:253
 msgid "Icon"
-msgstr "Значок"
+msgstr "Иконка"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:374
 msgid "Icon change is disabled while a title is running."
-msgstr "Смена значка недоступна, пока запущена игра."
+msgstr "Смена аватара недоступна, пока запущена игра."
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:299
 msgid "In-Process Title Relaunch:"
-msgstr "Перезапуск игры внутри процесса:"
+msgstr "Запуск игр в одном процессе:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:111
 msgid "India"
@@ -734,7 +734,7 @@ msgstr "Ливан"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:231
 msgid "Letterbox:"
-msgstr "Леттербокс:"
+msgstr "Сохранять пропорции:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:129
 msgid "Libya"
@@ -790,7 +790,7 @@ msgstr "Мальдивы"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:158
 msgid "Manage emulator configuration. Changes are saved to config.toml; some settings need a relaunch to take effect."
-msgstr "Управление настройками эмулятора. Изменения сохраняются в config.toml; некоторые требуют перезапуска для применения."
+msgstr "Управление настройками эмулятора. Изменения сохраняются в xenia-edge.config.toml; некоторые изменения требуют перезапуска для применения."
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:246
 msgid "MangoHUD not in PATH; install to enable."
@@ -822,7 +822,7 @@ msgstr "Имя: %s"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:163
 msgid "Native"
-msgstr "Родное"
+msgstr "Без изменения"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:139
 msgid "Netherlands"
@@ -992,11 +992,11 @@ msgstr "Настройки профиля"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:580
 msgid "Profile icon must be 64x64 or 32x32. Selected image is %dx%d."
-msgstr "Значок профиля должен быть 64x64 или 32x32. Выбранное изображение: %dx%d."
+msgstr "Разрешение аватара должно быть 64x64 или 32x32. Выбранное изображение: %dx%d."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:377
 msgid "Profile must be signed in to change the icon."
-msgstr "Чтобы сменить значок, профиль должен быть в сети."
+msgstr "Чтобы сменить аватар, профиль должен быть в сети."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:148
 msgid "Puerto Rico"
@@ -1022,7 +1022,7 @@ msgid ""
 msgstr ""
 "Удалить %s из списка?\n"
 "\n"
-"Это только убирает запись из дашборда; файлы игры на диске остаются."
+"Это только убирает запись из дашборда; файлы игры остаются на диске."
 
 #: src/xenia/ui/game_list_panel_wx.cc:601
 msgid "Remove '%s' from the disc list?"
@@ -1039,7 +1039,7 @@ msgstr "Удалить из списка"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:327
 msgid "Remove this override"
-msgstr "Удалить это переопределение"
+msgstr "Удалить эту настройку"
 
 #: src/xenia/ui/game_list_panel_wx.cc:681
 msgid "Rename Label"
@@ -1069,11 +1069,11 @@ msgstr "Сбросить по умолчанию"
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:435
 #: src/xenia/ui/quick_settings_dialog_wx.cc:545
 msgid "Reset to Defaults"
-msgstr "Сброс по умолчанию"
+msgstr "Сбросить по умолчанию"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:173
 msgid "Resolution Scale:"
-msgstr "Масштаб разрешения:"
+msgstr "Масштабирование разрешения:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:152
 msgid "Romania"
@@ -1121,7 +1121,7 @@ msgstr "Выбрать %s"
 
 #: src/xenia/ui/game_list_panel_wx.cc:500
 msgid "Select Content Package"
-msgstr "Выбрать пакет контента"
+msgstr "Выбрать контент"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:559
 msgid "Select PNG image"
@@ -1208,7 +1208,7 @@ msgstr "Успешно выполнено операций: %d."
 
 #: src/xenia/ui/install_progress_dialog_wx.cc:294
 msgid "Successfully installed %d package(s)."
-msgstr "Успешно установлено пакетов: %d."
+msgstr "Успешно установлено контента: %d."
 
 #: src/xenia/ui/game_list_panel_wx.cc:505
 msgid "Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*.zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
@@ -1384,7 +1384,7 @@ msgid "Import"
 msgstr "Импорт"
 
 msgid "Import %zu New Items"
-msgstr "Импортировать новых элементов: %zu"
+msgstr "Импорт новых элементов: %zu"
 
 msgid "Import failed"
 msgstr "Ошибка импорта"
