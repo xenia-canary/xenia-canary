@@ -499,7 +499,7 @@ bool ProfileManager::CreateAccount(const uint64_t xuid,
   const std::u16string gamertag_u16 = xe::to_utf16(gamertag);
 
   string_util::copy_and_swap_truncating(account.gamertag, gamertag_u16,
-                                        sizeof(account.gamertag));
+                                        xe::countof(account.gamertag));
 
   const bool result = UpdateAccount(xuid, &account);
   DismountProfile(xuid);

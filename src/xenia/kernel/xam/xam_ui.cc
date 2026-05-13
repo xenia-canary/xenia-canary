@@ -471,7 +471,7 @@ dword_result_t XamShowKeyboardUI_entry(
 
   assert_not_null(overlapped);
 
-  auto buffer_size = static_cast<size_t>(buffer_length) * 2;
+  auto buffer_size = static_cast<size_t>(buffer_length) * sizeof(char16_t);
 
   X_RESULT result;
   if (cvars::headless) {

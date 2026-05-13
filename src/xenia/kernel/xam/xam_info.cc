@@ -109,8 +109,9 @@ dword_result_t keXamBuildResourceLocator(uint64_t module,
     path = fmt::format(u"section://{:X},{}#{}", (uint32_t)module, container,
                        resource);
   }
+  const uint32_t char_count = buffer_count / sizeof(char16_t);
   xe::string_util::copy_and_swap_truncating(buffer_ptr.as<char16_t*>(), path,
-                                            buffer_count);
+                                            char_count);
   return 0;
 }
 
