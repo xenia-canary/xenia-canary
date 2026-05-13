@@ -2667,15 +2667,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
           return false;
       }
 
-      // Check if address/size changed - if same as cached, just mark in sync
       uint32_t address = vfetch_constant.address;
       uint32_t size = vfetch_constant.size;
-      VertexBufferState& state = vertex_buffer_states_[vfetch_index];
-      if (state.address == address && state.size == size) {
-        // Same buffer, already resident - just mark in sync
-        vertex_buffers_in_sync_[vfetch_index >> 6] |= vfetch_bit;
-        continue;
-      }
 
       // New or changed buffer - need to request range
       if (!shared_memory_->RequestRange(address << 2, size << 2)) {
@@ -2688,8 +2681,6 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       }
 
       // Update cache
-      state.address = address;
-      state.size = size;
       vertex_buffers_in_sync_[vfetch_index >> 6] |= vfetch_bit;
     }
   }
