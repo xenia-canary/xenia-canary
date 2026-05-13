@@ -1052,8 +1052,8 @@ msgid "Rendering:"
 msgstr "Vykresľovanie:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings on this dialog to their default values?"
-msgstr "Obnoviť všetky nastavenia v tomto dialógu na predvolené hodnoty?"
+msgid "Reset all settings to their default values?"
+msgstr "Obnoviť všetky nastavenia na predvolené hodnoty?"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"

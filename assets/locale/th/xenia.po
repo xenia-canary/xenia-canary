@@ -1050,8 +1050,8 @@ msgid "Rendering:"
 msgstr "การเรนเดอร์:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings on this dialog to their default values?"
-msgstr "รีเซ็ตการตั้งค่าทั้งหมดในกล่องโต้ตอบนี้เป็นค่าเริ่มต้นหรือไม่?"
+msgid "Reset all settings to their default values?"
+msgstr "รีเซ็ตการตั้งค่าทั้งหมดเป็นค่าเริ่มต้นหรือไม่?"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"

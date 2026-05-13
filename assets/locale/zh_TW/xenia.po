@@ -1050,8 +1050,8 @@ msgid "Rendering:"
 msgstr "渲染:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings on this dialog to their default values?"
-msgstr "將此對話框中的所有設定重設為預設值？"
+msgid "Reset all settings to their default values?"
+msgstr "將所有設定重設為預設值？"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"

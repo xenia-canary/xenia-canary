@@ -1054,8 +1054,8 @@ msgid "Rendering:"
 msgstr "Рендеринг:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings on this dialog to their default values?"
-msgstr "Скинути всі налаштування цього діалогу до типових значень?"
+msgid "Reset all settings to their default values?"
+msgstr "Скинути всі налаштування до типових значень?"
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"

@@ -571,9 +571,9 @@ void QuickSettingsDialog::Save() {
 }
 
 void QuickSettingsDialog::ResetToDefaults() {
-  auto reply = wxMessageBox(
-      _("Reset all settings on this dialog to their default values?"),
-      _("Reset to Defaults"), wxYES_NO | wxICON_QUESTION, this);
+  auto reply =
+      wxMessageBox(_("Reset all settings to their default values?"),
+                   _("Reset to Defaults"), wxYES_NO | wxICON_QUESTION, this);
   if (reply != wxYES) {
     return;
   }
