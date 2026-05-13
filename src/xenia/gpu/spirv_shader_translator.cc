@@ -992,7 +992,8 @@ std::vector<uint8_t> SpirvShaderTranslator::CompleteTranslation() {
       builder_->addExecutionMode(function_main_,
                                  spv::ExecutionModeEarlyFragmentTests);
     }
-    if (current_shader().writes_depth()) {
+    // FSI handles depth manually.
+    if (current_shader().writes_depth() && !edram_fragment_shader_interlock_) {
       builder_->addExecutionMode(function_main_,
                                  spv::ExecutionModeDepthReplacing);
     }
@@ -3884,10 +3885,11 @@ void SpirvShaderTranslator::StoreResult(const InstructionResult& result,
       }
     } break;
     case InstructionStorageTarget::kDepth: {
-      // Writes X to scalar gl_FragDepth or to a variable for FSI, no
-      // additional swizzling needed.
+      // oDepth is scalar. FBO writes it to gl_FragDepth, while FSI writes it to
+      // a depth variable consumed by FSI_DepthStencilTest.
       assert_true(used_write_mask == 0b0001);
       assert_true(current_shader().writes_depth());
+      assert_true(output_or_var_fragment_depth_ != spv::NoResult);
       target_pointer = output_or_var_fragment_depth_;
       // Depth outside [0, 1] needs to be clamped for safety, similar to D3D12.
       // Though 20e4 float depth can store values between 1 and 2, it's a very

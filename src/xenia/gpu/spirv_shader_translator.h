@@ -1009,8 +1009,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // output_or_var_fragment_data_.
   std::array<spv::Id, xenos::kMaxColorRenderTargets> output_fragment_data_;
 
-  // Fragment shader depth output (gl_FragDepth).
-  // With fragment shader interlock, a variable in the main function.
+  // Fragment shader depth output.
+  // With fragment shader interlock, a staging variable in the main function
+  // consumed by FSI_DepthStencilTest.
   // Otherwise, the depth output (only created if shader writes depth).
   spv::Id output_or_var_fragment_depth_;
 
