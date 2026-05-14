@@ -88,7 +88,7 @@ class MetalCommandProcessor : public CommandProcessor {
   }
   uint32_t current_draw_index() const { return current_draw_index_; }
   uint64_t GetCurrentSubmission() const;
-  uint64_t GetCompletedSubmission() const;
+  uint64_t GetCompletedSubmission() const override;
   MTL::CommandBuffer* EnsureCommandBuffer();
   void EndRenderEncoder();
   void ResetRenderEncoderResourceUsage();

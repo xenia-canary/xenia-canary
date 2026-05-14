@@ -37,6 +37,10 @@ DECLARE_int32(occlusion_query_fake_upper_threshold);
 
 DECLARE_bool(occlusion_query_log);
 
+DECLARE_bool(occlusion_query_fast_trust_report);
+
+DECLARE_int32(occlusion_query_querybatch_range);
+
 DECLARE_double(occlusion_query_sample_count_saturation);
 
 // Returns the guest vblank rate in Hz (50 for PAL, 60 for NTSC).

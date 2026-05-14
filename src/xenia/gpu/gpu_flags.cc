@@ -94,6 +94,20 @@ DEFINE_int32(occlusion_query_fake_upper_threshold, 100,
              "GPU");
 DEFINE_bool(occlusion_query_log, false,
             "Log occlusion query lifetime and summary stats.", "GPU");
+DEFINE_bool(
+    occlusion_query_fast_trust_report, false,
+    "Prefer the current query report over cached fast mode values.\n"
+    "Can improve occlusion accuracy in fast mode by reducing stale results,\n"
+    "but may also regress occlusion culling in titles that already have\n"
+    "issues with fast mode.",
+    "GPU");
+DEFINE_int32(occlusion_query_querybatch_range, 0,
+             "Range of fake sample count values to walk for titles using the\n"
+             "D3D QueryBatch standard before wrapping back to\n"
+             "occlusion_query_fake_lower_threshold. This shouldn't be changed\n"
+             "from the default value of 0 (disabled) unless necessary for a\n"
+             "specific title.",
+             "GPU");
 DEFINE_double(
     occlusion_query_sample_count_saturation, 1.0,
     "Compress higher occlusion query sample counts before guest writeback.\n"

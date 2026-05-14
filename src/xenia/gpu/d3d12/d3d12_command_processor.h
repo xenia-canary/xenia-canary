@@ -82,8 +82,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void RestoreEdramSnapshot(const void* snapshot) override;
 
-  void PrepareForWait() override;
-  void ReturnFromWait() override;
+  void PollCompletedSubmission() override;
 
   ui::d3d12::D3D12Provider& GetD3D12Provider() const {
     return *static_cast<ui::d3d12::D3D12Provider*>(
@@ -100,7 +99,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
   uint64_t GetCurrentSubmission() const {
     return completion_timeline_->GetUpcomingSubmission();
   }
-  uint64_t GetCompletedSubmission() const {
+  uint64_t GetCompletedSubmission() const override {
     return completion_timeline_->GetCompletedSubmissionFromLastUpdate();
   }
 
@@ -528,10 +527,12 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   QueryOpenResult OpenZPDQuery(ReportHandle report_handle,
                                bool can_close_submission) override;
-  bool CloseZPDQuery(ReportHandle report_handle) override;
+  bool CloseZPDQuery(ReportHandle report_handle,
+                     uint64_t& out_submission) override;
   bool DiscardZPDQuery() override;
   void PumpQueryResolves() override;
-  bool AwaitQueryResolve(ReportHandle report_handle) override;
+  bool AwaitQueryResolve(ReportHandle report_handle,
+                         uint64_t wait_for_submission) override;
 
   void RecordZPDResolveBatch();
 

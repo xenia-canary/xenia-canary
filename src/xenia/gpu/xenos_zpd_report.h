@@ -29,19 +29,12 @@ struct XenosZPDReport {
   static constexpr uint32_t kSlotSizeBytes = 0x40;
   static constexpr uint32_t kSlotAlignMask = ~(kSlotSizeBytes - 1);
 
-  static constexpr uint32_t kBatchPageSizeBytes = 0x1000;
-  static constexpr uint32_t kBatchPageAlignMask = ~(kBatchPageSizeBytes - 1);
-
   static constexpr uint32_t GetRecordBase(uint32_t address) {
     return address & kRecordAlignMask;
   }
 
   static constexpr uint32_t GetSlotBase(uint32_t address) {
     return address & kSlotAlignMask;
-  }
-
-  static constexpr uint32_t GetBatchPageBase(uint32_t address) {
-    return GetRecordBase(address) & kBatchPageAlignMask;
   }
 
   static constexpr uint32_t GetBeginRecordBase(uint32_t address) {
@@ -60,13 +53,6 @@ struct XenosZPDReport {
   static constexpr bool IsEndRecord(uint32_t address) {
     uint32_t record_base = GetRecordBase(address);
     return record_base && record_base == GetEndRecordBase(record_base);
-  }
-
-  // Checks for the 0x20 checkpoint walk batched titles use in one page.
-  static constexpr bool IsBatchStep(uint32_t last_record_base,
-                                    uint32_t record_base) {
-    return last_record_base != 0 &&
-           record_base == last_record_base + kRecordSizeBytes;
   }
 
   // Boundary detection only looks at ZPass_A first, then ZFail_A.
@@ -90,8 +76,10 @@ struct XenosZPDReport {
   // Total_A mirrors ZPass_A and the rest are zeroed out since host queries can
   // only provide a passing count. This is still enough to satisfy most titles.
   static void WriteSampleCount(xenos::xe_gpu_depth_sample_counts* report,
-                               uint32_t sample_count) {
-    sample_count = SaturateSampleCount(sample_count);
+                               uint32_t sample_count, bool saturate = true) {
+    if (saturate) {
+      sample_count = SaturateSampleCount(sample_count);
+    }
 
     report->Total_A = sample_count;
     report->Total_B = 0;
@@ -134,23 +122,34 @@ struct XenosZPDReport {
 
   // Fake mode for titles (425307EC, 4D5309B1) that use QueryBatch and expect
   // the sample count to accumulate across multiple records.
-  static constexpr uint32_t AddSamples(uint32_t value, uint32_t step) {
-    return value > UINT32_MAX - step ? UINT32_MAX : value + step;
+  static uint32_t QueryBatchFakeSamples(uint32_t& sample_count) {
+    int32_t lower = cvars::occlusion_query_fake_lower_threshold;
+    uint32_t base = lower > 0 ? static_cast<uint32_t>(lower) : 0;
+    uint32_t range =
+        static_cast<uint32_t>(cvars::occlusion_query_querybatch_range);
+
+    if (sample_count - base >= range) {
+      sample_count = base;
+    }
+
+    uint32_t current_sample_count = sample_count++;
+    if (sample_count - base >= range) {
+      sample_count = base;
+    }
+    return current_sample_count;
   }
 
   static void WriteReportDelta(xenos::xe_gpu_depth_sample_counts* begin_report,
                                xenos::xe_gpu_depth_sample_counts* end_report,
                                uint32_t begin_value, uint32_t delta_value,
                                bool write_begin_report) {
-    uint64_t end_value =
-        static_cast<uint64_t>(begin_value) + static_cast<uint64_t>(delta_value);
-    uint32_t clamped_value =
-        end_value > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(end_value);
+    delta_value = SaturateSampleCount(delta_value);
+    uint32_t end_value = begin_value + delta_value;
 
     if (write_begin_report && begin_report && end_report != begin_report) {
-      WriteSampleCount(begin_report, begin_value);
+      WriteSampleCount(begin_report, begin_value, false);
     }
-    WriteSampleCount(end_report, clamped_value);
+    WriteSampleCount(end_report, end_value, false);
   }
 };
 

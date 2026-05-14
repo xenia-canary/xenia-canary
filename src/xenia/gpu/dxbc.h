@@ -1497,6 +1497,7 @@ enum class Opcode : uint32_t {
   kRcp = 129,
   kF32ToF16 = 130,
   kF16ToF32 = 131,
+  kCountBits = 134,
   kFirstBitHi = 135,
   kFirstBitLo = 136,
   kUBFE = 138,
@@ -2253,6 +2254,10 @@ class Assembler {
   void OpF16ToF32(const Dest& dest, const Src& src) {
     EmitAluOp(Opcode::kF16ToF32, 0b1, dest, src);
     ++stat_.conversion_instruction_count;
+  }
+  void OpCountBits(const Dest& dest, const Src& src) {
+    EmitAluOp(Opcode::kCountBits, 0b1, dest, src);
+    ++stat_.uint_instruction_count;
   }
   void OpFirstBitHi(const Dest& dest, const Src& src) {
     EmitAluOp(Opcode::kFirstBitHi, 0b1, dest, src);

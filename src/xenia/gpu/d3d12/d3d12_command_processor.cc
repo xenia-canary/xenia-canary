@@ -144,16 +144,11 @@ void D3D12CommandProcessor::RestoreEdramSnapshot(const void* snapshot) {
   render_target_cache_->RestoreEdramSnapshot(snapshot);
 }
 
-void D3D12CommandProcessor::PrepareForWait() {
-  // Refresh completion data so PumpPendingRetire in the base class sees the
-  // latest GPU progress.
-  CheckSubmissionCompletion(0);
-  CommandProcessor::PrepareForWait();
-}
-
-void D3D12CommandProcessor::ReturnFromWait() {
-  CheckSubmissionCompletion(0);
-  CommandProcessor::ReturnFromWait();
+void D3D12CommandProcessor::PollCompletedSubmission() {
+  // Strict ZPD just needs the completion timeline updated and any ready query
+  // resolves drained here.
+  completion_timeline_->AwaitSubmissionAndUpdateCompleted(0);
+  PumpQueryResolves();
 }
 
 bool D3D12CommandProcessor::PushTransitionBarrier(
@@ -3943,10 +3938,11 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
       XELOGI(
           "Occlusion Query Stats (last 100 frames): "
           "LogicalBegun={}, LogicalEnded={}, SegBegun={}, SegEnded={}, "
-          "PoolExhausted={}, Failed={}",
+          "PoolExhausted={}, Failed={}, Wraps={}, SameSlotReuse={}",
           zpd_stats_.logical_begun, zpd_stats_.logical_ended,
           zpd_stats_.segments_begun, zpd_stats_.segments_ended,
-          zpd_stats_.pool_exhausted, zpd_stats_.failed);
+          zpd_stats_.pool_exhausted, zpd_stats_.failed,
+          zpd_stats_.counter_wraps, zpd_stats_.same_slot_reuse);
 
       zpd_stats_.Reset(frame_current_);
     }
@@ -5934,7 +5930,8 @@ CommandProcessor::QueryOpenResult D3D12CommandProcessor::OpenZPDQuery(
   return QueryOpenResult::kOpened;
 }
 
-bool D3D12CommandProcessor::CloseZPDQuery(ReportHandle report_handle) {
+bool D3D12CommandProcessor::CloseZPDQuery(ReportHandle report_handle,
+                                          uint64_t& out_submission) {
   if (zpd_active_query_is_rov_) {
     zpd_host_query_pool_->QueueQueryResolve(zpd_active_query_index_, true);
   } else {
@@ -5950,6 +5947,8 @@ bool D3D12CommandProcessor::CloseZPDQuery(ReportHandle report_handle) {
   resolve.uses_rov_counter = zpd_active_query_is_rov_;
   resolve.report_handle = report_handle;
   zpd_resolves_in_flight_.push_back(resolve);
+
+  out_submission = resolve.submission;
 
   zpd_active_query_index_ = UINT32_MAX;
   zpd_active_query_generation_ = 0;
@@ -6008,37 +6007,39 @@ void D3D12CommandProcessor::PumpQueryResolves() {
       zpd_host_query_pool_->ReleaseQueryIndex(resolve.query_index,
                                               resolve.query_generation);
       OnZPDQueryResolved(resolve.report_handle, raw_samples);
+    } else {
+      if (cvars::occlusion_query_log) {
+        XELOGI(
+            "ZPD/D3D12: Dropping stale query index={} generation={} "
+            "handle={}",
+            resolve.query_index, resolve.query_generation,
+            resolve.report_handle);
+      }
     }
   }
 }
 
-bool D3D12CommandProcessor::AwaitQueryResolve(ReportHandle report_handle) {
+bool D3D12CommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
+                                              uint64_t wait_for_submission) {
   if (GetZPDMode() == ZPDMode::kFake) {
     return false;
-  }
-  if (zpd_batch_fake_) {
-    return true;
   }
 
   PumpQueryResolves();
 
-  // Find the latest submission that has a resolve for this handle.
-  uint64_t wait_for = 0;
-  for (const auto& resolve : zpd_resolves_in_flight_) {
-    if (resolve.report_handle == report_handle) {
-      wait_for = resolve.submission;
-    }
+  auto it = logical_zpd_reports_.find(report_handle);
+  if (it == logical_zpd_reports_.end()) {
+    return true;
   }
-
-  if (wait_for == 0) {
-    // No in-flight resolves — check if the report is already done.
-    auto it = logical_zpd_reports_.find(report_handle);
-    return it == logical_zpd_reports_.end() ||
-           (it->second.pending_segments == 0 && it->second.ended);
+  if (it->second.pending_segments == 0 && it->second.ended) {
+    return true;
+  }
+  if (wait_for_submission == 0) {
+    return false;
   }
 
   // Ensure the submission is flushed.
-  if (wait_for >= GetCurrentSubmission()) {
+  if (wait_for_submission >= GetCurrentSubmission()) {
     if (!submission_open_) {
       return false;
     }
@@ -6054,13 +6055,14 @@ bool D3D12CommandProcessor::AwaitQueryResolve(ReportHandle report_handle) {
     }
   }
 
-  if (wait_for > GetCompletedSubmission()) {
-    completion_timeline_->AwaitSubmissionAndUpdateCompleted(wait_for);
+  if (wait_for_submission > GetCompletedSubmission()) {
+    completion_timeline_->AwaitSubmissionAndUpdateCompleted(
+        wait_for_submission);
   }
 
   PumpQueryResolves();
 
-  auto it = logical_zpd_reports_.find(report_handle);
+  it = logical_zpd_reports_.find(report_handle);
   return it == logical_zpd_reports_.end() ||
          (it->second.pending_segments == 0 && it->second.ended);
 }

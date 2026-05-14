@@ -2140,19 +2140,12 @@ void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
   a_.OpIf(true, temp_x_src);
 
   {
-    dxbc::Src covered_samples_src(
-        dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX));
-    a_.OpUBFE(temp_x_dest, dxbc::Src::LU(1), dxbc::Src::LU(0),
-              covered_samples_src);
-    a_.OpUBFE(temp_y_dest, dxbc::Src::LU(1), dxbc::Src::LU(1),
-              covered_samples_src);
-    a_.OpIAdd(temp_x_dest, temp_x_src, temp_y_src);
-    a_.OpUBFE(temp_y_dest, dxbc::Src::LU(1), dxbc::Src::LU(2),
-              covered_samples_src);
-    a_.OpIAdd(temp_x_dest, temp_x_src, temp_y_src);
-    a_.OpUBFE(temp_y_dest, dxbc::Src::LU(1), dxbc::Src::LU(3),
-              covered_samples_src);
-    a_.OpIAdd(temp_x_dest, temp_x_src, temp_y_src);
+    // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil
+    // writes and don't contribute to the counter.
+    a_.OpAnd(temp_x_dest,
+             dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+             dxbc::Src::LU((uint32_t(1) << 4) - 1));
+    a_.OpCountBits(temp_x_dest, temp_x_src);
     a_.OpIf(true, temp_x_src);
     {
       // The counter UAV is raw, so address it in bytes.

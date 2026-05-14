@@ -272,6 +272,16 @@ class DeferredCommandBuffer {
                 regions, sizeof(VkBufferImageCopy) * region_count);
   }
 
+  void CmdVkFillBuffer(VkBuffer dst_buffer, VkDeviceSize dst_offset,
+                       VkDeviceSize size, uint32_t data) {
+    auto& args = *reinterpret_cast<ArgsVkFillBuffer*>(
+        WriteCommand(Command::kVkFillBuffer, sizeof(ArgsVkFillBuffer)));
+    args.dst_buffer = dst_buffer;
+    args.dst_offset = dst_offset;
+    args.size = size;
+    args.data = data;
+  }
+
   VkImageBlit* CmdBlitImageEmplace(VkImage src_image,
                                    VkImageLayout src_image_layout,
                                    VkImage dst_image,
@@ -474,6 +484,7 @@ class DeferredCommandBuffer {
     kVkClearColorImage,
     kVkCopyBuffer,
     kVkCopyBufferToImage,
+    kVkFillBuffer,
     kVkBlitImage,
     kVkDispatch,
     kVkDraw,
@@ -616,6 +627,13 @@ class DeferredCommandBuffer {
     uint32_t region_count;
     // Followed by aligned VkBufferImageCopy[].
     static_assert(alignof(VkBufferImageCopy) <= alignof(uintmax_t));
+  };
+
+  struct ArgsVkFillBuffer {
+    VkBuffer dst_buffer;
+    VkDeviceSize dst_offset;
+    VkDeviceSize size;
+    uint32_t data;
   };
 
   struct ArgsVkBlitImage {

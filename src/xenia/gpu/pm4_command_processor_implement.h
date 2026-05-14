@@ -1186,28 +1186,6 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
   uint32_t slot_base = XenosZPDReport::GetSlotBase(report_address);
   bool logical_active = zpd_active_segment_.logical_active;
 
-  auto write_batch_fake = [&]() {
-    if (!report_record_base) {
-      return;
-    }
-
-    if (cvars::occlusion_query_fake_lower_threshold >= 0) {
-      fake_zpd_sample_count_ =
-          (fake_zpd_sample_count_ <=
-           static_cast<uint32_t>(cvars::occlusion_query_fake_lower_threshold))
-              ? static_cast<uint32_t>(
-                    cvars::occlusion_query_fake_upper_threshold)
-              : fake_zpd_sample_count_ - 1;
-    } else if (fake_zpd_sample_count_ == 0) {
-      fake_zpd_sample_count_ = 1;
-    }
-
-    uint32_t step = std::max(uint32_t{1}, fake_zpd_sample_count_);
-    zpd_batch_fake_count_ =
-        XenosZPDReport::AddSamples(zpd_batch_fake_count_, step);
-    XenosZPDReport::WriteSampleCount(report, zpd_batch_fake_count_);
-  };
-
   if (cvars::occlusion_query_log && report) {
     XELOGI(
         "ZPD: EVENT_WRITE_ZPD fields event={} report_address=0x{:08X} "
@@ -1221,54 +1199,16 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
         guest_marks_end);
   }
 
-  // Sticky fallback. Stop using the normal query path and feed cumulative fake
-  // samples for the rest of the session.
-  if (zpd_batch_fake_) {
-    write_batch_fake();
+  // QueryBatch fake fallback, which ignores record layout and just returns an
+  // incrementing sample count on each event.
+  if (cvars::occlusion_query_querybatch_range > 0) {
+    uint32_t sample_count =
+        XenosZPDReport::QueryBatchFakeSamples(querybatch_zpd_sample_count_);
+    if (report) {
+      // Both QueryBatch and conventional fake samples skip elective saturation.
+      XenosZPDReport::WriteSampleCount(report, sample_count, false);
+    }
     return true;
-  }
-
-  // QueryBatch titles advance through pending records in steps within one page.
-  // Detect a short consecutive run here and pull the fake ripcord before the
-  // guest starts waiting on sentinels that won't clear.
-  uint32_t batch_page_base = XenosZPDReport::GetBatchPageBase(report_address);
-  // 5451082C is another batched title, but it doesn't advance through
-  // records. Instead, it has a fixed record orphan END that it repeatedly hits.
-  // Detect this pattern as well.
-  bool repeated_orphan_end = report_record_base && guest_marks_end &&
-                             is_end_record && !logical_active &&
-                             batch_page_base != 0 &&
-                             zpd_batch_page_ == batch_page_base &&
-                             report_record_base == zpd_batch_last_record_;
-  if (report_record_base && guest_marks_end && batch_page_base != 0) {
-    if ((zpd_batch_page_ == batch_page_base &&
-         XenosZPDReport::IsBatchStep(zpd_batch_last_record_,
-                                     report_record_base)) ||
-        repeated_orphan_end) {
-      ++zpd_batch_run_;
-    } else {
-      zpd_batch_page_ = batch_page_base;
-      zpd_batch_run_ = 1;
-    }
-    zpd_batch_last_record_ = report_record_base;
-
-    if (zpd_batch_run_ >= (repeated_orphan_end ? kZPDBatchRunThresholdOrphanEnd
-                                               : kZPDBatchRunThreshold)) {
-      // Don't try to mix real and fake results.
-      zpd_batch_fake_ = true;
-      zpd_batch_fake_count_ = 0;
-      zpd_pending_retire_handle_ = CommandProcessor::kInvalidReportHandle;
-      zpd_pending_retire_stalls_ = 0;
-      XELOGI(
-          "ZPD: Batched occlusion query pattern detected, falling back to "
-          "fake sample counts.");
-      write_batch_fake();
-      return true;
-    }
-  } else {
-    zpd_batch_page_ = 0;
-    zpd_batch_last_record_ = 0;
-    zpd_batch_run_ = 0;
   }
 
   if (COMMAND_PROCESSOR::GetZPDMode() != ZPDMode::kFake) {
@@ -1322,7 +1262,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
           ? static_cast<uint32_t>(cvars::occlusion_query_fake_upper_threshold)
           : fake_zpd_sample_count_ - 1;
 
-  XenosZPDReport::WriteSampleCount(report, fake_zpd_sample_count_);
+  XenosZPDReport::WriteSampleCount(report, fake_zpd_sample_count_, false);
   return true;
 }
 
