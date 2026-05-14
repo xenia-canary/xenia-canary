@@ -111,7 +111,8 @@ void XamModule::SaveLoaderData() {
   std::string launch_path = loader_data_.launch_path;
 
   auto remove_prefix = [&launch_path](std::string_view prefix) {
-    if (launch_path.compare(0, prefix.length(), prefix) == 0) {
+    if (xe::utf8::lower_ascii(launch_path)
+            .starts_with(xe::utf8::lower_ascii(prefix))) {
       launch_path = launch_path.substr(prefix.length());
     }
   };
