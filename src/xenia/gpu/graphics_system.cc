@@ -286,6 +286,9 @@ void GraphicsSystem::OnHostGpuLossFromAnyThread(
   if (host_gpu_loss_reported_.test_and_set(std::memory_order_relaxed)) {
     return;
   }
+
+  config::SaveConfig();
+
   xe::FatalError("Graphics device lost (probably due to an internal error)");
 }
 

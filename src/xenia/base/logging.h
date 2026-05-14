@@ -75,6 +75,7 @@ class DebugPrintLogSink final : public LogSink {
 // Must be called on startup.
 void InitializeLogging(const std::string_view app_name);
 void ShutdownLogging();
+void FlushLog();
 
 namespace logging {
 

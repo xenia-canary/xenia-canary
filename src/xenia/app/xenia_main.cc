@@ -574,6 +574,9 @@ void EmulatorApp::OnDestroy() {
 
   // TODO(DrChat): Remove this code and do a proper exit.
   XELOGI("Cheap-skate exit!");
+
+  xe::FlushLog();
+
   std::quick_exit(EXIT_SUCCESS);
 }
 

@@ -65,6 +65,7 @@ DEFINE_int32(
 
 namespace dp = disruptorplus;
 using namespace xe::literals;
+using namespace std::chrono_literals;
 
 namespace xe {
 
@@ -240,9 +241,15 @@ class Logger {
     sinks_.push_back(std::move(sink));
   }
 
+  void FlushAllSinks() {
+    for (const auto& sink : sinks_) {
+      sink->Flush();
+    }
+  }
+
  private:
   static constexpr size_t kBufferSize = 8_MiB;
-  uint8_t buffer_[kBufferSize];
+  uint8_t buffer_[kBufferSize] = {};
 
   static constexpr size_t kBlockSize = 256;
   static constexpr size_t kBlockCount = kBufferSize / kBlockSize;
@@ -466,6 +473,15 @@ void ShutdownLogging() {
 
   logger->~Logger();
   memory::AlignedFree(logger);
+}
+
+void FlushLog() {
+  if (!logger_) {
+    return;
+  }
+
+  xe::threading::Sleep(10ms);
+  logger_->FlushAllSinks();
 }
 
 static int g_saved_loglevel = static_cast<int>(LogLevel::Disabled);

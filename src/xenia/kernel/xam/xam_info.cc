@@ -11,6 +11,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string_util.h"
+#include "xenia/config.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
@@ -414,6 +415,9 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
             while (!dialog->IsClosing()) {
               std::this_thread::yield();
             }
+
+            config::SaveConfig();
+            xe::FlushLog();
 
             std::quick_exit(0);
           }).detach();
