@@ -133,6 +133,7 @@ class VulkanPipelineCache {
       uint32_t interpolator_mask, bool ps_param_gen_used) const;
   SpirvShaderTranslator::Modification GetCurrentPixelShaderModification(
       const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
+      reg::RB_DEPTHCONTROL normalized_depth_control,
       uint32_t normalized_color_mask) const;
 
   bool EnsureShadersTranslated(VulkanShader::VulkanTranslation* vertex_shader,
@@ -437,6 +438,13 @@ class VulkanPipelineCache {
   // Empty depth-only pixel shader for writing to depth buffer using fragment
   // shader interlock when no Xenos pixel shader provided.
   VkShaderModule depth_only_fragment_shader_ = VK_NULL_HANDLE;
+
+  // Substitute depth-only pixel shaders that perform float24 conversion of the
+  // rasterizer's depth, bound for guest depth-only draws when in-PS float24
+  // conversion is active and the depth buffer is D24FS8. Mirrors the DXBC
+  // backend's float24_{truncate,round}_ps.
+  VkShaderModule float24_truncate_fragment_shader_ = VK_NULL_HANDLE;
+  VkShaderModule float24_round_fragment_shader_ = VK_NULL_HANDLE;
 
   // Placeholder pixel shader for pipeline hot-swap to reduce stutter.
   // Outputs transparent black while the real shader compiles in background.

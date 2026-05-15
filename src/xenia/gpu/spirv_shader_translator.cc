@@ -219,14 +219,18 @@ uint64_t SpirvShaderTranslator::GetDefaultPixelShaderModification(
   return shader_modification.value;
 }
 
-std::vector<uint8_t> SpirvShaderTranslator::CreateDepthOnlyFragmentShader() {
+std::vector<uint8_t> SpirvShaderTranslator::CreateDepthOnlyFragmentShader(
+    Modification::DepthStencilMode depth_stencil_mode) {
   is_depth_only_fragment_shader_ = true;
   // TODO(Triang3l): Handle in a nicer way (is_depth_only_fragment_shader_ is a
   // leftover from when a Shader object wasn't used during translation).
   Shader shader(xenos::ShaderType::kPixel, 0, nullptr, 0);
   StringBuffer instruction_disassembly_buffer;
   shader.AnalyzeUcode(instruction_disassembly_buffer);
-  Shader::Translation& translation = *shader.GetOrCreateTranslation(0);
+  Modification modification(0);
+  modification.pixel.depth_stencil_mode = depth_stencil_mode;
+  Shader::Translation& translation =
+      *shader.GetOrCreateTranslation(modification.value);
   TranslateAnalyzedShader(translation);
   is_depth_only_fragment_shader_ = false;
   return translation.translated_binary();
@@ -997,9 +1001,19 @@ std::vector<uint8_t> SpirvShaderTranslator::CompleteTranslation() {
                                  spv::ExecutionModeEarlyFragmentTests);
     }
     // FSI handles depth manually.
-    if (current_shader().writes_depth() && !edram_fragment_shader_interlock_) {
+    if (!edram_fragment_shader_interlock_ &&
+        (current_shader().writes_depth() || DSV_IsWritingFloat24Depth())) {
       builder_->addExecutionMode(function_main_,
                                  spv::ExecutionModeDepthReplacing);
+      // Truncating float24 conversion of the rasterizer's own depth rounds
+      // towards zero, so the output is always <= the original - announce that
+      // to keep coarse early-Z culling possible. Matches SV_DepthLessEqual in
+      // the DXBC backend.
+      if (!current_shader().writes_depth() &&
+          GetSpirvShaderModification().pixel.depth_stencil_mode ==
+              Modification::DepthStencilMode::kFloat24Truncating) {
+        builder_->addExecutionMode(function_main_, spv::ExecutionModeDepthLess);
+      }
     }
     if (edram_fragment_shader_interlock_) {
       // Accessing per-sample values, so interlocking just when there's common
@@ -3041,14 +3055,15 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
   }
 
   // Fragment coordinates.
-  // TODO(Triang3l): More conditions - depth writing in the fragment shader
-  // (per-sample if supported).
   // FSI: Always needed for EDRAM offset calculation and depth derivatives.
   // param_gen: Needed for PsParamGen calculation.
   // FBO alpha-to-coverage: Needed for dithering pattern, but only when
   // alpha-to-coverage can actually run (no early fragment tests).
+  // FBO float24 in-PS conversion of the rasterizer's depth: reads
+  // gl_FragCoord.z
+  // - and must do so per-sample for MSAA antialiasing of intersections.
   bool need_frag_coord =
-      edram_fragment_shader_interlock_ || param_gen_needed ||
+      edram_fragment_shader_interlock_ || param_gen_needed || IsSampleRate() ||
       (!edram_fragment_shader_interlock_ && !is_depth_only_fragment_shader_ &&
        current_shader().writes_color_target(0) &&
        !IsExecutionModeEarlyFragmentTests());
@@ -3057,6 +3072,13 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
         spv::NoPrecision, spv::StorageClassInput, type_float4_, "gl_FragCoord");
     builder_->addDecoration(input_fragment_coordinates_, spv::DecorationBuiltIn,
                             static_cast<int>(spv::BuiltIn::FragCoord));
+    if (IsSampleRate()) {
+      // Per the Vulkan spec, a Sample-decorated fragment input forces
+      // per-sample shader invocation - no explicit sampleShadingEnable needed.
+      builder_->addCapability(spv::CapabilitySampleRateShading);
+      builder_->addDecoration(input_fragment_coordinates_,
+                              spv::DecorationSample);
+    }
     main_interface_.push_back(input_fragment_coordinates_);
   }
 
@@ -3127,10 +3149,12 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
   }
 
   // Fragment depth output (gl_FragDepth) for the FBO path.
-  // Created when the guest pixel shader writes oDepth.
+  // Created when the guest pixel shader writes oDepth, or when the host depth
+  // buffer is float24 and the rasterizer's own depth needs in-PS conversion
+  // (including the synthetic depth-only shader used for no-PS guest draws).
   // FSI manages its own depth and does not need an Output.
-  if (!edram_fragment_shader_interlock_ && !is_depth_only_fragment_shader_ &&
-      current_shader().writes_depth()) {
+  if (!edram_fragment_shader_interlock_ &&
+      (current_shader().writes_depth() || DSV_IsWritingFloat24Depth())) {
     output_fragment_depth_ = builder_->createVariable(
         spv::NoPrecision, spv::StorageClassOutput, type_float_, "gl_FragDepth");
     builder_->addDecoration(output_fragment_depth_, spv::DecorationBuiltIn,

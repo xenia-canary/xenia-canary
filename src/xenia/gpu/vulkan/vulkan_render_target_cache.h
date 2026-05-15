@@ -164,6 +164,9 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     return depth_unorm24_vulkan_format_supported_;
   }
   bool depth_float24_round() const { return depth_float24_round_; }
+  bool depth_float24_convert_in_pixel_shader() const {
+    return depth_float24_convert_in_pixel_shader_;
+  }
   bool gamma_render_target_as_unorm16() const {
     return gamma_render_target_as_unorm16_;
   }
@@ -881,6 +884,7 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   bool depth_unorm24_vulkan_format_supported_ = false;
   bool depth_float24_round_ = false;
+  bool depth_float24_convert_in_pixel_shader_ = false;
 
   bool msaa_2x_attachments_supported_ = false;
   bool msaa_2x_no_attachments_supported_ = false;

@@ -514,6 +514,12 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
     gamma_render_target_as_unorm16_ = false;
 
     depth_float24_round_ = cvars::depth_float24_round;
+    // In-PS conversion requires per-sample shading under MSAA for intersections
+    // to antialias; without sampleRateShading, fall back to transfer-time
+    // conversion so the host/PS encoding stays consistent across all draws.
+    depth_float24_convert_in_pixel_shader_ =
+        cvars::depth_float24_convert_in_pixel_shader &&
+        device_properties.sampleRateShading;
 
     // Host depth storing pipeline layout.
     VkDescriptorSetLayout host_depth_store_descriptor_set_layouts[] = {
@@ -720,8 +726,11 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
     // Piecewise linear gamma is 8-bit with programmable blending.
     gamma_render_target_as_unorm16_ = false;
 
-    // Always true float24 depth rounded to the nearest even.
+    // Always true float24 depth rounded to the nearest even, converted in the
+    // shader (FSI ignores depth_float24_convert_in_pixel_shader, but set it for
+    // parity with the host render target path).
     depth_float24_round_ = true;
+    depth_float24_convert_in_pixel_shader_ = true;
 
     // The pipeline layout and the pipelines for clearing the EDRAM buffer in
     // resolves.
@@ -2066,12 +2075,14 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(
 
 bool VulkanRenderTargetCache::IsHostDepthEncodingDifferent(
     xenos::DepthRenderTargetFormat format) const {
-  // TODO(Triang3l): Conversion directly in shaders.
   switch (format) {
     case xenos::DepthRenderTargetFormat::kD24S8:
       return !depth_unorm24_vulkan_format_supported();
     case xenos::DepthRenderTargetFormat::kD24FS8:
-      return true;
+      // When converting in the pixel shader, the host float32 depth already
+      // holds float24-grid values, so it's the canonical encoding and the
+      // separate host depth tracking isn't needed.
+      return !depth_float24_convert_in_pixel_shader();
   }
   return false;
 }
@@ -3454,8 +3465,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
           } break;
           case xenos::DepthRenderTargetFormat::kD24FS8: {
             depth24 = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                builder, source_depth_float[i], depth_float24_round(), true,
-                ext_inst_glsl_std_450);
+                builder, source_depth_float[i],
+                !depth_float24_convert_in_pixel_shader() &&
+                    depth_float24_round(),
+                true, ext_inst_glsl_std_450);
           } break;
         }
         // Merge depth and stencil.
@@ -3736,8 +3749,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
           } break;
           case xenos::DepthRenderTargetFormat::kD24FS8: {
             packed = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                builder, source_depth_float[0], depth_float24_round(), true,
-                ext_inst_glsl_std_450);
+                builder, source_depth_float[0],
+                !depth_float24_convert_in_pixel_shader() &&
+                    depth_float24_round(),
+                true, ext_inst_glsl_std_450);
           } break;
         }
         if (mode.output == TransferOutput::kDepth) {
@@ -4207,8 +4222,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
               } break;
               case xenos::DepthRenderTargetFormat::kD24FS8: {
                 host_depth24 = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                    builder, host_depth32, depth_float24_round(), true,
-                    ext_inst_glsl_std_450);
+                    builder, host_depth32,
+                    !depth_float24_convert_in_pixel_shader() &&
+                        depth_float24_round(),
+                    true, ext_inst_glsl_std_450);
               } break;
             }
             assert_true(host_depth24 != spv::NoResult);
@@ -5949,8 +5966,9 @@ VkPipeline VulkanRenderTargetCache::GetDumpPipeline(DumpPipelineKey key) {
       } break;
       case xenos::DepthRenderTargetFormat::kD24FS8: {
         packed[0] = SpirvShaderTranslator::PreClampedDepthTo20e4(
-            builder, source_depth32, depth_float24_round(), true,
-            ext_inst_glsl_std_450);
+            builder, source_depth32,
+            !depth_float24_convert_in_pixel_shader() && depth_float24_round(),
+            true, ext_inst_glsl_std_450);
       } break;
     }
     packed[0] = builder.createQuadOp(

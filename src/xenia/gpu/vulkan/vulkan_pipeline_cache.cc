@@ -115,6 +115,32 @@ bool VulkanPipelineCache::Initialize() {
     }
   }
 
+  // Substitute fragment shaders for guest depth-only draws when in-PS float24
+  // conversion is active - keep the depth buffer's encoding consistent with
+  // PS-converted draws (matches the DXBC backend's
+  // float24_{truncate,round}_ps).
+  if (render_target_cache_.depth_float24_convert_in_pixel_shader()) {
+    using DepthStencilMode =
+        SpirvShaderTranslator::Modification::DepthStencilMode;
+    auto build = [&](DepthStencilMode mode, VkShaderModule& out) -> bool {
+      std::vector<uint8_t> code =
+          shader_translator_->CreateDepthOnlyFragmentShader(mode);
+      out = ui::vulkan::util::CreateShaderModule(
+          vulkan_device, reinterpret_cast<const uint32_t*>(code.data()),
+          code.size());
+      return out != VK_NULL_HANDLE;
+    };
+    if (!build(DepthStencilMode::kFloat24Truncating,
+               float24_truncate_fragment_shader_) ||
+        !build(DepthStencilMode::kFloat24Rounding,
+               float24_round_fragment_shader_)) {
+      XELOGE(
+          "VulkanPipelineCache: Failed to create the float24 substitute "
+          "depth-only fragment shaders");
+      return false;
+    }
+  }
+
   // Create tessellation shaders if tessellation is supported.
   if (vulkan_device->properties().tessellationShader) {
     // Vertex shaders for tessellation.
@@ -290,6 +316,10 @@ void VulkanPipelineCache::Shutdown() {
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          depth_only_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
+                                         float24_truncate_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
+                                         float24_round_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          placeholder_pixel_shader_);
   // Destroy tessellation shaders.
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
@@ -398,6 +428,7 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
 SpirvShaderTranslator::Modification
 VulkanPipelineCache::GetCurrentPixelShaderModification(
     const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
+    reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask) const {
   assert_true(shader.type() == xenos::ShaderType::kPixel);
   assert_true(shader.is_ucode_analyzed());
@@ -432,10 +463,18 @@ VulkanPipelineCache::GetCurrentPixelShaderModification(
       RenderTargetCache::Path::kHostRenderTargets) {
     using DepthStencilMode =
         SpirvShaderTranslator::Modification::DepthStencilMode;
-    if (shader.implicit_early_z_write_allowed() &&
-        (!shader.writes_color_target(0) ||
-         !draw_util::DoesCoverageDependOnAlpha(
-             regs.Get<reg::RB_COLORCONTROL>()))) {
+    if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+        normalized_depth_control.z_enable &&
+        regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+            xenos::DepthRenderTargetFormat::kD24FS8) {
+      modification.pixel.depth_stencil_mode =
+          render_target_cache_.depth_float24_round()
+              ? DepthStencilMode::kFloat24Rounding
+              : DepthStencilMode::kFloat24Truncating;
+    } else if (shader.implicit_early_z_write_allowed() &&
+               (!shader.writes_color_target(0) ||
+                !draw_util::DoesCoverageDependOnAlpha(
+                    regs.Get<reg::RB_COLORCONTROL>()))) {
       modification.pixel.depth_stencil_mode = DepthStencilMode::kEarlyHint;
     } else {
       modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
@@ -2650,6 +2689,19 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   } else {
     if (edram_fragment_shader_interlock) {
       shader_stage_fragment.module = depth_only_fragment_shader_;
+    } else if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+               (description.depth_write_enable ||
+                description.depth_compare_op !=
+                    xenos::CompareFunction::kAlways) &&
+               (description.render_pass_key.depth_and_color_used & 0b1) &&
+               description.render_pass_key.depth_format ==
+                   xenos::DepthRenderTargetFormat::kD24FS8) {
+      // No guest pixel shader, but depth matters and the host buffer is
+      // float24 - bind a substitute that converts gl_FragCoord.z so the
+      // depth buffer encoding stays consistent with PS-converted draws.
+      shader_stage_fragment.module = render_target_cache_.depth_float24_round()
+                                         ? float24_round_fragment_shader_
+                                         : float24_truncate_fragment_shader_;
     }
   }
   if (shader_stage_fragment.module == VK_NULL_HANDLE) {

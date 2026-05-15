@@ -3149,6 +3149,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     pixel_shader_modification =
         pixel_shader ? pipeline_cache_->GetCurrentPixelShaderModification(
                            *pixel_shader, interpolator_mask, ps_param_gen_pos,
+                           draw_util::GetNormalizedDepthControl(regs),
                            normalized_color_mask)
                      : SpirvShaderTranslator::Modification(0);
 
@@ -3369,13 +3370,16 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   uint32_t draw_resolution_scale_x = texture_cache_->draw_resolution_scale_x();
   uint32_t draw_resolution_scale_y = texture_cache_->draw_resolution_scale_y();
   draw_util::GetViewportInfoArgs gviargs{};
-  gviargs.Setup(draw_resolution_scale_x, draw_resolution_scale_y,
-                texture_cache_->draw_resolution_scale_x_divisor(),
-                texture_cache_->draw_resolution_scale_y_divisor(), false,
-                device_properties.maxViewportDimensions[0],
-                device_properties.maxViewportDimensions[1], true,
-                normalized_depth_control, false, host_render_targets_used,
-                pixel_shader && pixel_shader->writes_depth());
+  gviargs.Setup(
+      draw_resolution_scale_x, draw_resolution_scale_y,
+      texture_cache_->draw_resolution_scale_x_divisor(),
+      texture_cache_->draw_resolution_scale_y_divisor(), false,
+      device_properties.maxViewportDimensions[0],
+      device_properties.maxViewportDimensions[1], true,
+      normalized_depth_control,
+      host_render_targets_used &&
+          render_target_cache_->depth_float24_convert_in_pixel_shader(),
+      host_render_targets_used, pixel_shader && pixel_shader->writes_depth());
   gviargs.SetupRegisterValues(regs);
 
   draw_util::GetHostViewportInfo(&gviargs, viewport_info);

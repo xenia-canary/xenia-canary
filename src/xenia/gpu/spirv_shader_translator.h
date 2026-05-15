@@ -37,15 +37,24 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // TODO(Triang3l): Change to 0xYYYYMMDD once it's out of the rapid
     // prototyping stage (easier to do small granular updates with an
     // incremental counter).
-    static constexpr uint32_t kVersion = 10;
+    static constexpr uint32_t kVersion = 11;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
       // Early fragment tests - enable if alpha test and alpha to coverage are
       // disabled; ignored if anything in the shader blocks early Z writing.
       kEarlyHint,
-      // TODO(Triang3l): Unorm24 (rounding) and float24 (truncating and
-      // rounding) output modes.
+      // Converting the depth to the closest 32-bit float representable exactly
+      // as a 20e4 float, truncating towards zero, so SV_DepthLessEqual-style
+      // conservative depth output (ExecutionModeDepthLess) can still allow
+      // coarse early Z culling. MSAA depth must be per-sample, so the shader
+      // runs at sample frequency.
+      // Fixed-function viewport depth bounds must be snapped to float24 too.
+      kFloat24Truncating,
+      // Similar to kFloat24Truncating, but rounding to the nearest even, so
+      // plain ExecutionModeDepthReplacing is used rather than DepthLess.
+      kFloat24Rounding,
+      // TODO(Triang3l): Unorm24 (rounding) output mode.
     };
 
     struct {
@@ -443,7 +452,13 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
   // Creates a special fragment shader without color outputs - this resets the
   // state of the translator.
-  std::vector<uint8_t> CreateDepthOnlyFragmentShader();
+  // Creates a synthetic depth-only fragment shader. When depth_stencil_mode is
+  // a float24 mode, the shader reads gl_FragCoord.z, converts to float24, and
+  // writes the result to gl_FragDepth - matching the substitute pixel shader
+  // the DXBC backend uses when a guest draw has no pixel shader.
+  std::vector<uint8_t> CreateDepthOnlyFragmentShader(
+      Modification::DepthStencilMode depth_stencil_mode =
+          Modification::DepthStencilMode::kNoModifiers);
 
   // Common functions useful not only for the translator, but also for EDRAM
   // emulation via conventional render targets.
@@ -563,6 +578,26 @@ class SpirvShaderTranslator : public ShaderTranslator {
                Modification::DepthStencilMode::kEarlyHint &&
            !edram_fragment_shader_interlock_ &&
            current_shader().implicit_early_z_write_allowed();
+  }
+
+  // Whether the current non-FSI pixel shader should convert the depth to 20e4.
+  bool DSV_IsWritingFloat24Depth() const {
+    if (edram_fragment_shader_interlock_) {
+      return false;
+    }
+    Modification::DepthStencilMode depth_stencil_mode =
+        GetSpirvShaderModification().pixel.depth_stencil_mode;
+    return depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24Truncating ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24Rounding;
+  }
+  // Whether the shader runs at sample frequency - when converting depth to
+  // float24 from the rasterizer's own depth (not guest oDepth), each sample
+  // needs its own depth value for intersections to be antialiased.
+  bool IsSampleRate() const {
+    return is_pixel_shader() && DSV_IsWritingFloat24Depth() &&
+           !current_shader().writes_depth();
   }
 
   uint32_t GetModificationInterpolatorMask() const {
