@@ -563,6 +563,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
   void StartFragmentShaderInMain();
   void CompleteFragmentShaderInMain();
 
+  // Writes gl_FragDepth at the end of an FBO pixel shader, remapping the
+  // guest 0...1 oDepth value to host 0...0.5 when the bound depth buffer is
+  // float24. No-op for FSI and for shaders that don't write oDepth.
+  void CompleteFragmentShader_DSV_DepthTo24Bit();
+
   // Updates the current flow control condition (to be called in the beginning
   // of exec and in jumps), closing the previous conditionals if needed.
   // However, if the condition is not different, the instruction-level predicate
@@ -960,10 +965,15 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // output_or_var_fragment_data_.
   std::array<spv::Id, xenos::kMaxColorRenderTargets> output_fragment_data_;
 
-  // Fragment shader depth output (gl_FragDepth).
-  // With fragment shader interlock, a variable in the main function.
-  // Otherwise, the depth output (only created if shader writes depth).
+  // Function-scoped staging variable for guest oDepth writes. Used by both
+  // FSI (which writes the value to the EDRAM buffer inside the interlock)
+  // and FBO (copied to output_fragment_depth_ at the end of the shader,
+  // remapping guest 0...1 to host 0...0.5 when the depth format is float24).
   spv::Id output_or_var_fragment_depth_;
+
+  // FBO only: actual gl_FragDepth Output.
+  // Written at the end of the pixel shader from output_or_var_fragment_depth_.
+  spv::Id output_fragment_depth_;
 
   // Fragment shader sample mask output (gl_SampleMask).
   // Only used for alpha-to-coverage in non-FSI mode.

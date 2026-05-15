@@ -145,6 +145,8 @@ void SpirvShaderTranslator::Reset() {
   var_main_fsi_color_written_ = spv::NoResult;
   std::fill(output_fragment_data_.begin(), output_fragment_data_.end(),
             spv::NoResult);
+  output_or_var_fragment_depth_ = spv::NoResult;
+  output_fragment_depth_ = spv::NoResult;
 
   main_switch_op_.reset();
   main_switch_next_pc_phi_operands_.clear();
@@ -723,7 +725,7 @@ std::vector<uint8_t> SpirvShaderTranslator::CompleteTranslation() {
       builder_->addExecutionMode(function_main_,
                                  spv::ExecutionModeEarlyFragmentTests);
     }
-    if (current_shader().writes_depth()) {
+    if (current_shader().writes_depth() && !edram_fragment_shader_interlock_) {
       builder_->addExecutionMode(function_main_,
                                  spv::ExecutionModeDepthReplacing);
     }
@@ -2276,6 +2278,19 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
     }
   }
 
+  // Fragment depth output (gl_FragDepth) for the FBO path.
+  // Created when the guest pixel shader writes oDepth.
+  // FSI manages its own depth and does not need an Output.
+  if (!edram_fragment_shader_interlock_ && !is_depth_only_fragment_shader_ &&
+      current_shader().writes_depth()) {
+    output_fragment_depth_ = builder_->createVariable(
+        spv::NoPrecision, spv::StorageClassOutput, type_float_, "gl_FragDepth");
+    builder_->addDecoration(output_fragment_depth_, spv::DecorationBuiltIn,
+                            static_cast<int>(spv::BuiltIn::FragDepth));
+    builder_->addDecoration(output_fragment_depth_, spv::DecorationInvariant);
+    main_interface_.push_back(output_fragment_depth_);
+  }
+
   // Sample mask output for alpha-to-coverage.
   // Only needed for non-FSI mode. FSI uses main_fsi_sample_mask_ instead.
   output_fragment_sample_mask_ = spv::NoResult;
@@ -2352,14 +2367,14 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
         "xe_var_color_written", const_uint_0_);
   }
 
-  if (edram_fragment_shader_interlock_) {
-    // Initialize depth output variable with fragment shader interlock.
-    output_or_var_fragment_depth_ = spv::NoResult;
-    if (current_shader().writes_depth()) {
-      output_or_var_fragment_depth_ = builder_->createVariable(
-          spv::NoPrecision, spv::StorageClassFunction, type_float_,
-          "xe_var_fragment_depth", const_float_0_);
-    }
+  // Staging variable for guest oDepth writes.
+  // Created whenever the shader uses oDepth:
+  //   * FSI reads it during its EDRAM depth write inside the interlock.
+  //   * FBO copies it to gl_FragDepth at the end of the shader.
+  if (current_shader().writes_depth()) {
+    output_or_var_fragment_depth_ = builder_->createVariable(
+        spv::NoPrecision, spv::StorageClassFunction, type_float_,
+        "xe_var_fragment_depth", const_float_0_);
   }
 
   if (edram_fragment_shader_interlock_ && FSI_IsDepthStencilEarly()) {
@@ -2963,6 +2978,26 @@ void SpirvShaderTranslator::StoreResult(const InstructionResult& result,
                 builder_->makeUintConstant(uint32_t(1)
                                            << result.storage_index)),
             var_main_memexport_data_written_);
+      }
+    } break;
+    case InstructionStorageTarget::kDepth: {
+      // oDepth is scalar. The FBO path copies it to gl_FragDepth (in
+      // CompleteFragmentShader_DSV_DepthTo24Bit), while FSI writes it to a
+      // depth variable consumed by FSI_DepthStencilTest.
+      assert_true(is_pixel_shader());
+      assert_true(used_write_mask == 0b0001);
+      assert_true(current_shader().writes_depth());
+      assert_true(output_or_var_fragment_depth_ != spv::NoResult);
+      target_pointer = output_or_var_fragment_depth_;
+      // Depth outside [0, 1] needs to be clamped for safety, similar to D3D12.
+      // Though 20e4 float depth can store values between 1 and 2, it's a very
+      // unusual case. In Vulkan, gl_FragDepth can accept any values when the
+      // depth buffer is floating-point, but we clamp for consistency.
+      // Clamp the depth value to [0, 1] if not already saturated.
+      if (value != spv::NoResult && !result.is_clamped) {
+        value = builder_->createTriBuiltinCall(
+            type_float_, ext_inst_glsl_std_450_, GLSLstd450NClamp, value,
+            const_float_0_, const_float_1_);
       }
     } break;
     default:
