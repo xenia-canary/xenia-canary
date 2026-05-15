@@ -108,3 +108,9 @@ DEFINE_bool(
     "artifacts while pipelines are being created. When disabled, pipelines are "
     "created synchronously which causes stutter but no visual artifacts.",
     "GPU");
+
+DEFINE_bool(
+    ac6_ground_fix, false,
+    "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
+    "Might cause issues in other titles.",
+    "HACKS");

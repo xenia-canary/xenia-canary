@@ -14,13 +14,8 @@
 #include "xenia/base/math.h"
 #include "xenia/base/string.h"
 #include "xenia/gpu/dxbc_shader_translator.h"
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/render_target_cache.h"
-
-DEFINE_bool(
-    ac6_ground_fix, false,
-    "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
-    "Might cause issues in other titles.",
-    "HACKS");
 
 namespace xe {
 namespace gpu {
