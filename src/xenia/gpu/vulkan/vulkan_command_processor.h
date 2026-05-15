@@ -742,18 +742,6 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint64_t current_float_constant_map_vertex_[4];
   uint64_t current_float_constant_map_pixel_[4];
 
-  // Vertex buffer residency caching - avoids redundant RequestRange calls.
-  // Bit is set when the vertex buffer at that index has been validated and
-  // is resident in shared memory with the current address/size.
-  uint64_t vertex_buffers_in_sync_[2] =
-      {};  // 96 bits for 96 vertex fetch constants
-  // Cached address and size for each vertex fetch constant to detect changes.
-  struct VertexBufferState {
-    uint32_t address = 0;
-    uint32_t size = 0;
-  };
-  std::array<VertexBufferState, 96> vertex_buffer_states_ = {};
-
   // System shader constants.
   SpirvShaderTranslator::SystemConstants system_constants_;
 
