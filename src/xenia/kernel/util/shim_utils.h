@@ -28,23 +28,6 @@ namespace kernel {
 
 using PPCContext = xe::cpu::ppc::PPCContext;
 
-#define SHIM_CALL void
-#define SHIM_SET_MAPPING(library_name, export_name, shim_data) \
-  export_resolver->SetFunctionMapping(                         \
-      library_name, ordinals::export_name,                     \
-      (xe::cpu::xe_kernel_export_shim_fn)export_name##_entry);
-
-#define SHIM_MEM_ADDR(a) ((a) ? ppc_context->TranslateVirtual(a) : nullptr)
-
-#define SHIM_MEM_8(a) xe::load_and_swap<uint8_t>(SHIM_MEM_ADDR(a))
-#define SHIM_MEM_16(a) xe::load_and_swap<uint16_t>(SHIM_MEM_ADDR(a))
-#define SHIM_MEM_32(a) xe::load_and_swap<uint32_t>(SHIM_MEM_ADDR(a))
-#define SHIM_MEM_64(a) xe::load_and_swap<uint64_t>(SHIM_MEM_ADDR(a))
-#define SHIM_SET_MEM_8(a, v) xe::store_and_swap<uint8_t>(SHIM_MEM_ADDR(a), v)
-#define SHIM_SET_MEM_16(a, v) xe::store_and_swap<uint16_t>(SHIM_MEM_ADDR(a), v)
-#define SHIM_SET_MEM_32(a, v) xe::store_and_swap<uint32_t>(SHIM_MEM_ADDR(a), v)
-#define SHIM_SET_MEM_64(a, v) xe::store_and_swap<uint64_t>(SHIM_MEM_ADDR(a), v)
-
 namespace util {
 inline uint32_t get_arg_stack_ptr(PPCContext* ppc_context, uint8_t index) {
   return ((uint32_t)ppc_context->r[1]) + 0x54 + index * 8;
@@ -54,32 +37,36 @@ inline uint8_t get_arg_8(PPCContext* ppc_context, uint8_t index) {
   if (index <= 7) {
     return (uint8_t)ppc_context->r[3 + index];
   }
-  uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
-  return SHIM_MEM_8(stack_address);
+  const uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
+  return xe::load_and_swap<uint8_t>(
+      ppc_context->TranslateVirtual(stack_address));
 }
 
 inline uint16_t get_arg_16(PPCContext* ppc_context, uint8_t index) {
   if (index <= 7) {
     return (uint16_t)ppc_context->r[3 + index];
   }
-  uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
-  return SHIM_MEM_16(stack_address);
+  const uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
+  return xe::load_and_swap<uint16_t>(
+      ppc_context->TranslateVirtual(stack_address));
 }
 
 inline uint32_t get_arg_32(PPCContext* ppc_context, uint8_t index) {
   if (index <= 7) {
     return (uint32_t)ppc_context->r[3 + index];
   }
-  uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
-  return SHIM_MEM_32(stack_address);
+  const uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
+  return xe::load_and_swap<uint32_t>(
+      ppc_context->TranslateVirtual(stack_address));
 }
 
 inline uint64_t get_arg_64(PPCContext* ppc_context, uint8_t index) {
   if (index <= 7) {
     return ppc_context->r[3 + index];
   }
-  uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
-  return SHIM_MEM_64(stack_address);
+  const uint32_t stack_address = get_arg_stack_ptr(ppc_context, index - 8);
+  return xe::load_and_swap<uint64_t>(
+      ppc_context->TranslateVirtual(stack_address));
 }
 
 inline std::string_view TranslateAnsiString(const Memory* memory,
@@ -128,14 +115,7 @@ inline std::u16string TranslateUnicodeString(
 }
 }  // namespace util
 
-#define SHIM_GET_ARG_8(n) util::get_arg_8(ppc_context, n)
-#define SHIM_GET_ARG_16(n) util::get_arg_16(ppc_context, n)
-#define SHIM_GET_ARG_32(n) util::get_arg_32(ppc_context, n)
-#define SHIM_GET_ARG_64(n) util::get_arg_64(ppc_context, n)
 #define SHIM_SET_RETURN_32(v) ppc_context->r[3] = (uint64_t)((int32_t)v)
-
-#define SHIM_STRUCT(type, address) \
-  reinterpret_cast<type*>(SHIM_MEM_ADDR(address))
 
 namespace shim {
 

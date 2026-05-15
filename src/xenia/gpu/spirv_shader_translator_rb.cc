@@ -1485,6 +1485,10 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
     }
   }
 
+  // Copies the staged depth to the FBO gl_FragDepth output.
+  // No-op for FSI and when no host depth output was declared.
+  CompleteFragmentShader_DSV_DepthTo24Bit();
+
   if (edram_fragment_shader_interlock_) {
     if (block_fsi_if_after_depth_stencil_merge) {
       builder_->createBranch(block_fsi_if_after_depth_stencil_merge);
@@ -1503,6 +1507,37 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
 
     builder_->createNoResultOp(spv::OpEndInvocationInterlockEXT);
   }
+}
+
+void SpirvShaderTranslator::CompleteFragmentShader_DSV_DepthTo24Bit() {
+  // FSI manages its own depth via the EDRAM buffer - this hook is FBO-only.
+  // Likewise, if no Output FragDepth was declared, there is nothing to write.
+  if (edram_fragment_shader_interlock_ ||
+      output_fragment_depth_ == spv::NoResult) {
+    return;
+  }
+  if (!current_shader().writes_depth()) {
+    return;
+  }
+  assert_true(output_or_var_fragment_depth_ != spv::NoResult);
+  // The shader writes depth explicitly, for float24, need to scale it from
+  // guest 0...1 to host 0...0.5 to support reinterpretation round trips as
+  // viewport scaling doesn't apply to oDepth.
+  spv::Id depth_value =
+      builder_->createLoad(output_or_var_fragment_depth_, spv::NoPrecision);
+  spv::Id depth_float24_flag = builder_->createBinOp(
+      spv::OpINotEqual, type_bool_,
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                            main_system_constant_flags_,
+                            builder_->makeUintConstant(kSysFlag_DepthFloat24)),
+      const_uint_0_);
+  spv::Id depth_scaled = builder_->createBinOp(
+      spv::OpFMul, type_float_, depth_value, builder_->makeFloatConstant(0.5f));
+  spv::Id depth_remapped =
+      builder_->createTriOp(spv::OpSelect, type_float_, depth_float24_flag,
+                            depth_scaled, depth_value);
+  // Write the depth from the temporary to the system depth output.
+  builder_->createStore(depth_remapped, output_fragment_depth_);
 }
 
 spv::Id SpirvShaderTranslator::LoadMsaaSamplesFromFlags() {
@@ -2075,9 +2110,10 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     spv::Id poly_offset = builder_->createNoContractionBinOp(
         spv::OpFAdd, type_float_, slope_scaled_poly_offset, poly_offset_offset);
     // Apply the post-clip and post-viewport polygon offset to the fragment's
-    // depth. Not clamping yet as this is at the center, which isn't necessarily
-    // covered and not necessarily inside the bounds - derivatives scaled by
-    // sample locations will be added to this value, and it must be linear.
+    // depth. Not clamping yet as this is at the center, which is not
+    // necessarily covered and not necessarily inside the bounds - derivatives
+    // scaled by sample locations will be added to this value, and it must be
+    // linear.
     center_depth32_biased = builder_->createNoContractionBinOp(
         spv::OpFAdd, type_float_, center_depth32_unbiased, poly_offset);
   }

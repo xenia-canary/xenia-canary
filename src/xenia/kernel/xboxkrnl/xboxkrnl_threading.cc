@@ -1594,11 +1594,6 @@ dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
   auto global_lock = xe::global_critical_region::AcquireDirect();
   auto dpc_list = kernel_state()->dpc_list();
 
-  // If already in a queue, abort.
-  if (dpc_list->IsQueued(list_entry_ptr)) {
-    return 0;
-  }
-
   // Prep DPC.
   dpc->arg1 = (uint32_t)arg1;
   dpc->arg2 = (uint32_t)arg2;

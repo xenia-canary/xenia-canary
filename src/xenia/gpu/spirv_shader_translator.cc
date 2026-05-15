@@ -285,6 +285,8 @@ void SpirvShaderTranslator::Reset() {
   var_main_fsi_color_written_ = spv::NoResult;
   std::fill(output_fragment_data_.begin(), output_fragment_data_.end(),
             spv::NoResult);
+  output_or_var_fragment_depth_ = spv::NoResult;
+  output_fragment_depth_ = spv::NoResult;
 
   main_switch_op_.reset();
   main_switch_next_pc_phi_operands_.clear();
@@ -1680,9 +1682,15 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   // actually enabled (count > 0).
   uint32_t user_clip_plane_count =
       shader_modification.vertex.user_clip_plane_count;
+  uint32_t clip_distance_count = 0;
+  uint32_t cull_distance_count = 0;
+  if (shader_modification.vertex.user_clip_plane_cull) {
+    cull_distance_count = user_clip_plane_count;
+  } else {
+    clip_distance_count = user_clip_plane_count;
+  }
   output_per_vertex_clip_distance_member_index_ = 0;
   output_per_vertex_cull_distance_member_index_ = 0;
-  constexpr uint32_t kMaxUserClipPlanes = 6;
   if (user_clip_plane_count > 0) {
     // Create separate uniform buffer for clip planes.
     spv::Id type_float4_array_6 = builder_->makeArrayType(
@@ -1708,16 +1716,18 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
     if (features_.spirv_version >= spv::Spv_1_4) {
       main_interface_.push_back(uniform_clip_plane_constants_);
     }
-
+  }
+  if (clip_distance_count > 0) {
     output_per_vertex_clip_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
-        type_float_, builder_->makeUintConstant(user_clip_plane_count), 0));
-
+        type_float_, builder_->makeUintConstant(clip_distance_count), 0));
+  }
+  if (cull_distance_count > 0) {
     output_per_vertex_cull_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
-        type_float_, builder_->makeUintConstant(user_clip_plane_count), 0));
+        type_float_, builder_->makeUintConstant(cull_distance_count), 0));
   }
 
   spv::Id type_struct_per_vertex =
@@ -1729,14 +1739,15 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
       spv::DecorationBuiltIn, static_cast<int>(spv::BuiltIn::Position));
 
   // Decorate clip/cull arrays only if allocated.
-  if (user_clip_plane_count > 0) {
+  if (clip_distance_count > 0) {
     builder_->addMemberName(type_struct_per_vertex,
                             output_per_vertex_clip_distance_member_index_,
                             "gl_ClipDistance");
     builder_->addMemberDecoration(
         type_struct_per_vertex, output_per_vertex_clip_distance_member_index_,
         spv::DecorationBuiltIn, static_cast<int>(spv::BuiltIn::ClipDistance));
-
+  }
+  if (cull_distance_count > 0) {
     builder_->addMemberName(type_struct_per_vertex,
                             output_per_vertex_cull_distance_member_index_,
                             "gl_CullDistance");
@@ -3115,19 +3126,17 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
     }
   }
 
-  // Depth output.
-  output_or_var_fragment_depth_ = spv::NoResult;
-  if (current_shader().writes_depth()) {
-    if (!edram_fragment_shader_interlock_) {
-      // Create gl_FragDepth output.
-      output_or_var_fragment_depth_ =
-          builder_->createVariable(spv::NoPrecision, spv::StorageClassOutput,
-                                   type_float_, "gl_FragDepth");
-      builder_->addDecoration(output_or_var_fragment_depth_,
-                              spv::DecorationBuiltIn,
-                              static_cast<int>(spv::BuiltIn::FragDepth));
-      main_interface_.push_back(output_or_var_fragment_depth_);
-    }
+  // Fragment depth output (gl_FragDepth) for the FBO path.
+  // Created when the guest pixel shader writes oDepth.
+  // FSI manages its own depth and does not need an Output.
+  if (!edram_fragment_shader_interlock_ && !is_depth_only_fragment_shader_ &&
+      current_shader().writes_depth()) {
+    output_fragment_depth_ = builder_->createVariable(
+        spv::NoPrecision, spv::StorageClassOutput, type_float_, "gl_FragDepth");
+    builder_->addDecoration(output_fragment_depth_, spv::DecorationBuiltIn,
+                            static_cast<int>(spv::BuiltIn::FragDepth));
+    builder_->addDecoration(output_fragment_depth_, spv::DecorationInvariant);
+    main_interface_.push_back(output_fragment_depth_);
   }
 
   // Sample mask output for alpha-to-coverage.
@@ -3206,14 +3215,14 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
         "xe_var_color_written", const_uint_0_);
   }
 
-  if (edram_fragment_shader_interlock_) {
-    // Initialize depth output variable with fragment shader interlock.
-    output_or_var_fragment_depth_ = spv::NoResult;
-    if (current_shader().writes_depth()) {
-      output_or_var_fragment_depth_ = builder_->createVariable(
-          spv::NoPrecision, spv::StorageClassFunction, type_float_,
-          "xe_var_fragment_depth", const_float_0_);
-    }
+  // Staging variable for guest oDepth writes.
+  // Created whenever the shader uses oDepth:
+  //   * FSI reads it during its EDRAM depth write inside the interlock.
+  //   * FBO copies it to gl_FragDepth at the end of the shader.
+  if (current_shader().writes_depth()) {
+    output_or_var_fragment_depth_ = builder_->createVariable(
+        spv::NoPrecision, spv::StorageClassFunction, type_float_,
+        "xe_var_fragment_depth", const_float_0_);
   }
 
   if (edram_fragment_shader_interlock_ && FSI_IsDepthStencilEarly()) {
@@ -3918,8 +3927,10 @@ void SpirvShaderTranslator::StoreResult(const InstructionResult& result,
       }
     } break;
     case InstructionStorageTarget::kDepth: {
-      // oDepth is scalar. FBO writes it to gl_FragDepth, while FSI writes it to
-      // a depth variable consumed by FSI_DepthStencilTest.
+      // oDepth is scalar. The FBO path copies it to gl_FragDepth (in
+      // CompleteFragmentShader_DSV_DepthTo24Bit), while FSI writes it to a
+      // depth variable consumed by FSI_DepthStencilTest.
+      assert_true(is_pixel_shader());
       assert_true(used_write_mask == 0b0001);
       assert_true(current_shader().writes_depth());
       assert_true(output_or_var_fragment_depth_ != spv::NoResult);

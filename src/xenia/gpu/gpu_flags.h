@@ -80,6 +80,8 @@ DECLARE_int32(metal_heap_min_bytes);
 DECLARE_bool(metal_texture_cache_use_private);
 DECLARE_bool(metal_texture_upload_via_blit);
 
+DECLARE_bool(ac6_ground_fix);
+
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1
 
 #endif  // XENIA_GPU_GPU_FLAGS_H_

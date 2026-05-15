@@ -258,3 +258,9 @@ DEFINE_bool(metal_texture_upload_via_blit, true,
             "Upload textures via staging buffers and GPU blit copies instead "
             "of CPU replaceRegion.",
             "Metal");
+
+DEFINE_bool(
+    ac6_ground_fix, false,
+    "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
+    "Might cause issues in other titles.",
+    "HACKS");

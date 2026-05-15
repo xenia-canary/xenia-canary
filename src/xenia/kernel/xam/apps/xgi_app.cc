@@ -36,6 +36,18 @@ struct XGI_WRITEACHIEVEMENT {
 };
 static_assert_size(XGI_WRITEACHIEVEMENT, 0x8);
 
+struct X_USER_AVATAR_ASSET {
+  xe::be<uint32_t> user_index;
+  xe::be<uint32_t> award_id;
+};
+static_assert_size(X_USER_AVATAR_ASSET, 0x8);
+
+struct XGI_AWARD_AVATAR_ASSETS {
+  xe::be<uint32_t> num_assets;
+  xe::be<uint32_t> assets_ptr;  // X_USER_AVATAR_ASSET*
+};
+static_assert_size(XGI_AWARD_AVATAR_ASSETS, 0x8);
+
 struct XGI_XUSER_GET_PROPERTY {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> unused;
@@ -335,8 +347,31 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
           property);
     }
     case 0x000B0071: {
-      XELOGD("ContentEnumerate::ResetEnumerator({:08X}, {:08X}), unimplemented",
-             buffer_ptr, buffer_length);
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XGI_AWARD_AVATAR_ASSETS));
+      const XGI_AWARD_AVATAR_ASSETS* award_avatar_assets =
+          reinterpret_cast<const XGI_AWARD_AVATAR_ASSETS*>(buffer);
+
+      XELOGD("XUserAwardAvatarAssets({:08X}, {:08X})",
+             award_avatar_assets->num_assets.get(),
+             award_avatar_assets->assets_ptr.get());
+
+      const X_USER_AVATAR_ASSET* avatar_assets =
+          memory_->TranslateVirtual<X_USER_AVATAR_ASSET*>(
+              award_avatar_assets->assets_ptr);
+
+      for (uint32_t i = 0; i < award_avatar_assets->num_assets; i++) {
+        const X_USER_AVATAR_ASSET& avatar_asset = avatar_assets[i];
+
+        const auto user =
+            kernel_state_->xam_state()->GetUserProfile(avatar_asset.user_index);
+
+        if (user) {
+          XELOGI("Player: {} Unlocked Avatar Award Asset ID: {}", user->name(),
+                 avatar_asset.award_id.get());
+        }
+      }
+
       return X_E_SUCCESS;
     }
   }
