@@ -1407,6 +1407,8 @@ bool VulkanPipelineCache::GetGeometryShaderKey(
   // Single bit to indicate if clip planes are enabled.
   key.has_user_clip_planes =
       uint32_t(vertex_shader_modification.vertex.user_clip_plane_count > 0);
+  key.user_clip_plane_cull =
+      vertex_shader_modification.vertex.user_clip_plane_cull;
   key_out = key;
   return true;
 }
@@ -1453,11 +1455,16 @@ VkShaderModule VulkanPipelineCache::GetGeometryShader(GeometryShaderKey key) {
 
   // When enabled, use max size to reduce variants from different counts.
   constexpr uint32_t kMaxUserClipPlanes = 6;
-  uint32_t clip_distance_count =
+  uint32_t user_clip_plane_count =
       key.has_user_clip_planes ? kMaxUserClipPlanes : 0;
-  uint32_t cull_distance_count =
-      (key.has_user_clip_planes ? kMaxUserClipPlanes : 0) +
-      key.has_vertex_kill_and;
+  uint32_t clip_distance_count = 0;
+  uint32_t cull_distance_count = 0;
+  if (key.user_clip_plane_cull) {
+    cull_distance_count = user_clip_plane_count;
+  } else {
+    clip_distance_count = user_clip_plane_count;
+  }
+  cull_distance_count += key.has_vertex_kill_and;
 
   SpirvBuilder builder(spv::Spv_1_0,
                        (SpirvShaderTranslator::kSpirvMagicToolId << 16) | 1,

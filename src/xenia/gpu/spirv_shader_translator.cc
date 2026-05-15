@@ -1328,9 +1328,15 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   // actually enabled (count > 0).
   uint32_t user_clip_plane_count =
       shader_modification.vertex.user_clip_plane_count;
+  uint32_t clip_distance_count = 0;
+  uint32_t cull_distance_count = 0;
+  if (shader_modification.vertex.user_clip_plane_cull) {
+    cull_distance_count = user_clip_plane_count;
+  } else {
+    clip_distance_count = user_clip_plane_count;
+  }
   output_per_vertex_clip_distance_member_index_ = 0;
   output_per_vertex_cull_distance_member_index_ = 0;
-  constexpr uint32_t kMaxUserClipPlanes = 6;
   if (user_clip_plane_count > 0) {
     // Create separate uniform buffer for clip planes.
     spv::Id type_float4_array_6 = builder_->makeArrayType(
@@ -1356,16 +1362,18 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
     if (features_.spirv_version >= spv::Spv_1_4) {
       main_interface_.push_back(uniform_clip_plane_constants_);
     }
-
+  }
+  if (clip_distance_count > 0) {
     output_per_vertex_clip_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
-        type_float_, builder_->makeUintConstant(user_clip_plane_count), 0));
-
+        type_float_, builder_->makeUintConstant(clip_distance_count), 0));
+  }
+  if (cull_distance_count > 0) {
     output_per_vertex_cull_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
-        type_float_, builder_->makeUintConstant(user_clip_plane_count), 0));
+        type_float_, builder_->makeUintConstant(cull_distance_count), 0));
   }
 
   spv::Id type_struct_per_vertex =
@@ -1377,14 +1385,15 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
       spv::DecorationBuiltIn, static_cast<int>(spv::BuiltIn::Position));
 
   // Decorate clip/cull arrays only if allocated.
-  if (user_clip_plane_count > 0) {
+  if (clip_distance_count > 0) {
     builder_->addMemberName(type_struct_per_vertex,
                             output_per_vertex_clip_distance_member_index_,
                             "gl_ClipDistance");
     builder_->addMemberDecoration(
         type_struct_per_vertex, output_per_vertex_clip_distance_member_index_,
         spv::DecorationBuiltIn, static_cast<int>(spv::BuiltIn::ClipDistance));
-
+  }
+  if (cull_distance_count > 0) {
     builder_->addMemberName(type_struct_per_vertex,
                             output_per_vertex_cull_distance_member_index_,
                             "gl_CullDistance");

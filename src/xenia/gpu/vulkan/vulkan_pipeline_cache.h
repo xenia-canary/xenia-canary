@@ -312,6 +312,7 @@ class VulkanPipelineCache {
       PipelineGeometryShader type : 2;
       uint32_t interpolator_count : 5;
       uint32_t has_user_clip_planes : 1;
+      uint32_t user_clip_plane_cull : 1;
       uint32_t has_vertex_kill_and : 1;
       uint32_t has_point_size : 1;
       uint32_t has_point_coordinates : 1;
