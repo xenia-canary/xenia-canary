@@ -49,7 +49,6 @@ AudioSystem::AudioSystem(cpu::Processor* processor)
     : memory_(processor->memory()),
       processor_(processor),
       worker_running_(false) {
-  std::memset(clients_, 0, sizeof(clients_));
   queued_frames_ = std::min(
       static_cast<uint32_t>(kMaximumQueuedFrames),
       std::max(cvars::apu_max_queued_frames, static_cast<uint32_t>(4)));

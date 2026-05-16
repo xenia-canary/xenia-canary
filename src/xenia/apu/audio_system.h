@@ -93,18 +93,19 @@ class AudioSystem {
 
   xe::global_critical_region global_critical_region_;
   static constexpr size_t kMaximumClientCount = 8;
-  struct {
-    AudioDriver* driver;
-    uint32_t callback;
-    uint32_t callback_arg;
-    uint32_t wrapped_callback_arg;
-    bool in_use;
+  struct ClientSlot {
+    AudioDriver* driver = nullptr;
+    uint32_t callback = 0;
+    uint32_t callback_arg = 0;
+    uint32_t wrapped_callback_arg = 0;
+    bool in_use = false;
     std::atomic<uint32_t> frames_submitted{0};
     std::atomic<uint32_t> frames_processed{0};
     std::atomic<uint32_t> frames_dropped{0};
     // Held by worker during Execute; UnregisterClient waits on it.
     std::mutex callback_mutex;
-  } clients_[kMaximumClientCount];
+  };
+  ClientSlot clients_[kMaximumClientCount];
 
   int FindFreeClient();
 
