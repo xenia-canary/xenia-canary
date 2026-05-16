@@ -46,14 +46,87 @@ const std::map<uint32_t, uint32_t> supported_controls = {
 const std::map<uint32_t, int> supported_levels = {{0xFFFF, SOL_SOCKET},
                                                   {0x6, IPPROTO_TCP}};
 
-// TODO(Gliniak): Provide error mapping table.
-// Xbox error codes might not match with what we receive from OS.
-// TODO(has207): On Linux, asio returns POSIX errno values which games won't
-// understand. Needs POSIX -> WSAError mapping for proper cross-platform
-// support.
+// asio error_code -> Winsock WSAE* code. Guests look up by Winsock value;
+// returning raw POSIX errno makes recoverable errors look fatal (e.g. COD4
+// MP treats unrecognized recvfrom error as a hard init failure).
 uint32_t AsioErrorToWSAError(const asio::error_code& ec) {
   if (!ec) {
     return 0;
+  }
+  if (ec == asio::error::would_block || ec == asio::error::try_again) {
+    return 10035;  // WSAEWOULDBLOCK
+  }
+  if (ec == asio::error::in_progress) {
+    return 10036;  // WSAEINPROGRESS
+  }
+  if (ec == asio::error::already_started) {
+    return 10037;  // WSAEALREADY
+  }
+  if (ec == asio::error::not_socket) {
+    return 10038;  // WSAENOTSOCK
+  }
+  if (ec == asio::error::message_size) {
+    return 10040;  // WSAEMSGSIZE
+  }
+  if (ec == asio::error::no_protocol_option) {
+    return 10042;  // WSAENOPROTOOPT
+  }
+  if (ec == asio::error::address_family_not_supported) {
+    return 10047;  // WSAEAFNOSUPPORT
+  }
+  if (ec == asio::error::address_in_use) {
+    return 10048;  // WSAEADDRINUSE
+  }
+  if (ec == asio::error::network_down) {
+    return 10050;  // WSAENETDOWN
+  }
+  if (ec == asio::error::network_unreachable) {
+    return 10051;  // WSAENETUNREACH
+  }
+  if (ec == asio::error::network_reset) {
+    return 10052;  // WSAENETRESET
+  }
+  if (ec == asio::error::connection_aborted) {
+    return 10053;  // WSAECONNABORTED
+  }
+  if (ec == asio::error::connection_reset) {
+    return 10054;  // WSAECONNRESET
+  }
+  if (ec == asio::error::no_buffer_space) {
+    return 10055;  // WSAENOBUFS
+  }
+  if (ec == asio::error::already_connected) {
+    return 10056;  // WSAEISCONN
+  }
+  if (ec == asio::error::not_connected) {
+    return 10057;  // WSAENOTCONN
+  }
+  if (ec == asio::error::shut_down) {
+    return 10058;  // WSAESHUTDOWN
+  }
+  if (ec == asio::error::timed_out) {
+    return 10060;  // WSAETIMEDOUT
+  }
+  if (ec == asio::error::connection_refused) {
+    return 10061;  // WSAECONNREFUSED
+  }
+  if (ec == asio::error::host_unreachable) {
+    return 10065;  // WSAEHOSTUNREACH
+  }
+  if (ec == asio::error::access_denied) {
+    return 10013;  // WSAEACCES
+  }
+  if (ec == asio::error::fault) {
+    return 10014;  // WSAEFAULT
+  }
+  if (ec == asio::error::invalid_argument) {
+    return 10022;  // WSAEINVAL
+  }
+  if (ec == asio::error::operation_aborted) {
+    return 995;  // WSA_OPERATION_ABORTED
+  }
+  if (ec == asio::error::interrupted) {
+    return 10004;  // WSAEINTR
   }
   return static_cast<uint32_t>(ec.value());
 }
