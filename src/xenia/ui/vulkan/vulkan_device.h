@@ -218,6 +218,9 @@ class VulkanDevice {
     // VK_EXT_full_screen_exclusive (#256, Windows only)
     bool ext_EXT_full_screen_exclusive = false;
 #endif
+    // VK_EXT_device_fault (#342). For driver-side fault description after
+    // VK_ERROR_DEVICE_LOST.
+    bool ext_EXT_device_fault = false;
   };
 
   const Extensions& extensions() const { return extensions_; }
@@ -327,13 +330,20 @@ class VulkanDevice {
   }
   bool IsLost() const noexcept { return lost_.load(std::memory_order_acquire); }
 
+  // Queries VK_EXT_device_fault for driver-side fault info after DEVICE_LOST
+  // and logs it. Safe to call from multiple device-loss observers; logs at most
+  // once. No-op if the extension is not enabled or the query fails.
+  void LogFaultInfo();
+
   VkResult SubmitAndUpdateLost(const VkQueue queue, const uint32_t submit_count,
                                const VkSubmitInfo* const submits,
                                const VkFence fence) {
     const VkResult submit_result =
         functions().vkQueueSubmit(queue, submit_count, submits, fence);
     if (submit_result == VK_ERROR_DEVICE_LOST) {
-      SetLost();
+      if (SetLost()) {
+        LogFaultInfo();
+      }
     }
     return submit_result;
   }
@@ -359,6 +369,13 @@ class VulkanDevice {
   MemoryTypes memory_types_;
 
   std::atomic<bool> lost_{false};
+
+  // VK_EXT_device_fault function pointer, loaded only if the extension is
+  // enabled. Null otherwise.
+  PFN_vkGetDeviceFaultInfoEXT vkGetDeviceFaultInfoEXT_ = nullptr;
+  // Set when LogFaultInfo() has already logged - prevents repeat logging from
+  // multiple device-loss observers.
+  std::atomic_flag fault_info_logged_ = ATOMIC_FLAG_INIT;
 };
 
 }  // namespace vulkan

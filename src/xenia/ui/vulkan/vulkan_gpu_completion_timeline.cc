@@ -29,7 +29,9 @@ VulkanGPUCompletionTimeline::~VulkanGPUCompletionTimeline() {
             vulkan_device_->device(), 1,
             &pending_submission_fences_.back().second, VK_TRUE,
             UINT64_MAX) == VK_ERROR_DEVICE_LOST) {
-      vulkan_device_->SetLost();
+      if (vulkan_device_->SetLost()) {
+        vulkan_device_->LogFaultInfo();
+      }
     }
 
     while (!pending_submission_fences_.empty()) {
@@ -125,7 +127,9 @@ void VulkanGPUCompletionTimeline::UpdateCompletedSubmission() {
     if (fence_status != VK_SUCCESS) {
       // Not ready, or an error.
       if (fence_status == VK_ERROR_DEVICE_LOST) {
-        vulkan_device_->SetLost();
+        if (vulkan_device_->SetLost()) {
+          vulkan_device_->LogFaultInfo();
+        }
       }
       break;
     }
@@ -160,7 +164,9 @@ void VulkanGPUCompletionTimeline::AwaitSubmissionImpl(
       XELOGE("Failed to wait for a Vulkan fence: {}",
              vk::to_string(vk::Result(fence_wait_result)));
       if (fence_wait_result == VK_ERROR_DEVICE_LOST) {
-        vulkan_device_->SetLost();
+        if (vulkan_device_->SetLost()) {
+          vulkan_device_->LogFaultInfo();
+        }
       }
       return;
     }

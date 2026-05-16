@@ -225,6 +225,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       // #237.
       XE_UI_VULKAN_STRUCT_PROMOTED_EXTENSION(KHR_spirv_1_4, 1, 2)
     }
+    // #342. Driver-side fault description after VK_ERROR_DEVICE_LOST.
+    if (get_physical_device_properties2_supported) {
+      XE_UI_VULKAN_STRUCT_EXTENSION(EXT_device_fault)
+    }
   }
 
 #undef XE_UI_VULKAN_STRUCT_EXTENSION
@@ -348,6 +352,9 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR,
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR>
       features_KHR_fragment_shader_barycentric;
+  VulkanFeatures<VkPhysicalDeviceFaultFeaturesEXT,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT>
+      features_EXT_device_fault;
 
   if (get_physical_device_properties2_supported) {
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0)) {
@@ -406,8 +413,21 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       features_KHR_fragment_shader_barycentric.Link(supported_features_2,
                                                     device_create_info);
     }
+    if (device->extensions_.ext_EXT_device_fault) {
+      features_EXT_device_fault.Link(supported_features_2, device_create_info);
+    }
     ifn.vkGetPhysicalDeviceProperties2(physical_device, &properties_2);
     ifn.vkGetPhysicalDeviceFeatures2(physical_device, &supported_features_2);
+    // Mirror supported deviceFault into the enabled struct so the driver
+    // collects fault info during normal execution. Disable the extension flag
+    // if the feature wasn't actually supported - vkGetDeviceFaultInfoEXT is
+    // only valid to call when deviceFault was enabled at device creation.
+    if (device->extensions_.ext_EXT_device_fault &&
+        !features_EXT_device_fault.supported.deviceFault) {
+      device->extensions_.ext_EXT_device_fault = false;
+    }
+    features_EXT_device_fault.enabled.deviceFault =
+        features_EXT_device_fault.supported.deviceFault;
   }
 
   uint32_t queue_family_count = 0;
@@ -910,6 +930,15 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
 
 #undef XE_UI_VULKAN_FUNCTION
 
+  // Optional fault-info function pointer - failing to load is not fatal.
+  if (device->extensions_.ext_EXT_device_fault) {
+    device->vkGetDeviceFaultInfoEXT_ = PFN_vkGetDeviceFaultInfoEXT(
+        ifn.vkGetDeviceProcAddr(device->device_, "vkGetDeviceFaultInfoEXT"));
+    if (!device->vkGetDeviceFaultInfoEXT_) {
+      device->extensions_.ext_EXT_device_fault = false;
+    }
+  }
+
   if (!functions_loaded) {
     XELOGE("Failed to get all Vulkan device function pointers for '{}'",
            properties.deviceName);
@@ -991,6 +1020,75 @@ VulkanDevice::VulkanDevice(const VulkanInstance* const vulkan_instance,
     : vulkan_instance_(vulkan_instance), physical_device_(physical_device) {
   assert_not_null(vulkan_instance);
   assert_not_null(physical_device);
+}
+
+void VulkanDevice::LogFaultInfo() {
+  if (!extensions_.ext_EXT_device_fault || !vkGetDeviceFaultInfoEXT_) {
+    return;
+  }
+  // Log only once, even if many observers call us.
+  if (fault_info_logged_.test_and_set(std::memory_order_acq_rel)) {
+    return;
+  }
+
+  // First pass: counts only.
+  VkDeviceFaultCountsEXT counts = {VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+  if (vkGetDeviceFaultInfoEXT_(device_, &counts, nullptr) != VK_SUCCESS) {
+    XELOGE("VK_EXT_device_fault: failed to query fault info counts");
+    return;
+  }
+
+  std::vector<VkDeviceFaultAddressInfoEXT> address_infos(
+      counts.addressInfoCount);
+  std::vector<VkDeviceFaultVendorInfoEXT> vendor_infos(counts.vendorInfoCount);
+  VkDeviceFaultInfoEXT info = {VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+  info.pAddressInfos = address_infos.empty() ? nullptr : address_infos.data();
+  info.pVendorInfos = vendor_infos.empty() ? nullptr : vendor_infos.data();
+  // Skip vendor binary - we don't have a place to dump it anyway.
+  counts.vendorBinarySize = 0;
+  if (vkGetDeviceFaultInfoEXT_(device_, &counts, &info) != VK_SUCCESS) {
+    XELOGE("VK_EXT_device_fault: failed to query fault info");
+    return;
+  }
+
+  XELOGE("VK_EXT_device_fault: \"{}\" - {} address(es), {} vendor code(s)",
+         info.description, counts.addressInfoCount, counts.vendorInfoCount);
+  for (uint32_t i = 0; i < counts.addressInfoCount; ++i) {
+    const VkDeviceFaultAddressInfoEXT& a = address_infos[i];
+    const char* type_name = "unknown";
+    switch (a.addressType) {
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT:
+        type_name = "none";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT:
+        type_name = "read-invalid";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT:
+        type_name = "write-invalid";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_EXT:
+        type_name = "execute-invalid";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_EXT:
+        type_name = "instruction-pointer-unknown";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_EXT:
+        type_name = "instruction-pointer-invalid";
+        break;
+      case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_EXT:
+        type_name = "instruction-pointer-fault";
+        break;
+      default:
+        break;
+    }
+    XELOGE("  fault addr: 0x{:016X} (precision ±0x{:X}) type={}",
+           a.reportedAddress, a.addressPrecision, type_name);
+  }
+  for (uint32_t i = 0; i < counts.vendorInfoCount; ++i) {
+    const VkDeviceFaultVendorInfoEXT& v = vendor_infos[i];
+    XELOGE("  vendor code: {} fault=0x{:016X} \"{}\"", v.vendorFaultCode,
+           v.vendorFaultData, v.description);
+  }
 }
 
 }  // namespace vulkan
