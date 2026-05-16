@@ -1615,6 +1615,16 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
         vulkan_texture.image(), ui::vulkan::util::InitializeSubresourceRange(),
         texture_src_stage_mask, texture_dst_stage_mask, texture_src_access_mask,
         texture_dst_access_mask, texture_old_layout, texture_new_layout);
+  } else {
+    // Same layout/usage but another upload may have written the image earlier
+    // in this submission - emit a TRANSFER_WRITE -> TRANSFER_WRITE barrier so
+    // the next CmdCopyBufferToImage is ordered after any prior copy.
+    command_processor_.PushImageMemoryBarrier(
+        vulkan_texture.image(), ui::vulkan::util::InitializeSubresourceRange(),
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
   }
   command_processor_.SubmitBarriers(true);
   command_processor_.InsertDebugMarker(
