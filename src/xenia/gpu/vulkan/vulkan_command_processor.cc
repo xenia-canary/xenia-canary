@@ -3790,6 +3790,14 @@ void VulkanCommandProcessor::IssueDraw_MemexportReadbackFastPath(
 
   // Ensure shared memory is ready for transfer and end any active render pass.
   shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+  // Sync against any prior write to this readback buffer (across submissions
+  // or earlier in the frame). The host read at `read_index` (other slot) is
+  // unaffected.
+  PushBufferMemoryBarrier(
+      rb.buffers[write_index], 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+      VK_ACCESS_TRANSFER_WRITE_BIT, VK_QUEUE_FAMILY_IGNORED,
+      VK_QUEUE_FAMILY_IGNORED, false);
   SubmitBarriers(true);
 
   InsertDebugMarker("Memexport Readback (async): %u bytes, %zu ranges",
@@ -4059,6 +4067,12 @@ bool VulkanCommandProcessor::IssueCopy() {
     // Ensure shared memory is ready for transfer and end any active render
     // pass.
     shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+    // Sync against any prior write to this readback buffer.
+    PushBufferMemoryBarrier(
+        rb.buffers[write_index], 0, VK_WHOLE_SIZE,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, false);
     SubmitBarriers(true);
 
     InsertDebugMarker("Resolve Readback: 0x%08X, %u bytes", written_address,
@@ -4552,19 +4566,31 @@ bool VulkanCommandProcessor::IssueCopy() {
     // Dispatch compute shader - one thread group per 32x32 tile
     deferred_command_buffer_.CmdVkDispatch(tile_count, 1, 1);
 
-    // Barrier for compute shader output before copy
-    VkBufferMemoryBarrier downscale_barrier = {};
-    downscale_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    downscale_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    downscale_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    downscale_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    downscale_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    downscale_barrier.buffer = resolve_downscale_buffer_;
-    downscale_barrier.offset = 0;
-    downscale_barrier.size = written_length;
+    // Barriers before copy: compute-write -> transfer-read on the source, and
+    // transfer-write -> transfer-write on the readback destination (to sync
+    // against any prior write to this slot, across submissions or within the
+    // frame).
+    VkBufferMemoryBarrier pre_copy_barriers[2] = {};
+    pre_copy_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    pre_copy_barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    pre_copy_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    pre_copy_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    pre_copy_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    pre_copy_barriers[0].buffer = resolve_downscale_buffer_;
+    pre_copy_barriers[0].offset = 0;
+    pre_copy_barriers[0].size = written_length;
+    pre_copy_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    pre_copy_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    pre_copy_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    pre_copy_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    pre_copy_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    pre_copy_barriers[1].buffer = rb.buffers[write_index];
+    pre_copy_barriers[1].offset = 0;
+    pre_copy_barriers[1].size = VK_WHOLE_SIZE;
     deferred_command_buffer_.CmdVkPipelineBarrier(
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-        0, nullptr, 1, &downscale_barrier, 0, nullptr);
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 2, pre_copy_barriers, 0,
+        nullptr);
 
     // Copy downscaled data to readback buffer
     VkBufferCopy copy_region = {};
