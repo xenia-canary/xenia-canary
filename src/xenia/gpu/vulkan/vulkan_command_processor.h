@@ -524,6 +524,26 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   bool device_lost_ = false;
 
+  // Rolling per-submission summary for diagnosing VK_ERROR_DEVICE_LOST.
+  // Accumulated into submission_in_progress_ during a submission, snapshotted
+  // into submission_history_ on successful submit, dumped on device-loss.
+  struct SubmissionSummary {
+    uint64_t submission_index = 0;
+    uint64_t frame_index = 0;
+    uint32_t draw_count = 0;
+    uint32_t dispatch_count = 0;
+    uint32_t resolve_count = 0;
+    uint64_t last_vs_hash = 0;
+    uint64_t last_ps_hash = 0;
+    uint64_t last_render_pass_key = 0;
+  };
+  static constexpr size_t kSubmissionHistorySize = 16;
+  std::array<SubmissionSummary, kSubmissionHistorySize> submission_history_{};
+  size_t submission_history_next_ = 0;
+  SubmissionSummary submission_in_progress_{};
+
+  void LogRecentSubmissions(const char* context);
+
   bool cache_clear_requested_ = false;
 
   // Host shader types that guest shaders can be translated into - they can

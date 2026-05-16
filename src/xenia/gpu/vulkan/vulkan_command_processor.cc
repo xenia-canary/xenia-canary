@@ -2097,6 +2097,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         // Dispatch compute shader. Local size is 16x8.
         uint32_t group_count_x = (frontbuffer_width_scaled + 15) / 16;
         uint32_t group_count_y = (frontbuffer_height_scaled + 7) / 8;
+        ++submission_in_progress_.dispatch_count;
         deferred_command_buffer_.CmdVkDispatch(group_count_x, group_count_y, 1);
 
         PopDebugMarker();
@@ -2217,6 +2218,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
               fxaa_descriptor_sets.data(), 0, nullptr);
 
           // Dispatch FXAA compute shader.
+          ++submission_in_progress_.dispatch_count;
           deferred_command_buffer_.CmdVkDispatch(group_count_x, group_count_y,
                                                  1);
 
@@ -3528,6 +3530,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       render_target_cache_->last_update_render_pass(),
       render_target_cache_->last_update_framebuffer());
 
+  // Track for device-lost diagnostics.
+  ++submission_in_progress_.draw_count;
+  submission_in_progress_.last_vs_hash = vertex_shader->ucode_data_hash();
+  submission_in_progress_.last_ps_hash =
+      pixel_shader ? pixel_shader->ucode_data_hash() : 0;
+  submission_in_progress_.last_render_pass_key =
+      render_target_cache_->last_update_render_pass_key().key;
+
   // Draw.
   if (primitive_processing_result.index_buffer_type ==
           PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
@@ -3918,6 +3928,7 @@ bool VulkanCommandProcessor::IssueCopy() {
     }
     return false;
   }
+  ++submission_in_progress_.resolve_count;
 
   // CPU readback resolve path (if not disabled).
   ReadbackResolveMode readback_mode = GetReadbackResolveMode();
@@ -4565,6 +4576,7 @@ bool VulkanCommandProcessor::IssueCopy() {
         1, &descriptor_set, 0, nullptr);
 
     // Dispatch compute shader - one thread group per 32x32 tile
+    ++submission_in_progress_.dispatch_count;
     deferred_command_buffer_.CmdVkDispatch(tile_count, 1, 1);
 
     // Barriers before copy: compute-write -> transfer-read on the source, and
@@ -5179,6 +5191,37 @@ void VulkanCommandProcessor::InitializeTrace() {
   }
 }
 
+void VulkanCommandProcessor::LogRecentSubmissions(const char* context) {
+  XELOGE(
+      "VulkanCommandProcessor: recent submission history ({}) - oldest first, "
+      "current in-progress last:",
+      context);
+  // Walk the ring starting from the oldest entry.
+  for (size_t i = 0; i < kSubmissionHistorySize; ++i) {
+    const SubmissionSummary& s =
+        submission_history_[(submission_history_next_ + i) %
+                            kSubmissionHistorySize];
+    if (!s.submission_index) {
+      continue;
+    }
+    XELOGE(
+        "  sub {:>5} frame {:>5}: draws={} dispatches={} resolves={} "
+        "VS={:016X} PS={:016X} RP=0x{:08X}",
+        s.submission_index, s.frame_index, s.draw_count, s.dispatch_count,
+        s.resolve_count, s.last_vs_hash, s.last_ps_hash,
+        uint32_t(s.last_render_pass_key));
+  }
+  if (submission_open_) {
+    const SubmissionSummary& s = submission_in_progress_;
+    XELOGE(
+        "  sub {:>5} frame {:>5} (in-progress): draws={} dispatches={} "
+        "resolves={} VS={:016X} PS={:016X} RP=0x{:08X}",
+        s.submission_index, s.frame_index, s.draw_count, s.dispatch_count,
+        s.resolve_count, s.last_vs_hash, s.last_ps_hash,
+        uint32_t(s.last_render_pass_key));
+  }
+}
+
 void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
     uint64_t await_submission) {
   // Only report once, no need to retry a wait that won't succeed anyway.
@@ -5207,6 +5250,7 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
         await_submission, GetCurrentSubmission(), GetCompletedSubmission(),
         command_buffers_submitted_.size(), frame_current_, frame_open_,
         submission_open_);
+    LogRecentSubmissions("submission-check");
     device_lost_ = true;
     graphics_system_->OnHostGpuLossFromAnyThread(true);
     return;
@@ -5341,6 +5385,10 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
 
   if (!submission_open_) {
     submission_open_ = true;
+
+    submission_in_progress_ = SubmissionSummary{};
+    submission_in_progress_.submission_index = GetCurrentSubmission();
+    submission_in_progress_.frame_index = frame_current_;
 
     // Start a new deferred command buffer - will submit it to the real one in
     // the end of the submission (when async pipeline object creation requests
@@ -5656,6 +5704,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
             "VK_ERROR_DEVICE_LOST - GPU crashed or hung. This may be caused by "
             "an invalid shader, out-of-bounds memory access, or driver bug.");
       }
+      LogRecentSubmissions("submit-failure");
       if (vulkan_device->IsLost() && !device_lost_) {
         device_lost_ = true;
         graphics_system_->OnHostGpuLossFromAnyThread(true);
@@ -5670,6 +5719,10 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     current_submission_wait_semaphores_.clear();
     command_buffers_submitted_.emplace_back(submission_index, command_buffer);
     command_buffers_writable_.pop_back();
+
+    submission_history_[submission_history_next_] = submission_in_progress_;
+    submission_history_next_ =
+        (submission_history_next_ + 1) % kSubmissionHistorySize;
 
     // Mark descriptor pool chains with submission index for reclaim tracking.
     if (resolve_downscale_descriptor_pool_chain_) {
