@@ -29,5 +29,10 @@ void SuppressMacAutoMenuItems() {
   }];
 }
 
+void ActivateMacApp() {
+  // exec'd children and non-LaunchServices launches don't auto-foreground.
+  [NSApp activateIgnoringOtherApps:YES];
+}
+
 }  // namespace ui
 }  // namespace xe

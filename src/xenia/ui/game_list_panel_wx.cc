@@ -1055,6 +1055,12 @@ void GameListPanel::ActivateSelected() {
   }
 }
 
+void GameListPanel::FocusSearch() {
+  if (search_) {
+    search_->SetFocus();
+  }
+}
+
 void GameListPanel::OnColumnHeaderClick(wxDataViewEvent& event) {
   int col = event.GetColumn();
   if (col == 1) {

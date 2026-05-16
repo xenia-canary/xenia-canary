@@ -1583,6 +1583,7 @@ void EmulatorWindow::ApplyContentVisibility() {
     render_pane->SetFocus();
   } else if (show_list) {
     game_list_panel_->Raise();
+    game_list_panel_->FocusSearch();
   }
 
   if (wx_toolbar_state_ && wx_toolbar_state_->toolbar) {

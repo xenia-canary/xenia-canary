@@ -40,6 +40,7 @@ char** g_argv = nullptr;
 
 #if XE_PLATFORM_MAC
 void SuppressMacAutoMenuItems();
+void ActivateMacApp();
 #endif
 
 bool XeniaWxApp::OnInit() {
@@ -95,6 +96,10 @@ bool XeniaWxApp::OnInit() {
   if (!app_->OnInitialize()) {
     return false;
   }
+
+#if XE_PLATFORM_MAC
+  ActivateMacApp();
+#endif
 
   return true;
 }

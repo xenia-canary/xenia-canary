@@ -52,6 +52,7 @@ class GameListPanel : public wxPanel {
   void MoveSelection(int delta);
   // Launches the selected title via the launch callback (if one is wired).
   void ActivateSelected();
+  void FocusSearch();
 
  private:
   struct Disc {
