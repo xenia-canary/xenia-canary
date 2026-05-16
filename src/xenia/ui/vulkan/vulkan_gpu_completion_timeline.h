@@ -59,19 +59,6 @@ class VulkanGPUCompletionTimeline : public GPUCompletionTimeline {
       other.submission_successful_.reset();
     }
 
-    FenceAcquisition& operator==(FenceAcquisition&& other) {
-      if (this == &other) {
-        return *this;
-      }
-      completion_timeline_ = other.completion_timeline_;
-      other.completion_timeline_ = nullptr;
-      fence_ = other.fence_;
-      other.fence_ = VK_NULL_HANDLE;
-      submission_successful_ = other.submission_successful_;
-      other.submission_successful_.reset();
-      return *this;
-    }
-
     ~FenceAcquisition() {
       if (completion_timeline_ && fence_) {
 #ifndef NDEBUG
