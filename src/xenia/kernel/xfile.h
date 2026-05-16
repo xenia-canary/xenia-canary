@@ -132,7 +132,8 @@ class XFile : public XObject {
  public:
   static const XObject::Type kObjectType = XObject::Type::File;
 
-  XFile(KernelState* kernel_state, vfs::File* file, bool synchronous);
+  XFile(KernelState* kernel_state, vfs::File* file, bool synchronous,
+        bool allow_buffering = false);
   ~XFile() override;
 
   vfs::Device* device() const { return file_->entry()->device(); }
@@ -175,6 +176,7 @@ class XFile : public XObject {
                                    ByteStream* stream);
 
   bool is_synchronous() const { return is_synchronous_; }
+  bool is_buffered() const { return allow_buffering_; }
 
  protected:
   void NotifyIOCompletionPorts(XIOCompletion::IONotification& notification);
@@ -205,6 +207,7 @@ class XFile : public XObject {
   size_t find_index_ = 0;
 
   bool is_synchronous_ = false;
+  bool allow_buffering_ = false;
 };
 
 }  // namespace kernel

@@ -13,13 +13,17 @@
 #include "xenia/base/byte_stream.h"
 #include "xenia/kernel/kernel_state.h"
 
+#include "xenia/vfs/devices/host_path_device.h"
+
 namespace xe {
 namespace kernel {
 
-XFile::XFile(KernelState* kernel_state, vfs::File* file, bool synchronous)
+XFile::XFile(KernelState* kernel_state, vfs::File* file, bool synchronous,
+             bool allow_buffering)
     : XObject(kernel_state, kObjectType),
       file_(file),
-      is_synchronous_(synchronous) {
+      is_synchronous_(synchronous),
+      allow_buffering_(allow_buffering) {
   async_event_ = threading::Event::CreateAutoResetEvent(false);
   assert_not_null(async_event_);
 }
@@ -177,6 +181,30 @@ X_STATUS XFile::ReadInternal(uint32_t buffer_guest_address,
               position_ = byte_offset;
             }
             position_ += bytes_read;
+          }
+
+          if (result == X_STATUS_END_OF_FILE) {
+            // Special handling for packages. This is until real stfs handling
+            // is implemented
+            if (const auto dev = dynamic_cast<vfs::HostPathDevice*>(device())) {
+              // STFS support caching, but for whatever reason it should return
+              // pending.
+              if (dev->is_package_mounted()) {
+                result = X_STATUS_SUCCESS;
+              }
+            }
+          }
+
+          if (!is_synchronous_ && result == X_STATUS_SUCCESS) {
+            if (!allow_buffering_) {
+              result = X_STATUS_PENDING;
+            }
+
+            if (const auto dev = dynamic_cast<vfs::HostPathDevice*>(device())) {
+              if (dev->is_package_mounted() && allow_buffering_) {
+                result = X_STATUS_PENDING;
+              }
+            }
           }
         }
       }
