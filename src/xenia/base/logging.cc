@@ -540,7 +540,10 @@ void FatalError(const std::string_view str) {
   // Throw an error that can be reported to the developers via the store.
   std::abort();
 #else
-  std::exit(EXIT_FAILURE);
+  // skip static destructors so they can't race with worker threads still
+  // running and corrupt the heap, at_quick_exit handlers will take care
+  // of necessary cleanup (e.g. /dev/shm/xenia* files on linux )
+  std::quick_exit(EXIT_FAILURE);
 #endif  // XE_PLATFORM_ANDROID
 }
 
