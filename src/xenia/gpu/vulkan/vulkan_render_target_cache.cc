@@ -1560,37 +1560,48 @@ void VulkanRenderTargetCache::GetLastUpdateRenderingAttachments(
   RenderPassKey key = last_update_render_pass_key_;
   const RenderTarget* const* rts = last_update_accumulated_render_targets();
 
-  // Initialize depth/stencil attachments.
+  // Initialize depth/stencil attachments. Must match what pipeline creation
+  // declared (depthAttachmentFormat from key.depth_and_color_used bit 0); null
+  // RT still consumes the slot with imageView=VK_NULL_HANDLE.
   std::memset(depth_attachment, 0, sizeof(VkRenderingAttachmentInfo));
   std::memset(stencil_attachment, 0, sizeof(VkRenderingAttachmentInfo));
-
-  // Set up depth attachment if used.
-  if ((key.depth_and_color_used & 0b1) && rts[0]) {
-    const auto* vulkan_rt = static_cast<const VulkanRenderTarget*>(rts[0]);
+  if (key.depth_and_color_used & 0b1) {
     depth_attachment->sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    depth_attachment->imageView = vulkan_rt->view_depth_stencil();
-    depth_attachment->imageLayout = VulkanRenderTarget::kDepthDrawLayout;
-    depth_attachment->loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    depth_attachment->storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    // Stencil uses the same view for depth-stencil formats.
-    *stencil_attachment = *depth_attachment;
+    stencil_attachment->sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    if (rts[0]) {
+      const auto* vulkan_rt = static_cast<const VulkanRenderTarget*>(rts[0]);
+      depth_attachment->imageView = vulkan_rt->view_depth_stencil();
+      depth_attachment->imageLayout = VulkanRenderTarget::kDepthDrawLayout;
+      depth_attachment->loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+      depth_attachment->storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      // Stencil uses the same view for depth-stencil formats.
+      *stencil_attachment = *depth_attachment;
+    }
   }
 
-  // Set up color attachments.
+  // Set up color attachments. The slot count must match what pipeline creation
+  // declared (colorAttachmentCount from key.depth_and_color_used bits 1-4),
+  // otherwise the pipeline's FS may write a Location that has no destination
+  // and the result is undefined per the Vulkan spec - RADV hangs on this.
+  // Null RT entries get imageView=VK_NULL_HANDLE; writes to them are silently
+  // dropped per spec.
   uint32_t color_attachment_count = 0;
   for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
     VkRenderingAttachmentInfo& color_attachment = color_attachments[i];
     std::memset(&color_attachment, 0, sizeof(VkRenderingAttachmentInfo));
-    if ((key.depth_and_color_used & (1 << (1 + i))) && rts[1 + i]) {
-      const auto* vulkan_rt =
-          static_cast<const VulkanRenderTarget*>(rts[1 + i]);
-      color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-      color_attachment.imageView = vulkan_rt->view_depth_color();
-      color_attachment.imageLayout = VulkanRenderTarget::kColorDrawLayout;
-      color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-      color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-      color_attachment_count = i + 1;
+    if (!(key.depth_and_color_used & (1 << (1 + i)))) {
+      continue;
     }
+    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color_attachment_count = i + 1;
+    if (!rts[1 + i]) {
+      continue;
+    }
+    const auto* vulkan_rt = static_cast<const VulkanRenderTarget*>(rts[1 + i]);
+    color_attachment.imageView = vulkan_rt->view_depth_color();
+    color_attachment.imageLayout = VulkanRenderTarget::kColorDrawLayout;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   }
   *color_attachment_count_out = color_attachment_count;
 }
