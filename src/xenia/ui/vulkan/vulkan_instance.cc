@@ -37,7 +37,7 @@ namespace ui {
 namespace vulkan {
 
 std::unique_ptr<VulkanInstance> VulkanInstance::Create(
-    const bool with_surface, const bool try_enable_validation) {
+    const bool with_surface, const int validation_level) {
   std::unique_ptr<VulkanInstance> vulkan_instance(new VulkanInstance());
 
   // Load the RenderDoc API if connected.
@@ -223,9 +223,16 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   // vector.
   std::unordered_map<std::string, bool*> requested_layers;
   bool layer_khronos_validation = false;
-  if (try_enable_validation) {
+  // VK_EXT_validation_features (#248) is provided by the validation layer;
+  // request it alongside so we can chain VkValidationFeaturesEXT.
+  bool ext_EXT_validation_features = false;
+  if (validation_level >= 1) {
     requested_layers.emplace("VK_LAYER_KHRONOS_validation",
                              &layer_khronos_validation);
+    if (validation_level >= 2) {
+      requested_extensions.emplace("VK_EXT_validation_features",
+                                   &ext_EXT_validation_features);
+    }
   }
 
   std::vector<const char*> enabled_layers;
@@ -374,6 +381,33 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   instance_create_info.enabledExtensionCount =
       uint32_t(enabled_extensions.size());
   instance_create_info.ppEnabledExtensionNames = enabled_extensions.data();
+
+  // Opt into extra validation features when the corresponding level is set and
+  // VK_EXT_validation_features was provided by the validation layer.
+  VkValidationFeatureEnableEXT validation_feature_enables[3];
+  VkValidationFeaturesEXT validation_features = {
+      VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+  if (ext_EXT_validation_features) {
+    uint32_t enable_count = 0;
+    if (validation_level >= 2) {
+      validation_feature_enables[enable_count++] =
+          VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+    }
+    if (validation_level >= 3) {
+      validation_feature_enables[enable_count++] =
+          VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT;
+      validation_feature_enables[enable_count++] =
+          VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT;
+    }
+    if (enable_count) {
+      validation_features.enabledValidationFeatureCount = enable_count;
+      validation_features.pEnabledValidationFeatures =
+          validation_feature_enables;
+      validation_features.pNext = instance_create_info.pNext;
+      instance_create_info.pNext = &validation_features;
+    }
+  }
+
   VkResult instance_create_result = ifn.vkCreateInstance(
       &instance_create_info, nullptr, &vulkan_instance->instance_);
 
@@ -391,6 +425,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     instance_create_info.enabledLayerCount = 0;
     instance_create_info.enabledExtensionCount =
         uint32_t(enabled_implementation_extension_count);
+    // VkValidationFeaturesEXT comes from the validation layer; if we're
+    // retrying without it, unchain the struct.
+    if (instance_create_info.pNext == &validation_features) {
+      instance_create_info.pNext = validation_features.pNext;
+    }
     instance_create_result = ifn.vkCreateInstance(
         &instance_create_info, nullptr, &vulkan_instance->instance_);
   }

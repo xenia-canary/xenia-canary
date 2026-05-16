@@ -27,8 +27,9 @@ namespace vulkan {
 
 class VulkanInstance {
  public:
+  // validation_level: 0=off, 1=standard layer, 2=+synchronization validation.
   static std::unique_ptr<VulkanInstance> Create(bool with_surface,
-                                                bool try_enable_validation);
+                                                int validation_level);
 
   VulkanInstance(const VulkanInstance&) = delete;
   VulkanInstance& operator=(const VulkanInstance&) = delete;

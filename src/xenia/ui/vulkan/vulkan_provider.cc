@@ -16,11 +16,14 @@
 #include "xenia/ui/vulkan/vulkan_immediate_drawer.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 
-DEFINE_bool(
-    vulkan_validation, false,
-    "Enable the Vulkan validation layer (VK_LAYER_KHRONOS_validation). "
-    "Messages will be written to the Xenia log if 'vulkan_log_debug_messages' "
-    "is enabled, or to the OS debug output otherwise.",
+DEFINE_int32(
+    vulkan_validation, 0,
+    "Vulkan validation level. 0=off, 1=standard (VK_LAYER_KHRONOS_validation: "
+    "API correctness, object lifetime, parameter checks), 2=+synchronization "
+    "validation (catches missing barriers and RAW/WAW hazards; 2-5x slowdown), "
+    "3=+GPU-assisted (catches OOB shader buffer accesses; 3-10x slowdown). "
+    "Messages go to the Xenia log if 'vulkan_log_debug_messages' is enabled, "
+    "or to the OS debug output otherwise.",
     "Vulkan");
 
 DEFINE_int32(vulkan_device, -1,
