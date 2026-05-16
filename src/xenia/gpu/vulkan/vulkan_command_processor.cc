@@ -85,7 +85,8 @@ VulkanCommandProcessor::VulkanCommandProcessor(
     : CommandProcessor(graphics_system, kernel_state),
       completion_timeline_(static_cast<const ui::vulkan::VulkanProvider*>(
                                graphics_system->provider())
-                               ->vulkan_device()),
+                               ->vulkan_device(),
+                           "cp"),
       deferred_command_buffer_(*this),
       transient_descriptor_allocator_uniform_buffer_(
           static_cast<const ui::vulkan::VulkanProvider*>(
@@ -5199,6 +5200,13 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
   const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
 
   if (vulkan_device->IsLost()) {
+    XELOGE(
+        "VulkanCommandProcessor: device lost observed in submission-check - "
+        "awaiting submission {}, current {}, completed {}, in-flight {}, "
+        "frame {} (frame_open: {}, submission_open: {})",
+        await_submission, GetCurrentSubmission(), GetCompletedSubmission(),
+        command_buffers_submitted_.size(), frame_current_, frame_open_,
+        submission_open_);
     device_lost_ = true;
     graphics_system_->OnHostGpuLossFromAnyThread(true);
     return;
@@ -5630,11 +5638,14 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
         vulkan_device->queue_family_graphics_compute(), 0, 1, &submit_info);
     if (submit_result != VK_SUCCESS) {
       XELOGE(
-          "Failed to submit a Vulkan command buffer - VkResult: {} (0x{:08X}), "
-          "submission_index: {}, wait_semaphores: {}, draw_resolution_scale: "
-          "{}x{}",
+          "VulkanCommandProcessor: Failed to submit a Vulkan command buffer - "
+          "VkResult: {} (0x{:08X}), submission: {} (completed: {}, in-flight: "
+          "{}), frame: {} (frame_open: {}, is_closing_frame: {}), "
+          "wait_semaphores: {}, draw_resolution_scale: {}x{}",
           static_cast<int32_t>(submit_result),
           static_cast<uint32_t>(submit_result), GetCurrentSubmission(),
+          GetCompletedSubmission(), command_buffers_submitted_.size(),
+          frame_current_, frame_open_, is_closing_frame,
           submit_info.waitSemaphoreCount,
           render_target_cache_ ? render_target_cache_->draw_resolution_scale_x()
                                : 0,

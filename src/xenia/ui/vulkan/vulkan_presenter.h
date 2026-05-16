@@ -360,7 +360,8 @@ class VulkanPresenter final : public Presenter {
     };
 
     explicit PaintContext(VulkanDevice* const vulkan_device)
-        : vulkan_device(vulkan_device), completion_timeline(vulkan_device) {}
+        : vulkan_device(vulkan_device),
+          completion_timeline(vulkan_device, "paint") {}
     PaintContext(const PaintContext& paint_context) = delete;
     PaintContext& operator=(const PaintContext& paint_context) = delete;
 
@@ -449,8 +450,9 @@ class VulkanPresenter final : public Presenter {
       : Presenter(host_gpu_loss_callback),
         vulkan_device_(vulkan_device),
         ui_samplers_(ui_samplers),
-        guest_output_image_refresher_completion_timeline_(vulkan_device),
-        ui_completion_timeline_(vulkan_device),
+        guest_output_image_refresher_completion_timeline_(vulkan_device,
+                                                          "guest-refresher"),
+        ui_completion_timeline_(vulkan_device, "ui"),
         paint_context_(vulkan_device) {
     assert_not_null(vulkan_device);
     assert_not_null(ui_samplers);

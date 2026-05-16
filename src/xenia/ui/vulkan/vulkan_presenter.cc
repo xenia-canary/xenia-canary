@@ -371,7 +371,8 @@ bool VulkanPresenter::CaptureGuestOutput(RawImage& image_out) {
     }
 
     {
-      VulkanGPUCompletionTimeline completion_timeline(vulkan_device_);
+      VulkanGPUCompletionTimeline completion_timeline(vulkan_device_,
+                                                      "guest-capture");
       VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit_info.commandBufferCount = 1;
       submit_info.pCommandBuffers = &command_buffer;
@@ -2083,8 +2084,19 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
           vulkan_device_->queue_family_graphics_compute(), 0, 1, &submit_info);
   if (submit_result != VK_SUCCESS) {
     XELOGE(
-        "VulkanPresenter: Failed to submit the presentation command buffer: {}",
-        vk::to_string(vk::Result(submit_result)));
+        "VulkanPresenter: Failed to submit the presentation command buffer: {} "
+        "- submission: {} (completed: {}, in-flight: {}), swapchain "
+        "image_index: {}, ui_setup_buffer_index: {}, execute_ui_drawers: {}",
+        vk::to_string(vk::Result(submit_result)),
+        paint_context_.completion_timeline.GetUpcomingSubmission(),
+        paint_context_.completion_timeline
+            .GetCompletedSubmissionFromLastUpdate(),
+        paint_context_.completion_timeline.pending_submission_count(),
+        swapchain_image_index,
+        ui_setup_command_buffer_index == SIZE_MAX
+            ? -1
+            : int64_t(ui_setup_command_buffer_index),
+        execute_ui_drawers);
     if (ui_setup_command_buffer_index != SIZE_MAX) {
       // If failed to submit, make the UI setup command buffer available for
       // immediate reuse, as the completed submission index won't be updated to
@@ -2141,7 +2153,13 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
     case VK_ERROR_DEVICE_LOST:
       XELOGE(
           "VulkanPresenter: Failed to present the swapchain image as the "
-          "device has been lost");
+          "device has been lost (image_index: {}, paint submission: {} "
+          "completed: {}, in-flight: {})",
+          swapchain_image_index,
+          paint_context_.completion_timeline.GetUpcomingSubmission(),
+          paint_context_.completion_timeline
+              .GetCompletedSubmissionFromLastUpdate(),
+          paint_context_.completion_timeline.pending_submission_count());
       return PaintResult::kGpuLostResponsible;
     case VK_ERROR_OUT_OF_DATE_KHR:
     case VK_ERROR_SURFACE_LOST_KHR:
