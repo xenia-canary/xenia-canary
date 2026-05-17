@@ -299,9 +299,10 @@ endif()
 # ==============================================================================
 # Mirrors the layout of MoltenVK's own CMakeLists.txt (Common +
 # MoltenVKShaderConverter + MoltenVK) but builds against our in-tree
-# Vulkan-Headers / SPIRV-Cross / SPIRV-Tools instead of fetching its own copies
-# via CPM.cmake. The SPIRV-Cross submodule is pinned to MoltenVK's expected
-# revision so the spirv_msl ABI matches.
+# Vulkan-Headers / SPIRV-Cross / SPIRV-Tools / cereal instead of fetching its
+# own copies via CPM.cmake. The SPIRV-Cross and cereal submodules are pinned to
+# the revisions MoltenVK expects (see MoltenVK/ExternalRevisions/*) so the
+# spirv_msl ABI and pipeline-cache serialization format match.
 if(APPLE)
   # Record the MoltenVK submodule revision for MVKDevice's identification
   # string (MoltenVK's own CMake runs `git rev-parse` here; we just shell
@@ -337,8 +338,7 @@ if(APPLE)
     -Wno-vla-cxx-extension)
   target_compile_definitions(MoltenVK_Common PUBLIC
     MVK_CONFIG_LOG_LEVEL=1          # error-only at runtime
-    MVK_USE_METAL_PRIVATE_API=1     # primitive-restart disable + legacy SPI
-    MVK_USE_CEREAL=0)               # skip pipeline-cache-control serialization
+    MVK_USE_METAL_PRIVATE_API=1)    # primitive-restart disable + legacy SPI
 
   # MoltenVK::ShaderConverter — wraps SPIRV-Cross + SPIRV-Tools to produce MSL.
   file(GLOB _mvk_sc_src
@@ -372,6 +372,7 @@ if(APPLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/OS
     ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Utility
     ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK/MoltenVK/MoltenVK/Vulkan
+    ${CMAKE_CURRENT_SOURCE_DIR}/cereal/include
     ${CMAKE_CURRENT_BINARY_DIR}/MoltenVK-gen)
   # Unquoted: MoltenVK runs MVK_STRINGIFY on this and compares to
   # "$MAJOR.$MINOR.$PATCH" — quotes here would survive into the stringify.

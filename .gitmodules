@@ -129,3 +129,6 @@
 [submodule "third_party/MoltenVK"]
 	path = third_party/MoltenVK
 	url = https://github.com/KhronosGroup/MoltenVK.git
+[submodule "third_party/cereal"]
+	path = third_party/cereal
+	url = https://github.com/USCiLab/cereal.git
