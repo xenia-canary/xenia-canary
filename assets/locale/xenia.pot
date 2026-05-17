@@ -4,12 +4,12 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: xenia-edge\n"
-"POT-Creation-Date: 2026-05-17 09:02+0000\n"
+"POT-Creation-Date: 2026-05-17 14:47+0000\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/xenia/ui/game_list_panel_wx.cc:530
+#: src/xenia/ui/game_list_panel_wx.cc:540
 msgid ""
 "\n"
 "\n"
@@ -20,7 +20,7 @@ msgstr ""
 msgid "   %zu already installed"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:1153
+#: src/xenia/ui/game_list_panel_wx.cc:1163
 msgid " (%zu discs)"
 msgstr ""
 
@@ -116,7 +116,7 @@ msgstr ""
 msgid "Achievements"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2153
+#: src/xenia/app/emulator_window.cc:2151
 msgid "Add Games"
 msgstr ""
 
@@ -125,7 +125,7 @@ msgstr ""
 msgid "Add Override"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2154
+#: src/xenia/app/emulator_window.cc:2152
 msgid "Add games"
 msgstr ""
 
@@ -230,7 +230,7 @@ msgstr ""
 msgid "Canada"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:952
+#: src/xenia/ui/game_list_panel_wx.cc:962
 msgid "Canary"
 msgstr ""
 
@@ -268,7 +268,7 @@ msgid "Clear Icon"
 msgstr ""
 
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:226
-#: src/xenia/ui/game_list_panel_wx.cc:657
+#: src/xenia/ui/game_list_panel_wx.cc:667
 #: src/xenia/ui/game_scan_progress_dialog_wx.cc:206
 #: src/xenia/ui/install_progress_dialog_wx.cc:161
 msgid "Close"
@@ -278,7 +278,7 @@ msgstr ""
 msgid "Colombia"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:972
+#: src/xenia/ui/game_list_panel_wx.cc:982
 msgid "Compatibility"
 msgstr ""
 
@@ -286,7 +286,7 @@ msgstr ""
 msgid "Complete"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:937
+#: src/xenia/ui/game_list_panel_wx.cc:947
 msgid "Config Overrides..."
 msgstr ""
 
@@ -322,13 +322,13 @@ msgstr ""
 
 #: src/xenia/app/emulator_window.cc:1967
 #: src/xenia/app/emulator_window.cc:1979
-#: src/xenia/app/emulator_window.cc:2109
-#: src/xenia/app/emulator_window.cc:2116
-#: src/xenia/app/emulator_window.cc:2128
+#: src/xenia/app/emulator_window.cc:2108
+#: src/xenia/app/emulator_window.cc:2115
+#: src/xenia/app/emulator_window.cc:2127
 msgid "Create profile"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2108
+#: src/xenia/app/emulator_window.cc:2107
 msgid "Create profile && migrate data"
 msgstr ""
 
@@ -340,7 +340,7 @@ msgstr ""
 msgid "Czech Republic"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:899
+#: src/xenia/ui/game_list_panel_wx.cc:909
 msgid "DLC"
 msgstr ""
 
@@ -348,8 +348,8 @@ msgstr ""
 msgid "Dedicated Thread:"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:617
-#: src/xenia/ui/game_list_panel_wx.cc:620
+#: src/xenia/ui/game_list_panel_wx.cc:627
+#: src/xenia/ui/game_list_panel_wx.cc:630
 msgid "Default"
 msgstr ""
 
@@ -357,9 +357,9 @@ msgstr ""
 msgid "Denmark"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:601
-#: src/xenia/ui/game_list_panel_wx.cc:637
-#: src/xenia/ui/game_list_panel_wx.cc:836
+#: src/xenia/ui/game_list_panel_wx.cc:611
+#: src/xenia/ui/game_list_panel_wx.cc:647
+#: src/xenia/ui/game_list_panel_wx.cc:846
 msgid "Disc %zu"
 msgstr ""
 
@@ -388,11 +388,11 @@ msgstr ""
 msgid "Ecuador"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:575
+#: src/xenia/ui/game_list_panel_wx.cc:585
 msgid "Edit Discs"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:846
+#: src/xenia/ui/game_list_panel_wx.cc:856
 msgid "Edit Discs..."
 msgstr ""
 
@@ -421,11 +421,11 @@ msgid "English"
 msgstr ""
 
 #: src/xenia/app/emulator_window.cc:1966
-#: src/xenia/app/emulator_window.cc:2115
+#: src/xenia/app/emulator_window.cc:2114
 msgid "Enter gamertag for new profile:"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:681
+#: src/xenia/ui/game_list_panel_wx.cc:691
 msgid "Enter new label:"
 msgstr ""
 
@@ -437,7 +437,7 @@ msgstr ""
 msgid "Estonia"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2268
+#: src/xenia/app/emulator_window.cc:2266
 msgid ""
 "Experimental fork of Xenia Canary.\n"
 "\n"
@@ -480,11 +480,11 @@ msgstr ""
 msgid "Faroe Islands"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:1149
+#: src/xenia/ui/game_list_panel_wx.cc:1159
 msgid "File Corrupted"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:528
+#: src/xenia/ui/game_list_panel_wx.cc:538
 msgid ""
 "File not found:\n"
 "%s"
@@ -659,7 +659,7 @@ msgstr ""
 msgid "Installation Progress"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:688
+#: src/xenia/ui/game_list_panel_wx.cc:698
 msgid "Invalid Label"
 msgstr ""
 
@@ -673,7 +673,7 @@ msgid "Invalid gamertag"
 msgstr ""
 
 #: src/xenia/app/emulator_window.cc:1979
-#: src/xenia/app/emulator_window.cc:2128
+#: src/xenia/app/emulator_window.cc:2127
 msgid "Invalid gamertag."
 msgstr ""
 
@@ -745,12 +745,12 @@ msgstr ""
 msgid "Kyrgyzstan"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:618
-#: src/xenia/ui/game_list_panel_wx.cc:622
+#: src/xenia/ui/game_list_panel_wx.cc:628
+#: src/xenia/ui/game_list_panel_wx.cc:632
 msgid "Label"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:688
+#: src/xenia/ui/game_list_panel_wx.cc:698
 msgid "Label cannot contain '::'."
 msgstr ""
 
@@ -767,8 +767,8 @@ msgstr ""
 msgid "Latvia"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:845
-#: src/xenia/ui/game_list_panel_wx.cc:852
+#: src/xenia/ui/game_list_panel_wx.cc:855
+#: src/xenia/ui/game_list_panel_wx.cc:862
 msgid "Launch"
 msgstr ""
 
@@ -844,7 +844,7 @@ msgstr ""
 msgid "MangoHUD not in PATH; install to enable."
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:953
+#: src/xenia/ui/game_list_panel_wx.cc:963
 msgid "Master"
 msgstr ""
 
@@ -892,7 +892,7 @@ msgstr ""
 msgid "No Profiles Found"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:527
+#: src/xenia/ui/game_list_panel_wx.cc:537
 msgid "No file path is set for this title."
 msgstr ""
 
@@ -927,8 +927,8 @@ msgstr ""
 msgid "Not logged in"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2110
-#: src/xenia/app/emulator_window.cc:2154
+#: src/xenia/app/emulator_window.cc:2109
+#: src/xenia/app/emulator_window.cc:2152
 msgid "Not now"
 msgstr ""
 
@@ -957,7 +957,7 @@ msgstr ""
 msgid "Open a title"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:858
+#: src/xenia/ui/game_list_panel_wx.cc:868
 msgid "Open containing folder"
 msgstr ""
 
@@ -1001,13 +1001,13 @@ msgstr ""
 msgid "Patch #%zu"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:909
-#: src/xenia/ui/game_list_panel_wx.cc:934
+#: src/xenia/ui/game_list_panel_wx.cc:919
+#: src/xenia/ui/game_list_panel_wx.cc:944
 msgid "Patches"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:619
-#: src/xenia/ui/game_list_panel_wx.cc:624
+#: src/xenia/ui/game_list_panel_wx.cc:629
+#: src/xenia/ui/game_list_panel_wx.cc:634
 msgid "Path"
 msgstr ""
 
@@ -1076,27 +1076,27 @@ msgstr ""
 msgid "Recreation"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:656
+#: src/xenia/ui/game_list_panel_wx.cc:666
 msgid "Remove"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:984
+#: src/xenia/ui/game_list_panel_wx.cc:994
 msgid ""
 "Remove %s from the list?\n"
 "\n"
 "This only clears it from the dashboard records; game files on disk are kept."
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:709
+#: src/xenia/ui/game_list_panel_wx.cc:719
 msgid "Remove '%s' from the disc list?"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:710
+#: src/xenia/ui/game_list_panel_wx.cc:720
 msgid "Remove Disc"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:975
-#: src/xenia/ui/game_list_panel_wx.cc:987
+#: src/xenia/ui/game_list_panel_wx.cc:985
+#: src/xenia/ui/game_list_panel_wx.cc:997
 msgid "Remove from list"
 msgstr ""
 
@@ -1104,11 +1104,11 @@ msgstr ""
 msgid "Remove this override"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:681
+#: src/xenia/ui/game_list_panel_wx.cc:691
 msgid "Rename Label"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:655
+#: src/xenia/ui/game_list_panel_wx.cc:665
 msgid "Rename Label..."
 msgstr ""
 
@@ -1165,7 +1165,7 @@ msgstr ""
 msgid "Saved. Takes effect on next launch."
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:890
+#: src/xenia/ui/game_list_panel_wx.cc:900
 msgid "Saves"
 msgstr ""
 
@@ -1177,7 +1177,12 @@ msgstr ""
 msgid "Scanning: %s"
 msgstr ""
 
+#: src/xenia/ui/game_list_panel_wx.cc:396
+msgid "Search %zu games..."
+msgstr ""
+
 #: src/xenia/ui/game_list_panel_wx.cc:206
+#: src/xenia/ui/game_list_panel_wx.cc:392
 msgid "Search games..."
 msgstr ""
 
@@ -1187,7 +1192,7 @@ msgstr ""
 msgid "Select %s"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:537
+#: src/xenia/ui/game_list_panel_wx.cc:547
 msgid "Select Content Package"
 msgstr ""
 
@@ -1286,7 +1291,7 @@ msgstr ""
 msgid "Successfully installed %d package(s)."
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:542
+#: src/xenia/ui/game_list_panel_wx.cc:552
 msgid "Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*.zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
 msgstr ""
 
@@ -1321,11 +1326,11 @@ msgstr ""
 msgid "Title"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:894
+#: src/xenia/ui/game_list_panel_wx.cc:904
 msgid "Title Updates"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:531
+#: src/xenia/ui/game_list_panel_wx.cc:541
 msgid "Title not found"
 msgstr ""
 
@@ -1410,7 +1415,7 @@ msgstr ""
 msgid "Viet Nam"
 msgstr ""
 
-#: src/xenia/app/emulator_window.cc:2151
+#: src/xenia/app/emulator_window.cc:2149
 msgid ""
 "Would you like to add games now?\n"
 "\n"
@@ -1445,7 +1450,7 @@ msgstr ""
 msgid "by %s"
 msgstr ""
 
-#: src/xenia/ui/game_list_panel_wx.cc:981
+#: src/xenia/ui/game_list_panel_wx.cc:991
 msgid "title %08X"
 msgstr ""
 

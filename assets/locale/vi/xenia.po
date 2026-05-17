@@ -1447,3 +1447,7 @@ msgstr ""
 "Bạn có muốn thêm trò chơi ngay bây giờ không?\n"
 "\n"
 "Bạn cũng có thể làm điều này sau từ Tệp -> Thêm trò chơi."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Tìm trong %zu trò chơi…"

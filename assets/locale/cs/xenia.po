@@ -1445,3 +1445,7 @@ msgstr ""
 "Chcete nyní přidat hry?\n"
 "\n"
 "Můžete to udělat i později z menu Soubor -> Přidat hry."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Hledat v %zu hrách..."

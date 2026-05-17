@@ -99,6 +99,7 @@ class GameListPanel : public wxPanel {
   void LoadTimestampsFromProfiles();
   void StartIconLoad();
   void ProcessIconChunk(size_t start, int gen);
+  void UpdateSearchPlaceholder();
 
   EmulatorWindow* emulator_window_;
   wxSearchCtrl* search_ = nullptr;

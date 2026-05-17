@@ -383,7 +383,17 @@ void GameListPanel::Reload() {
   // load. Apply timestamps now, render the list, then trickle icons in.
   LoadTimestampsFromProfiles();
   Repopulate();
+  UpdateSearchPlaceholder();
   StartIconLoad();
+}
+
+void GameListPanel::UpdateSearchPlaceholder() {
+  if (entries_.empty()) {
+    search_->SetDescriptiveText(_("Search games..."));
+    return;
+  }
+  search_->SetDescriptiveText(
+      wxString::Format(_("Search %zu games..."), entries_.size()));
 }
 
 void GameListPanel::LoadTimestampsFromProfiles() {

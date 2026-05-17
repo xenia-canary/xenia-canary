@@ -1443,3 +1443,7 @@ msgstr ""
 "지금 게임을 추가하시겠습니까?\n"
 "\n"
 "나중에 파일 -> 게임 추가에서도 할 수 있습니다."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "%zu개 게임 검색…"

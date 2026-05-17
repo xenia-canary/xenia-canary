@@ -1447,3 +1447,7 @@ msgstr ""
 "Deseja adicionar jogos agora?\n"
 "\n"
 "Você também pode fazer isso mais tarde em Arquivo -> Adicionar jogos."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Pesquisar em %zu jogos…"

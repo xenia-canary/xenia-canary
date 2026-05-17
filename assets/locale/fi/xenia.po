@@ -1447,3 +1447,7 @@ msgstr ""
 "Haluatko lisätä pelejä nyt?\n"
 "\n"
 "Voit tehdä tämän myös myöhemmin valikosta Tiedosto -> Lisää pelejä."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Etsi %zu pelistä…"

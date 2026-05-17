@@ -1447,3 +1447,7 @@ msgstr ""
 "Szeretne most játékokat hozzáadni?\n"
 "\n"
 "Ezt később is megteheti a Fájl -> Játékok hozzáadása menüből."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Keresés %zu játékban…"

@@ -1447,3 +1447,7 @@ msgstr ""
 "Gusto mo bang magdagdag ng mga laro ngayon?\n"
 "\n"
 "Maaari mo rin itong gawin mamaya mula sa File -> Magdagdag ng mga laro."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Maghanap sa %zu na laro…"

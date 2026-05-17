@@ -1447,3 +1447,7 @@ msgstr ""
 "Apakah Anda ingin menambahkan game sekarang?\n"
 "\n"
 "Anda juga dapat melakukan ini nanti dari Berkas -> Tambah game."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Cari di %zu game…"

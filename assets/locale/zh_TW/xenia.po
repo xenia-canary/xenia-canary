@@ -1443,3 +1443,7 @@ msgstr ""
 "是否現在新增遊戲？\n"
 "\n"
 "您也可以稍後從 檔案 -> 新增遊戲 執行此操作。"
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "搜尋 %zu 個遊戲…"

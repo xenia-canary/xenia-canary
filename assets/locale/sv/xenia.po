@@ -1447,3 +1447,7 @@ msgstr ""
 "Vill du lägga till spel nu?\n"
 "\n"
 "Du kan också göra detta senare från Arkiv -> Lägg till spel."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Sök bland %zu spel…"

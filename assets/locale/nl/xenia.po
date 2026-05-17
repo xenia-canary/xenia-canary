@@ -1447,3 +1447,7 @@ msgstr ""
 "Wilt u nu spellen toevoegen?\n"
 "\n"
 "U kunt dit ook later doen via Bestand -> Spellen toevoegen."
+
+#: src/xenia/ui/game_list_panel_wx.cc:217
+msgid "Search %zu games..."
+msgstr "Zoek in %zu spellen…"
