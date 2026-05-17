@@ -18,6 +18,9 @@
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 
 // libgcc/libunwind APIs for registering DWARF .eh_frame unwind info.
+// libgcc takes a pointer to a [CIE | FDEs | terminator] section and walks it.
+// Apple/LLVM libunwind takes a single FDE pointer and must be called once
+// per FDE, so on XE_PLATFORM_MAC we walk the buffer ourselves.
 extern "C" void __register_frame(void*);
 extern "C" void __deregister_frame(void*);
 
@@ -153,11 +156,30 @@ void PosixX64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,
   // Register with the runtime unwinder using the execute-side address.
   // The execute mapping is readable (kExecuteReadOnly = PROT_EXEC|PROT_READ),
   // so the unwinder can read the .eh_frame data at runtime.
-  void* unwind_execute_address = unwind_reservation.entry_address -
-                                 generated_code_write_base_ +
-                                 generated_code_execute_base_;
+  uint8_t* unwind_execute_address = unwind_reservation.entry_address -
+                                    generated_code_write_base_ +
+                                    generated_code_execute_base_;
+#if XE_PLATFORM_MAC
+  // Walk [CIE | FDE | terminator] and register each FDE individually.
+  const uint8_t* p = unwind_reservation.entry_address;
+  uint8_t* p_execute = unwind_execute_address;
+  while (true) {
+    uint32_t length = *reinterpret_cast<const uint32_t*>(p);
+    if (length == 0) {
+      break;
+    }
+    uint32_t cie_id_or_ptr = *reinterpret_cast<const uint32_t*>(p + 4);
+    if (cie_id_or_ptr != 0) {
+      __register_frame(p_execute);
+      registered_frames_.push_back(p_execute);
+    }
+    p += 4 + length;
+    p_execute += 4 + length;
+  }
+#else
   __register_frame(unwind_execute_address);
   registered_frames_.push_back(unwind_execute_address);
+#endif
 }
 
 void PosixX64CodeCache::InitializeUnwindEntry(
