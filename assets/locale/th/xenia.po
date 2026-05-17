@@ -1403,3 +1403,43 @@ msgstr "   ติดตั้งแล้ว %zu รายการ"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "สแกนไดเรกทอรี %zu รายการ   ตรวจสอบไฟล์ %zu รายการ   พบเกม %zu รายการ"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "เพิ่มเกม"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "เพิ่มเกม"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "สร้างโปรไฟล์และย้ายข้อมูล"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "ไม่พบโปรไฟล์"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "ไม่ใช่ตอนนี้"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"ไม่มีโปรไฟล์ที่ใช้งานได้ คุณจะไม่สามารถบันทึกได้หากไม่มีโปรไฟล์\n"
+"\n"
+"คุณต้องการสร้างโปรไฟล์ตอนนี้หรือไม่?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"คุณต้องการเพิ่มเกมตอนนี้หรือไม่?\n"
+"\n"
+"คุณสามารถทำได้ภายหลังจากเมนู ไฟล์ -> เพิ่มเกม"

@@ -1403,3 +1403,43 @@ msgstr "   %zu개 이미 설치됨"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "디렉터리 %zu개 검색됨   파일 %zu개 확인됨   게임 %zu개 발견됨"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "게임 추가"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "게임 추가"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "프로필 생성 및 데이터 마이그레이션"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "프로필을 찾을 수 없음"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "나중에"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"사용 가능한 프로필이 없습니다. 프로필 없이는 저장할 수 없습니다.\n"
+"\n"
+"지금 프로필을 만드시겠습니까?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"지금 게임을 추가하시겠습니까?\n"
+"\n"
+"나중에 파일 -> 게임 추가에서도 할 수 있습니다."

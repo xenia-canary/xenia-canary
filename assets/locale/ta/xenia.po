@@ -1403,3 +1403,43 @@ msgstr "   %zu ஏற்கனவே நிறுவப்பட்டுள்�
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu கோப்பகங்கள் ஸ்கேன் செய்யப்பட்டன   %zu கோப்புகள் ஆராயப்பட்டன   %zu விளையாட்டுகள் கண்டறியப்பட்டன"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "விளையாட்டுகளைச் சேர்"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "விளையாட்டுகளைச் சேர்"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "சுயவிவரம் உருவாக்கி தரவை மாற்று"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "சுயவிவரங்கள் இல்லை"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "இப்போது இல்லை"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"எந்த சுயவிவரமும் இல்லை. சுயவிவரம் இல்லாமல் சேமிக்க முடியாது.\n"
+"\n"
+"இப்போது ஒன்றை உருவாக்க விரும்புகிறீர்களா?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"இப்போது விளையாட்டுகளைச் சேர்க்க விரும்புகிறீர்களா?\n"
+"\n"
+"இதைப் பின்னர் கோப்பு -> விளையாட்டுகளைச் சேர் என்பதிலிருந்தும் செய்யலாம்."

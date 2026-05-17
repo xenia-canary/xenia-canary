@@ -1403,3 +1403,43 @@ msgstr "   %zu 個已安裝"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "已掃描 %zu 個目錄   已探查 %zu 個檔案   找到 %zu 個遊戲"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "新增遊戲"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "新增遊戲"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "建立設定檔並轉移資料"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "找不到設定檔"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "稍後"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"沒有可用的設定檔。如果沒有設定檔，您將無法儲存。\n"
+"\n"
+"是否現在建立一個？"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"是否現在新增遊戲？\n"
+"\n"
+"您也可以稍後從 檔案 -> 新增遊戲 執行此操作。"

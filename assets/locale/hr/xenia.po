@@ -1403,3 +1403,43 @@ msgstr "   već instalirano: %zu"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "pretraženih mapa: %zu   provjerenih datoteka: %zu   pronađenih igara: %zu"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Dodaj igre"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Dodaj igre"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Stvori profil i prenesi podatke"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Nisu pronađeni profili"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Ne sada"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Nema dostupnog profila. Bez profila nećete moći spremati.\n"
+"\n"
+"Želite li sada stvoriti profil?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Želite li sada dodati igre?\n"
+"\n"
+"Možete to učiniti i kasnije iz izbornika Datoteka -> Dodaj igre."

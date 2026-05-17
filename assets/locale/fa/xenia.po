@@ -1403,3 +1403,43 @@ msgstr "   %zu مورد از قبل نصب‌شده"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu پوشه بررسی شد   %zu فایل آزموده شد   %zu بازی یافت شد"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "افزودن بازی‌ها"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "افزودن بازی‌ها"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "ایجاد نمایه و انتقال داده‌ها"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "هیچ نمایه‌ای یافت نشد"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "اکنون نه"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"هیچ نمایه‌ای در دسترس نیست. بدون نمایه نمی‌توانید ذخیره کنید.\n"
+"\n"
+"آیا می‌خواهید اکنون یک نمایه ایجاد کنید؟"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"آیا می‌خواهید اکنون بازی اضافه کنید؟\n"
+"\n"
+"همچنین می‌توانید این کار را بعداً از پرونده -> افزودن بازی‌ها انجام دهید."

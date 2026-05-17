@@ -277,6 +277,9 @@ class EmulatorWindow {
   bool show_toolbar_ = true;
   void RefreshProfileMenu();
   void PopulateProfileMenu(ui::MenuItem* parent);
+  // Native wx prompt for first-run (no profiles); shown before any render
+  // surface.
+  void ShowNoProfilePrompt();
   void RefreshProfileIcon();
   void ShowProfilePopupMenu();
   // Show or hide the icon toolbar pane and persist the preference.

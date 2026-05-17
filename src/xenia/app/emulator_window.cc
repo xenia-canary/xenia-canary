@@ -139,6 +139,7 @@
 #include <wx/dcmemory.h>
 #include <wx/graphics.h>
 #include <wx/menu.h>
+#include <wx/msgdlg.h>
 #include <wx/mstream.h>
 #include <wx/settings.h>
 #include <wx/stattext.h>
@@ -402,8 +403,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
            ->xam_state()
            ->profile_manager()
            ->GetAccountCount()) {
-    new NoProfileDialog(imgui_drawer_.get(), this);
-    disable_hotkeys_ = true;
+    ShowNoProfilePrompt();
   }
 
   // When a title launches outside of RunTitle (e.g. --target on the command
@@ -1985,7 +1985,7 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
                            ? emulator_->kernel_state()->xam_state()
                            : nullptr) {
           if (auto* m = xs->profile_manager()) {
-            m->CreateProfile(gt, /*autologin=*/false);
+            m->CreateProfile(gt, /*autologin=*/true);
           }
         }
         RefreshProfileMenu();
@@ -2087,6 +2087,71 @@ void EmulatorWindow::RefreshProfileIcon() {
 
   if (game_list_panel_) {
     game_list_panel_->SetProfileSignedIn(signed_in != nullptr);
+  }
+}
+
+void EmulatorWindow::ShowNoProfilePrompt() {
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  wxWindow* parent = wx_window ? wx_window->frame() : nullptr;
+
+  const auto content_dirs =
+      xe::filesystem::ListDirectories(emulator_->content_root());
+  const bool offer_migration = !content_dirs.empty();
+
+  wxMessageDialog prompt(
+      parent,
+      _("There is no profile available. You will not be able to save "
+        "without one.\n\nWould you like to create one now?"),
+      _("No Profiles Found"), wxYES_NO | wxICON_QUESTION);
+  // wxWidgets treats `&` as a mnemonic; `&&` renders as a single `&`.
+  prompt.SetYesNoLabels(offer_migration ? _("Create profile && migrate data")
+                                        : _("Create profile"),
+                        _("Not now"));
+  if (prompt.ShowModal() != wxID_YES) {
+    return;
+  }
+
+  wxTextEntryDialog name_dlg(parent, _("Enter gamertag for new profile:"),
+                             _("Create profile"));
+  // Match the ImGui CreateProfileUI input cap (gamertag_[16]).
+  name_dlg.SetMaxLength(15);
+  if (name_dlg.ShowModal() != wxID_OK) {
+    return;
+  }
+  wxString gamertag = name_dlg.GetValue();
+  if (gamertag.IsEmpty()) {
+    return;
+  }
+  std::string gt = gamertag.utf8_string();
+  if (!kernel::xam::ProfileManager::IsGamertagValid(gt)) {
+    wxMessageBox(_("Invalid gamertag."), _("Create profile"),
+                 wxOK | wxICON_ERROR, parent);
+    return;
+  }
+
+  auto* xs = emulator_->kernel_state() ? emulator_->kernel_state()->xam_state()
+                                       : nullptr;
+  auto* pm = xs ? xs->profile_manager() : nullptr;
+  if (!pm) {
+    return;
+  }
+  const bool created = pm->CreateProfile(gt, /*autologin=*/true,
+                                         /*default_xuid=*/offer_migration);
+  if (created && offer_migration) {
+    emulator_->DataMigration(0xB13EBABEBABEBABE);
+  }
+  if (!created) {
+    return;
+  }
+
+  wxMessageDialog add_games_prompt(
+      parent,
+      _("Would you like to add games now?\n\nYou can also do this later "
+        "from File -> Add games."),
+      _("Add Games"), wxYES_NO | wxICON_QUESTION);
+  add_games_prompt.SetYesNoLabels(_("Add games"), _("Not now"));
+  if (add_games_prompt.ShowModal() == wxID_YES) {
+    FileAddGames();
   }
 }
 

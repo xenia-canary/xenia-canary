@@ -1407,3 +1407,43 @@ msgstr "   %zu már telepítve"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu könyvtár átvizsgálva   %zu fájl ellenőrizve   %zu játék találva"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Játékok hozzáadása"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Játékok hozzáadása"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Profil létrehozása és adatok áthelyezése"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Nem található profil"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Most nem"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Nincs elérhető profil. Profil nélkül nem tud menteni.\n"
+"\n"
+"Szeretne most létrehozni egyet?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Szeretne most játékokat hozzáadni?\n"
+"\n"
+"Ezt később is megteheti a Fájl -> Játékok hozzáadása menüből."

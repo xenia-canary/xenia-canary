@@ -1403,3 +1403,43 @@ msgstr "   %zu 件はインストール済"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu 件のディレクトリをスキャン   %zu 件のファイルを調査   %zu 件のゲームを検出"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "ゲームを追加"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "ゲームを追加"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "プロファイル作成とデータ移行"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "プロファイルが見つかりません"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "後で"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"利用可能なプロファイルがありません。プロファイルがないと保存できません。\n"
+"\n"
+"今すぐ作成しますか？"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"今すぐゲームを追加しますか？\n"
+"\n"
+"後で「ファイル」-> 「ゲームを追加」からも実行できます。"

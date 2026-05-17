@@ -22,18 +22,6 @@ namespace app {
 
 class EmulatorWindow;
 
-class NoProfileDialog final : public ui::ImGuiDialog {
- public:
-  NoProfileDialog(ui::ImGuiDrawer* imgui_drawer,
-                  EmulatorWindow* emulator_window)
-      : ui::ImGuiDialog(imgui_drawer), emulator_window_(emulator_window) {}
-
- protected:
-  void OnDraw(ImGuiIO& io) override;
-
-  EmulatorWindow* emulator_window_;
-};
-
 class ProfileConfigDialog final : public ui::ImGuiGamepadDialog {
  public:
   ProfileConfigDialog(ui::ImGuiDrawer* imgui_drawer,

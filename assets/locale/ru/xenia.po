@@ -1407,3 +1407,43 @@ msgstr "   уже установлено: %zu"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "просканировано папок: %zu   проверено файлов: %zu   найдено игр: %zu"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Добавить игры"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Добавить игры"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Создать профиль и перенести данные"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Профили не найдены"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Не сейчас"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Нет доступного профиля. Без профиля вы не сможете сохранять.\n"
+"\n"
+"Хотите создать профиль сейчас?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Хотите добавить игры сейчас?\n"
+"\n"
+"Вы также можете сделать это позже в меню Файл -> Добавить игры."

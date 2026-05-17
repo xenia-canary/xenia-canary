@@ -1408,3 +1408,43 @@ msgstr "   %zu ήδη εγκατεστημένα"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu κατάλογοι σαρώθηκαν   %zu αρχεία ελέγχθηκαν   %zu παιχνίδια βρέθηκαν"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Προσθήκη παιχνιδιών"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Προσθήκη παιχνιδιών"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Δημιουργία προφίλ και μεταφορά δεδομένων"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Δεν βρέθηκαν προφίλ"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Όχι τώρα"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Δεν υπάρχει διαθέσιμο προφίλ. Δεν θα μπορείτε να αποθηκεύσετε χωρίς ένα.\n"
+"\n"
+"Θέλετε να δημιουργήσετε ένα τώρα;"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Θέλετε να προσθέσετε παιχνίδια τώρα;\n"
+"\n"
+"Μπορείτε επίσης να το κάνετε αργότερα από Αρχείο -> Προσθήκη παιχνιδιών."

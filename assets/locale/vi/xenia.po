@@ -1407,3 +1407,43 @@ msgstr "   %zu đã được cài đặt"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "%zu thư mục đã quét   %zu tệp đã dò   %zu trò chơi tìm thấy"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Thêm trò chơi"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Thêm trò chơi"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Tạo hồ sơ và di chuyển dữ liệu"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Không tìm thấy hồ sơ"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Để sau"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Không có hồ sơ nào khả dụng. Bạn sẽ không thể lưu nếu không có hồ sơ.\n"
+"\n"
+"Bạn có muốn tạo một hồ sơ ngay bây giờ không?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Bạn có muốn thêm trò chơi ngay bây giờ không?\n"
+"\n"
+"Bạn cũng có thể làm điều này sau từ Tệp -> Thêm trò chơi."

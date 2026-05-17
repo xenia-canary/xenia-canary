@@ -1405,3 +1405,43 @@ msgstr "   %zu už nainštalovaných"
 msgid "%zu directories scanned   %zu files probed   %zu games found"
 msgstr "Prehľadaných adresárov: %zu   preskúmaných súborov: %zu   nájdených hier: %zu"
 
+
+#: src/xenia/app/emulator_window.cc:2153
+msgid "Add Games"
+msgstr "Pridať hry"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Add games"
+msgstr "Pridať hry"
+
+#: src/xenia/app/emulator_window.cc:2108
+msgid "Create profile && migrate data"
+msgstr "Vytvoriť profil a presunúť údaje"
+
+#: src/xenia/app/emulator_window.cc:2105
+msgid "No Profiles Found"
+msgstr "Žiadne profily nenájdené"
+
+#: src/xenia/app/emulator_window.cc:2154
+msgid "Not now"
+msgstr "Teraz nie"
+
+#: src/xenia/app/emulator_window.cc:2103
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Nie je k dispozícii žiadny profil. Bez profilu nebudete môcť ukladať.\n"
+"\n"
+"Chcete teraz vytvoriť profil?"
+
+#: src/xenia/app/emulator_window.cc:2151
+msgid ""
+"Would you like to add games now?\n"
+"\n"
+"You can also do this later from File -> Add games."
+msgstr ""
+"Chcete teraz pridať hry?\n"
+"\n"
+"Môžete to urobiť aj neskôr z menu Súbor -> Pridať hry."
