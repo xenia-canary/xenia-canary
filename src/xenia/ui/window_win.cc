@@ -279,7 +279,7 @@ bool Win32Window::OpenImpl() {
     if (GetClientRect(hwnd_, &shown_client_rect)) {
       OnActualSizeUpdate(uint32_t(shown_client_rect.right),
                          uint32_t(shown_client_rect.bottom),
-                         destruction_receiver);
+                         WindowResizeAction::kManual, destruction_receiver);
       if (destruction_receiver.IsWindowDestroyedOrClosed()) {
         return true;
       }
@@ -722,7 +722,7 @@ void Win32Window::ApplyFullscreenEntry(
 }
 
 void Win32Window::HandleSizeUpdate(
-    WindowDestructionReceiver& destruction_receiver) {
+    WindowDestructionReceiver& destruction_receiver, DWORD cause_action) {
   if (!hwnd_) {
     // Batched size update ended when the window has already been closed, for
     // instance.
@@ -767,7 +767,10 @@ void Win32Window::HandleSizeUpdate(
   RECT client_rect;
   if (GetClientRect(hwnd_, &client_rect)) {
     OnActualSizeUpdate(uint32_t(client_rect.right),
-                       uint32_t(client_rect.bottom), destruction_receiver);
+                       uint32_t(client_rect.bottom),
+                       cause_action == 0 ? WindowResizeAction::kManual
+                                         : WindowResizeAction::kAutoMaximize,
+                       destruction_receiver);
     if (destruction_receiver.IsWindowDestroyedOrClosed()) {
       return;
     }
@@ -792,7 +795,7 @@ void Win32Window::EndBatchedSizeUpdate(
   // handle the deferred messages twice.
   if (batched_size_update_contained_wm_size_) {
     batched_size_update_contained_wm_size_ = false;
-    HandleSizeUpdate(destruction_receiver);
+    HandleSizeUpdate(destruction_receiver, 0);
     if (destruction_receiver.IsWindowDestroyed()) {
       return;
     }
@@ -1064,7 +1067,7 @@ LRESULT Win32Window::WndProc(HWND hWnd, UINT message, WPARAM wParam,
         batched_size_update_contained_wm_size_ = true;
       } else {
         WindowDestructionReceiver destruction_receiver(this);
-        HandleSizeUpdate(destruction_receiver);
+        HandleSizeUpdate(destruction_receiver, wParam);
         if (destruction_receiver.IsWindowDestroyedOrClosed()) {
           break;
         }

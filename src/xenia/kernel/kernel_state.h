@@ -31,6 +31,7 @@
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xevent.h"
 #include "xenia/vfs/virtual_file_system.h"
 
@@ -193,6 +194,8 @@ class KernelState {
   XmpVolumePatch* xmp_volume_patch() const { return xmp_volume_patch_.get(); }
   void InitXmpVolumePatch();
 
+  XConfig* xconfig() const { return xconfig_.get(); }
+
   std::bitset<4> GetConnectedUsers() const;
 
   // Access must be guarded by the global critical region.
@@ -350,6 +353,7 @@ class KernelState {
   std::unique_ptr<xam::XamState> xam_state_;
   std::unique_ptr<SystemManagementController> smc_;
   std::unique_ptr<XmpVolumePatch> xmp_volume_patch_;
+  std::unique_ptr<XConfig> xconfig_;
 
   KernelVersion kernel_version_;
 

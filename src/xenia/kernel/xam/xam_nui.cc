@@ -19,12 +19,6 @@
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
-DEFINE_bool(allow_nui_initialization, false,
-            "Enable NUI initialization\n"
-            " Only set true when testing kinect games. Certain games may\n"
-            " require avatar implementation.",
-            "Kernel");
-
 namespace xe {
 namespace kernel {
 namespace xam {
@@ -69,8 +63,14 @@ dword_result_t XamNuiGetDeviceStatus_entry(
   */
 
   status_ptr.Zero();
-  status_ptr->status = cvars::allow_nui_initialization;
-  return cvars::allow_nui_initialization ? X_ERROR_SUCCESS : 0xC0050006;
+
+  const bool kinect_initialized =
+      kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          X_CONFIG_CATEGORY::XCONFIG_USER_CATEGORY, XCONFIG_USER_RETAIL_FLAGS) &
+      X_RETAIL_FLAGS::KinectInitialized;
+
+  status_ptr->status = kinect_initialized;
+  return kinect_initialized ? X_ERROR_SUCCESS : 0xC0050006;
 }
 DECLARE_XAM_EXPORT1(XamNuiGetDeviceStatus, kNone, kStub);
 
@@ -195,8 +195,12 @@ dword_result_t XamNuiIsDeviceReady_entry() {
      - 0x0004
      - 0x0040
   */
-  uint16_t device_state = cvars::allow_nui_initialization ? 1 : 0;
-  return device_state >> 1 & 1;
+  const bool kinect_initialized =
+      kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          X_CONFIG_CATEGORY::XCONFIG_USER_CATEGORY, XCONFIG_USER_RETAIL_FLAGS) &
+      X_RETAIL_FLAGS::KinectInitialized;
+
+  return kinect_initialized >> 1 & 1;
 }
 DECLARE_XAM_EXPORT1(XamNuiIsDeviceReady, kNone, kImplemented);
 

@@ -12,7 +12,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 
 DEFINE_bool(log_string_format_kernel_calls, false,
-            "Log kernel calls with the kHighFrequency tag.", "Logging");
+            "Log usage of print formatters like sprintf.", "Logging");
 
 namespace xe {
 namespace kernel {

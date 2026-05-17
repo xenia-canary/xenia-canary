@@ -22,6 +22,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/ui/imgui_dialog.h"
@@ -45,8 +46,6 @@ DEFINE_int32(avpack, 8,
              " 7 = TV PAL-60\n"
              " 8 = HDMI (default)",
              "Video");
-DECLARE_uint32(audio_flag);
-
 DEFINE_bool(staging_mode, 0,
             "Enables preview mode in dashboards to render debug information.",
             "Kernel");
@@ -605,11 +604,11 @@ dword_result_t XGetAudioFlags_entry() {
     return 2;
   }
 
-  if (!cvars::audio_flag) {
-    return 0x10000 | 0x1;
-  }
+  const auto audio_flags = kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_AUDIO_FLAGS);
 
-  return cvars::audio_flag;
+  return audio_flags ? audio_flags : 0x10000 | 0x1;
 }
 DECLARE_XAM_EXPORT1(XGetAudioFlags, kNone, kImplemented);
 
@@ -763,6 +762,21 @@ void GetSystemTimeAsFileTime_entry(lpqword_t time_ptr,
   }
 }
 DECLARE_XAM_EXPORT1(GetSystemTimeAsFileTime, kNone, kImplemented);
+
+dword_result_t XamIsIptvEnabled_entry() {
+  const bool iptv_enabled =
+      kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          X_CONFIG_CATEGORY::XCONFIG_USER_CATEGORY, XCONFIG_USER_RETAIL_FLAGS) &
+      X_RETAIL_FLAGS::IPTVEnabled;
+
+  return !iptv_enabled ? X_E_FAIL : X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamIsIptvEnabled, kNone, kImplemented);
+
+dword_result_t XamLookupCommonStringByIndex_entry(dword_t string_index) {
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamLookupCommonStringByIndex, kNone, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

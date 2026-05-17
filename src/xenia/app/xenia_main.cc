@@ -130,7 +130,8 @@ DECLARE_bool(debug);
 
 DEFINE_bool(discord, true, "Enable Discord rich presence", "General");
 
-DECLARE_bool(widescreen);
+DECLARE_int32(window_size_x);
+DECLARE_int32(window_size_y);
 
 namespace xe {
 namespace app {
@@ -538,12 +539,10 @@ bool EmulatorApp::OnInitialize() {
   emulator_ =
       std::make_unique<Emulator>("", storage_root, content_root, cache_root);
 
-  // Determine window size based on user setting.
-  auto res = xe::gpu::GraphicsSystem::GetInternalDisplayResolution();
-
   // Main emulator display window.
-  emulator_window_ = EmulatorWindow::Create(emulator_.get(), app_context(),
-                                            res.first, res.second);
+  emulator_window_ =
+      EmulatorWindow::Create(emulator_.get(), app_context(),
+                             cvars::window_size_x, cvars::window_size_y);
   if (!emulator_window_) {
     XELOGE("Failed to create the main emulator window");
     return false;

@@ -19,6 +19,8 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+
+#include "xenia/app/console_settings_dialog.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
@@ -36,6 +38,7 @@
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_state.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/ui/file_picker.h"
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/imgui_dialog.h"
@@ -725,7 +728,8 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
     volume_ =
         emulator_window_.emulator_->audio_media_player()->GetVolume()->load();
 
-    if (ImGui::SliderFloat("Audio player volume", &volume_, 0.0f, 1.0f)) {
+    if (ImGui::SliderFloat("Audio player volume", &volume_, 0.0f, 1.0f,
+                           "%.2f")) {
       audio_player->SetVolume(volume_);
     }
   }
@@ -881,6 +885,15 @@ bool EmulatorWindow::Initialize() {
         std::bind(&EmulatorWindow::ToggleXMPConfigDialog, this)));
   }
   main_menu->AddChild(std::move(xmp_menu));
+
+  // Console menu
+  auto console_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Console");
+  {
+    console_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, "&Open console settings", "",
+        std::bind(&EmulatorWindow::ToggleConsoleSettingsDialog, this)));
+  }
+  main_menu->AddChild(std::move(console_menu));
 
   // Help menu.
   auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Help");
@@ -1541,12 +1554,15 @@ void EmulatorWindow::GpuClearCaches() {
   emulator()->graphics_system()->ClearCaches();
 }
 
-void EmulatorWindow::SetFullscreen(bool fullscreen) {
-  if (window_->IsFullscreen() == fullscreen) {
+void EmulatorWindow::SetFullscreen(bool fullscreen_) {
+  if (window_->IsFullscreen() == fullscreen_) {
     return;
   }
-  window_->SetFullscreen(fullscreen);
-  window_->SetCursorVisibility(fullscreen
+
+  OVERRIDE_bool(fullscreen, fullscreen_);
+
+  window_->SetFullscreen(fullscreen_);
+  window_->SetCursorVisibility(fullscreen_
                                    ? ui::Window::CursorVisibility::kAutoHidden
                                    : ui::Window::CursorVisibility::kVisible);
 }
@@ -1593,6 +1609,20 @@ void EmulatorWindow::ToggleXMPConfigDialog() {
         new XMPConfigDialog(imgui_drawer_.get(), *this));
   } else {
     xmp_config_dialog_.reset();
+  }
+}
+
+void EmulatorWindow::ToggleConsoleSettingsDialog() {
+  if (!console_settings_dialog_) {
+    console_settings_dialog_ =
+        std::unique_ptr<ConsoleSettingsDialog>(new ConsoleSettingsDialog(
+            imgui_drawer_.get(), *this, emulator_->kernel_state()->xconfig()));
+  } else {
+    if (console_settings_dialog_->IsClosing()) {
+      console_settings_dialog_.release();
+    } else {
+      console_settings_dialog_.reset();
+    }
   }
 }
 
@@ -2339,6 +2369,10 @@ void EmulatorWindow::ClearDialogs() {
 
   if (display_config_dialog_) {
     display_config_dialog_.reset();
+  }
+
+  if (console_settings_dialog_) {
+    console_settings_dialog_.reset();
   }
 
   imgui_drawer_.get()->ClearDialogs();

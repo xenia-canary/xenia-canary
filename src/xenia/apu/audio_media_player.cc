@@ -27,8 +27,6 @@ extern "C" {
 }  // extern "C"
 
 DEFINE_bool(enable_xmp, true, "Enables Music Player playback.", "APU");
-DEFINE_int32(xmp_default_volume, 70,
-             "Default music volume if game doesn't set it [0-100].", "APU");
 
 namespace xe {
 namespace apu {
@@ -246,7 +244,8 @@ void AudioMediaPlayer::Play() {
   OnStateChanged();
 
   if (volume_ == 0.0f) {
-    volume_ = cvars::xmp_default_volume / 100.0f;
+    volume_ = kernel_state_->xconfig()->ReadSetting<float>(
+        kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_MUSIC_VOLUME);
   }
 
   // Always apply the stored volume to the newly created driver

@@ -84,8 +84,6 @@ DEFINE_bool(allow_game_relative_writes, false,
             "generating test data to compare with original hardware. ",
             "General");
 
-DECLARE_int32(user_language);
-
 DECLARE_bool(allow_plugins);
 
 DEFINE_int32(priority_class, 0,
@@ -1555,8 +1553,9 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     kernel_state_->xam_state()->user_tracker()->AddTitleToPlayedList();
 
     if (game_info_database_->IsValid()) {
-      title_name_ = game_info_database_->GetTitleName(
-          static_cast<XLanguage>(cvars::user_language));
+      title_name_ = game_info_database_->GetTitleName(static_cast<XLanguage>(
+          kernel_state_->xconfig()->ReadSetting<uint32_t>(
+              kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE)));
       XELOGI("Title name: {}", title_name_);
 
       // Show achievments data

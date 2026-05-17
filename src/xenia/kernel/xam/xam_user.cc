@@ -988,7 +988,8 @@ DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 dword_result_t XamUserGetOnlineLanguageFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return cvars::user_language;
+    return kernel_state()->xconfig()->ReadSetting<uint32_t>(
+        XCONFIG_USER_CATEGORY, XCONFIG_USER_LANGUAGE);
   }
   return user->GetLanguage();
 }
@@ -998,7 +999,8 @@ DECLARE_XAM_EXPORT1(XamUserGetOnlineLanguageFromXUID, kUserProfiles,
 dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return cvars::user_country;
+    return kernel_state()->xconfig()->ReadSetting<uint8_t>(
+        XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
   }
   return user->GetCountry();
 }

@@ -169,6 +169,16 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
              args->unk1.get(), args->unk2.get(), args->unk3.get());
       return X_E_SUCCESS;
     }
+    // Causes dashboard to correctly process language/region change. It does not
+    // contain any buffer.
+    case 0x8000000D: {
+      const bool is_pc_enabled =
+          (kernel_state_->xconfig()->ReadSetting<uint8_t>(
+               XCONFIG_USER_CATEGORY, XCONFIG_USER_PC_FLAGS) &
+           X_PC_FLAGS::PCEnabled) != 0;
+
+      return is_pc_enabled ? X_E_ACCESS_DENIED : X_E_SUCCESS;
+    }
   }
   XELOGE(
       "Unimplemented XAM message app={:08X}, msg={:08X}, arg1={:08X}, "
