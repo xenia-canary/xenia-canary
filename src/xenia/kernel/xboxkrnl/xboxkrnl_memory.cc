@@ -259,7 +259,7 @@ dword_result_t NtProtectVirtualMemory_entry(lpdword_t base_addr_ptr,
   }
 
   auto heap = kernel_memory()->LookupHeap(base_addr_ptr.value());
-  if (heap->heap_type() != HeapType::kGuestVirtual) {
+  if (!heap || heap->heap_type() != HeapType::kGuestVirtual) {
     return X_STATUS_INVALID_PARAMETER;
   }
   // Adjust the base downwards to the nearest page boundary.
@@ -303,22 +303,39 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
   // _In_     ULONG FreeType
   // _In_     BOOLEAN DebugMemory
 
-  // Set to TRUE when freeing external devkit memory.
-  assert_true(debug_memory == 0);
+  // Set to TRUE when freeing external devkit memory. We don't support a
+  // separate devkit region, so just ignore the flag (matches the Alloc path).
+  if (debug_memory) {
+    XELOGW(
+        "NtFreeVirtualMemory: devkit debug flag set (base: {:08X}, "
+        "size: {:08X}). Ignoring.",
+        base_addr_value, region_size_value);
+  }
 
   if (!base_addr_value) {
     return X_STATUS_MEMORY_NOT_ALLOCATED;
   }
 
   auto heap = kernel_state()->memory()->LookupHeap(base_addr_value);
-  if (heap->heap_type() != HeapType::kGuestVirtual) {
+  if (!heap || heap->heap_type() != HeapType::kGuestVirtual) {
+    XELOGW(
+        "NtFreeVirtualMemory: address {:08X} does not fall in a guest virtual "
+        "heap; returning INVALID_PARAMETER.",
+        base_addr_value);
     return X_STATUS_INVALID_PARAMETER;
   }
   bool result = false;
   if (free_type == X_MEM_DECOMMIT) {
-    // If zero, we may need to query size (free whole region).
-    assert_not_zero(region_size_value);
-
+    if (!region_size_value) {
+      // Real NT decommits the whole region containing BaseAddress when
+      // RegionSize is zero. We don't implement that yet; refuse rather than
+      // silently dropping the call.
+      XELOGW(
+          "NtFreeVirtualMemory: MEM_DECOMMIT with RegionSize=0 (base: {:08X}) "
+          "is not implemented; returning INVALID_PARAMETER.",
+          base_addr_value);
+      return X_STATUS_INVALID_PARAMETER;
+    }
     region_size_value = xe::round_up(region_size_value, heap->page_size());
     result = heap->Decommit(base_addr_value, region_size_value);
   } else {
