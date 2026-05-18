@@ -126,8 +126,8 @@ dword_result_t XamContentResolve_entry(
 DECLARE_XAM_EXPORT1(XamContentResolve, kContent, kSketchy);
 
 // https://github.com/MrColdbird/gameservice/blob/master/ContentManager.cpp
-dword_result_t XamContentCreateEnumerator_entry(
-    dword_t user_index, dword_t device_id, dword_t content_type,
+dword_result_t XamContentCreateEnumeratorInternal_entry(
+    qword_t xuid, dword_t device_id, dword_t content_type, dword_t title_id,
     dword_t content_flags, dword_t items_per_enumerate,
     lpdword_t buffer_size_ptr, lpdword_t handle_out) {
   assert_not_null(handle_out);
@@ -146,26 +146,22 @@ dword_result_t XamContentCreateEnumerator_entry(
     *buffer_size_ptr = sizeof(XCONTENT_DATA) * items_per_enumerate;
   }
 
-  uint64_t xuid = 0;
-  if (user_index != XUserIndexNone) {
-    const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
-
-    if (!user) {
-      return X_ERROR_NO_SUCH_USER;
-    }
-
-    xuid = user->xuid();
-  }
-
   auto e = object_ref<ContentEnumerator>(
       new ContentEnumerator(kernel_state(), items_per_enumerate));
 
-  auto result = e->Initialize(XUserIndexAny, 0xFE, 0x20005, 0x20007, 0);
+  auto result =
+      e->Initialize(XUserIndexAny, 0xFE, 0x20005, 0x20007, 0, 0x98, nullptr);
   if (XFAILED(result)) {
     return result;
   }
 
-  std::vector<XCONTENT_AGGREGATE_DATA> enumerated_content = {};
+  uint32_t title = title_id;
+  if (!title) {
+    title = kernel_state()->title_id();
+  }
+
+  std::vector<XCONTENT_AGGREGATE_DATA> enumerated_content =
+      {};  // XCONTENT_DATA_INTERNAL
 
   if (!device_info || device_info->device_id == DummyDeviceId::HDD) {
     std::vector<uint64_t> xuids_to_enumerate = {};
@@ -180,8 +176,7 @@ dword_result_t XamContentCreateEnumerator_entry(
     for (const auto& xuid : xuids_to_enumerate) {
       auto user_enumerated_data =
           kernel_state()->content_manager()->ListContent(
-              static_cast<uint32_t>(DummyDeviceId::HDD), xuid,
-              kernel_state()->title_id(),
+              static_cast<uint32_t>(DummyDeviceId::HDD), xuid, title,
               static_cast<XContentType>(content_type.value()));
 
       enumerated_content.insert(enumerated_content.end(),
@@ -198,8 +193,8 @@ dword_result_t XamContentCreateEnumerator_entry(
   if (!device_info || device_info->device_id == DummyDeviceId::ODD) {
     auto disc_enumerated_data =
         kernel_state()->content_manager()->ListContentODD(
-            static_cast<uint32_t>(DummyDeviceId::ODD), 0,
-            kernel_state()->title_id(), XContentType(uint32_t(content_type)));
+            static_cast<uint32_t>(DummyDeviceId::ODD), 0, title,
+            XContentType(uint32_t(content_type)));
 
     enumerated_content.insert(enumerated_content.end(),
                               disc_enumerated_data.cbegin(),
@@ -212,11 +207,32 @@ dword_result_t XamContentCreateEnumerator_entry(
            xe::to_utf8(content_data.display_name()), content_data.file_name());
   }
 
-  XELOGD("XamContentCreateEnumerator: added {} items to enumerator",
+  XELOGD("XamContentCreateEnumeratorInternal: added {} items to enumerator",
          e->item_count());
 
   *handle_out = e->handle();
   return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentCreateEnumeratorInternal, kContent, kImplemented);
+
+dword_result_t XamContentCreateEnumerator_entry(
+    dword_t user_index, dword_t device_id, dword_t content_type,
+    dword_t content_flags, dword_t items_per_enumerate,
+    lpdword_t buffer_size_ptr, lpdword_t handle_out) {
+  uint64_t xuid = 0;
+  if (user_index < XUserMaxUserCount) {
+    const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
+
+    if (!user) {
+      return X_ERROR_NO_SUCH_USER;
+    }
+
+    xuid = user->xuid();
+  }
+
+  return XamContentCreateEnumeratorInternal_entry(
+      xuid, device_id, content_type, 0, content_flags, items_per_enumerate,
+      buffer_size_ptr, handle_out);
 }
 DECLARE_XAM_EXPORT1(XamContentCreateEnumerator, kContent, kImplemented);
 
