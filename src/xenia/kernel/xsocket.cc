@@ -10,19 +10,50 @@
 #include "xenia/kernel/xsocket.h"
 
 #include <cstring>
+#include <thread>
 
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
+#include "xenia/base/threading.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xam/xam_module.h"
+#include "xenia/kernel/xevent.h"
 
 namespace xe {
 namespace kernel {
 
+namespace {
+
+// Drives async_wait completions on a worker thread for the process lifetime.
+class IoContextRunner {
+ public:
+  IoContextRunner() : work_(asio::make_work_guard(io_context_)) {
+    thread_ = std::thread([this]() {
+      xe::threading::set_name("Xenia Socket I/O");
+      io_context_.run();
+    });
+  }
+  ~IoContextRunner() {
+    work_.reset();
+    io_context_.stop();
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+  asio::io_context& get() { return io_context_; }
+
+ private:
+  asio::io_context io_context_;
+  asio::executor_work_guard<asio::io_context::executor_type> work_;
+  std::thread thread_;
+};
+
+}  // namespace
+
 // Shared io_context for all sockets
 static asio::io_context& GetIoContext() {
-  static asio::io_context io_context;
-  return io_context;
+  static IoContextRunner runner;
+  return runner.get();
 }
 
 // Translate socket options to native
@@ -678,6 +709,90 @@ int XSocket::SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags,
   }
 
   return static_cast<int>(bytes_sent);
+}
+
+// Winsock FD_* flags split into asio wait_read / wait_write groups.
+namespace {
+constexpr uint32_t kFD_READ = 1;
+constexpr uint32_t kFD_WRITE = 2;
+constexpr uint32_t kFD_OOB = 4;
+constexpr uint32_t kFD_ACCEPT = 8;
+constexpr uint32_t kFD_CONNECT = 16;
+constexpr uint32_t kFD_CLOSE = 32;
+constexpr uint32_t kReadEvents = kFD_READ | kFD_ACCEPT | kFD_CLOSE | kFD_OOB;
+constexpr uint32_t kWriteEvents = kFD_WRITE | kFD_CONNECT;
+}  // namespace
+
+int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
+  if (!tcp_socket_ && !udp_socket_ && !acceptor_) {
+    last_error_ = uint32_t(X_WSAError::X_WSAENOTSOCK);
+    return -1;
+  }
+
+  asio::error_code ec;
+
+  // WSAEventSelect implicitly sets the socket to non-blocking.
+  if (acceptor_) {
+    acceptor_->non_blocking(true, ec);
+  } else if (tcp_socket_) {
+    tcp_socket_->non_blocking(true, ec);
+  } else if (udp_socket_) {
+    udp_socket_->non_blocking(true, ec);
+  }
+
+  std::lock_guard<std::mutex> lock(select_mutex_);
+
+  // Cancel pending waits from any prior selection.
+  if (selected_event_) {
+    asio::error_code cancel_ec;
+    if (acceptor_) {
+      acceptor_->cancel(cancel_ec);
+    } else if (tcp_socket_) {
+      tcp_socket_->cancel(cancel_ec);
+    } else if (udp_socket_) {
+      udp_socket_->cancel(cancel_ec);
+    }
+  }
+
+  selected_event_ = std::move(event);
+  selected_event_flags_ = flags;
+
+  if (flags == 0 || !selected_event_) {
+    return 0;
+  }
+
+  const bool want_read = (flags & kReadEvents) != 0;
+  const bool want_write = (flags & kWriteEvents) != 0;
+
+  // Capture strong refs so the socket and event outlive any pending wait.
+  auto handler = [self = retain_object(this),
+                  ev = selected_event_](const asio::error_code& wait_ec) {
+    if (wait_ec) {
+      return;  // cancelled or socket closed
+    }
+    ev->Set(0, false);
+  };
+
+  if (want_read) {
+    if (acceptor_) {
+      acceptor_->async_wait(asio::socket_base::wait_read, handler);
+    } else if (tcp_socket_) {
+      tcp_socket_->async_wait(asio::socket_base::wait_read, handler);
+    } else if (udp_socket_) {
+      udp_socket_->async_wait(asio::socket_base::wait_read, handler);
+    }
+  }
+  if (want_write) {
+    if (acceptor_) {
+      acceptor_->async_wait(asio::socket_base::wait_write, handler);
+    } else if (tcp_socket_) {
+      tcp_socket_->async_wait(asio::socket_base::wait_write, handler);
+    } else if (udp_socket_) {
+      udp_socket_->async_wait(asio::socket_base::wait_write, handler);
+    }
+  }
+
+  return 0;
 }
 
 bool XSocket::QueuePacket(uint32_t src_ip, uint16_t src_port,

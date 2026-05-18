@@ -22,6 +22,9 @@
 
 namespace xe {
 namespace kernel {
+
+class XEvent;
+
 enum class X_WSAError : uint32_t {
   X_WSA_INVALID_PARAMETER = 0x0057,
   X_WSAEFAULT = 0x271E,
@@ -138,6 +141,10 @@ class XSocket : public XObject {
   int SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags, N_XSOCKADDR_IN* to,
              uint32_t to_len);
 
+  // Associates the socket with an XEvent signaled on readiness for any of the
+  // requested Winsock FD_* flags. flags == 0 detaches.
+  int WSAEventSelect(object_ref<XEvent> event, uint32_t flags);
+
   uint32_t GetLastWSAError() const;
 
   struct packet {
@@ -180,6 +187,10 @@ class XSocket : public XObject {
   std::unique_ptr<xe::threading::Event> event_;
   std::mutex incoming_packet_mutex_;
   std::queue<uint8_t*> incoming_packets_;
+
+  std::mutex select_mutex_;
+  object_ref<XEvent> selected_event_;
+  uint32_t selected_event_flags_ = 0;
 };
 
 }  // namespace kernel
