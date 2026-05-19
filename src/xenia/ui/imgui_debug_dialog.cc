@@ -634,6 +634,7 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
       "disassemble_pm4",
       "log_guest_driven_gpu_register_written_values",
       "log_ringbuffer_kickoff_initiator_bts",
+      "capture_gpu_trace",
   });
 
   bool any_visible = show_common || show_display || show_scaling ||
@@ -1200,6 +1201,26 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
                                      &log_ringbuffer_kickoff_initiator_bts_)) {
               ApplyBoolSetting("GPU", "log_ringbuffer_kickoff_initiator_bts",
                                log_ringbuffer_kickoff_initiator_bts_);
+            }
+            ImGui::EndDisabled();
+          }
+
+          if (MatchesFilter("capture_gpu_trace")) {
+            Emulator* trace_emulator =
+                emulator_window_ ? emulator_window_->emulator() : nullptr;
+            gpu::GraphicsSystem* trace_graphics =
+                trace_emulator ? trace_emulator->graphics_system() : nullptr;
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            DrawLabelCell("capture_gpu_trace",
+                          "Writes one frame to trace_gpu_prefix");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::BeginDisabled(trace_graphics == nullptr);
+            RightAlignNextItem(kTextInputWidth);
+            if (ImGui::Button("Capture##capture_gpu_trace",
+                              ImVec2(kTextInputWidth, 0))) {
+              trace_graphics->RequestFrameTrace();
+              ShowNotification("capture_gpu_trace", "Frame trace requested");
             }
             ImGui::EndDisabled();
           }
