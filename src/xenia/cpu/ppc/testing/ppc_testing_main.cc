@@ -21,10 +21,7 @@
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/raw_module.h"
 
-#include <atomic>
 #include <chrono>
-#include <mutex>
-#include <thread>
 #include <unordered_set>
 
 #if XE_ARCH_AMD64
@@ -35,9 +32,6 @@
 
 #if XE_COMPILER_MSVC
 #include "xenia/base/platform_win.h"
-#elif !XE_PLATFORM_MAC
-#include <sys/wait.h>
-#include <unistd.h>
 #endif  // XE_COMPILER_MSVC
 
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
@@ -402,7 +396,9 @@ class TestRunner {
           while (*c == ' ') {
             ++c;
           }
-          if (!*c) {
+          // Need at least two chars for a hex pair; otherwise c+=2 below
+          // would jump past the null terminator into adjacent heap.
+          if (!*c || !c[1]) {
             break;
           }
           char ccs[3] = {c[0], c[1], 0};
@@ -442,25 +438,20 @@ class TestRunner {
         auto address_str = it.second.substr(0, space_pos);
         auto bytes_str = it.second.substr(space_pos + 1);
         uint32_t address = std::strtoul(address_str.c_str(), nullptr, 16);
-        auto base_address = memory_->TranslateVirtual(address);
-        auto p = base_address;
+        auto p = memory_->TranslateVirtual(address);
         const char* c = bytes_str.c_str();
         bool failed = false;
-        size_t count = 0;
         StringBuffer expecteds;
         StringBuffer actuals;
         while (*c) {
           while (*c == ' ') {
             ++c;
           }
-          if (!*c) {
+          if (!*c || !c[1]) {
             break;
           }
           char ccs[3] = {c[0], c[1], 0};
           c += 2;
-          count++;
-          uint32_t current_address =
-              address + static_cast<uint32_t>(p - base_address);
           uint32_t expected = std::strtoul(ccs, nullptr, 16);
           uint8_t actual = *p;
 
@@ -520,107 +511,6 @@ int filter(unsigned int code) {
 }
 #endif  // XE_COMPILER_MSVC
 
-#if !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
-// Run test in isolated child process to catch crashes
-enum class TestResult {
-  kPassed,
-  kFailed,
-  kCrashed,
-};
-
-TestResult RunTestInChildProcess(TestSuite& test_suite, TestCase& test_case) {
-  pid_t pid = fork();
-
-  if (pid == -1) {
-    // Fork failed
-    fprintf(stderr, "  [%s] TEST FAILED (fork failed)\n",
-            test_case.name.c_str());
-    fflush(stderr);
-    return TestResult::kFailed;
-  }
-
-  if (pid == 0) {
-    // Child process - create a fresh TestRunner to avoid inherited state issues
-    // Use a scope block to ensure destructors run before _exit(),
-    // otherwise shared memory objects in /dev/shm are never cleaned up.
-    int exit_code;
-    {
-      TestRunner child_runner;
-      if (!child_runner.Setup(test_suite)) {
-        exit_code = 2;  // Setup failure
-      } else if (child_runner.Run(test_case)) {
-        exit_code = 0;  // Test passed
-      } else {
-        exit_code = 1;  // Test failed
-      }
-    }  // child_runner destructor runs here, cleaning up shm
-    _exit(exit_code);
-  }
-
-  // Parent process - wait for child
-  int status;
-  pid_t result = waitpid(pid, &status, 0);
-
-  if (result == -1) {
-    fprintf(stderr, "  [%s] TEST FAILED (waitpid failed, pid %d)\n",
-            test_case.name.c_str(), pid);
-    fflush(stderr);
-    return TestResult::kFailed;
-  }
-
-  if (WIFEXITED(status)) {
-    int exit_code = WEXITSTATUS(status);
-    if (exit_code == 0) {
-      // Test passed - don't print anything
-      return TestResult::kPassed;
-    } else if (exit_code == 2) {
-      fprintf(stderr, "  [%s] FAILED SETUP (exit code %d)\n",
-              test_case.name.c_str(), exit_code);
-      fflush(stderr);
-      return TestResult::kFailed;
-    } else {
-      fprintf(stderr, "  [%s] FAILED (exit code %d)\n", test_case.name.c_str(),
-              exit_code);
-      fflush(stderr);
-      return TestResult::kFailed;
-    }
-  }
-
-  if (WIFSIGNALED(status)) {
-    int signal = WTERMSIG(status);
-    const char* signal_name = "UNKNOWN";
-    switch (signal) {
-      case SIGSEGV:
-        signal_name = "SIGSEGV";
-        break;
-      case SIGILL:
-        signal_name = "SIGILL";
-        break;
-      case SIGFPE:
-        signal_name = "SIGFPE";
-        break;
-      case SIGBUS:
-        signal_name = "SIGBUS";
-        break;
-      case SIGABRT:
-        signal_name = "SIGABRT";
-        break;
-      case SIGTRAP:
-        signal_name = "SIGTRAP";
-        break;
-    }
-    fprintf(stderr, "  [%s] CRASHED (%s)\n", test_case.name.c_str(),
-            signal_name);
-    fflush(stderr);
-    return TestResult::kCrashed;
-  }
-
-  fprintf(stderr, "  [%s] FAILED (unknown reason)\n", test_case.name.c_str());
-  fflush(stderr);
-  return TestResult::kFailed;
-}
-#endif  // !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
-
 void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
                       TestCase& test_case, int& failed_count,
                       int& passed_count) {
@@ -645,9 +535,9 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
     fflush(stderr);
     ++failed_count;
   }
-#elif XE_PLATFORM_MAC
-  // On macOS, run directly — fork is expensive and unnecessary with
-  // the serial execution path.
+#else
+  // Run directly in-process; the amortized runner makes fork-per-test
+  // both expensive and impossible (cache would not survive).
   if (!runner.Setup(test_suite)) {
     fprintf(stderr, "  [%s] FAILED SETUP\n", test_case.name.c_str());
     fflush(stderr);
@@ -659,17 +549,6 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
   } else {
     fprintf(stderr, "  [%s] FAILED\n", test_case.name.c_str());
     fflush(stderr);
-    ++failed_count;
-  }
-#else
-  // Use fork to isolate crashes on POSIX systems
-  // Note: runner parameter is not used on POSIX
-  (void)runner;  // Suppress unused parameter warning
-  TestResult result = RunTestInChildProcess(test_suite, test_case);
-
-  if (result == TestResult::kPassed) {
-    ++passed_count;
-  } else {
     ++failed_count;
   }
 #endif  // XE_COMPILER_MSVC
@@ -753,8 +632,8 @@ bool RunTests(const std::vector<std::string>& test_names) {
 
   auto start_time = std::chrono::steady_clock::now();
 
-#if XE_COMPILER_MSVC || XE_PLATFORM_MAC
-  // On Windows/macOS, run tests serially grouped by suite
+  // Run tests serially grouped by suite. The TestRunner amortizes
+  // Processor/Backend/Module/JIT across tests in the same suite.
   TestRunner runner;
   int suite_index = 0;
   int suite_total = 0;
@@ -797,103 +676,6 @@ bool RunTests(const std::vector<std::string>& test_names) {
       }
     }
   }
-#else
-  // On POSIX, run tests in parallel using thread pool + fork per test.
-  // Each thread forks one child at a time, ensuring only one Memory/shm
-  // instance per thread (avoids shm name collisions between concurrent
-  // children).
-  unsigned int num_cores = std::thread::hardware_concurrency();
-  if (num_cores == 0) {
-    num_cores = 4;
-  }
-  num_cores = std::max(1u, num_cores * 3 / 4);
-
-  fprintf(stderr, "Running tests in parallel using %u workers\n", num_cores);
-
-  // Per-suite tracking for progress output
-  struct SuiteInfo {
-    TestSuite* suite;
-    size_t total;
-    std::atomic<size_t> completed{0};
-  };
-  std::unordered_map<TestSuite*, size_t> suite_map;
-  std::vector<std::unique_ptr<SuiteInfo>> suite_info;
-  std::vector<size_t> test_to_suite(all_tests.size());
-  for (size_t i = 0; i < all_tests.size(); i++) {
-    auto* suite = all_tests[i].first;
-    auto it = suite_map.find(suite);
-    if (it == suite_map.end()) {
-      it = suite_map.emplace(suite, suite_info.size()).first;
-      auto si = std::make_unique<SuiteInfo>();
-      si->suite = suite;
-      si->total = 0;
-      suite_info.push_back(std::move(si));
-    }
-    test_to_suite[i] = it->second;
-    suite_info[it->second]->total++;
-  }
-  int suite_total = static_cast<int>(suite_info.size());
-  std::atomic<int> suites_completed{0};
-  std::atomic<size_t> tests_completed{0};
-  size_t total_tests = all_tests.size();
-
-  std::mutex result_mutex;
-  std::atomic<size_t> test_index{0};
-
-  auto worker = [&]() {
-    // Dummy runner for API compatibility (not used on POSIX)
-    TestRunner* runner_ptr = nullptr;
-    TestRunner& runner = *runner_ptr;
-
-    while (true) {
-      size_t idx = test_index.fetch_add(1);
-      if (idx >= all_tests.size()) {
-        break;
-      }
-
-      auto& [test_suite, test_case] = all_tests[idx];
-      int local_failed = 0;
-      int local_passed = 0;
-
-      ProtectedRunTest(*test_suite, runner, *test_case, local_failed,
-                       local_passed);
-
-      {
-        std::lock_guard<std::mutex> lock(result_mutex);
-        failed_count += local_failed;
-        passed_count += local_passed;
-      }
-
-      size_t done = tests_completed.fetch_add(1) + 1;
-      auto& si = *suite_info[test_to_suite[idx]];
-      size_t suite_done = si.completed.fetch_add(1) + 1;
-
-      if (suite_done == si.total) {
-        int num = suites_completed.fetch_add(1) + 1;
-        int pct = static_cast<int>(done * 100 / total_tests);
-        std::lock_guard<std::mutex> lock(result_mutex);
-        fprintf(stdout, "[%d/%d] %s (%zu tests) %d%%\n", num, suite_total,
-                si.suite->name().c_str(), si.total, pct);
-        fflush(stdout);
-      } else if (suite_done % 500 == 0) {
-        int pct = static_cast<int>(done * 100 / total_tests);
-        std::lock_guard<std::mutex> lock(result_mutex);
-        fprintf(stdout, "  ... %s %zu/%zu %d%%\n", si.suite->name().c_str(),
-                suite_done, si.total, pct);
-        fflush(stdout);
-      }
-    }
-  };
-
-  std::vector<std::thread> threads;
-  for (unsigned int i = 0; i < num_cores; ++i) {
-    threads.emplace_back(worker);
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
-#endif
 
   auto end_time = std::chrono::steady_clock::now();
   auto elapsed_sec =
