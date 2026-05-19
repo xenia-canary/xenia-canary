@@ -68,17 +68,11 @@ jobs:
           name: xenia_edge_windows
           path: windows_artifacts
 
-      - name: Download macOS arm64 artifacts
+      - name: Download macOS universal artifacts
         uses: actions/download-artifact@main
         with:
-          name: xenia_edge_macos_arm64
-          path: macos_arm64_artifacts
-
-      - name: Download macOS x86_64 artifacts
-        uses: actions/download-artifact@main
-        with:
-          name: xenia_edge_macos_x86_64
-          path: macos_x86_64_artifacts
+          name: xenia_edge_macos
+          path: macos_artifacts
 
       - name: Create Release
         env:
@@ -91,11 +85,9 @@ jobs:
           mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
           cd ../windows_artifacts
           7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
-          cd ../macos_arm64_artifacts
+          cd ../macos_artifacts
           # macOS DMGs are already single distributable files; just hoist them.
-          mv xenia_edge_macos_arm64.dmg ../xenia_edge_macos_arm64.dmg
-          cd ../macos_x86_64_artifacts
-          mv xenia_edge_macos_x86_64.dmg ../xenia_edge_macos_x86_64.dmg
+          mv xenia_edge_macos.dmg ../xenia_edge_macos.dmg
           cd ..
 
           # Build release body: commit list since last release + compare URL
@@ -122,5 +114,5 @@ jobs:
           # Create release
           gh release create $tag \
             xenia_edge_linux.AppImage xenia_edge_windows.zip \
-            xenia_edge_macos_arm64.dmg xenia_edge_macos_x86_64.dmg \
+            xenia_edge_macos.dmg \
             --target $GITHUB_SHA -t "xenia_edge" --notes-file release_notes.md

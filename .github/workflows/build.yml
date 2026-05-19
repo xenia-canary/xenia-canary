@@ -192,25 +192,24 @@ jobs:
             echo "::error::$main_exe is too small."
             exit 1
           fi
+          # Confirm we actually produced an arm64 binary (not x86_64).
+          if ! file "$main_exe" | grep -q "arm64"; then
+            echo "::error::$main_exe is not arm64:"
+            file "$main_exe"
+            exit 1
+          fi
 
-          # DMG with an Applications symlink for drag-install UX.
-          mkdir -p dmg_contents
-          cp -R "$app_bundle" dmg_contents/
-          cp LICENSE dmg_contents/
-          ln -s /Applications dmg_contents/Applications
+          # Tar the bundle so upload-artifact preserves the executable bit and
+          # any symlinks; the universal-merge job untars and lipos.
+          mkdir -p artifacts
+          tar -cf artifacts/Xenia-edge.app.tar -C "$(dirname "$app_bundle")" "$(basename "$app_bundle")"
 
-          mkdir -p artifacts/release
-          hdiutil create -volname "Xenia-edge" \
-            -srcfolder dmg_contents -ov -format UDZO \
-            artifacts/release/xenia_edge_macos_arm64.dmg
-          rm -rf dmg_contents
-
-      - name: Upload xenia edge macOS arm64 artifacts
+      - name: Upload xenia edge macOS arm64 app bundle
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_edge_macos_arm64
-          path: artifacts/release
+          name: xenia_edge_macos_arm64_app
+          path: artifacts/Xenia-edge.app.tar
           if-no-files-found: error
 
   build-macos-x86_64:
@@ -274,22 +273,97 @@ jobs:
             exit 1
           fi
 
+          mkdir -p artifacts
+          tar -cf artifacts/Xenia-edge.app.tar -C "$(dirname "$app_bundle")" "$(basename "$app_bundle")"
+
+      - name: Upload xenia edge macOS x86_64 app bundle
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64_app
+          path: artifacts/Xenia-edge.app.tar
+          if-no-files-found: error
+
+  build-macos-universal:
+    name: Build macOS Universal
+    needs: [build-macos-arm64, build-macos-x86_64]
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - name: Download arm64 app bundle
+        uses: actions/download-artifact@main
+        with:
+          name: xenia_edge_macos_arm64_app
+          path: arm64_app
+
+      - name: Download x86_64 app bundle
+        uses: actions/download-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64_app
+          path: x86_64_app
+
+      - name: Merge into universal binary
+        id: prepare_artifacts
+        run: |
+          mkdir -p arm64_extracted x86_64_extracted
+          tar -xf arm64_app/Xenia-edge.app.tar -C arm64_extracted
+          tar -xf x86_64_app/Xenia-edge.app.tar -C x86_64_extracted
+
+          arm64_bundle="arm64_extracted/Xenia-edge.app"
+          x86_64_bundle="x86_64_extracted/Xenia-edge.app"
+          arm64_exe="$arm64_bundle/Contents/MacOS/Xenia-edge"
+          x86_64_exe="$x86_64_bundle/Contents/MacOS/Xenia-edge"
+
+          # Only the main executable gets merged; any non-Mach-O drift between
+          # the two Contents/ trees would be silently dropped here, so fail
+          # loudly if the bundles diverge anywhere outside MacOS/Xenia-edge.
+          if ! diff -r --brief \
+              --exclude=Xenia-edge \
+              "$arm64_bundle/Contents" "$x86_64_bundle/Contents"; then
+            echo "::error::arm64 and x86_64 app bundles differ outside the main executable"
+            exit 1
+          fi
+
+          # Everything else (Metal libs, Info.plist, icons) is identical across
+          # arches, so the arm64 bundle becomes the base and we overwrite only
+          # its main Mach-O with the fat one. Write to a separate path then
+          # mv — lipo reads inputs before writing, but overlapping input/output
+          # is fragile.
+          lipo -create "$arm64_exe" "$x86_64_exe" -output Xenia-edge.universal
+          mv Xenia-edge.universal "$arm64_exe"
+
+          info=$(lipo -info "$arm64_exe")
+          echo "$info"
+          if ! echo "$info" | grep -q "arm64" || ! echo "$info" | grep -q "x86_64"; then
+            echo "::error::Universal binary missing an arch: $info"
+            exit 1
+          fi
+
+          # lipo invalidates the linker-applied ad-hoc signature; arm64 will
+          # refuse to launch unsigned, so re-sign ad-hoc. With everything
+          # statically linked there are no nested Mach-Os, so plain --force
+          # (no --deep) covers the bundle.
+          codesign --force --sign - "$arm64_bundle"
+
           mkdir -p dmg_contents
-          cp -R "$app_bundle" dmg_contents/
+          cp -R arm64_extracted/Xenia-edge.app dmg_contents/
           cp LICENSE dmg_contents/
           ln -s /Applications dmg_contents/Applications
 
           mkdir -p artifacts/release
           hdiutil create -volname "Xenia-edge" \
             -srcfolder dmg_contents -ov -format UDZO \
-            artifacts/release/xenia_edge_macos_x86_64.dmg
+            artifacts/release/xenia_edge_macos.dmg
           rm -rf dmg_contents
 
-      - name: Upload xenia edge macOS x86_64 artifacts
+      - name: Upload xenia edge macOS universal artifacts
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_edge_macos_x86_64
+          name: xenia_edge_macos
           path: artifacts/release
           if-no-files-found: error
 
