@@ -1160,7 +1160,7 @@ class GenTestsCommand(Command):
             # Save current directory
             original_dir = os.getcwd()
 
-            if sys.platform == "linux":
+            if sys.platform in ("linux", "darwin"):
                 # Set executable bit for build script before running it
                 os.chdir(binutils_dir)
                 os.chmod(shell_script, stat.S_IRUSR | stat.S_IWUSR |
