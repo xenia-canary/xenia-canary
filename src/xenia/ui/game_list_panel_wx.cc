@@ -51,6 +51,10 @@
 #include "xenia/ui/patches_dialog_wx.h"
 #include "xenia/xbox.h"
 
+#if XE_PLATFORM_LINUX
+#include <gtk/gtk.h>
+#endif
+
 #include <thread>
 
 namespace xe {
@@ -179,6 +183,46 @@ wxBitmapBundle MakeCompatBall(CompatState state, int size_px, double scale) {
   return wxBitmapBundle::FromBitmap(bmp);
 }
 
+#if XE_PLATFORM_LINUX
+// Modern GTK themes ignore wxDV_ROW_LINES (gtk_tree_view_set_rules_hint), so
+// flag odd rows with a bg attr that the renderer turns into cell-background.
+class AltRowListStore : public wxDataViewListStore {
+ public:
+  explicit AltRowListStore(const wxColour& alt_color) : alt_color_(alt_color) {}
+
+  bool GetAttrByRow(unsigned row, unsigned /*col*/,
+                    wxDataViewItemAttr& attr) const override {
+    if ((row & 1u) == 1u) {
+      attr.SetBackgroundColour(alt_color_);
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  wxColour alt_color_;
+};
+
+// wxDataViewBitmapRenderer's GTK SetAttr is a no-op, so bg attrs don't reach
+// bitmap columns; forward them to cell-background-rgba ourselves.
+class AltBgBitmapRenderer : public wxDataViewBitmapRenderer {
+ public:
+  using wxDataViewBitmapRenderer::wxDataViewBitmapRenderer;
+
+  void SetAttr(const wxDataViewItemAttr& attr) override {
+    GtkCellRenderer* renderer = GetGtkHandle();
+    if (attr.HasBackgroundColour()) {
+      const wxColour& c = attr.GetBackgroundColour();
+      GdkRGBA rgba{c.Red() / 255.0, c.Green() / 255.0, c.Blue() / 255.0,
+                   c.Alpha() / 255.0};
+      g_object_set(renderer, "cell-background-rgba", &rgba, nullptr);
+    } else {
+      g_object_set(renderer, "cell-background-set", FALSE, nullptr);
+    }
+  }
+};
+#endif
+
 wxString EscapeMarkup(const wxString& s) {
   wxString out;
   out.reserve(s.length());
@@ -213,6 +257,17 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   list_ = new wxDataViewListCtrl(this, wxID_ANY, wxDefaultPosition,
                                  wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
   list_->SetMinSize(wxSize(0, 0));
+
+#if XE_PLATFORM_LINUX
+  // GTK ignores wxDV_ROW_LINES; swap in a store that drives alt rows itself.
+  {
+    const wxColour bg = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
+    const int alpha = bg.GetRGB() > 0x808080 ? 99 : 103;
+    auto* store = new AltRowListStore(bg.ChangeLightness(alpha));
+    list_->AssociateModel(store);
+    store->DecRef();
+  }
+#endif
 
   // The wxDataViewCtrl MSW backend treats column widths and the row height as
   // device pixels (the value flows straight through to ListView_SetColumnWidth
@@ -253,11 +308,24 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   const wxString achievements_header = _("Achievements");
   const wxString gamerscore_header = _("Gamerscore");
   const wxString last_played_header = _("Last Played");
-  list_->AppendBitmapColumn(status_header, 0, wxDATAVIEW_CELL_INERT,
-                            col_w(status_header, status_header), wxALIGN_CENTER,
-                            0);
-  list_->AppendBitmapColumn(icon_header, 1, wxDATAVIEW_CELL_INERT,
-                            icon_size_px_ + icon_pad_px, wxALIGN_CENTER, 0);
+  auto append_bitmap_column = [&](const wxString& title, unsigned model_col,
+                                  int width, wxAlignment align) {
+#if XE_PLATFORM_LINUX
+    // Custom renderer so the alt-row bg reaches bitmap columns.
+    auto* renderer = new AltBgBitmapRenderer(
+        wxDataViewBitmapRenderer::GetDefaultType(), wxDATAVIEW_CELL_INERT);
+    auto* col =
+        new wxDataViewColumn(title, renderer, model_col, width, align, 0);
+    list_->AppendColumn(col, wxDataViewBitmapRenderer::GetDefaultType());
+#else
+    list_->AppendBitmapColumn(title, model_col, wxDATAVIEW_CELL_INERT, width,
+                              align, 0);
+#endif
+  };
+  append_bitmap_column(status_header, 0, col_w(status_header, status_header),
+                       wxALIGN_CENTER);
+  append_bitmap_column(icon_header, 1, icon_size_px_ + icon_pad_px,
+                       wxALIGN_CENTER);
   // Title is the only flexible column; the rest are pinned at their measured
   // widths so a wider window doesn't stretch them.
   auto* title_col = list_->AppendTextColumn(
@@ -282,9 +350,16 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   list_->AppendTextColumn(last_played_header, wxDATAVIEW_CELL_INERT,
                           last_played_width, wxALIGN_RIGHT, 0);
 
-  // wxDataViewCtrl always auto-expands the *last* column to fill leftover
-  // width regardless of flags. Pre-empt that by stretching the Title column
-  // ourselves so the last column has no slack to absorb.
+#if XE_PLATFORM_LINUX
+  // Without this GtkTreeView grows the rightmost column instead.
+  if (title_col) {
+    if (auto* h = title_col->GetGtkHandle()) {
+      gtk_tree_view_column_set_expand(GTK_TREE_VIEW_COLUMN(h), TRUE);
+    }
+  }
+#else
+  // wxDataViewCtrl auto-expands the rightmost column; pre-empt by sizing
+  // Title to absorb the slack on every SIZE event.
   const int min_title_width = char_w * 20;
   list_->Bind(wxEVT_SIZE, [this, last_played_width, min_title_width,
                            char_w](wxSizeEvent& event) {
@@ -309,6 +384,7 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
 #endif
     list_->GetColumn(2)->SetWidth(std::max(avail - fixed, min_title_width));
   });
+#endif
 
   search_->Bind(wxEVT_TEXT, &GameListPanel::OnSearch, this);
   search_->Bind(wxEVT_SEARCH_CANCEL,
