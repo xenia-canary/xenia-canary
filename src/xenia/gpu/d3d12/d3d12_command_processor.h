@@ -318,7 +318,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void OnPrimaryBufferEnd() override;
 
-  Shader* LoadShader(xenos::ShaderType shader_type, uint32_t guest_address,
+  Shader* LoadShader(xenos::ShaderType shader_type,
                      const uint32_t* host_address,
                      uint32_t dword_count) override;
 

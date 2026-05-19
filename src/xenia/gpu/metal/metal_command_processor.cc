@@ -1922,7 +1922,6 @@ bool MetalCommandProcessor::CanEndSubmissionImmediately() {
 }
 
 Shader* MetalCommandProcessor::LoadShader(xenos::ShaderType shader_type,
-                                          uint32_t guest_address,
                                           const uint32_t* host_address,
                                           uint32_t dword_count) {
   uint64_t hash = XXH3_64bits(host_address, dword_count * sizeof(uint32_t));
@@ -1935,9 +1934,6 @@ Shader* MetalCommandProcessor::LoadShader(xenos::ShaderType shader_type,
       std::make_unique<MslShader>(shader_type, hash, host_address, dword_count);
   MslShader* result = shader.get();
   msl_shader_cache_[hash] = std::move(shader);
-  XELOGD("Loaded {} shader (SPIRV-Cross) at {:08X} ({} dwords, hash {:016X})",
-         shader_type == xenos::ShaderType::kVertex ? "vertex" : "pixel",
-         guest_address, dword_count, hash);
   return result;
 }
 

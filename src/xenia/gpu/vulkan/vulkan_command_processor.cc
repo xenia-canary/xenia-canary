@@ -3002,7 +3002,6 @@ void VulkanCommandProcessor::SetScissor(const VkRect2D& scissor) {
 }
 
 Shader* VulkanCommandProcessor::LoadShader(xenos::ShaderType shader_type,
-                                           uint32_t guest_address,
                                            const uint32_t* host_address,
                                            uint32_t dword_count) {
   return pipeline_cache_->LoadShader(shader_type, host_address, dword_count);

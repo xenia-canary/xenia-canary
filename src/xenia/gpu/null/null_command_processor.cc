@@ -36,7 +36,6 @@ void NullCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                      uint32_t frontbuffer_height) {}
 
 Shader* NullCommandProcessor::LoadShader(xenos::ShaderType shader_type,
-                                         uint32_t guest_address,
                                          const uint32_t* host_address,
                                          uint32_t dword_count) {
   return nullptr;
