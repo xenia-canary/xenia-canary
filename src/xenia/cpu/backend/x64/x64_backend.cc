@@ -114,21 +114,22 @@ X64Backend::X64Backend() : Backend(), code_cache_(nullptr) {
   // Probe for trampoline memory sub-4GB.  Succeeds on most Windows/Linux
   // configs; required by the fast indirection path (32-bit absolute slot
   // values).  If it fails, fall back to any VA and the code cache will
-  // pick the encoded path.
+  // pick the encoded path. macOS rejects fixed sub-2GB PROT_EXEC, so skip
+  // the scan there.
   void* buf_trampoline_code = nullptr;
-  uint32_t base_address = 0x10000;
-  while (base_address < 0x80000000) {
+#if !XE_PLATFORM_MAC
+  for (uint32_t base_address = 0x10000; base_address < 0x80000000;
+       base_address += 65536) {
     buf_trampoline_code = memory::AllocFixed(
         (void*)(uintptr_t)base_address,
         sizeof(guest_trampoline_template) * MAX_GUEST_TRAMPOLINES,
         xe::memory::AllocationType::kReserveCommit,
         xe::memory::PageAccess::kExecuteReadWrite);
-    if (!buf_trampoline_code) {
-      base_address += 65536;
-    } else {
+    if (buf_trampoline_code) {
       break;
     }
   }
+#endif
   if (!buf_trampoline_code) {
     buf_trampoline_code = memory::AllocFixed(
         nullptr, sizeof(guest_trampoline_template) * MAX_GUEST_TRAMPOLINES,

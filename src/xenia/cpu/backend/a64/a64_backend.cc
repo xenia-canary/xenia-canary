@@ -732,25 +732,24 @@ static void BuildGuestTrampoline(uint8_t* buf, void* proc, void* userdata1,
 A64Backend::A64Backend() {
   code_cache_ = A64CodeCache::Create();
 
-  // Allocate executable memory for guest trampolines.
-  uint32_t base_address = 0x10000;
+  // Prefer a sub-2GB slot so fast indirection (rel32) is usable; fall back
+  // to an OS-chosen address if none is available. macOS rejects fixed
+  // PROT_EXEC mappings in this range, so skip the scan entirely there.
   void* buf = nullptr;
-  while (base_address < 0x80000000) {
+#if !XE_PLATFORM_MAC
+  for (uint32_t base_address = 0x10000; base_address < 0x80000000;
+       base_address += 65536) {
     buf = memory::AllocFixed(
         reinterpret_cast<void*>(static_cast<uintptr_t>(base_address)),
         kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
         xe::memory::AllocationType::kReserveCommit,
         xe::memory::PageAccess::kExecuteReadWrite);
-    if (!buf) {
-      base_address += 65536;
-    } else {
+    if (buf) {
       break;
     }
   }
+#endif
   if (!buf) {
-    // Fixed allocation failed (e.g. macOS). Allocate at any address.
-    // Trampolines will be outside the code cache; encoded indirection
-    // handles this via the external table.
     buf = memory::AllocFixed(nullptr,
                              kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
                              xe::memory::AllocationType::kReserveCommit,

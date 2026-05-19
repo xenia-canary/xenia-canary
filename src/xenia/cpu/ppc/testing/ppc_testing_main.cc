@@ -35,7 +35,7 @@
 
 #if XE_COMPILER_MSVC
 #include "xenia/base/platform_win.h"
-#else
+#elif !XE_PLATFORM_MAC
 #include <sys/wait.h>
 #include <unistd.h>
 #endif  // XE_COMPILER_MSVC
@@ -248,49 +248,62 @@ class TestRunner {
 
   bool Setup(TestSuite& suite) {
     // Reset thread state first so it can properly deinitialize with the
-    // existing processor before we destroy the processor.
+    // existing processor before any teardown.
     thread_state_.reset();
 
-    // Reset memory.
-    memory_->Reset();
+    if (current_suite_ != &suite) {
+      // New suite: rebuild Processor/Backend/Module. Tests in the same
+      // suite share the same .bin and JIT cache, so we keep them alive
+      // across tests to skip the backend setup mmap/signal-handler work.
+      processor_.reset();
+      memory_->Reset();
 
-    std::unique_ptr<xe::cpu::backend::Backend> backend;
-    if (!backend) {
+      std::unique_ptr<xe::cpu::backend::Backend> backend;
 #if XE_ARCH_AMD64
-      if (cvars::cpu == "x64") {
+      if (cvars::cpu == "x64" || cvars::cpu == "any") {
         backend.reset(new xe::cpu::backend::x64::X64Backend());
       }
 #elif XE_ARCH_ARM64
-      if (cvars::cpu == "a64") {
+      if (cvars::cpu == "a64" || cvars::cpu == "any") {
         backend.reset(new xe::cpu::backend::a64::A64Backend());
       }
 #endif  // XE_ARCH
-      if (cvars::cpu == "any") {
-        if (!backend) {
-#if XE_ARCH_AMD64
-          backend.reset(new xe::cpu::backend::x64::X64Backend());
-#elif XE_ARCH_ARM64
-          backend.reset(new xe::cpu::backend::a64::A64Backend());
-#endif  // XE_ARCH
-        }
+
+      processor_.reset(new Processor(memory_.get(), nullptr));
+      processor_->Setup(std::move(backend));
+      processor_->set_debug_info_flags(DebugInfoFlags::kDebugInfoAll);
+
+      auto module = std::make_unique<xe::cpu::RawModule>(processor_.get());
+      if (!module->LoadFile(START_ADDRESS, suite.bin_file_path())) {
+        XELOGE("Unable to load test binary {}", suite.bin_file_path());
+        return false;
       }
+      processor_->AddModule(std::move(module));
+
+      // Snapshot the .bin so the same-suite path can repopulate v80000000
+      // without re-reading from disk.
+      bin_size_ = static_cast<uint32_t>(
+          std::filesystem::file_size(suite.bin_file_path()));
+      bin_cache_.assign(memory_->TranslateVirtual(START_ADDRESS),
+                        memory_->TranslateVirtual(START_ADDRESS) + bin_size_);
+
+      processor_->backend()->CommitExecutableRange(START_ADDRESS,
+                                                   START_ADDRESS + 1024 * 1024);
+
+      current_suite_ = &suite;
+    } else {
+      // Same suite as last test: reuse Processor/Backend. Memory::Reset
+      // wipes v80000000 so restore the .bin from the cached snapshot.
+      memory_->Reset();
+      auto* heap = memory_->LookupHeap(START_ADDRESS);
+      if (!heap->AllocFixed(START_ADDRESS, bin_size_, 0,
+                            kMemoryAllocationReserve | kMemoryAllocationCommit,
+                            kMemoryProtectRead | kMemoryProtectWrite)) {
+        return false;
+      }
+      std::memcpy(memory_->TranslateVirtual(START_ADDRESS), bin_cache_.data(),
+                  bin_size_);
     }
-
-    // Setup a fresh processor.
-    processor_.reset(new Processor(memory_.get(), nullptr));
-    processor_->Setup(std::move(backend));
-    processor_->set_debug_info_flags(DebugInfoFlags::kDebugInfoAll);
-
-    // Load the binary module.
-    auto module = std::make_unique<xe::cpu::RawModule>(processor_.get());
-    if (!module->LoadFile(START_ADDRESS, suite.bin_file_path())) {
-      XELOGE("Unable to load test binary {}", suite.bin_file_path());
-      return false;
-    }
-    processor_->AddModule(std::move(module));
-
-    processor_->backend()->CommitExecutableRange(START_ADDRESS,
-                                                 START_ADDRESS + 1024 * 1024);
 
     // Add dummy space for memory.
     processor_->memory()->LookupHeap(0)->AllocFixed(
@@ -476,6 +489,11 @@ class TestRunner {
   std::unique_ptr<Memory> memory_;
   std::unique_ptr<Processor> processor_;
   std::unique_ptr<ThreadState> thread_state_;
+
+  // Reuse Processor/Backend/Module across tests in the same suite.
+  TestSuite* current_suite_ = nullptr;
+  std::vector<uint8_t> bin_cache_;
+  uint32_t bin_size_ = 0;
 };
 
 bool DiscoverTests(const std::filesystem::path& test_path,
@@ -502,7 +520,7 @@ int filter(unsigned int code) {
 }
 #endif  // XE_COMPILER_MSVC
 
-#if !XE_COMPILER_MSVC
+#if !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 // Run test in isolated child process to catch crashes
 enum class TestResult {
   kPassed,
@@ -601,7 +619,7 @@ TestResult RunTestInChildProcess(TestSuite& test_suite, TestCase& test_case) {
   fflush(stderr);
   return TestResult::kFailed;
 }
-#endif  // !XE_COMPILER_MSVC
+#endif  // !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 
 void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
                       TestCase& test_case, int& failed_count,
@@ -624,6 +642,22 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
   } catch (const std::exception& e) {
     fprintf(stderr, "  [%s] CRASHED (C++ exception: %s)\n",
             test_case.name.c_str(), e.what());
+    fflush(stderr);
+    ++failed_count;
+  }
+#elif XE_PLATFORM_MAC
+  // On macOS, run directly — fork is expensive and unnecessary with
+  // the serial execution path.
+  if (!runner.Setup(test_suite)) {
+    fprintf(stderr, "  [%s] FAILED SETUP\n", test_case.name.c_str());
+    fflush(stderr);
+    ++failed_count;
+    return;
+  }
+  if (runner.Run(test_case)) {
+    ++passed_count;
+  } else {
+    fprintf(stderr, "  [%s] FAILED\n", test_case.name.c_str());
     fflush(stderr);
     ++failed_count;
   }
@@ -719,8 +753,8 @@ bool RunTests(const std::vector<std::string>& test_names) {
 
   auto start_time = std::chrono::steady_clock::now();
 
-#if XE_COMPILER_MSVC
-  // On Windows, run tests serially grouped by suite
+#if XE_COMPILER_MSVC || XE_PLATFORM_MAC
+  // On Windows/macOS, run tests serially grouped by suite
   TestRunner runner;
   int suite_index = 0;
   int suite_total = 0;
