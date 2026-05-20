@@ -13,6 +13,7 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/vec128.h"
+#include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/thread_state.h"
 
@@ -21,22 +22,40 @@ namespace cpu {
 namespace backend {
 namespace a64 {
 
+// Driven by the build options XENIA_ENABLE_ITRACE / XENIA_ENABLE_DTRACE /
+// XENIA_ENABLE_FTRACE (xb build --enable-itrace / --enable-dtrace /
+// --enable-ftrace).
+#if defined(XE_OPTION_TRACE_INSTR) && XE_OPTION_TRACE_INSTR
+#define ITRACE 1
+#else
 #define ITRACE 0
+#endif
+#if defined(XE_OPTION_TRACE_DATA) && XE_OPTION_TRACE_DATA
+#define DTRACE 1
+#else
 #define DTRACE 0
+#endif
+#if defined(XE_OPTION_TRACE_FUNC) && XE_OPTION_TRACE_FUNC
+#define FTRACE 1
+#else
+#define FTRACE 0
+#endif
 
 #define TARGET_THREAD 0
 
-bool trace_enabled = true;
-
 #define THREAD_MATCH (!TARGET_THREAD || ppc_context->thread_id == TARGET_THREAD)
 #define IFLUSH()
-#define IPRINT(s)                    \
-  if (trace_enabled && THREAD_MATCH) \
-  xe::logging::AppendLogLine(xe::LogLevel::Debug, 't', s, xe::LogSrc::Cpu)
+#define IPRINT(s)                                              \
+  if ((cvars::cpu_trace_mask & TRACING_INSTR) && THREAD_MATCH) \
+  xe::logging::AppendLogLine(xe::LogLevel::Info, 't', s, xe::LogSrc::Cpu)
 #define DFLUSH()
-#define DPRINT(...)                                                           \
-  if (trace_enabled && THREAD_MATCH)                                          \
-  xe::logging::AppendLogLineFormat(xe::LogSrc::Cpu, xe::LogLevel::Debug, 't', \
+#define DPRINT(...)                                                          \
+  if ((cvars::cpu_trace_mask & TRACING_DATA) && THREAD_MATCH)                \
+  xe::logging::AppendLogLineFormat(xe::LogSrc::Cpu, xe::LogLevel::Info, 't', \
+                                   __VA_ARGS__)
+#define FPRINT(...)                                                          \
+  if ((cvars::cpu_trace_mask & TRACING_FUNC) && THREAD_MATCH)                \
+  xe::logging::AppendLogLineFormat(xe::LogSrc::Cpu, xe::LogLevel::Info, 't', \
                                    __VA_ARGS__)
 
 // Helper to read float/int lanes from a V128 passed as const uint8_t*.
@@ -59,7 +78,47 @@ uint32_t GetTracingMode() {
 #if DTRACE
   mode |= TRACING_DATA;
 #endif
+#if FTRACE
+  mode |= TRACING_FUNC;
+#endif
   return mode;
+}
+
+static void SetTraceMaskBit(uint32_t bit, bool value) {
+  cvars::cpu_trace_mask =
+      value ? (cvars::cpu_trace_mask | bit) : (cvars::cpu_trace_mask & ~bit);
+}
+bool GetTraceInstrEnabled() {
+  return (cvars::cpu_trace_mask & TRACING_INSTR) != 0;
+}
+void SetTraceInstrEnabled(bool value) { SetTraceMaskBit(TRACING_INSTR, value); }
+bool GetTraceDataEnabled() {
+  return (cvars::cpu_trace_mask & TRACING_DATA) != 0;
+}
+void SetTraceDataEnabled(bool value) { SetTraceMaskBit(TRACING_DATA, value); }
+bool GetTraceFuncEnabled() {
+  return (cvars::cpu_trace_mask & TRACING_FUNC) != 0;
+}
+void SetTraceFuncEnabled(bool value) { SetTraceMaskBit(TRACING_FUNC, value); }
+
+void TraceFunctionEntry(void* raw_context, uint64_t function_address) {
+  auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
+  // Guest function entry: caller (lr) and the PPC GPR argument registers
+  // r3-r10.
+  FPRINT(
+      "call {:08X} lr={:08X} r3={:X} r4={:X} r5={:X} r6={:X} r7={:X} r8={:X} "
+      "r9={:X} r10={:X}\n",
+      static_cast<uint32_t>(function_address),
+      static_cast<uint32_t>(ppc_context->lr), ppc_context->r[3],
+      ppc_context->r[4], ppc_context->r[5], ppc_context->r[6],
+      ppc_context->r[7], ppc_context->r[8], ppc_context->r[9],
+      ppc_context->r[10]);
+}
+void TraceFunctionReturn(void* raw_context, uint64_t function_address) {
+  auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
+  // Guest function return value (PPC r3).
+  FPRINT("ret  {:08X} = {:X}\n", static_cast<uint32_t>(function_address),
+         ppc_context->r[3]);
 }
 
 void TraceString(void* raw_context, const char* str) {

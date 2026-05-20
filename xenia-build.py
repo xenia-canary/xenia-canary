@@ -566,6 +566,8 @@ def get_build_dir(target_arch=None):
 
 def run_cmake_configure(cc=None, generator=None, build_tests=False,
                         disable_lto=False, enable_profiler=False,
+                        enable_itrace=False, enable_dtrace=False,
+                        enable_ftrace=False,
                         target_arch=None, config=None):
     """Runs `cmake` to (re)configure build/ from the source root.
 
@@ -670,6 +672,9 @@ def run_cmake_configure(cc=None, generator=None, build_tests=False,
     args += [f"-DXENIA_BUILD_TESTS={'ON' if build_tests else 'OFF'}"]
     args += [f"-DXENIA_ENABLE_LTO={'OFF' if disable_lto else 'ON'}"]
     args += [f"-DXENIA_ENABLE_PROFILER={'ON' if enable_profiler else 'OFF'}"]
+    args += [f"-DXENIA_ENABLE_ITRACE={'ON' if enable_itrace else 'OFF'}"]
+    args += [f"-DXENIA_ENABLE_DTRACE={'ON' if enable_dtrace else 'OFF'}"]
+    args += [f"-DXENIA_ENABLE_FTRACE={'ON' if enable_ftrace else 'OFF'}"]
     if config:
         args += [f"-DCMAKE_BUILD_TYPE={config.title()}"]
     ret = subprocess.call(args)
@@ -893,6 +898,21 @@ class BaseBuildCommand(Command):
                  "-DXENIA_ENABLE_PROFILER=ON). UI overlay is built only in "
                  "Debug; otherwise dumps profile.html on shutdown.")
         self.parser.add_argument(
+            "--enable-itrace", dest="enable_itrace", action="store_true",
+            default=False,
+            help="Enables JIT per-instruction tracing to the log (sets "
+                 "-DXENIA_ENABLE_ITRACE=ON). Very slow; for debugging only.")
+        self.parser.add_argument(
+            "--enable-dtrace", dest="enable_dtrace", action="store_true",
+            default=False,
+            help="Enables JIT per-operation data tracing to the log (sets "
+                 "-DXENIA_ENABLE_DTRACE=ON). Very slow; for debugging only.")
+        self.parser.add_argument(
+            "--enable-ftrace", dest="enable_ftrace", action="store_true",
+            default=False,
+            help="Enables JIT per-function-call tracing to the log (sets "
+                 "-DXENIA_ENABLE_FTRACE=ON). For debugging only.")
+        self.parser.add_argument(
             "--target-arch", type=normalize_target_arch, default=None,
             help="Target architecture (arm64/aarch64/a64, x64/amd64/x86_64/x86). "
                  "On Windows and macOS, non-native values enable cross-compilation "
@@ -907,6 +927,9 @@ class BaseBuildCommand(Command):
                 build_tests=args["build_tests"],
                 disable_lto=args["disable_lto"],
                 enable_profiler=args["enable_profiler"],
+                enable_itrace=args["enable_itrace"],
+                enable_dtrace=args["enable_dtrace"],
+                enable_ftrace=args["enable_ftrace"],
                 target_arch=target_arch,
                 config=args["config"],
             )

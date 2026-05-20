@@ -252,7 +252,11 @@ bool PPCTranslator::Translate(GuestFunction* function,
 
   // Emit function.
   uint32_t emit_flags = 0;
-  if (debug_info) {
+  // Instruction tracing (ITrace) logs the per-instruction disassembly that is
+  // emitted as HIR comments, so force comment emission when the backend was
+  // built with instruction tracing available, even without other debug info.
+  if (debug_info ||
+      frontend_->processor()->backend()->trace_instr_available()) {
     emit_flags |= PPCHIRBuilder::EMIT_DEBUG_COMMENTS;
   }
   if (!builder_->Emit(function, emit_flags)) {

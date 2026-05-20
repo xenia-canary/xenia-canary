@@ -22,6 +22,8 @@
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/cvar.h"
 #include "xenia/config.h"
+#include "xenia/cpu/backend/backend.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/ui/imgui_host_notification.h"
@@ -582,6 +584,23 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
   int anisotropic_combo_index = anisotropic_override_ + 1;
 
   BackendState backend_state = GetBackendState(emulator_window_);
+
+  // CPU JIT tracing toggles reflect runtime backend state (not cvars) and only
+  // appear for trace modes compiled into the active backend
+  // (XENIA_ENABLE_ITRACE / XENIA_ENABLE_DTRACE build options).
+  Emulator* cpu_emulator =
+      emulator_window_ ? emulator_window_->emulator() : nullptr;
+  cpu::Processor* cpu_processor =
+      cpu_emulator ? cpu_emulator->processor() : nullptr;
+  cpu::backend::Backend* cpu_backend =
+      cpu_processor ? cpu_processor->backend() : nullptr;
+  bool trace_instr_available =
+      cpu_backend != nullptr && cpu_backend->trace_instr_available();
+  bool trace_data_available =
+      cpu_backend != nullptr && cpu_backend->trace_data_available();
+  bool trace_func_available =
+      cpu_backend != nullptr && cpu_backend->trace_func_available();
+
   bool is_fake_occlusion_query = cvars::occlusion_query == "fake";
   bool filter_active = HasFilter();
   bool is_release_build = true;
@@ -637,9 +656,13 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
       "capture_gpu_trace",
   });
 
+  bool show_cpu_tracing =
+      cpu_backend != nullptr &&
+      AnyMatchesFilter({"trace_instructions", "trace_data", "trace_functions"});
+
   bool any_visible = show_common || show_display || show_scaling ||
                      show_shader || show_edram || show_memory || show_depth ||
-                     show_conversion || show_logging;
+                     show_conversion || show_logging || show_cpu_tracing;
 
   bool is_open = true;
   if (ImGui::Begin("Debug Settings", &is_open, ImGuiWindowFlags_NoCollapse)) {
@@ -1099,6 +1122,71 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
             }
           }
 
+          ImGui::EndTable();
+        }
+      }
+
+      if (show_cpu_tracing &&
+          BeginSection("CPU Tracing", false, filter_active)) {
+        if (BeginSettingsTable("##debug_cpu_tracing")) {
+          // Unavailable modes are shown greyed out: availability reflects how
+          // the backend was built (XENIA_ENABLE_ITRACE/DTRACE/FTRACE).
+          if (MatchesFilter("trace_instructions")) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::BeginDisabled(!trace_instr_available);
+            DrawLabelCell("trace_instructions",
+                          trace_instr_available
+                              ? "Log each guest instruction"
+                              : "[requires --enable-itrace build]");
+            ImGui::TableSetColumnIndex(1);
+            bool enabled =
+                trace_instr_available && cpu_backend->trace_instr_enabled();
+            if (RightAlignedCheckbox("##trace_instructions", &enabled) &&
+                trace_instr_available) {
+              cpu_backend->set_trace_instr_enabled(enabled);
+              ShowNotification("trace_instructions",
+                               enabled ? "Enabled" : "Disabled");
+            }
+            ImGui::EndDisabled();
+          }
+          if (MatchesFilter("trace_data")) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::BeginDisabled(!trace_data_available);
+            DrawLabelCell("trace_data",
+                          trace_data_available
+                              ? "Log each guest memory/context load and store"
+                              : "[requires --enable-dtrace build]");
+            ImGui::TableSetColumnIndex(1);
+            bool enabled =
+                trace_data_available && cpu_backend->trace_data_enabled();
+            if (RightAlignedCheckbox("##trace_data", &enabled) &&
+                trace_data_available) {
+              cpu_backend->set_trace_data_enabled(enabled);
+              ShowNotification("trace_data", enabled ? "Enabled" : "Disabled");
+            }
+            ImGui::EndDisabled();
+          }
+          if (MatchesFilter("trace_functions")) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::BeginDisabled(!trace_func_available);
+            DrawLabelCell("trace_functions",
+                          trace_func_available
+                              ? "Log each guest function call"
+                              : "[requires --enable-ftrace build]");
+            ImGui::TableSetColumnIndex(1);
+            bool enabled =
+                trace_func_available && cpu_backend->trace_func_enabled();
+            if (RightAlignedCheckbox("##trace_functions", &enabled) &&
+                trace_func_available) {
+              cpu_backend->set_trace_func_enabled(enabled);
+              ShowNotification("trace_functions",
+                               enabled ? "Enabled" : "Disabled");
+            }
+            ImGui::EndDisabled();
+          }
           ImGui::EndTable();
         }
       }

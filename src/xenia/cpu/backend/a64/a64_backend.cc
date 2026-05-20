@@ -34,6 +34,7 @@
 #include "xenia/cpu/backend/a64/a64_function.h"
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
+#include "xenia/cpu/backend/a64/a64_tracers.h"
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
@@ -995,6 +996,22 @@ void A64Backend::FreeGuestTrampoline(uint32_t trampoline_addr) {
   size_t index =
       (trampoline_addr - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
   guest_trampoline_address_bitmap_.Release(index);
+}
+
+bool A64Backend::trace_instr_available() const { return IsTracingInstr(); }
+bool A64Backend::trace_data_available() const { return IsTracingData(); }
+bool A64Backend::trace_func_available() const { return IsTracingFunc(); }
+bool A64Backend::trace_instr_enabled() const { return GetTraceInstrEnabled(); }
+void A64Backend::set_trace_instr_enabled(bool value) {
+  SetTraceInstrEnabled(value);
+}
+bool A64Backend::trace_data_enabled() const { return GetTraceDataEnabled(); }
+void A64Backend::set_trace_data_enabled(bool value) {
+  SetTraceDataEnabled(value);
+}
+bool A64Backend::trace_func_enabled() const { return GetTraceFuncEnabled(); }
+void A64Backend::set_trace_func_enabled(bool value) {
+  SetTraceFuncEnabled(value);
 }
 
 // PPC rounding mode (3-bit) to ARM64 FPCR value.

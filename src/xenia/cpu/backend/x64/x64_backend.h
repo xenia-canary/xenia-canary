@@ -181,6 +181,17 @@ class X64Backend : public Backend {
   virtual void FreeGuestTrampoline(uint32_t trampoline_addr) override;
   virtual void SetGuestRoundingMode(void* ctx, unsigned int mode) override;
   virtual bool PopulatePseudoStacktrace(GuestPseudoStackTrace* st) override;
+
+  bool trace_instr_available() const override;
+  bool trace_data_available() const override;
+  bool trace_func_available() const override;
+  bool trace_instr_enabled() const override;
+  void set_trace_instr_enabled(bool value) override;
+  bool trace_data_enabled() const override;
+  void set_trace_data_enabled(bool value) override;
+  bool trace_func_enabled() const override;
+  void set_trace_func_enabled(bool value) override;
+
   void RecordMMIOExceptionForGuestInstruction(void* host_address);
 
   uint32_t LookupXMMConstantAddress32(unsigned index) {

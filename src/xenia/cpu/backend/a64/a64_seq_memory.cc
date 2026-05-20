@@ -17,6 +17,7 @@
 #include "xenia/cpu/backend/a64/a64_op.h"
 #include "xenia/cpu/backend/a64/a64_seq_util.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
+#include "xenia/cpu/backend/a64/a64_tracers.h"
 #include "xenia/cpu/hir/instr.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
@@ -163,6 +164,12 @@ struct LOAD_I8 : Sequence<LOAD_I8, I<OPCODE_LOAD, I8Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     auto addr = ComputeMemoryAddress(e, i.src1);
     e.ldrb(i.dest, ptr(e.GetMembaseReg(), addr));
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(e.w2, i.dest);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI8));
+    }
   }
 };
 struct LOAD_I16 : Sequence<LOAD_I16, I<OPCODE_LOAD, I16Op, I64Op>> {
@@ -171,6 +178,12 @@ struct LOAD_I16 : Sequence<LOAD_I16, I<OPCODE_LOAD, I16Op, I64Op>> {
     e.ldrh(i.dest, ptr(e.GetMembaseReg(), addr));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev16(i.dest, i.dest);
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(e.w2, i.dest);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI16));
     }
   }
 };
@@ -191,7 +204,7 @@ struct LOAD_I32 : Sequence<LOAD_I32, I<OPCODE_LOAD, I32Op, I64Op>> {
       e.mov(i.dest, e.w0);
       return;
     }
-    if (cvars::emit_inline_mmio_checks) {
+    if (cvars::emit_inline_mmio_checks && !IsTracingData()) {
       if (i.src1.is_constant) {
         e.mov(e.w17,
               static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
@@ -230,6 +243,12 @@ struct LOAD_I32 : Sequence<LOAD_I32, I<OPCODE_LOAD, I32Op, I64Op>> {
       if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
         e.rev(i.dest, i.dest);
       }
+      if (IsTracingData()) {
+        addr = ComputeMemoryAddress(e, i.src1);
+        e.mov(e.w2, i.dest);
+        e.mov(e.w1, WReg(addr.getIdx()));
+        e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI32));
+      }
     }
   }
 };
@@ -239,6 +258,12 @@ struct LOAD_I64 : Sequence<LOAD_I64, I<OPCODE_LOAD, I64Op, I64Op>> {
     e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev(i.dest, i.dest);
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(e.x2, i.dest);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI64));
     }
   }
 };
@@ -252,6 +277,12 @@ struct LOAD_F32 : Sequence<LOAD_F32, I<OPCODE_LOAD, F32Op, I64Op>> {
     } else {
       e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
     }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(VReg(0).b16, VReg(i.dest.reg().getIdx()).b16);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadF32));
+    }
   }
 };
 struct LOAD_F64 : Sequence<LOAD_F64, I<OPCODE_LOAD, F64Op, I64Op>> {
@@ -264,6 +295,12 @@ struct LOAD_F64 : Sequence<LOAD_F64, I<OPCODE_LOAD, F64Op, I64Op>> {
     } else {
       e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
     }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(VReg(0).b16, VReg(i.dest.reg().getIdx()).b16);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadF64));
+    }
   }
 };
 struct LOAD_V128 : Sequence<LOAD_V128, I<OPCODE_LOAD, V128Op, I64Op>> {
@@ -274,6 +311,12 @@ struct LOAD_V128 : Sequence<LOAD_V128, I<OPCODE_LOAD, V128Op, I64Op>> {
       // Reverse bytes within each 32-bit word (PPC BE -> ARM64 LE).
       auto idx = i.dest.reg().getIdx();
       e.rev32(VReg16B(idx), VReg16B(idx));
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.add(e.x2, e.GetMembaseReg(), addr);
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadV128));
     }
   }
 };
@@ -291,6 +334,12 @@ struct STORE_I8 : Sequence<STORE_I8, I<OPCODE_STORE, VoidOp, I64Op, I8Op>> {
       e.strb(e.w17, ptr(e.GetMembaseReg(), addr));
     } else {
       e.strb(i.src2, ptr(e.GetMembaseReg(), addr));
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.ldrb(e.w2, ptr(e.GetMembaseReg(), addr));
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI8));
     }
   }
 };
@@ -312,6 +361,12 @@ struct STORE_I16 : Sequence<STORE_I16, I<OPCODE_STORE, VoidOp, I64Op, I16Op>> {
       } else {
         e.strh(i.src2, ptr(e.GetMembaseReg(), addr));
       }
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.ldrh(e.w2, ptr(e.GetMembaseReg(), addr));
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI16));
     }
   }
 };
@@ -337,7 +392,7 @@ struct STORE_I32 : Sequence<STORE_I32, I<OPCODE_STORE, VoidOp, I64Op, I32Op>> {
       e.CallNativeSafe(mmio_fn);
       return;
     }
-    if (cvars::emit_inline_mmio_checks) {
+    if (cvars::emit_inline_mmio_checks && !IsTracingData()) {
       if (i.src1.is_constant) {
         e.mov(e.w17,
               static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
@@ -409,6 +464,12 @@ struct STORE_I32 : Sequence<STORE_I32, I<OPCODE_STORE, VoidOp, I64Op, I32Op>> {
           e.str(i.src2, ptr(e.GetMembaseReg(), addr));
         }
       }
+      if (IsTracingData()) {
+        addr = ComputeMemoryAddress(e, i.src1);
+        e.ldr(e.w2, ptr(e.GetMembaseReg(), addr));
+        e.mov(e.w1, WReg(addr.getIdx()));
+        e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI32));
+      }
     }
   }
 };
@@ -430,6 +491,12 @@ struct STORE_I64 : Sequence<STORE_I64, I<OPCODE_STORE, VoidOp, I64Op, I64Op>> {
       } else {
         e.str(i.src2, ptr(e.GetMembaseReg(), addr));
       }
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.ldr(e.x2, ptr(e.GetMembaseReg(), addr));
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI64));
     }
   }
 };
@@ -454,6 +521,12 @@ struct STORE_F32 : Sequence<STORE_F32, I<OPCODE_STORE, VoidOp, I64Op, F32Op>> {
         e.str(i.src2, ptr(e.GetMembaseReg(), addr));
       }
     }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.ldr(e.s0, ptr(e.GetMembaseReg(), addr));
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreF32));
+    }
   }
 };
 struct STORE_F64 : Sequence<STORE_F64, I<OPCODE_STORE, VoidOp, I64Op, F64Op>> {
@@ -476,6 +549,12 @@ struct STORE_F64 : Sequence<STORE_F64, I<OPCODE_STORE, VoidOp, I64Op, F64Op>> {
       } else {
         e.str(i.src2, ptr(e.GetMembaseReg(), addr));
       }
+    }
+    if (IsTracingData()) {
+      addr = ComputeMemoryAddress(e, i.src1);
+      e.ldr(e.d0, ptr(e.GetMembaseReg(), addr));
+      e.mov(e.w1, WReg(addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreF64));
     }
   }
 };
@@ -504,6 +583,12 @@ struct STORE_V128
       } else {
         e.str(i.src2, ptr(e.GetMembaseReg(), addr));
       }
+    }
+    if (IsTracingData()) {
+      auto trace_addr = ComputeMemoryAddress(e, i.src1);
+      e.add(e.x2, e.GetMembaseReg(), trace_addr);
+      e.mov(e.w1, WReg(trace_addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreV128));
     }
   }
 };
@@ -535,6 +620,12 @@ struct LOAD_OFFSET_I8
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
     e.ldrb(i.dest, ptr(e.GetMembaseReg(), e.x0));
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.mov(e.w2, i.dest);
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI8));
+    }
   }
 };
 struct LOAD_OFFSET_I16
@@ -544,6 +635,12 @@ struct LOAD_OFFSET_I16
     e.ldrh(i.dest, ptr(e.GetMembaseReg(), e.x0));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev16(i.dest, i.dest);
+    }
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.mov(e.w2, i.dest);
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI16));
     }
   }
 };
@@ -572,7 +669,7 @@ struct LOAD_OFFSET_I32
       e.mov(i.dest, e.w0);
       return;
     }
-    if (cvars::emit_inline_mmio_checks) {
+    if (cvars::emit_inline_mmio_checks && !IsTracingData()) {
       // Compute raw guest address (src1 + src2) in w17 for range check.
       if (i.src1.is_constant) {
         e.mov(e.w17,
@@ -621,6 +718,12 @@ struct LOAD_OFFSET_I32
       if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
         e.rev(i.dest, i.dest);
       }
+      if (IsTracingData()) {
+        AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+        e.mov(e.w2, i.dest);
+        e.mov(e.w1, e.w0);
+        e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI32));
+      }
     }
   }
 };
@@ -631,6 +734,12 @@ struct LOAD_OFFSET_I64
     e.ldr(i.dest, ptr(e.GetMembaseReg(), e.x0));
     if (i.instr->flags & LoadStoreFlags::LOAD_STORE_BYTE_SWAP) {
       e.rev(i.dest, i.dest);
+    }
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.mov(e.x2, i.dest);
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadI64));
     }
   }
 };
@@ -647,6 +756,12 @@ struct STORE_OFFSET_I8
       e.strb(e.w17, ptr(e.GetMembaseReg(), e.x0));
     } else {
       e.strb(i.src3, ptr(e.GetMembaseReg(), e.x0));
+    }
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.ldrb(e.w2, ptr(e.GetMembaseReg(), e.x0));
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI8));
     }
   }
 };
@@ -670,6 +785,12 @@ struct STORE_OFFSET_I16
       } else {
         e.strh(i.src3, ptr(e.GetMembaseReg(), e.x0));
       }
+    }
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.ldrh(e.w2, ptr(e.GetMembaseReg(), e.x0));
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI16));
     }
   }
 };
@@ -704,7 +825,7 @@ struct STORE_OFFSET_I32
       e.CallNativeSafe(mmio_fn);
       return;
     }
-    if (cvars::emit_inline_mmio_checks) {
+    if (cvars::emit_inline_mmio_checks && !IsTracingData()) {
       // Compute raw guest address (src1 + src2) in w17 for range check.
       if (i.src1.is_constant) {
         e.mov(e.w17,
@@ -786,6 +907,12 @@ struct STORE_OFFSET_I32
           e.str(i.src3, ptr(e.GetMembaseReg(), e.x0));
         }
       }
+      if (IsTracingData()) {
+        AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+        e.ldr(e.w2, ptr(e.GetMembaseReg(), e.x0));
+        e.mov(e.w1, e.w0);
+        e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI32));
+      }
     }
   }
 };
@@ -809,6 +936,12 @@ struct STORE_OFFSET_I64
       } else {
         e.str(i.src3, ptr(e.GetMembaseReg(), e.x0));
       }
+    }
+    if (IsTracingData()) {
+      AddGuestMemoryOffset(e, ComputeMemoryAddress(e, i.src1), i.src2);
+      e.ldr(e.x2, ptr(e.GetMembaseReg(), e.x0));
+      e.mov(e.w1, e.w0);
+      e.CallNative(reinterpret_cast<void*>(TraceMemoryStoreI64));
     }
   }
 };
@@ -861,6 +994,14 @@ struct MEMSET_I64
     // Byte loop for any remaining 0-3 bytes
     for (; off + 1 <= len; off += 1) {
       e.strb(e.wzr, AdrPostImm(e.x0, 1));
+    }
+
+    if (IsTracingData()) {
+      auto trace_addr = ComputeMemoryAddress(e, i.src1);
+      e.mov(e.w3, static_cast<uint64_t>(i.src3.constant()));
+      e.mov(e.w2, static_cast<uint64_t>(i.src2.constant()));
+      e.mov(e.w1, WReg(trace_addr.getIdx()));
+      e.CallNative(reinterpret_cast<void*>(TraceMemset));
     }
   }
 };

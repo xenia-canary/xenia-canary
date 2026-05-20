@@ -122,6 +122,19 @@ class Backend {
   }
   virtual void FreeGuestTrampoline(uint32_t trampoline_addr) {}
 
+  // JIT tracing runtime controls. "available" reflects whether the trace hooks
+  // were compiled into emitted code (XENIA_ENABLE_ITRACE / XENIA_ENABLE_DTRACE
+  // build options); when unavailable the enable flags have no effect.
+  virtual bool trace_instr_available() const { return false; }
+  virtual bool trace_data_available() const { return false; }
+  virtual bool trace_func_available() const { return false; }
+  virtual bool trace_instr_enabled() const { return false; }
+  virtual void set_trace_instr_enabled(bool value) {}
+  virtual bool trace_data_enabled() const { return false; }
+  virtual void set_trace_data_enabled(bool value) {}
+  virtual bool trace_func_enabled() const { return false; }
+  virtual void set_trace_func_enabled(bool value) {}
+
  protected:
   Processor* processor_ = nullptr;
   MachineInfo machine_info_;

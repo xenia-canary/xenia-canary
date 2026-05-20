@@ -20,6 +20,7 @@
 #include "xenia/cpu/backend/a64/a64_function.h"
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
+#include "xenia/cpu/backend/a64/a64_tracers.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/hir/hir_builder.h"
 #include "xenia/cpu/hir/label.h"
@@ -28,14 +29,6 @@
 
 DECLARE_int64(a64_max_stackpoints);
 DECLARE_bool(a64_enable_host_guest_stack_synchronization);
-
-namespace {
-void TraceFunctionEntry(void* raw_context, uint64_t function_address) {
-  auto ctx = reinterpret_cast<xe::cpu::ppc::PPCContext*>(raw_context);
-  XELOGI("a64 call {:08X} t{}", static_cast<uint32_t>(function_address),
-         ctx->thread_id);
-}
-}  // namespace
 
 namespace xe {
 namespace cpu {
@@ -184,6 +177,13 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // ========================================================================
   code_offsets.body = getSize();
 
+  // FTrace: log guest function entry when the backend was built with
+  // function tracing available (gated at runtime by the trace_func flag).
+  if (IsTracingFunc()) {
+    mov(x1, static_cast<uint64_t>(current_guest_function_));
+    CallNative(reinterpret_cast<void*>(TraceFunctionEntry));
+  }
+
   // Allocate the epilog label (owned by label_cache_ for cleanup).
   auto epilog_label_ptr = new Label();
   label_cache_.push_back(epilog_label_ptr);
@@ -235,6 +235,11 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // ========================================================================
   L(*epilog_label_);
   epilog_label_ = nullptr;
+  // FTrace: log the guest return value (r3) on normal return.
+  if (IsTracingFunc()) {
+    mov(x1, static_cast<uint64_t>(current_guest_function_));
+    CallNative(reinterpret_cast<void*>(TraceFunctionReturn));
+  }
   code_offsets.epilog = getSize();
 
   // Pop stackpoint before leaving.

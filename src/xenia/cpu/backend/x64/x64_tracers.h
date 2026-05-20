@@ -20,14 +20,26 @@ namespace x64 {
 class X64Emitter;
 
 enum TracingMode {
-  TRACING_INSTR = (1 << 1),
-  TRACING_DATA = (1 << 2),
+  TRACING_INSTR = (1 << 0),
+  TRACING_DATA = (1 << 1),
+  TRACING_FUNC = (1 << 2),
 };
 
 uint32_t GetTracingMode();
 inline bool IsTracingInstr() { return (GetTracingMode() & TRACING_INSTR) != 0; }
 inline bool IsTracingData() { return (GetTracingMode() & TRACING_DATA) != 0; }
+inline bool IsTracingFunc() { return (GetTracingMode() & TRACING_FUNC) != 0; }
 
+// Runtime gate for whether compiled-in trace hooks actually log.
+bool GetTraceInstrEnabled();
+void SetTraceInstrEnabled(bool value);
+bool GetTraceDataEnabled();
+void SetTraceDataEnabled(bool value);
+bool GetTraceFuncEnabled();
+void SetTraceFuncEnabled(bool value);
+
+void TraceFunctionEntry(void* raw_context, uint64_t function_address);
+void TraceFunctionReturn(void* raw_context, uint64_t function_address);
 void TraceString(void* raw_context, const char* str);
 
 void TraceContextLoadI8(void* raw_context, uint64_t offset, uint8_t value);

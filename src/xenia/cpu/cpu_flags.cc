@@ -30,6 +30,12 @@ DEFINE_bool(trace_function_references, false,
 DEFINE_bool(trace_function_data, false,
             "Generate tracing for function result data.", "CPU");
 
+DEFINE_uint32(
+    cpu_trace_mask, 0,
+    "JIT execution trace modes to log (bitmask): 1=instructions, 2=data, "
+    "4=function calls (7=all). Each mode must be compiled in to be usable.",
+    "CPU");
+
 DEFINE_bool(validate_hir, false,
             "Perform validation checks on the HIR during compilation.", "CPU");
 

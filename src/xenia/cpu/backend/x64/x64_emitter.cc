@@ -29,6 +29,7 @@
 #include "xenia/cpu/backend/x64/x64_function.h"
 #include "xenia/cpu/backend/x64/x64_sequences.h"
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
+#include "xenia/cpu/backend/x64/x64_tracers.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/function_debug_info.h"
@@ -271,6 +272,13 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
     bts(qword[low_address(&trace_header->function_thread_use)], rax);
   }
 
+  // FTrace: log guest function entry when the backend was built with
+  // function tracing available (gated at runtime by the trace_func flag).
+  if (IsTracingFunc()) {
+    mov(GetNativeParam(0), current_guest_function_);
+    CallNative(reinterpret_cast<void*>(TraceFunctionEntry));
+  }
+
   // Load membase.
   /*
   * chrispy: removed this, as long as we load it in HostToGuestThunk we can
@@ -320,6 +328,11 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // Function epilog.
   L(epilog_label);
   epilog_label_ = nullptr;
+  // FTrace: log the guest return value (r3) on normal return.
+  if (IsTracingFunc()) {
+    mov(GetNativeParam(0), current_guest_function_);
+    CallNative(reinterpret_cast<void*>(TraceFunctionReturn));
+  }
   EmitTraceUserCallReturn();
   /*
   * chrispy: removed this, it serves no purpose

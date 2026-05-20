@@ -79,12 +79,19 @@ option(XENIA_BUILD_TESTS "Build test suites" OFF)
 option(XENIA_BUILD_MISC "Build misc subprojects (trace viewers, shader compiler, vfs-dump, demos)" OFF)
 option(XENIA_ENABLE_LTO "Enable link-time optimization in Release (slow link)" ON)
 option(XENIA_ENABLE_PROFILER "Enable profiler (UI is Debug-only)" OFF)
+option(XENIA_ENABLE_ITRACE "Enable JIT per-instruction tracing to the log (slow)" OFF)
+option(XENIA_ENABLE_DTRACE "Enable JIT per-operation data tracing to the log (very slow)" OFF)
+option(XENIA_ENABLE_FTRACE "Enable JIT per-function-call tracing to the log" OFF)
 
 if(XENIA_ENABLE_PROFILER)
   # UI is Debug-only — shutdown dump spams the log otherwise.
   add_compile_definitions(XE_OPTION_PROFILING=1)
   add_compile_definitions($<$<CONFIG:Debug>:XE_OPTION_PROFILING_UI=1>)
 endif()
+
+# XENIA_ENABLE_ITRACE / XENIA_ENABLE_DTRACE / XENIA_ENABLE_FTRACE are consumed
+# per-file in the x64 and a64 backend CMakeLists (only the *_tracers.cc TUs read
+# them), so toggling them doesn't trigger a full rebuild.
 
 if(XENIA_BUILD_TESTS)
   enable_testing()

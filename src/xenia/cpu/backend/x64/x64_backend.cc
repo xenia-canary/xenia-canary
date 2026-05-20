@@ -21,6 +21,7 @@
 #include "xenia/cpu/backend/x64/x64_function.h"
 #include "xenia/cpu/backend/x64/x64_sequences.h"
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
+#include "xenia/cpu/backend/x64/x64_tracers.h"
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
@@ -1869,6 +1870,22 @@ void X64Backend::FreeGuestTrampoline(uint32_t trampoline_addr) {
   size_t index =
       (trampoline_addr - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
   guest_trampoline_address_bitmap_.Release(index);
+}
+
+bool X64Backend::trace_instr_available() const { return IsTracingInstr(); }
+bool X64Backend::trace_data_available() const { return IsTracingData(); }
+bool X64Backend::trace_func_available() const { return IsTracingFunc(); }
+bool X64Backend::trace_instr_enabled() const { return GetTraceInstrEnabled(); }
+void X64Backend::set_trace_instr_enabled(bool value) {
+  SetTraceInstrEnabled(value);
+}
+bool X64Backend::trace_data_enabled() const { return GetTraceDataEnabled(); }
+void X64Backend::set_trace_data_enabled(bool value) {
+  SetTraceDataEnabled(value);
+}
+bool X64Backend::trace_func_enabled() const { return GetTraceFuncEnabled(); }
+void X64Backend::set_trace_func_enabled(bool value) {
+  SetTraceFuncEnabled(value);
 }
 }  // namespace x64
 }  // namespace backend
