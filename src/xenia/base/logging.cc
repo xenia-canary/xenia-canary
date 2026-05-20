@@ -389,9 +389,7 @@ class Logger {
         desired_count = 1;
 
         if (cvars::flush_log) {
-          for (const auto& sink : sinks_) {
-            sink->Flush();
-          }
+          FlushAllSinks();
         }
 
         idle_loops = 0;
