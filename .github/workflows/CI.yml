@@ -43,7 +43,10 @@ jobs:
   release:
     name: Create Release
     needs: build-trusted
-    runs-on: ubuntu-latest
+    # Runs on macOS so we can lipo the two per-arch app bundles into a
+    # universal binary here rather than in a separate build job. lipo,
+    # codesign, hdiutil, gh, and 7z are all available on macOS runners.
+    runs-on: macos-26
     permissions:
       contents: write
     if: |
@@ -68,26 +71,78 @@ jobs:
           name: xenia_edge_windows
           path: windows_artifacts
 
-      - name: Download macOS universal artifacts
+      - name: Download macOS arm64 app bundle
         uses: actions/download-artifact@main
         with:
-          name: xenia_edge_macos
-          path: macos_artifacts
+          name: xenia_edge_macos_arm64_app
+          path: macos_arm64_app
+
+      - name: Download macOS x86_64 app bundle
+        uses: actions/download-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64_app
+          path: macos_x86_64_app
+
+      - name: Build universal macOS DMG
+        run: |
+          mkdir -p macos_arm64_extracted macos_x86_64_extracted
+          tar -xf macos_arm64_app/Xenia-edge.app.tar -C macos_arm64_extracted
+          tar -xf macos_x86_64_app/Xenia-edge.app.tar -C macos_x86_64_extracted
+
+          arm64_bundle="macos_arm64_extracted/Xenia-edge.app"
+          x86_64_bundle="macos_x86_64_extracted/Xenia-edge.app"
+          arm64_exe="$arm64_bundle/Contents/MacOS/Xenia-edge"
+          x86_64_exe="$x86_64_bundle/Contents/MacOS/Xenia-edge"
+
+          # Only the main executable gets merged; any non-Mach-O drift between
+          # the two Contents/ trees would be silently dropped here, so fail
+          # loudly if the bundles diverge anywhere outside MacOS/Xenia-edge.
+          if ! diff -r --brief \
+              --exclude=Xenia-edge \
+              "$arm64_bundle/Contents" "$x86_64_bundle/Contents"; then
+            echo "::error::arm64 and x86_64 app bundles differ outside the main executable"
+            exit 1
+          fi
+
+          # arm64 bundle becomes the base and we overwrite only its main
+          # Mach-O with the fat one. Write to a separate path then mv — lipo
+          # reads inputs before writing, but overlapping input/output is
+          # fragile.
+          lipo -create "$arm64_exe" "$x86_64_exe" -output Xenia-edge.universal
+          mv Xenia-edge.universal "$arm64_exe"
+
+          info=$(lipo -info "$arm64_exe")
+          echo "$info"
+          if ! echo "$info" | grep -q "arm64" || ! echo "$info" | grep -q "x86_64"; then
+            echo "::error::Universal binary missing an arch: $info"
+            exit 1
+          fi
+
+          # lipo invalidates the linker-applied ad-hoc signature; arm64 will
+          # refuse to launch unsigned, so re-sign ad-hoc.
+          codesign --force --sign - "$arm64_bundle"
+
+          mkdir -p dmg_contents
+          cp -R "$arm64_bundle" dmg_contents/
+          cp LICENSE dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          hdiutil create -volname "Xenia-edge" \
+            -srcfolder dmg_contents -ov -format UDZO \
+            xenia_edge_macos.dmg
+          rm -rf dmg_contents
 
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # Create zips
+          # Hoist linux/windows artifacts; macOS DMG is already at top level.
           cd linux_artifacts
           # For Linux, just rename the AppImage (no need to zip a single file)
           mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
           cd ../windows_artifacts
           7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
-          cd ../macos_artifacts
-          # macOS DMGs are already single distributable files; just hoist them.
-          mv xenia_edge_macos.dmg ../xenia_edge_macos.dmg
           cd ..
 
           # Build release body: commit list since last release + compare URL
