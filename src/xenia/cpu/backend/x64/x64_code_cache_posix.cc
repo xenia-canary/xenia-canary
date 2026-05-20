@@ -299,29 +299,32 @@ void PosixX64CodeCache::InitializeUnwindEntry(
     // For thunk functions, encode callee-saved register save locations.
     // The thunk saves non-volatile registers at known offsets from RSP.
     if (func_info.stack_size == StackLayout::THUNK_STACK_SIZE) {
-      size_t cfa = 8 + func_info.stack_size;  // 272
+      // CFA = rsp + 8 + stack_size. Save slots are encoded relative to CFA so
+      // the factored offsets track stack_size automatically; the absolute
+      // rsp-relative slot offsets below are what stays fixed.
+      size_t cfa = 8 + func_info.stack_size;
 
-      // RBX at rsp+0x18 → CFA-248, factored offset = 31
+      // RBX at rsp+0x18
       *p++ = 0x80 | kDwarfRegRBX;
       p += WriteULEB128(p, (cfa - 0x18) / 8);
 
-      // RBP at rsp+0x20 → CFA-240, factored offset = 30
+      // RBP at rsp+0x20
       *p++ = 0x80 | kDwarfRegRBP;
       p += WriteULEB128(p, (cfa - 0x20) / 8);
 
-      // R12 at rsp+0x40 → CFA-208, factored offset = 26
+      // R12 at rsp+0x40
       *p++ = 0x80 | kDwarfRegR12;
       p += WriteULEB128(p, (cfa - 0x40) / 8);
 
-      // R13 at rsp+0x48 → CFA-200, factored offset = 25
+      // R13 at rsp+0x48
       *p++ = 0x80 | kDwarfRegR13;
       p += WriteULEB128(p, (cfa - 0x48) / 8);
 
-      // R14 at rsp+0x50 → CFA-192, factored offset = 24
+      // R14 at rsp+0x50
       *p++ = 0x80 | kDwarfRegR14;
       p += WriteULEB128(p, (cfa - 0x50) / 8);
 
-      // R15 at rsp+0x58 → CFA-184, factored offset = 23
+      // R15 at rsp+0x58
       *p++ = 0x80 | kDwarfRegR15;
       p += WriteULEB128(p, (cfa - 0x58) / 8);
     }

@@ -9,6 +9,8 @@
 
 #include "xenia/cpu/backend/x64/x64_tracers.h"
 
+#include <cstring>
+
 #include "xenia/base/logging.h"
 #include "xenia/base/vec128.h"
 #include "xenia/cpu/backend/x64/x64_emitter.h"
@@ -20,6 +22,30 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace x64 {
+
+// Float/vector trace values arrive as a host pointer (emit sites lea the
+// address), keeping the calls GPR-only; __m128-by-value would mismatch the
+// JIT's integer-register call setup on System V.
+static inline float trace_f32(const void* p) {
+  float v;
+  std::memcpy(&v, p, sizeof(v));
+  return v;
+}
+static inline double trace_f64(const void* p) {
+  double v;
+  std::memcpy(&v, p, sizeof(v));
+  return v;
+}
+static inline uint32_t trace_u32(const void* p, int lane = 0) {
+  uint32_t v;
+  std::memcpy(&v, static_cast<const uint8_t*>(p) + lane * 4, sizeof(v));
+  return v;
+}
+static inline uint64_t trace_u64(const void* p) {
+  uint64_t v;
+  std::memcpy(&v, p, sizeof(v));
+  return v;
+}
 
 // Driven by the build options XENIA_ENABLE_ITRACE / XENIA_ENABLE_DTRACE /
 // XENIA_ENABLE_FTRACE (xb build --enable-itrace / --enable-dtrace /
@@ -130,24 +156,27 @@ void TraceContextLoadI64(void* raw_context, uint64_t offset, uint64_t value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("{} ({:X}) = ctx i64 +{}\n", (int64_t)value, value, offset);
 }
-void TraceContextLoadF32(void* raw_context, uint64_t offset, __m128 value) {
+void TraceContextLoadF32(void* raw_context, uint64_t offset,
+                         const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("{} ({:X}) = ctx f32 +{}\n", xe::m128_f32<0>(value),
-         xe::m128_i32<0>(value), offset);
-}
-void TraceContextLoadF64(void* raw_context, uint64_t offset,
-                         const double* value) {
-  auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  auto v = _mm_loadu_pd(value);
-  DPRINT("{} ({:X}) = ctx f64 +{}\n", xe::m128_f64<0>(v), xe::m128_i64<0>(v),
+  DPRINT("{} ({:X}) = ctx f32 +{}\n", trace_f32(value), trace_u32(value),
          offset);
 }
-void TraceContextLoadV128(void* raw_context, uint64_t offset, __m128 value) {
+void TraceContextLoadF64(void* raw_context, uint64_t offset,
+                         const void* value) {
+  auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
+  DPRINT("{} ({:X}) = ctx f64 +{}\n", trace_f64(value), trace_u64(value),
+         offset);
+}
+void TraceContextLoadV128(void* raw_context, uint64_t offset,
+                          const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("[{}, {}, {}, {}] [{:08X}, {:08X}, {:08X}, {:08X}] = ctx v128 +{}\n",
-         xe::m128_f32<0>(value), xe::m128_f32<1>(value), xe::m128_f32<2>(value),
-         xe::m128_f32<3>(value), xe::m128_i32<0>(value), xe::m128_i32<1>(value),
-         xe::m128_i32<2>(value), xe::m128_i32<3>(value), offset);
+         trace_f32(value), trace_f32(static_cast<const uint8_t*>(value) + 4),
+         trace_f32(static_cast<const uint8_t*>(value) + 8),
+         trace_f32(static_cast<const uint8_t*>(value) + 12),
+         trace_u32(value, 0), trace_u32(value, 1), trace_u32(value, 2),
+         trace_u32(value, 3), offset);
 }
 
 void TraceContextStoreI8(void* raw_context, uint64_t offset, uint8_t value) {
@@ -166,25 +195,28 @@ void TraceContextStoreI64(void* raw_context, uint64_t offset, uint64_t value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("ctx i64 +{} = {} ({:X})\n", offset, (int64_t)value, value);
 }
-void TraceContextStoreF32(void* raw_context, uint64_t offset, __m128 value) {
+void TraceContextStoreF32(void* raw_context, uint64_t offset,
+                          const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("ctx f32 +{} = {} ({:X})\n", offset, xe::m128_f32<0>(value),
-         xe::m128_i32<0>(value));
+  DPRINT("ctx f32 +{} = {} ({:X})\n", offset, trace_f32(value),
+         trace_u32(value));
 }
 void TraceContextStoreF64(void* raw_context, uint64_t offset,
-                          const double* value) {
+                          const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  auto v = _mm_loadu_pd(value);
-  DPRINT("ctx f64 +{} = {} ({:X})\n", offset, xe::m128_f64<0>(v),
-         xe::m128_i64<0>(v));
+  DPRINT("ctx f64 +{} = {} ({:X})\n", offset, trace_f64(value),
+         trace_u64(value));
 }
-void TraceContextStoreV128(void* raw_context, uint64_t offset, __m128 value) {
+void TraceContextStoreV128(void* raw_context, uint64_t offset,
+                           const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("ctx v128 +{} = [{}, {}, {}, {}] [{:08X}, {:08X}, {:08X}, {:08X}]\n",
-         offset, xe::m128_f32<0>(value), xe::m128_f32<1>(value),
-         xe::m128_f32<2>(value), xe::m128_f32<3>(value), xe::m128_i32<0>(value),
-         xe::m128_i32<1>(value), xe::m128_i32<2>(value),
-         xe::m128_i32<3>(value));
+         offset, trace_f32(value),
+         trace_f32(static_cast<const uint8_t*>(value) + 4),
+         trace_f32(static_cast<const uint8_t*>(value) + 8),
+         trace_f32(static_cast<const uint8_t*>(value) + 12),
+         trace_u32(value, 0), trace_u32(value, 1), trace_u32(value, 2),
+         trace_u32(value, 3));
 }
 
 void TraceMemoryLoadI8(void* raw_context, uint32_t address, uint8_t value) {
@@ -203,23 +235,27 @@ void TraceMemoryLoadI64(void* raw_context, uint32_t address, uint64_t value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("{} ({:X}) = load.i64 {:08X}\n", (int64_t)value, value, address);
 }
-void TraceMemoryLoadF32(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryLoadF32(void* raw_context, uint32_t address,
+                        const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("{} ({:X}) = load.f32 {:08X}\n", xe::m128_f32<0>(value),
-         xe::m128_i32<0>(value), address);
+  DPRINT("{} ({:X}) = load.f32 {:08X}\n", trace_f32(value), trace_u32(value),
+         address);
 }
-void TraceMemoryLoadF64(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryLoadF64(void* raw_context, uint32_t address,
+                        const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("{} ({:X}) = load.f64 {:08X}\n", xe::m128_f64<0>(value),
-         xe::m128_i64<0>(value), address);
+  DPRINT("{} ({:X}) = load.f64 {:08X}\n", trace_f64(value), trace_u64(value),
+         address);
 }
-void TraceMemoryLoadV128(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryLoadV128(void* raw_context, uint32_t address,
+                         const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT(
       "[{}, {}, {}, {}] [{:08X}, {:08X}, {:08X}, {:08X}] = load.v128 {:08X}\n",
-      xe::m128_f32<0>(value), xe::m128_f32<1>(value), xe::m128_f32<2>(value),
-      xe::m128_f32<3>(value), xe::m128_i32<0>(value), xe::m128_i32<1>(value),
-      xe::m128_i32<2>(value), xe::m128_i32<3>(value), address);
+      trace_f32(value), trace_f32(static_cast<const uint8_t*>(value) + 4),
+      trace_f32(static_cast<const uint8_t*>(value) + 8),
+      trace_f32(static_cast<const uint8_t*>(value) + 12), trace_u32(value, 0),
+      trace_u32(value, 1), trace_u32(value, 2), trace_u32(value, 3), address);
 }
 
 void TraceMemoryStoreI8(void* raw_context, uint32_t address, uint8_t value) {
@@ -238,23 +274,28 @@ void TraceMemoryStoreI64(void* raw_context, uint32_t address, uint64_t value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT("store.i64 {:08X} = {} ({:X})\n", address, (int64_t)value, value);
 }
-void TraceMemoryStoreF32(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryStoreF32(void* raw_context, uint32_t address,
+                         const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("store.f32 {:08X} = {} ({:X})\n", address, xe::m128_f32<0>(value),
-         xe::m128_i32<0>(value));
+  DPRINT("store.f32 {:08X} = {} ({:X})\n", address, trace_f32(value),
+         trace_u32(value));
 }
-void TraceMemoryStoreF64(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryStoreF64(void* raw_context, uint32_t address,
+                         const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
-  DPRINT("store.f64 {:08X} = {} ({:X})\n", address, xe::m128_f64<0>(value),
-         xe::m128_i64<0>(value));
+  DPRINT("store.f64 {:08X} = {} ({:X})\n", address, trace_f64(value),
+         trace_u64(value));
 }
-void TraceMemoryStoreV128(void* raw_context, uint32_t address, __m128 value) {
+void TraceMemoryStoreV128(void* raw_context, uint32_t address,
+                          const void* value) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   DPRINT(
       "store.v128 {:08X} = [{}, {}, {}, {}] [{:08X}, {:08X}, {:08X}, {:08X}]\n",
-      address, xe::m128_f32<0>(value), xe::m128_f32<1>(value),
-      xe::m128_f32<2>(value), xe::m128_f32<3>(value), xe::m128_i32<0>(value),
-      xe::m128_i32<1>(value), xe::m128_i32<2>(value), xe::m128_i32<3>(value));
+      address, trace_f32(value),
+      trace_f32(static_cast<const uint8_t*>(value) + 4),
+      trace_f32(static_cast<const uint8_t*>(value) + 8),
+      trace_f32(static_cast<const uint8_t*>(value) + 12), trace_u32(value, 0),
+      trace_u32(value, 1), trace_u32(value, 2), trace_u32(value, 3));
 }
 
 void TraceMemset(void* raw_context, uint32_t address, uint8_t value,

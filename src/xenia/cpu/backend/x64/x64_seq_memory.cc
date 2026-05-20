@@ -704,7 +704,7 @@ struct LOAD_CONTEXT_I8
     e.mov(i.dest, e.byte[addr]);
     if (IsTracingData()) {
       e.mov(e.GetNativeParam(0), i.src1.value);
-      e.mov(e.GetNativeParam(1), e.byte[addr]);
+      e.mov(e.GetNativeParam(1).cvt8(), e.byte[addr]);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadI8));
     }
   }
@@ -715,7 +715,7 @@ struct LOAD_CONTEXT_I16
     auto addr = ComputeContextAddress(e, i.src1);
     e.mov(i.dest, e.word[addr]);
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(1), e.word[addr]);
+      e.mov(e.GetNativeParam(1).cvt16(), e.word[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadI16));
     }
@@ -727,7 +727,7 @@ struct LOAD_CONTEXT_I32
     auto addr = ComputeContextAddress(e, i.src1);
     e.mov(i.dest, e.dword[addr]);
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(1), e.dword[addr]);
+      e.mov(e.GetNativeParam(1).cvt32(), e.dword[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadI32));
     }
@@ -874,7 +874,7 @@ struct LOAD_CONTEXT_F32
     auto addr = ComputeContextAddress(e, i.src1);
     e.vmovss(i.dest, e.dword[addr]);
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.dword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadF32));
     }
@@ -886,7 +886,7 @@ struct LOAD_CONTEXT_F64
     auto addr = ComputeContextAddress(e, i.src1);
     e.vmovsd(i.dest, e.qword[addr]);
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.qword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadF64));
     }
@@ -923,7 +923,7 @@ struct STORE_CONTEXT_I8
       e.mov(e.byte[addr], i.src2);
     }
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(1), e.byte[addr]);
+      e.mov(e.GetNativeParam(1).cvt8(), e.byte[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreI8));
     }
@@ -944,7 +944,7 @@ struct STORE_CONTEXT_I16
       e.mov(e.word[addr], i.src2);
     }
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(1), e.word[addr]);
+      e.mov(e.GetNativeParam(1).cvt16(), e.word[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreI16));
     }
@@ -965,7 +965,7 @@ struct STORE_CONTEXT_I32
       e.mov(e.dword[addr], i.src2);
     }
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(1), e.dword[addr]);
+      e.mov(e.GetNativeParam(1).cvt32(), e.dword[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreI32));
     }
@@ -999,7 +999,7 @@ struct STORE_CONTEXT_F32
       e.vmovss(e.dword[addr], i.src2);
     }
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.dword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreF32));
     }
@@ -1016,7 +1016,7 @@ struct STORE_CONTEXT_F64
       e.vmovsd(e.qword[addr], i.src2);
     }
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.qword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.mov(e.GetNativeParam(0), i.src1.value);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreF64));
     }
@@ -1065,8 +1065,8 @@ struct LOAD_MMIO_I32
     e.bswap(e.eax);
     e.mov(i.dest, e.eax);
     if (IsTracingData()) {
-      e.mov(e.GetNativeParam(0), i.dest);
-      e.mov(e.edx, read_address);
+      e.mov(e.GetNativeParam(1).cvt32(), i.dest);
+      e.mov(e.GetNativeParam(0), read_address);
       e.CallNative(reinterpret_cast<void*>(TraceContextLoadI32));
     }
   }
@@ -1095,11 +1095,11 @@ struct STORE_MMIO_I32
     e.CallNativeSafe(reinterpret_cast<void*>(mmio_range->write));
     if (IsTracingData()) {
       if (i.src3.is_constant) {
-        e.mov(e.GetNativeParam(0).cvt32(), i.src3.constant());
+        e.mov(e.GetNativeParam(1).cvt32(), i.src3.constant());
       } else {
-        e.mov(e.GetNativeParam(0).cvt32(), i.src3);
+        e.mov(e.GetNativeParam(1).cvt32(), i.src3);
       }
-      e.mov(e.edx, write_address);
+      e.mov(e.GetNativeParam(0), write_address);
       e.CallNative(reinterpret_cast<void*>(TraceContextStoreI32));
     }
   }
@@ -1589,7 +1589,7 @@ struct LOAD_F32 : Sequence<LOAD_F32, I<OPCODE_LOAD, F32Op, I64Op>> {
       e.vmovss(i.dest, e.dword[addr]);
     }
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.dword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.lea(e.GetNativeParam(0), e.ptr[addr]);
       e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadF32));
     }
@@ -1607,7 +1607,7 @@ struct LOAD_F64 : Sequence<LOAD_F64, I<OPCODE_LOAD, F64Op, I64Op>> {
       e.vmovsd(i.dest, e.qword[addr]);
     }
     if (IsTracingData()) {
-      e.lea(e.GetNativeParam(1), e.qword[addr]);
+      e.lea(e.GetNativeParam(1), e.ptr[addr]);
       e.lea(e.GetNativeParam(0), e.ptr[addr]);
       e.CallNative(reinterpret_cast<void*>(TraceMemoryLoadF64));
     }

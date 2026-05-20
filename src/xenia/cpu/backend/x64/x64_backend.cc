@@ -1645,6 +1645,23 @@ void X64HelperEmitter::EmitSaveVolatileRegs() {
   vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[3])], xmm3);
   vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[4])], xmm4);
   vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[5])], xmm5);
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+  // System V xmm6-15 are caller-saved and allocatable, but only trace
+  // instrumentation injects guest→host calls the register allocator can't see,
+  // so preserve them only when tracing is compiled in.
+  if (GetTracingMode()) {
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[6])], xmm6);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[7])], xmm7);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[8])], xmm8);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[9])], xmm9);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[10])], xmm10);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[11])], xmm11);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[12])], xmm12);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[13])], xmm13);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[14])], xmm14);
+    vmovups(qword[rsp + offsetof(StackLayout::Thunk, xmm[15])], xmm15);
+  }
+#endif
 }
 
 void X64HelperEmitter::EmitLoadVolatileRegs() {
@@ -1666,6 +1683,21 @@ void X64HelperEmitter::EmitLoadVolatileRegs() {
   vmovups(xmm3, qword[rsp + offsetof(StackLayout::Thunk, xmm[3])]);
   vmovups(xmm4, qword[rsp + offsetof(StackLayout::Thunk, xmm[4])]);
   vmovups(xmm5, qword[rsp + offsetof(StackLayout::Thunk, xmm[5])]);
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+  // Mirror of the gated saves in EmitSaveVolatileRegs.
+  if (GetTracingMode()) {
+    vmovups(xmm6, qword[rsp + offsetof(StackLayout::Thunk, xmm[6])]);
+    vmovups(xmm7, qword[rsp + offsetof(StackLayout::Thunk, xmm[7])]);
+    vmovups(xmm8, qword[rsp + offsetof(StackLayout::Thunk, xmm[8])]);
+    vmovups(xmm9, qword[rsp + offsetof(StackLayout::Thunk, xmm[9])]);
+    vmovups(xmm10, qword[rsp + offsetof(StackLayout::Thunk, xmm[10])]);
+    vmovups(xmm11, qword[rsp + offsetof(StackLayout::Thunk, xmm[11])]);
+    vmovups(xmm12, qword[rsp + offsetof(StackLayout::Thunk, xmm[12])]);
+    vmovups(xmm13, qword[rsp + offsetof(StackLayout::Thunk, xmm[13])]);
+    vmovups(xmm14, qword[rsp + offsetof(StackLayout::Thunk, xmm[14])]);
+    vmovups(xmm15, qword[rsp + offsetof(StackLayout::Thunk, xmm[15])]);
+  }
+#endif
 }
 
 void X64HelperEmitter::EmitSaveNonvolatileRegs() {
