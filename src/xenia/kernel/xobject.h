@@ -34,10 +34,21 @@ class KernelState;
 template <typename T>
 class object_ref;
 
+enum X_DISPATCHER_FLAGS : uint8_t {
+  DISPATCHER_MANUAL_RESET_EVENT = 0,
+  DISPATCHER_AUTO_RESET_EVENT = 1,  // EventSynchronizationObject
+  DISPATCHER_MUTANT = 2,
+  DISPATCHER_QUEUE = 4,
+  DISPATCHER_SEMAPHORE = 5,  // SemaphoreObject
+  DISPATCHER_THREAD = 6,
+  DISPATCHER_MANUAL_RESET_TIMER = 8,
+  DISPATCHER_AUTO_RESET_TIMER = 9,
+};
+
 // https://www.nirsoft.net/kernel_struct/vista/DISPATCHER_HEADER.html
 typedef struct {
   struct {
-    uint8_t type;
+    uint8_t type;  // X_DISPATCHER_FLAGS
 
     union {
       uint8_t abandoned;

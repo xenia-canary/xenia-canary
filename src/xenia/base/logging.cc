@@ -69,6 +69,7 @@ DEFINE_int32(
 
 namespace dp = disruptorplus;
 using namespace xe::literals;
+using namespace std::chrono_literals;
 
 namespace xe {
 
@@ -252,7 +253,7 @@ class Logger {
 
  private:
   static constexpr size_t kBufferSize = 8_MiB;
-  uint8_t buffer_[kBufferSize];
+  uint8_t buffer_[kBufferSize] = {};
 
   static constexpr size_t kBlockSize = 256;
   static constexpr size_t kBlockCount = kBufferSize / kBlockSize;
