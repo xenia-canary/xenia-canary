@@ -97,6 +97,17 @@
 
 DEFINE_bool(metal_force_bc_decompress, false,
             "Force BC1/2/3/5/DXN decompression to RGBA8/RG8 (debug).", "Metal");
+DEFINE_bool(metal_texture_cache_use_private, true,
+            "Use MTLStorageModePrivate for Metal texture cache textures when "
+            "GPU upload paths support it.",
+            "Metal");
+DEFINE_bool(metal_texture_upload_via_blit, true,
+            "Upload textures via staging buffers and GPU blit copies instead "
+            "of CPU replaceRegion.",
+            "Metal");
+
+DECLARE_bool(metal_use_heaps);
+DECLARE_int32(metal_heap_min_bytes);
 
 namespace xe {
 namespace gpu {

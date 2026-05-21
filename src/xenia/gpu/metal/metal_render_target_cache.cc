@@ -72,6 +72,12 @@ DEFINE_int32(metal_memory_log_rate, 0,
              "Log Metal render target/pipeline/instance buffer sizes every N "
              "frames (0 to disable)",
              "Metal");
+DEFINE_bool(metal_use_heaps, true,
+            "Use MTLHeap-backed texture allocations in Metal to reduce "
+            "allocation overhead and fragmentation.",
+            "Metal");
+DEFINE_int32(metal_heap_min_bytes, 33554432,
+             "Minimum heap size (bytes) for Metal heap allocations.", "Metal");
 
 namespace xe {
 namespace gpu {

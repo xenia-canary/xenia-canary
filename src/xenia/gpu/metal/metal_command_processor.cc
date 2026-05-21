@@ -59,6 +59,12 @@
 
 DECLARE_bool(clear_memory_page_state);
 DECLARE_bool(submit_on_primary_buffer_end);
+DECLARE_bool(metal_shader_disk_cache);
+DEFINE_int32(
+    metal_draw_ring_count, 128,
+    "Metal per-command-buffer draw ring size (descriptor-table pages). "
+    "Higher reduces ring churn but uses more memory.",
+    "Metal");
 DEFINE_int32(
     metal_pipeline_creation_threads, -1,
     "Number of threads used for SPIRV-Cross shader and render pipeline "

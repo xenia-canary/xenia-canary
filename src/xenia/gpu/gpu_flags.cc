@@ -218,47 +218,6 @@ DEFINE_int32(anisotropic_override, -1,
              "  5 = Force 16x anisotropic filtering",
              "GPU");
 
-DEFINE_bool(metal_shader_disk_cache, true,
-            "Cache compiled Metal shader libraries (metallib) to disk when "
-            "store_shaders is enabled.",
-            "Metal");
-
-DEFINE_bool(metal_pipeline_binary_archive, true,
-            "Use MTLBinaryArchive for Metal pipeline compilation caching. "
-            "Requires store_shaders and a compatible OS/driver.",
-            "Metal");
-
-DEFINE_bool(metal_pipeline_disk_cache, true,
-            "Store Metal render pipeline descriptor keys to disk so the binary "
-            "archive can be prewarmed on the next run.",
-            "Metal");
-
-DEFINE_int32(
-    metal_draw_ring_count, 128,
-    "Metal per-command-buffer draw ring size (descriptor-table pages). "
-    "Higher reduces ring churn but uses more memory.",
-    "Metal");
-
-DEFINE_bool(metal_use_heaps, true,
-            "Use MTLHeap-backed texture allocations in Metal to reduce "
-            "allocation overhead and fragmentation.",
-            "Metal");
-DEFINE_bool(metal_shared_memory_zero_copy, true,
-            "Use MTLBuffer bytes-no-copy for guest memory on unified memory "
-            "devices when possible.",
-            "Metal");
-DEFINE_int32(metal_heap_min_bytes, 33554432,
-             "Minimum heap size (bytes) for Metal heap allocations.", "Metal");
-
-DEFINE_bool(metal_texture_cache_use_private, true,
-            "Use MTLStorageModePrivate for Metal texture cache textures when "
-            "GPU upload paths support it.",
-            "Metal");
-DEFINE_bool(metal_texture_upload_via_blit, true,
-            "Upload textures via staging buffers and GPU blit copies instead "
-            "of CPU replaceRegion.",
-            "Metal");
-
 DEFINE_bool(
     ac6_ground_fix, false,
     "This fixes(hide) issues with black ground in AC6. Use only in AC6. "

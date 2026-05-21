@@ -14,6 +14,11 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/metal/metal_command_processor.h"
 
+DEFINE_bool(metal_shared_memory_zero_copy, true,
+            "Use MTLBuffer bytes-no-copy for guest memory on unified memory "
+            "devices when possible.",
+            "Metal");
+
 namespace xe {
 namespace gpu {
 namespace metal {

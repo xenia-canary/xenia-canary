@@ -40,6 +40,11 @@ DEFINE_bool(
     "Apple GPUs while keeping NoContraction semantics enabled.",
     "Metal");
 
+DEFINE_bool(metal_shader_disk_cache, true,
+            "Cache compiled Metal shader libraries (metallib) to disk when "
+            "store_shaders is enabled.",
+            "Metal");
+
 namespace xe {
 namespace gpu {
 namespace metal {
