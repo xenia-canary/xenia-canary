@@ -12,6 +12,7 @@
 
 #include <array>
 #include <atomic>
+#include <iosfwd>
 #include <mutex>
 #include <optional>
 
@@ -37,6 +38,7 @@ class SDLInputDriver final : public InputDriver {
   X_STATUS Setup() override;
 
   void LoadGameControllerDB();
+  void LoadMappingsFromStream(std::istream& stream);
 
   X_RESULT GetCapabilities(uint32_t user_index, uint32_t flags,
                            X_INPUT_CAPABILITIES* out_caps) override;

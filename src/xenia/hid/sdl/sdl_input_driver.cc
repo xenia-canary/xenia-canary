@@ -13,8 +13,12 @@
 #include "xenia/base/platform_win.h"
 #endif  // XE_PLATFORM_WIN32
 
+#include <fstream>
+#include <sstream>
+
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/embedded_bundle.h"
 #include "xenia/base/logging.h"
 #include "xenia/helper/sdl/sdl_helper.h"
 #include "xenia/hid/hid_flags.h"
@@ -22,10 +26,14 @@
 #include "xenia/ui/window.h"
 #include "xenia/ui/windowed_app_context.h"
 
+#include "embedded_bundle_gamecontrollerdb.h"
+
 // TODO(joellinn) make this path relative to the config folder.
-DEFINE_path(mappings_file, "gamecontrollerdb.txt",
-            "Filename of a database with custom game controller mappings.",
+DEFINE_path(mappings_file, "",
+            "Filename of a database with custom game controller mappings. "
+            "Empty uses the bundled SDL_GameControllerDB.",
             "SDL");
+UPDATE_from_path(mappings_file, 2026, 5, 21, 12, "gamecontrollerdb.txt");
 
 namespace xe {
 namespace hid {
@@ -121,7 +129,23 @@ X_STATUS SDLInputDriver::Setup() {
 }
 
 void SDLInputDriver::LoadGameControllerDB() {
+  // Empty cvar: use the bundled DB.
   if (cvars::mappings_file.empty()) {
+    xe::EmbeddedBundle bundle(
+        xe::embedded_bundle_gamecontrollerdb::kBundleData,
+        xe::embedded_bundle_gamecontrollerdb::kBundleSize);
+    if (!bundle.ok()) {
+      XELOGW("SDL GameControllerDB: bundled mappings unavailable.");
+      return;
+    }
+    bundle.ForEach([this](std::string_view name, std::string_view data) {
+      if (name != "gamecontrollerdb.txt") {
+        return;
+      }
+      XELOGI("SDL GameControllerDB: Loading bundled mappings");
+      std::istringstream stream{std::string(data)};
+      LoadMappingsFromStream(stream);
+    });
     return;
   }
 
@@ -132,13 +156,21 @@ void SDLInputDriver::LoadGameControllerDB() {
   }
 
   XELOGI("SDL GameControllerDB: Loading {}", cvars::mappings_file);
+  std::ifstream stream(cvars::mappings_file, std::ios::binary);
+  if (!stream) {
+    XELOGW("SDL GameControllerDB: could not open '{}'.", cvars::mappings_file);
+    return;
+  }
+  LoadMappingsFromStream(stream);
+}
 
+void SDLInputDriver::LoadMappingsFromStream(std::istream& stream) {
   uint32_t updated_mappings = 0;
   uint32_t added_mappings = 0;
 
   rapidcsv::Document mappings(
-      xe::path_to_utf8(cvars::mappings_file), rapidcsv::LabelParams(-1, -1),
-      rapidcsv::SeparatorParams(), rapidcsv::ConverterParams(),
+      stream, rapidcsv::LabelParams(-1, -1), rapidcsv::SeparatorParams(),
+      rapidcsv::ConverterParams(),
       rapidcsv::LineReaderParams(true /* pSkipCommentLines */,
                                  '#' /* pCommentPrefix */,
                                  true /* pSkipEmptyLines */));
@@ -164,7 +196,7 @@ void SDLInputDriver::LoadGameControllerDB() {
 
     switch (updated) {
       case 0: {
-        XELOGI("SDL GameControllerDB: Updated {}, {}", controller_name, guid);
+        XELOGD("SDL GameControllerDB: Updated {}, {}", controller_name, guid);
         updated_mappings++;
       } break;
       case 1: {

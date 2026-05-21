@@ -446,7 +446,8 @@ def git_submodule_update():
 
 
 def fetch_data_repos():
-    """Fetches data repositories (game-patches) into build/data_repos/.
+    """Fetches data repositories (game-patches, game-compat, controller db)
+    into build/data_repos/.
 
     Removes and re-clones all data repos fresh each time. They are not submodules
     to avoid constant submodule updates in the main repo.
@@ -482,6 +483,12 @@ def fetch_data_repos():
                 "data/game-compatibility/canary.json",
                 "data/game-compatibility/stable.json",
             ],
+        },
+        {
+            "name": "SDL_GameControllerDB",
+            "url": "https://github.com/mdqinc/SDL_GameControllerDB.git",
+            "branch": "master",
+            "sparse_paths": ["gamecontrollerdb.txt"],
         },
     ]
 
@@ -842,7 +849,7 @@ class FetchDataCommand(Command):
         super(FetchDataCommand, self).__init__(
             subparsers,
             name="fetchdata",
-            help_short="Fetches data repositories (game-patches).",
+            help_short="Fetches data repositories (game-patches, game-compat, controller db).",
             *args, **kwargs)
 
     def execute(self, args, pass_args, cwd):

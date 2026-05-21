@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Pack a directory of files into a zlib-compressed concat blob and emit it
-as a C++ byte array in embedded_<namespace>.{h,cc}.
+"""Pack a directory of files (or a single file) into a zlib-compressed concat
+blob and emit it as a C++ byte array in embedded_<namespace>.{h,cc}.
 
-Usage: embed_bundle.py <source_dir> <output_dir> <namespace>
+Usage: embed_bundle.py <source> <output_dir> <namespace>
 
 Format (after decompression):
   [u32_le count]
@@ -42,6 +42,16 @@ def main():
             parts.append(struct.pack("<I", len(data)))
             parts.append(data)
             count += 1
+    elif os.path.isfile(src_dir):
+        # Single file: land it under its basename.
+        name = os.path.basename(src_dir).encode("utf-8")
+        with open(src_dir, "rb") as f:
+            data = f.read()
+        parts.append(struct.pack("<I", len(name)))
+        parts.append(name)
+        parts.append(struct.pack("<I", len(data)))
+        parts.append(data)
+        count += 1
     else:
         print(f"warning: {src_dir} not found, emitting empty bundle",
               file=sys.stderr)
