@@ -423,8 +423,7 @@ void CommandProcessor::SetDesiredSwapPostEffect(
 
 void CommandProcessor::ThrottlePresentation() {
   // Host frame rate limiting based on framerate_limit cvar.
-  // This is separate from guest vblank timing (controlled by vsync cvar).
-  const uint64_t framerate_limit = cvars::framerate_limit;
+  const uint32_t framerate_limit = cvars::framerate_limit;
 
   if (framerate_limit == 0) {
     // No host frame limiting

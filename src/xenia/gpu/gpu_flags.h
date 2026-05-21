@@ -18,10 +18,10 @@ DECLARE_path(dump_shaders);
 
 DECLARE_bool(guest_display_refresh_cap);
 
-DECLARE_uint64(framerate_limit);
+DECLARE_uint32(framerate_limit);
 
 void SetGuestDisplayRefreshCap(bool value);
-void SetFramerateLimit(uint64_t value);
+void SetFramerateLimit(uint32_t value);
 
 DECLARE_bool(gpu_allow_invalid_fetch_constants);
 

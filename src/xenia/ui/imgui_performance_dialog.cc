@@ -85,6 +85,9 @@ void ImGuiPerformanceDialog::LoadCurrentSettings() {
 
   // Load Clear Memory Page State setting
   clear_memory_page_state_ = cvars::clear_memory_page_state;
+
+  // Load Frame Rate Limit (FPS, 0 = unlimited)
+  framerate_limit_ = static_cast<int>(cvars::framerate_limit);
 }
 
 void ImGuiPerformanceDialog::ShowNotification(const std::string& title,
@@ -205,6 +208,21 @@ void ImGuiPerformanceDialog::OnClearMemoryPageStateChanged(bool enabled) {
   config::SaveGameConfigSetting(emulator_window_->emulator(), "GPU",
                                 "clear_memory_page_state", enabled);
   ShowNotification("Clear Memory Page State", enabled ? "Enabled" : "Disabled");
+}
+
+void ImGuiPerformanceDialog::OnFramerateLimitChanged(int value) {
+  if (value < 0) {
+    value = 0;
+  } else if (value > 1000) {
+    value = 1000;
+  }
+  framerate_limit_ = value;
+  SetFramerateLimit(static_cast<uint32_t>(value));
+  config::SaveGameConfigSetting(emulator_window_->emulator(), "GPU",
+                                "framerate_limit",
+                                static_cast<uint32_t>(value));
+  ShowNotification("Frame Rate Limit",
+                   value == 0 ? "Unlimited" : std::to_string(value) + " FPS");
 }
 
 void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
@@ -356,9 +374,9 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Other section
+    // Display section
     ImGui::PushStyleColor(ImGuiCol_Text, xbox_green);
-    ImGui::Text("Other");
+    ImGui::Text("Display");
     ImGui::PopStyleColor();
 
     ImGui::Indent(10);
@@ -366,6 +384,29 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
     if (ImGui::Checkbox("Emulated Display Uncapped", &display_uncapped_)) {
       OnEmulatedDisplayUncappedChanged(display_uncapped_);
     }
+
+    ImGui::Text("Frame Rate Limit (0 = unlimited):");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80);
+    // step 0 hides the +/- buttons; the value only commits on "Set".
+    ImGui::InputInt("##framerate_limit", &framerate_limit_, 0, 0);
+    ImGui::SameLine();
+    if (ImGui::Button("Set##framerate_limit")) {
+      OnFramerateLimitChanged(framerate_limit_);
+    }
+
+    ImGui::Unindent(10);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Other section
+    ImGui::PushStyleColor(ImGuiCol_Text, xbox_green);
+    ImGui::Text("Other");
+    ImGui::PopStyleColor();
+
+    ImGui::Indent(10);
 
     if (ImGui::Checkbox("Clear memory page state on GPU cache invalidation",
                         &clear_memory_page_state_)) {

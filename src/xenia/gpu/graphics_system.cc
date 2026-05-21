@@ -200,9 +200,9 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
                 threading::NanoSleep(sleep_ns);
 #endif
               } else {
-                // Unlimited mode (vsync=false) - fire vblanks as fast as
-                // possible Host presentation is separately throttled by
-                // framerate_limit
+                // Unlimited mode (guest_display_refresh_cap=false) - fire
+                // vblanks as fast as possible Host presentation is separately
+                // throttled by framerate_limit
                 MarkVblank();
                 threading::Sleep(std::chrono::milliseconds(1));
               }
