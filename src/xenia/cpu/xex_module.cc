@@ -1058,10 +1058,9 @@ bool XexModule::LoadContinue() {
     }
   }
 
-  // Disable write protection if plugins are enabled
-  if (cvars::allow_plugins && !cvars::writable_code_segments) {
-    OVERRIDE_bool(writable_code_segments, true);
-  }
+  // Plugins need writable code segments to patch the game in place.
+  const bool writable_code_segments =
+      cvars::writable_code_segments || cvars::allow_plugins;
 
   // Setup memory protection.
   for (uint32_t i = 0, page = 0; i < sec_header->page_descriptor_count; i++) {
@@ -1075,7 +1074,7 @@ bool XexModule::LoadContinue() {
       case XEX_SECTION_CODE:
       case XEX_SECTION_READONLY_DATA:
         heap->Protect(address, size,
-                      cvars::writable_code_segments
+                      writable_code_segments
                           ? kMemoryProtectRead | kMemoryProtectWrite
                           : kMemoryProtectRead);
         break;

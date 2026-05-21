@@ -626,16 +626,16 @@ void ProfileManager::UpdateConfig(const uint64_t xuid, const uint8_t slot) {
   const std::string hex_xuid = xe::string_util::to_hex_string(xuid);
   switch (slot) {
     case 0:
-      OVERRIDE_string(logged_profile_slot_0_xuid, hex_xuid);
+      OVERRIDE_PERSIST_string(logged_profile_slot_0_xuid, hex_xuid);
       break;
     case 1:
-      OVERRIDE_string(logged_profile_slot_1_xuid, hex_xuid);
+      OVERRIDE_PERSIST_string(logged_profile_slot_1_xuid, hex_xuid);
       break;
     case 2:
-      OVERRIDE_string(logged_profile_slot_2_xuid, hex_xuid);
+      OVERRIDE_PERSIST_string(logged_profile_slot_2_xuid, hex_xuid);
       break;
     case 3:
-      OVERRIDE_string(logged_profile_slot_3_xuid, hex_xuid);
+      OVERRIDE_PERSIST_string(logged_profile_slot_3_xuid, hex_xuid);
       break;
     default:
       break;

@@ -232,7 +232,7 @@ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
 bool InputSystem::GetVibrationCvar() { return cvars::vibration; }
 
 void InputSystem::ToggleVibration() {
-  OVERRIDE_bool(vibration, !cvars::vibration);
+  OVERRIDE_PERSIST_bool(vibration, !cvars::vibration);
   // Send instant update to vibration state to prevent awaiting for next tick.
   X_INPUT_VIBRATION vibration = X_INPUT_VIBRATION();
 

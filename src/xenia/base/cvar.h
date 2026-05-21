@@ -532,10 +532,13 @@ ICommandVar* define_cmdvar(const char* name, T* default_value,
 
 #define ACCESS_CVar(name) (*cv::cv_##name)
 
+// Applies the value at the per-title (game config) priority: takes effect
+// immediately, is never written to the global config, and is dropped on the
+// next title load. The default for runtime/per-game-driven changes.
 // dynamic_cast is needed because of virtual inheritance.
 #define OVERRIDE_CVar(name, type, value)                   \
   dynamic_cast<cvar::ConfigVar<type>*>(&ACCESS_CVar(name)) \
-      ->OverrideConfigValue(value);
+      ->SetGameConfigValue(value);
 
 #define OVERRIDE_bool(name, value) OVERRIDE_CVar(name, bool, value)
 
@@ -551,6 +554,33 @@ ICommandVar* define_cmdvar(const char* name, T* default_value,
 
 #define OVERRIDE_path(name, value) \
   OVERRIDE_CVar(name, std::filesystem::path, value)
+
+// Like OVERRIDE_, but writes the value into the persisted global config. Use
+// only for deliberate global preference changes, never for per-game state.
+#define OVERRIDE_PERSIST_CVar(name, type, value)           \
+  dynamic_cast<cvar::ConfigVar<type>*>(&ACCESS_CVar(name)) \
+      ->OverrideConfigValue(value);
+
+#define OVERRIDE_PERSIST_bool(name, value) \
+  OVERRIDE_PERSIST_CVar(name, bool, value)
+
+#define OVERRIDE_PERSIST_int32(name, value) \
+  OVERRIDE_PERSIST_CVar(name, int32_t, value)
+
+#define OVERRIDE_PERSIST_uint32(name, value) \
+  OVERRIDE_PERSIST_CVar(name, uint32_t, value)
+
+#define OVERRIDE_PERSIST_uint64(name, value) \
+  OVERRIDE_PERSIST_CVar(name, uint64_t, value)
+
+#define OVERRIDE_PERSIST_double(name, value) \
+  OVERRIDE_PERSIST_CVar(name, double, value)
+
+#define OVERRIDE_PERSIST_string(name, value) \
+  OVERRIDE_PERSIST_CVar(name, std::string, value)
+
+#define OVERRIDE_PERSIST_path(name, value) \
+  OVERRIDE_PERSIST_CVar(name, std::filesystem::path, value)
 
 // Interface for changing the default value of a variable with auto-upgrading of
 // users' configs (to distinguish between a leftover old default and an explicit

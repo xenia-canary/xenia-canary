@@ -1004,8 +1004,8 @@ void EmulatorWindow::UpdateAntiAliasingCvar(
     gpu::CommandProcessor::SwapPostEffect effect) {
   if (GetSwapPostEffectForCvarValue(cvars::postprocess_antialiasing) !=
       effect) {
-    OVERRIDE_string(postprocess_antialiasing,
-                    GetCvarValueForSwapPostEffect(effect));
+    OVERRIDE_PERSIST_string(postprocess_antialiasing,
+                            GetCvarValueForSwapPostEffect(effect));
   }
 }
 
@@ -1013,36 +1013,36 @@ void EmulatorWindow::UpdateScalingAndSharpeningCvar(
     ui::Presenter::GuestOutputPaintConfig::Effect effect) {
   auto cvars_config = GetGuestOutputPaintConfigForCvars();
   if (cvars_config.GetEffect() != effect) {
-    OVERRIDE_string(postprocess_scaling_and_sharpening,
-                    GetCvarValueForGuestOutputPaintEffect(effect));
+    OVERRIDE_PERSIST_string(postprocess_scaling_and_sharpening,
+                            GetCvarValueForGuestOutputPaintEffect(effect));
   }
 }
 
 void EmulatorWindow::UpdateFsrSharpnessCvar(float value) {
   auto cvars_config = GetGuestOutputPaintConfigForCvars();
   if (cvars_config.GetFsrSharpnessReduction() != value) {
-    OVERRIDE_double(postprocess_ffx_fsr_sharpness_reduction, value);
+    OVERRIDE_PERSIST_double(postprocess_ffx_fsr_sharpness_reduction, value);
   }
 }
 
 void EmulatorWindow::UpdateCasSharpnessCvar(float value) {
   auto cvars_config = GetGuestOutputPaintConfigForCvars();
   if (cvars_config.GetCasAdditionalSharpness() != value) {
-    OVERRIDE_double(postprocess_ffx_cas_additional_sharpness, value);
+    OVERRIDE_PERSIST_double(postprocess_ffx_cas_additional_sharpness, value);
   }
 }
 
 void EmulatorWindow::UpdateDitherCvar(bool value) {
   auto cvars_config = GetGuestOutputPaintConfigForCvars();
   if (cvars_config.GetDither() != value) {
-    OVERRIDE_bool(postprocess_dither, value);
+    OVERRIDE_PERSIST_bool(postprocess_dither, value);
   }
 }
 
 void EmulatorWindow::UpdateFsrMaxUpsamplingPassesCvar(uint32_t value) {
   auto cvars_config = GetGuestOutputPaintConfigForCvars();
   if (cvars_config.GetFsrMaxUpsamplingPasses() != value) {
-    OVERRIDE_uint32(postprocess_ffx_fsr_max_upsampling_passes, value);
+    OVERRIDE_PERSIST_uint32(postprocess_ffx_fsr_max_upsampling_passes, value);
   }
 }
 

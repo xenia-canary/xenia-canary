@@ -138,7 +138,7 @@ bool OverrideCvarByName(const char* name, T value) {
   if (!config_var) {
     return false;
   }
-  config_var->OverrideConfigValue(value);
+  config_var->SetGameConfigValue(value);
   return true;
 }
 
