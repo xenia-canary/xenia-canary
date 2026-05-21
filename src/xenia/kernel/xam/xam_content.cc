@@ -74,56 +74,96 @@ dword_result_t XamContentGetLicenseMask_entry(lpdword_t mask_ptr,
 }
 DECLARE_XAM_EXPORT2(XamContentGetLicenseMask, kContent, kStub, kHighFrequency);
 
-dword_result_t XamContentResolve_entry(
-    dword_t user_index, pointer_t<XCONTENT_DATA> content_data_ptr,
-    lpvoid_t buffer_ptr, dword_t buffer_size, dword_t create_directory,
-    lpdword_t root_name_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
-  uint64_t xuid = 0;
-  const auto profile =
-      kernel_state()->xam_state()->profile_manager()->GetProfile(
-          static_cast<uint8_t>(user_index));
-  if (profile && content_data_ptr->content_type == XContentType::kSavedGame) {
-    xuid = profile->xuid();
-  }
-
-  std::string root_device_path = "";
-
-  if (root_name_ptr) {
-    // Check if root_name is valid.
-    // root_device_path = std::string(root_name_ptr);
-    // Unsupported for now.
-    return X_ERROR_INVALID_PARAMETER;
-  } else {
-    if (content_data_ptr->device_id ==
-        static_cast<uint32_t>(DummyDeviceId::HDD)) {
-      root_device_path = "\\Device\\Harddisk0\\Partition1\\Content\\";
-    } else if (content_data_ptr->device_id ==
-               static_cast<uint32_t>(DummyDeviceId::ODD)) {
-      // Or GAME, but D: usually means DVD drive meanwhile GAME always pinpoints
-      // to game, even if it is running from HDD
-      root_device_path = "D:\\content\\";
+dword_result_t xeXamContentResolve(
+    dword_t user_index, lpvoid_t content_data_ptr, dword_t content_data_size,
+    lpstring_t path_ptr, dword_t path_size, dword_t create_directory,
+    lpstring_t root_name_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto run = [user_index, content_data_ptr, content_data_size, path_ptr,
+              path_size, create_directory, root_name_ptr](
+                 uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+    XCONTENT_AGGREGATE_DATA content_data;
+    if (content_data_size == sizeof(XCONTENT_DATA)) {
+      content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+    } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
+      // Due to the current implementation of content data we can't use
+      // XCONTENT_DATA_INTERNAL
+      content_data = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
     } else {
+      assert_always();
       return X_ERROR_INVALID_PARAMETER;
     }
+    uint64_t xuid = 0;
+    if (user_index < XUserMaxUserCount) {
+      const auto profile =
+          kernel_state()->xam_state()->profile_manager()->GetProfile(
+              static_cast<uint8_t>(user_index));
+      if (profile && content_data.content_type == XContentType::kSavedGame) {
+        xuid = profile->xuid();
+      }
+    }
+
+    std::string root_device_path = "";
+
+    if (root_name_ptr) {
+      // Check if root_name is valid.
+      // root_device_path = std::string(root_name_ptr);
+      // Unsupported for now.
+      return X_ERROR_INVALID_PARAMETER;
+    } else {
+      if (content_data.device_id == static_cast<uint32_t>(DummyDeviceId::HDD)) {
+        root_device_path = "\\Device\\Harddisk0\\Partition1\\Content\\";
+      } else if (content_data.device_id ==
+                 static_cast<uint32_t>(DummyDeviceId::ODD)) {
+        // Or GAME, but D: usually means DVD drive meanwhile GAME always
+        // pinpoints to game, even if it is running from HDD
+        root_device_path = "D:\\content\\";
+      } else {
+        return X_ERROR_INVALID_PARAMETER;
+      }
+    }
+
+    const std::string relative_path = fmt::format(
+        "{:016X}\\{:08X}\\{:08X}\\{}", xuid, kernel_state()->title_id(),
+        static_cast<uint32_t>(content_data.content_type.get()),
+        content_data.file_name());
+
+    string_util::copy_truncating(path_ptr, root_device_path + relative_path,
+                                 path_size);
+
+    // Check if it exists and try to mount that package
+    // Result of buffer_ptr is sent to RtlInitAnsiString.
+    // buffer_size is usually 260 (max path).
+    return X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
   }
+}
 
-  const std::string relative_path = fmt::format(
-      "{:016X}\\{:08X}\\{:08X}\\{}", xuid, kernel_state()->title_id(),
-      static_cast<uint32_t>(content_data_ptr->content_type.get()),
-      content_data_ptr->file_name());
-
-  char* buffer =
-      kernel_memory()->TranslateVirtual<char*>(buffer_ptr.guest_address());
-
-  string_util::copy_truncating(buffer, root_device_path + relative_path,
-                               buffer_size);
-
-  // Check if it exists and try to mount that package
-  // Result of buffer_ptr is sent to RtlInitAnsiString.
-  // buffer_size is usually 260 (max path).
-  return X_ERROR_SUCCESS;
+dword_result_t XamContentResolve_entry(
+    dword_t user_index, lpvoid_t content_data_ptr, lpstring_t path_ptr,
+    dword_t path_size, dword_t create_directory, lpstring_t root_name_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return xeXamContentResolve(user_index, content_data_ptr,
+                             sizeof(XCONTENT_DATA), path_ptr, path_size,
+                             create_directory, root_name_ptr, overlapped_ptr);
 }
 DECLARE_XAM_EXPORT1(XamContentResolve, kContent, kSketchy);
+
+dword_result_t XamContentResolveInternal_entry(
+    lpvoid_t content_data_ptr, lpstring_t path_ptr, dword_t path_size,
+    dword_t create_directory, lpstring_t root_name_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return xeXamContentResolve(
+      XUserIndexNone, content_data_ptr, sizeof(XCONTENT_DATA_INTERNAL),
+      path_ptr, path_size, create_directory, root_name_ptr, overlapped_ptr);
+}
+DECLARE_XAM_EXPORT1(XamContentResolveInternal, kContent, kSketchy);
 
 // https://github.com/MrColdbird/gameservice/blob/master/ContentManager.cpp
 dword_result_t XamContentCreateEnumeratorInternal_entry(
