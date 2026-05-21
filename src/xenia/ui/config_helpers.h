@@ -87,9 +87,13 @@ inline const std::vector<CvarEnumOption>& GetUserLanguageOptions() {
       {"Korean", static_cast<int>(XLanguage::kKorean)},
       {"TChinese", static_cast<int>(XLanguage::kTChinese)},
       {"Portuguese", static_cast<int>(XLanguage::kPortuguese)},
-      {"SChinese", static_cast<int>(XLanguage::kSChinese)},
       {"Polish", static_cast<int>(XLanguage::kPolish)},
       {"Russian", static_cast<int>(XLanguage::kRussian)},
+      {"Swedish", static_cast<int>(XLanguage::kSwedish)},
+      {"Turkish", static_cast<int>(XLanguage::kTurkish)},
+      {"Norwegian", static_cast<int>(XLanguage::kNorwegian)},
+      {"Dutch", static_cast<int>(XLanguage::kDutch)},
+      {"SChinese", static_cast<int>(XLanguage::kSChinese)},
   };
   return options;
 }

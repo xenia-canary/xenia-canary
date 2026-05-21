@@ -333,6 +333,37 @@ dword_result_t XamGetLanguageLocaleString_entry(dword_t language_id,
 }
 DECLARE_XAM_EXPORT1(XamGetLanguageLocaleString, kLocale, kImplemented);
 
+void XamGetOnlineLanguageAndCountry_entry(qword_t xuid,
+                                          dword_t language_result_buffer,
+                                          dword_t country_result_buffer) {
+  const auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  if (country_result_buffer) {
+    uint8_t* country_buffer =
+        kernel_memory()->TranslateVirtual<uint8_t*>(country_result_buffer);
+
+    const uint8_t country_id =
+        user ? user->GetCountry()
+             : kernel_state()->xconfig()->ReadSetting<uint8_t>(
+                   XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
+
+    *country_buffer = country_id;
+  }
+
+  if (language_result_buffer) {
+    uint8_t* language_buffer =
+        kernel_memory()->TranslateVirtual<uint8_t*>(language_result_buffer);
+
+    const uint32_t desired_language =
+        user ? user->GetLanguage()
+             : kernel_state()->xconfig()->ReadSetting<uint32_t>(
+                   XCONFIG_USER_CATEGORY,
+                   XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE);
+
+    *language_buffer = static_cast<uint8_t>(desired_language);
+  }
+}
+DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountry, kLocale, kImplemented);
+
 dword_result_t XamGetOnlineLanguageAndCountryString_entry(
     dword_t language_id, dword_t country_id, dword_t buffer_length,
     lpu16string_t buffer) {
@@ -541,8 +572,9 @@ XLanguage xeGetLanguage(bool extended_languages_support) {
           XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE));
 
   uint32_t region = xeXGetGameRegion();
-  auto max_languages = extended_languages_support ? XLanguage::kMaxLanguages
-                                                  : XLanguage::kSChinese;
+  auto max_languages = extended_languages_support
+                           ? XLanguage::kMaxLanguages
+                           : XLanguage::kMaxBaseLanguages;
   if (desired_language < max_languages) {
     return desired_language;
   }
@@ -571,7 +603,7 @@ dword_result_t XamGetLanguage_entry() {
 DECLARE_XAM_EXPORT1(XamGetLanguage, kNone, kImplemented);
 
 pointer_result_t XamGetLanguageLocaleFallbackString_entry(dword_t language) {
-  assert_false(language > 17);
+  assert_false(language >= static_cast<uint32_t>(XLanguage::kMaxLanguages));
   return kernel_state()->xam_state()->GetLanguageFallbackAddress(language);
 }
 DECLARE_XAM_EXPORT1(XamGetLanguageLocaleFallbackString, kNone, kImplemented);
@@ -581,9 +613,9 @@ dword_result_t XamGetLanguageTypeface_entry(dword_t language,
                                             dword_t buffer) {
   std::u16string path{};
 
-  if (language == 0x11) {
+  if (language == static_cast<uint32_t>(XLanguage::kSChinese)) {
     path = u"file://media:/XenonSCLatin.xtt";
-  } else if (language == 8) {
+  } else if (language == static_cast<uint32_t>(XLanguage::kTChinese)) {
     path = u"file://media:/XenonCLatin.xtt";
   } else {
     path = u"file://media:/XenonJKLatin.xtt";

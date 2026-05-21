@@ -313,11 +313,16 @@ enum class XLanguage : uint32_t {
   kKorean = 7,
   kTChinese = 8,
   kPortuguese = 9,
-  kSChinese = 10,
+  kMaxBaseLanguages = 10,
   kPolish = 11,
   kRussian = 12,
+  kSwedish = 13,
+  kTurkish = 14,
+  kNorwegian = 15,
+  kDutch = 16,
+  kSChinese = 17,
   // STFS headers can't support any more languages than these
-  kMaxLanguages = 13
+  kMaxLanguages = 18
 };
 
 // Maps an IETF / POSIX locale code (e.g. "en_US", "ja", "zh_TW", "pt-BR") to

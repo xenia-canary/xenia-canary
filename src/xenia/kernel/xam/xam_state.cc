@@ -31,6 +31,7 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
   achievement_manager_ = std::make_unique<AchievementManager>();
 
   LoadLanguageLocaleFallback();
+  LoadIptvServiceName();
 
   AppManager::RegisterApps(kernel_state, app_manager_.get());
 }
@@ -57,6 +58,17 @@ void XamState::LoadLanguageLocaleFallback() {
                  ptr, locale_data.at(i), locale_data.at(i).size() + 1) +
              1;
     }
+  }
+}
+
+void XamState::LoadIptvServiceName() {
+  constexpr uint32_t address = 0x80D10000;
+
+  if (kernel_state_->memory()
+          ->LookupHeap(0x80000000)
+          ->AllocFixed(address, 0x78, 0x1000, kMemoryAllocationCommit,
+                       kMemoryProtectRead | kMemoryProtectWrite)) {
+    iptv_name_address_ = address;
   }
 }
 
