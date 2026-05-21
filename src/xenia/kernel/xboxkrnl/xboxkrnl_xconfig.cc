@@ -7,428 +7,35 @@
  ******************************************************************************
  */
 
-#include "xenia/kernel/xboxkrnl/xboxkrnl_xconfig.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/xbox.h"
-
-DEFINE_string(
-    user_language, "English",
-    "User language. Supported: English, Japanese, German, French, Spanish, "
-    "Italian, Korean, TChinese, Portuguese, SChinese, Polish, Russian",
-    "XConfig");
-
-DEFINE_string(
-    user_country, "United States",
-    "User country. See XOnlineCountry enum in xbox.h for supported values.",
-    "XConfig");
-
-DEFINE_uint32(
-    audio_flag, 0x00010001,
-    "Audio Mode Analog.\n"
-    " 0x00000001 = Dolby Pro Logic\n"
-    " 0x00000002 = Analog Mono\n"
-    "Audio Mode Digital.\n"
-    " 0x00000000 = Digital Stereo (choose one of the above by itself)\n"
-    " 0x00010000 = Dolby Digital\n"
-    " 0x00030000 = Dolby Digital with WMA PRO\n"
-    "Special Flags.\n"
-    " 0x00000003 = Stereo Bypass\n"
-    " 0x80000000 = Low Latency\n"
-    " This Config requires you to pair an analog and digitial flag together\n"
-    " while digital stereo only requires an analog flag. Bonus flags are\n"
-    " optional. Ex) 0x00010001\n",
-    "XConfig");
-
-DECLARE_bool(widescreen);
-DECLARE_bool(use_50Hz_mode);
-DECLARE_int32(video_standard);
-DECLARE_uint32(internal_display_resolution);
 
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-uint32_t GetUserLanguageValue() {
-  static const std::map<std::string, XLanguage> language_map = {
-      {"English", XLanguage::kEnglish},
-      {"Japanese", XLanguage::kJapanese},
-      {"German", XLanguage::kGerman},
-      {"French", XLanguage::kFrench},
-      {"Spanish", XLanguage::kSpanish},
-      {"Italian", XLanguage::kItalian},
-      {"Korean", XLanguage::kKorean},
-      {"TChinese", XLanguage::kTChinese},
-      {"Portuguese", XLanguage::kPortuguese},
-      {"SChinese", XLanguage::kSChinese},
-      {"Polish", XLanguage::kPolish},
-      {"Russian", XLanguage::kRussian},
-  };
-
-  const auto& lang = cvars::user_language;
-  auto it = language_map.find(lang);
-  if (it != language_map.end()) {
-    return static_cast<uint32_t>(it->second);
-  }
-  return static_cast<uint32_t>(XLanguage::kEnglish);  // Default
-}
-
-uint32_t GetUserCountryValue() {
-  static const std::map<std::string, XOnlineCountry> country_map = {
-      {"UAE", XOnlineCountry::kUnitedArabEmirates},
-      {"Albania", XOnlineCountry::kAlbania},
-      {"Armenia", XOnlineCountry::kArmenia},
-      {"Argentina", XOnlineCountry::kArgentina},
-      {"Austria", XOnlineCountry::kAustria},
-      {"Australia", XOnlineCountry::kAustralia},
-      {"Azerbaijan", XOnlineCountry::kAzerbaijan},
-      {"Belgium", XOnlineCountry::kBelgium},
-      {"Bulgaria", XOnlineCountry::kBulgaria},
-      {"Bahrain", XOnlineCountry::kBahrain},
-      {"Brunei", XOnlineCountry::kBruneiDarussalam},
-      {"Bolivia", XOnlineCountry::kBolivia},
-      {"Brazil", XOnlineCountry::kBrazil},
-      {"Belarus", XOnlineCountry::kBelarus},
-      {"Belize", XOnlineCountry::kBelize},
-      {"Canada", XOnlineCountry::kCanada},
-      {"Switzerland", XOnlineCountry::kSwitzerland},
-      {"Chile", XOnlineCountry::kChile},
-      {"China", XOnlineCountry::kChina},
-      {"Colombia", XOnlineCountry::kColombia},
-      {"Costa Rica", XOnlineCountry::kCostaRica},
-      {"Czech Republic", XOnlineCountry::kCzechRepublic},
-      {"Germany", XOnlineCountry::kGermany},
-      {"Denmark", XOnlineCountry::kDenmark},
-      {"Dominican Republic", XOnlineCountry::kDominicanRepublic},
-      {"Algeria", XOnlineCountry::kAlgeria},
-      {"Ecuador", XOnlineCountry::kEcuador},
-      {"Estonia", XOnlineCountry::kEstonia},
-      {"Egypt", XOnlineCountry::kEgypt},
-      {"Spain", XOnlineCountry::kSpain},
-      {"Finland", XOnlineCountry::kFinland},
-      {"Faroe Islands", XOnlineCountry::kFaroeIslands},
-      {"France", XOnlineCountry::kFrance},
-      {"Great Britain", XOnlineCountry::kGreatBritain},
-      {"Georgia", XOnlineCountry::kGeorgia},
-      {"Greece", XOnlineCountry::kGreece},
-      {"Guatemala", XOnlineCountry::kGuatemala},
-      {"Hong Kong", XOnlineCountry::kHongKong},
-      {"Honduras", XOnlineCountry::kHonduras},
-      {"Croatia", XOnlineCountry::kCroatia},
-      {"Hungary", XOnlineCountry::kHungary},
-      {"Indonesia", XOnlineCountry::kIndonesia},
-      {"Ireland", XOnlineCountry::kIreland},
-      {"Israel", XOnlineCountry::kIsrael},
-      {"India", XOnlineCountry::kIndia},
-      {"Iraq", XOnlineCountry::kIraq},
-      {"Iran", XOnlineCountry::kIran},
-      {"Iceland", XOnlineCountry::kIceland},
-      {"Italy", XOnlineCountry::kItaly},
-      {"Jamaica", XOnlineCountry::kJamaica},
-      {"Jordan", XOnlineCountry::kJordan},
-      {"Japan", XOnlineCountry::kJapan},
-      {"Kenya", XOnlineCountry::kKenya},
-      {"Kyrgyzstan", XOnlineCountry::kKyrgyzstan},
-      {"Korea", XOnlineCountry::kKorea},
-      {"Kuwait", XOnlineCountry::kKuwait},
-      {"Kazakhstan", XOnlineCountry::kKazakhstan},
-      {"Lebanon", XOnlineCountry::kLebanon},
-      {"Liechtenstein", XOnlineCountry::kLiechtenstein},
-      {"Lithuania", XOnlineCountry::kLithuania},
-      {"Luxembourg", XOnlineCountry::kLuxembourg},
-      {"Latvia", XOnlineCountry::kLatvia},
-      {"Libya", XOnlineCountry::kLibya},
-      {"Morocco", XOnlineCountry::kMorocco},
-      {"Monaco", XOnlineCountry::kMonaco},
-      {"Macedonia", XOnlineCountry::kMacedonia},
-      {"Mongolia", XOnlineCountry::kMongolia},
-      {"Macau", XOnlineCountry::kMacau},
-      {"Maldives", XOnlineCountry::kMaldives},
-      {"Mexico", XOnlineCountry::kMexico},
-      {"Malaysia", XOnlineCountry::kMalaysia},
-      {"Nicaragua", XOnlineCountry::kNicaragua},
-      {"Netherlands", XOnlineCountry::kNetherlands},
-      {"Norway", XOnlineCountry::kNorway},
-      {"New Zealand", XOnlineCountry::kNewZealand},
-      {"Oman", XOnlineCountry::kOman},
-      {"Panama", XOnlineCountry::kPanama},
-      {"Peru", XOnlineCountry::kPeru},
-      {"Philippines", XOnlineCountry::kPhilippines},
-      {"Pakistan", XOnlineCountry::kPakistan},
-      {"Poland", XOnlineCountry::kPoland},
-      {"Puerto Rico", XOnlineCountry::kPuertoRico},
-      {"Portugal", XOnlineCountry::kPortugal},
-      {"Paraguay", XOnlineCountry::kParaguay},
-      {"Qatar", XOnlineCountry::kQatar},
-      {"Romania", XOnlineCountry::kRomania},
-      {"Russia", XOnlineCountry::kRussianFederation},
-      {"Saudi Arabia", XOnlineCountry::kSaudiArabia},
-      {"Sweden", XOnlineCountry::kSweden},
-      {"Singapore", XOnlineCountry::kSingapore},
-      {"Slovenia", XOnlineCountry::kSlovenia},
-      {"Slovakia", XOnlineCountry::kSlovakRepublic},
-      {"El Salvador", XOnlineCountry::kElSalvador},
-      {"Syria", XOnlineCountry::kSyria},
-      {"Thailand", XOnlineCountry::kThailand},
-      {"Tunisia", XOnlineCountry::kTunisia},
-      {"Turkey", XOnlineCountry::kTurkey},
-      {"Trinidad", XOnlineCountry::kTrinidadAndTobago},
-      {"Taiwan", XOnlineCountry::kTaiwan},
-      {"Ukraine", XOnlineCountry::kUkraine},
-      {"United States", XOnlineCountry::kUnitedStates},
-      {"Uruguay", XOnlineCountry::kUruguay},
-      {"Uzbekistan", XOnlineCountry::kUzbekistan},
-      {"Venezuela", XOnlineCountry::kVenezuela},
-      {"Vietnam", XOnlineCountry::kVietNam},
-      {"Yemen", XOnlineCountry::kYemen},
-      {"South Africa", XOnlineCountry::kSouthAfrica},
-      {"Zimbabwe", XOnlineCountry::kZimbabwe},
-  };
-
-  const auto& country = cvars::user_country;
-  auto it = country_map.find(country);
-  if (it != country_map.end()) {
-    return static_cast<uint32_t>(it->second);
-  }
-  return static_cast<uint32_t>(XOnlineCountry::kUnitedStates);  // Default
-}
-
-X_STATUS xeExGetXConfigSetting(X_CONFIG_CATEGORY category, uint16_t setting,
-                               void* buffer, uint16_t buffer_size,
-                               uint16_t* required_size) {
-  uint16_t setting_size = 0;
-  alignas(uint32_t) uint8_t value[4];
-
-  // TODO(benvanik): have real structs here that just get copied from.
-  // https://free60project.github.io/wiki/XConfig.html
-  // https://github.com/oukiar/freestyledash/blob/master/Freestyle/Tools/Generic/ExConfig.h
-  switch (category) {
-    case XCONFIG_SECURED_CATEGORY:
-      switch (setting) {
-        case XCONFIG_SECURED_AV_REGION:
-          setting_size = 4;
-          switch (cvars::video_standard) {
-            case 1:  // NTSCM
-              xe::store_and_swap<uint32_t>(value, X_AV_REGION::NTSCM);
-              break;
-            case 2:  // NTSCJ
-              xe::store_and_swap<uint32_t>(value, X_AV_REGION::NTSCJ);
-              break;
-            case 3:  // PAL
-              xe::store_and_swap<uint32_t>(value, cvars::use_50Hz_mode
-                                                      ? X_AV_REGION::PAL_50
-                                                      : X_AV_REGION::PAL);
-              break;
-            default:
-              xe::store_and_swap<uint32_t>(value, 0);
-              break;
-          }
-          break;
-        default:
-          XELOGW(
-              "An unimplemented setting 0x{:04X} in XCONFIG SECURED CATEGORY",
-              static_cast<uint16_t>(setting));
-          assert_unhandled_case(setting);
-          return X_STATUS_INVALID_PARAMETER_2;
-      }
-      break;
-    case XCONFIG_USER_CATEGORY:
-      switch (setting) {
-        case XCONFIG_USER_TIME_ZONE_BIAS:
-        case XCONFIG_USER_TIME_ZONE_STD_NAME:
-        case XCONFIG_USER_TIME_ZONE_DLT_NAME:
-        case XCONFIG_USER_TIME_ZONE_STD_DATE:
-        case XCONFIG_USER_TIME_ZONE_DLT_DATE:
-        case XCONFIG_USER_TIME_ZONE_STD_BIAS:
-        case XCONFIG_USER_TIME_ZONE_DLT_BIAS:
-          setting_size = 4;
-          // TODO(benvanik): get this value.
-          xe::store_and_swap<uint32_t>(value, 0);
-          break;
-        case XCONFIG_USER_LANGUAGE:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, GetUserLanguageValue());
-          break;
-        case XCONFIG_USER_VIDEO_FLAGS:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, cvars::widescreen
-                                                  ? X_VIDEO_FLAGS::Widescreen
-                                                  : X_VIDEO_FLAGS::RatioNormal);
-          break;
-        case XCONFIG_USER_AUDIO_FLAGS:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, cvars::audio_flag);
-          break;
-        case XCONFIG_USER_RETAIL_FLAGS:
-          setting_size = 4;
-          // TODO(benvanik): get this value.
-          xe::store_and_swap<uint32_t>(value, 0x40);
-          break;
-        case XCONFIG_USER_COUNTRY:
-          setting_size = 1;
-          value[0] = static_cast<uint8_t>(GetUserCountryValue());
-          break;
-        case XCONFIG_USER_PC_FLAGS:
-          setting_size = 1;
-          // All related flags must be set for PC to function
-          // Both flags set even when PC are off
-          value[0] =
-              X_PC_FLAGS::XBLAllowed | X_PC_FLAGS::XBLMembershipCreationAllowed;
-          break;
-        case XCONFIG_USER_AV_COMPONENT_SCREENSZ:
-          setting_size = 4;
-          // int16_t* value[2];
-          if (XHDTVResolution.find(cvars::internal_display_resolution) !=
-              XHDTVResolution.cend()) {
-            xe::store_and_swap<int32_t>(
-                value, XHDTVResolution.at(cvars::internal_display_resolution));
-          } else {
-            XELOGW("Resolution not supported for AV Component");
-            xe::store_and_swap<int32_t>(value, 0);
-          }
-          break;
-        case XCONFIG_USER_AV_VGA_SCREENSZ:
-          setting_size = 4;
-          // int16_t* value[2];
-          if (XVGAResolution.find(cvars::internal_display_resolution) !=
-              XVGAResolution.cend()) {
-            xe::store_and_swap<int32_t>(
-                value, XVGAResolution.at(cvars::internal_display_resolution));
-          } else {
-            XELOGW("Resolution not supported for VGA");
-            xe::store_and_swap<int32_t>(value, 0);
-          }
-          break;
-        case XCONFIG_USER_PC_GAME:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value,
-                                       X_PC_GAMES_FLAGS::NoGameRestrictions);
-          break;
-        case XCONFIG_USER_PC_PASSWORD:
-          setting_size = 4;
-          std::memset(value, 0, 4);
-          break;
-        case XCONFIG_USER_PC_MOVIE:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value,
-                                       X_PC_MOVIE_FLAGS::NoMovieRestrictions);
-          break;
-        case XCONFIG_USER_PC_GAME_RATING:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value,
-                                       X_PC_GAME_RATING_FLAGS::DefaultGame);
-          break;
-        case XCONFIG_USER_PC_MOVIE_RATING:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value,
-                                       X_PC_MOVIE_RATING_FLAGS::DefaultMovie);
-          break;
-        case XCONFIG_USER_PC_HINT:
-          // ExSetXConfigSetting and ExGetXConfigSetting request size of 0x40
-          setting_size = 0x40;
-          store_and_swap<std::string>(value, "");
-          break;
-        case XCONFIG_USER_PC_HINT_ANSWER:
-          setting_size = 0x20;
-          store_and_swap<std::string>(value, "");
-          break;
-        case XCONFIG_USER_ARCADE_FLAGS:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_ARCADE_FLAGS::AutoDownloadOff);
-          break;
-        case XCONFIG_USER_PC_VERSION:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_PC_VERSION::VersionOne);
-          break;
-        case XCONFIG_USER_PC_TV:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_PC_TV::NoTVRestrictions);
-          break;
-        case XCONFIG_USER_PC_TV_RATING:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_PC_TV_RATING::DefaultTV);
-          break;
-        case XCONFIG_USER_PC_EXPLICIT_VIDEO:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(
-              value, X_PC_EXPLICIT_VIDEO::ExplicitVideoAllowed);
-          break;
-        case XCONFIG_USER_PC_EXPLICIT_VIDEO_RATING:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(
-              value, X_PC_EXPLICIT_VIDEO_RATING::ExplicitAllowed);
-          break;
-        case XCONFIG_USER_PC_UNRATED_VIDEO:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value,
-                                       X_PC_EXPLICIT_UNRATED::UnratedALL);
-          break;
-        case XCONFIG_USER_PC_UNRATED_VIDEO_RATING:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(
-              value, X_PC_EXPLICIT_UNRATED_RATING::DefaultExplicitUnrated);
-          break;
-        case XCONFIG_USER_VIDEO_OUTPUT_BLACK_LEVELS:
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_BLACK_LEVEL::LevelNormal);
-          break;
-        default:
-          XELOGW("An unimplemented setting 0x{:04X} in XCONFIG USER CATEGORY",
-                 static_cast<uint16_t>(setting));
-          assert_unhandled_case(setting);
-          return X_STATUS_INVALID_PARAMETER_2;
-      }
-      break;
-    case XCONFIG_CONSOLE_CATEGORY:
-      switch (setting) {
-        case XCONFIG_CONSOLE_SCREEN_SAVER:
-          setting_size = 2;
-          xe::store_and_swap<int16_t>(value, X_SCREENSAVER::ScreensaverOff);
-          break;
-        case XCONFIG_CONSOLE_AUTO_SHUT_OFF:
-          setting_size = 2;
-          xe::store_and_swap<int16_t>(value, X_AUTO_SHUTDOWN::AutoShutdownOff);
-          break;
-        case XCONFIG_CONSOLE_CAMERA_SETTINGS:
-          // Camera Flags are added together and last byte is always 0x1
-          setting_size = 4;
-          xe::store_and_swap<uint32_t>(value, X_CAMERA_FLAGS::AutoAll);
-          break;
-        case XCONFIG_CONSOLE_KEYBOARD_LAYOUT:
-          setting_size = 2;
-          xe::store_and_swap<int16_t>(value,
-                                      X_KEYBOARD_LAYOUT::KeyboardDefault);
-          break;
-        default:
-          XELOGW(
-              "An unimplemented setting 0x{:04X} in XCONFIG CONSOLE CATEGORY",
-              static_cast<uint16_t>(setting));
-          assert_unhandled_case(setting);
-          return X_STATUS_INVALID_PARAMETER_2;
-      }
-      break;
-    default:
-      XELOGW("An unimplemented category 0x{:04X}",
-             static_cast<uint16_t>(category));
-      assert_unhandled_case(category);
-      return X_STATUS_INVALID_PARAMETER_1;
+X_STATUS xeExGetXConfigSetting(X_CONFIG_CATEGORY category,
+                               const uint16_t setting_id, void* buffer,
+                               uint16_t buffer_size, uint16_t* required_size) {
+  if (!buffer && buffer_size) {
+    return X_STATUS_INVALID_PARAMETER_3;
   }
 
   if (buffer) {
-    if (buffer_size < setting_size) {
+    if (buffer_size <
+        kernel_state()->xconfig()->GetSettingSize(category, setting_id)) {
       return X_STATUS_BUFFER_TOO_SMALL;
     }
-    std::memcpy(buffer, value, setting_size);
-  } else {
-    if (buffer_size) {
-      return X_STATUS_INVALID_PARAMETER_3;
-    }
+    kernel_state()->xconfig()->ReadSetting(category, setting_id, buffer);
   }
 
   if (required_size) {
-    *required_size = setting_size;
+    *required_size = static_cast<uint16_t>(
+        kernel_state()->xconfig()->GetSettingSize(category, setting_id));
   }
 
   return X_STATUS_SUCCESS;
@@ -458,7 +65,11 @@ dword_result_t ExSetXConfigSetting_entry(word_t category, word_t setting,
       Handles settings the only have a single flag/value like
      XCONFIG_USER_VIDEO_FLAGS to swap
   */
-  XELOGI("ExSetXConfigSetting: category: 0X{:04x}, setting: 0X{:04x}",
+  kernel_state()->xconfig()->WriteSetting(
+      static_cast<X_CONFIG_CATEGORY>(category.value()), setting.value(),
+      kernel_memory()->TranslateVirtual<void*>(buffer_ptr));
+
+  XELOGI("ExSetXConfigSetting: category: 0x{:04x}, setting: 0x{:04x}",
          static_cast<uint16_t>(category), static_cast<uint16_t>(setting));
   return X_STATUS_SUCCESS;
 }
@@ -472,6 +83,14 @@ dword_result_t ExReadModifyWriteXConfigSettingUlong_entry(word_t category,
       Handles settings with multiple flags like XCONFIG_USER_RETAIL_FLAGS and
      XCONFIG_CONSOLE_RETAIL_EX_FLAGS
   */
+  uint32_t value = kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      static_cast<X_CONFIG_CATEGORY>(category.value()), setting);
+
+  value = xe::byte_swap((value & bit_affected) | flag);
+
+  kernel_state()->xconfig()->WriteSetting(
+      static_cast<X_CONFIG_CATEGORY>(category.value()), setting, &value);
+
   XELOGI(
       "ExReadModifyWriteXConfigSettingUlong: category: 0x{:04x}, setting: "
       "{:04x}, changed bits: 0X{:08x}, setting flag 0X{:08x}",

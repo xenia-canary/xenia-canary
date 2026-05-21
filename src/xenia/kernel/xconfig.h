@@ -2,20 +2,22 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Xenia Canary. All rights reserved.                          *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
 
-#ifndef XENIA_KERNEL_XBOXKRNL_XBOXKRNL_XCONFIG_H_
-#define XENIA_KERNEL_XBOXKRNL_XBOXKRNL_XCONFIG_H_
+#ifndef XENIA_KERNEL_XCONFIG_H_
+#define XENIA_KERNEL_XCONFIG_H_
 
+#include <concepts>
 #include <cstdint>
 #include <map>
 
+#include "xenia/base/byte_order.h"
+
 namespace xe {
 namespace kernel {
-namespace xboxkrnl {
 
 enum X_CONFIG_CATEGORY : uint16_t {
   XCONFIG_STATIC_CATEGORY = 0x00,
@@ -59,7 +61,8 @@ enum XCONFIG_SECURED_CATEGORY_ENTRIES : uint8_t {
   XCONFIG_SECURED_SYSTEM_FLAGS = 0x06,
   XCONFIG_SECURED_POWER_MODE = 0x07,
   XCONFIG_SECURED_ONLINE_NETWORK_ID = 0x08,
-  XCONFIG_SECURED_POWER_VCS_CONTROL = 0x09
+  XCONFIG_SECURED_POWER_VCS_CONTROL = 0x09,
+  XCONFIG_SECURED_UNKNOWN = 0x10
 };
 
 enum XCONFIG_USER_CATEGORY_ENTRIES : uint8_t {
@@ -81,9 +84,10 @@ enum XCONFIG_USER_CATEGORY_ENTRIES : uint8_t {
   XCONFIG_USER_SMB_CONFIG = 0x10,
   XCONFIG_USER_LIVE_PUID = 0x11,
   XCONFIG_USER_LIVE_CREDENTIALS = 0x12,
-  XCONFIG_USER_AV_COMPOSITE_SCREENSZ = 0x13,
-  XCONFIG_USER_AV_COMPONENT_SCREENSZ = 0x14,
-  XCONFIG_USER_AV_VGA_SCREENSZ = 0x15,
+  XCONFIG_USER_AV_COMPOSITE_SCREENSZ = 0x13,  // Used for any other case
+  XCONFIG_USER_AV_COMPONENT_SCREENSZ =
+      0x14,  // Used only if avpack is set to component (3)
+  XCONFIG_USER_AV_VGA_SCREENSZ = 0x15,  // Used only if avpack is set to VGA (6)
   XCONFIG_USER_PC_GAME = 0x16,
   XCONFIG_USER_PC_PASSWORD = 0x17,
   XCONFIG_USER_PC_MOVIE = 0x18,
@@ -113,7 +117,9 @@ enum XCONFIG_USER_CATEGORY_ENTRIES : uint8_t {
   XCONFIG_USER_PHOTO_MEDIA_SOURCE_TYPE = 0x30
 };
 
-enum XCONFIG_XNET_CATEGORY_ENTRIES : uint8_t { XCONFIG_XNET_DATA = 0x01 };
+enum XCONFIG_XNET_MACHINE_ACCOUNT_CATEGORY_ENTRIES : uint8_t {
+  XCONFIG_XNET_DATA = 0x01
+};
 
 enum XCONFIG_MEDIA_CENTER_CATEGORY_ENTRIES : uint8_t {
   XCONFIG_MEDIA_CENTER_MEDIA_PLAYER = 0x01,
@@ -191,7 +197,7 @@ const static std::map<uint32_t, int32_t> XHDTVResolution = {
     {16, 0x07800438},  // 1080, interlaced added in 1888, always widescreen
 };
 
-// XCONFIG_USER_AV_COMPONENT_SCREENSZ
+// XCONFIG_USER_AV_VGA_SCREENSZ
 const static std::map<uint32_t, int32_t> XVGAResolution = {
     // Existed since 1888
     {0, 0x028001E0},   // 680x480
@@ -234,7 +240,7 @@ enum X_RETAIL_FLAGS : uint32_t {
   MCXDownloaderStartup = 0x00020000,
   // IPTV
   IPTVEnabled = 0x00001000,
-  IPTVDVRENABLED = 0x00080000,
+  IPTVDVREnabled = 0x00080000,
   IPTVDisabled = 0x02000000,
   // Kinect
   KinectInitialized = 0x20000000,
@@ -388,12 +394,43 @@ enum X_KEYBOARD_LAYOUT : uint16_t {
   EnglishQWERTY = 0x0001,
 };
 
-// Helper functions to convert string cvars to enum values
-uint32_t GetUserLanguageValue();
-uint32_t GetUserCountryValue();
+template <typename T>
+concept XConfigValidValueType =
+    std::same_as<T, uint8_t> || std::same_as<T, uint16_t> ||
+    std::same_as<T, uint32_t> || std::same_as<T, uint64_t> ||
+    std::same_as<T, float>;
 
-}  // namespace xboxkrnl
+class XConfig {
+ public:
+  XConfig() = default;
+  ~XConfig() = default;
+
+  // Reads a setting's raw (guest big-endian) bytes into |buffer|.
+  void ReadSetting(const X_CONFIG_CATEGORY category, const uint16_t setting_id,
+                   void* buffer);
+
+  // Reads a setting as a host-endian scalar.
+  template <XConfigValidValueType T>
+  T ReadSetting(const X_CONFIG_CATEGORY category, const uint16_t setting_id) {
+    if (GetSettingSize(category, setting_id) != sizeof(T)) {
+      return {};
+    }
+    T buffer{};
+    ReadSetting(category, setting_id, &buffer);
+    return xe::byte_swap<T>(buffer);
+  }
+
+  // Writes a setting's raw (guest big-endian) bytes from |buffer|. Settings
+  // backed by a cvar update the running title's per-game override; the rest
+  // are ignored.
+  void WriteSetting(const X_CONFIG_CATEGORY category, const uint16_t setting_id,
+                    const void* buffer);
+
+  uint16_t GetSettingSize(const X_CONFIG_CATEGORY category,
+                          const uint16_t setting_id);
+};
+
 }  // namespace kernel
 }  // namespace xe
 
-#endif  // XENIA_KERNEL_XBOXKRNL_XBOXKRNL_XCONFIG_H_
+#endif  // XENIA_KERNEL_XCONFIG_H_

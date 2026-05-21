@@ -14,7 +14,7 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/util/xfiletime.h"
 #include "xenia/kernel/xam/xam_private.h"
-#include "xenia/kernel/xboxkrnl/xboxkrnl_xconfig.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
@@ -204,17 +204,14 @@ uint8_t xeXamGetLocaleFromCountry(uint8_t id) {
 // Helpers.
 
 uint8_t xeXamGetLocaleEx(uint8_t max_country_id, uint8_t max_locale_id) {
-  // TODO(gibbed): rework when XConfig is cleanly implemented.
-  uint8_t country_id = static_cast<uint8_t>(xboxkrnl::GetUserCountryValue());
-  /*if (XSUCCEEDED(xboxkrnl::xeExGetXConfigSetting(
-          3, 14, &country_id, sizeof(country_id), nullptr))) {*/
+  uint8_t country_id = kernel_state()->xconfig()->ReadSetting<uint8_t>(
+      XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
   if (country_id <= max_country_id) {
     uint8_t locale_id = xeXamGetLocaleFromCountry(country_id);
     if (locale_id <= max_locale_id) {
       return locale_id;
     }
   }
-  /*}*/
 
   // couldn't find locale, fallback from game region.
   auto game_region = xeXGetGameRegion();
@@ -528,7 +525,9 @@ uint32_t xeXGetGameRegion() {
       0x02FEu, 0x03FFu, 0x02FEu, 0x03FFu, 0x02FEu, 0x02FEu, 0xFFFFu, 0x03FFu,
       0x03FFu, 0x03FFu, 0x03FFu, 0x02FEu, 0x03FFu, 0x03FFu, 0x02FEu, 0x00FFu,
       0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu};
-  auto country = static_cast<uint8_t>(xboxkrnl::GetUserCountryValue());
+  auto country = kernel_state()->xconfig()->ReadSetting<uint8_t>(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY);
   return country < xe::countof(table) ? table[country] : 0xFFFFu;
 }
 
@@ -537,7 +536,10 @@ DECLARE_XAM_EXPORT1(XGetGameRegion, kNone, kStub);
 
 XLanguage xeGetLanguage(bool extended_languages_support) {
   auto desired_language =
-      static_cast<XLanguage>(xboxkrnl::GetUserLanguageValue());
+      static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          XCONFIG_USER_CATEGORY,
+          XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE));
+
   uint32_t region = xeXGetGameRegion();
   auto max_languages = extended_languages_support ? XLanguage::kMaxLanguages
                                                   : XLanguage::kSChinese;
@@ -598,6 +600,24 @@ pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
   return 0;
 }
 DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kStub);
+
+dword_result_t XamGetCountry_entry() {
+  return kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY);
+}
+DECLARE_XAM_EXPORT1(XamGetCountry, kNone, kSketchy);
+
+dword_result_t XamSetCountry_entry(dword_t country) {
+  const uint8_t country_real = country;
+
+  kernel_state()->xconfig()->WriteSetting(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY, &country_real);
+
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamSetCountry, kNone, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

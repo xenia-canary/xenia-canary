@@ -22,10 +22,8 @@
 #include "xenia/kernel/xam/user_settings.h"
 #include "xenia/kernel/xam/user_tracker.h"
 #include "xenia/kernel/xam/xdbf/gpd_info.h"
-#include "xenia/kernel/xboxkrnl/xboxkrnl_xconfig.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
-
-DECLARE_string(user_language);
 
 namespace xe {
 namespace kernel {
@@ -493,7 +491,8 @@ void UserTracker::UpdateTitleGpdFile() {
     }
 
     auto user_language = spa_data_->GetExistingLanguage(
-        static_cast<XLanguage>(xboxkrnl::GetUserLanguageValue()));
+        static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+            kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE)));
 
     // First add achievements because of lowest ID
     for (const auto& entry : spa_data_->GetAchievements()) {

@@ -14,8 +14,8 @@
 
 DEFINE_bool(allow_avatar_initialization, false,
             "Enable Avatar Initialization\n"
-            " Only set true when testing Avatar games. Certain games may\n"
-            " require kinect implementation.",
+            "Only set true when testing Avatar games. Certain games may crash "
+            "due to requirement of full avatar implementation.",
             "Kernel");
 
 namespace xe {

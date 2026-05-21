@@ -409,7 +409,8 @@ void QuickSettingsDialog::LoadValuesFromCvars() {
       refresh_60hz_->SetValue(selection == 2);
       continue;
     }
-    std::string v = ReadCvarString(name);
+    // Integer cvars shown as string dropdowns display their option name.
+    std::string v = ui::IntCvarValueToDisplayName(name, ReadCvarString(name));
     opt.current_value = v;
     opt.pending_value = v;
     if (auto* combo = dynamic_cast<wxChoice*>(opt.editor)) {
@@ -562,6 +563,14 @@ void QuickSettingsDialog::Save() {
                name == "discord" || name == "use_dedicated_xma_thread" ||
                name == "in_process_title_relaunch") {
       apply(var, toml::value(opt.pending_value == "true"));
+    } else if (ui::FindIntCvarEnumOptions(name)) {
+      // Dropdown int cvar: convert the selected option name to its id.
+      try {
+        apply(var,
+              toml::value(static_cast<int64_t>(std::stoll(
+                  ui::DisplayNameToIntCvarValue(name, opt.pending_value)))));
+      } catch (...) {
+      }
     } else {
       apply(var, toml::value(opt.pending_value));
     }

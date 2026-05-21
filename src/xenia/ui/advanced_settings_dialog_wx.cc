@@ -92,7 +92,9 @@ std::string GetCurrentValue(cvar::IConfigVar* var) {
   if (auto* p = dynamic_cast<cvar::ConfigVar<std::filesystem::path>*>(var)) {
     return xe::path_to_utf8(p->GetTypedConfigValue());
   }
-  return var->config_value();
+  // Integer cvars shown as string dropdowns (e.g. user_language) display their
+  // option name rather than the raw id.
+  return ui::IntCvarValueToDisplayName(var->name(), var->config_value());
 }
 
 }  // namespace
@@ -437,6 +439,8 @@ void AdvancedSettingsDialog::Save() {
                  dynamic_cast<cvar::ConfigVar<std::filesystem::path>*>(var)) {
         tbl.insert(var->name(), trimmed);
       } else if (IsIntCvar(var)) {
+        // Dropdown int cvars hold an option name; convert back to its id.
+        trimmed = ui::DisplayNameToIntCvarValue(var->name(), trimmed);
         int64_t val = (trimmed.size() > 2 && trimmed[0] == '0' &&
                        (trimmed[1] == 'x' || trimmed[1] == 'X'))
                           ? std::stoll(trimmed, nullptr, 16)

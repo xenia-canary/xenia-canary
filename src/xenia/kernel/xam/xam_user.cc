@@ -20,10 +20,7 @@
 
 #include "third_party/stb/stb_image.h"
 
-#include "xenia/kernel/xboxkrnl/xboxkrnl_xconfig.h"
-
-DECLARE_string(user_language);
-DECLARE_string(user_country);
+#include "xenia/kernel/xconfig.h"
 
 enum X_USER_AGE_GROUP : uint32_t { CHILD, TEEN, ADULT };
 
@@ -1025,7 +1022,8 @@ DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 dword_result_t XamUserGetOnlineLanguageFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return xboxkrnl::GetUserLanguageValue();
+    return kernel_state()->xconfig()->ReadSetting<uint32_t>(
+        XCONFIG_USER_CATEGORY, XCONFIG_USER_LANGUAGE);
   }
   return user->GetLanguage();
 }
@@ -1035,7 +1033,8 @@ DECLARE_XAM_EXPORT1(XamUserGetOnlineLanguageFromXUID, kUserProfiles,
 dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
   if (!user) {
-    return xboxkrnl::GetUserCountryValue();
+    return kernel_state()->xconfig()->ReadSetting<uint8_t>(
+        XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
   }
   return user->GetCountry();
 }

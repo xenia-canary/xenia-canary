@@ -130,6 +130,23 @@ void MigrateLegacyCvars(const toml::table& config) {
         var_value = var_value.substr(1, var_value.length() - 2);
       }
 
+      // String values for integer cvars presented as UI dropdowns
+      // (user_language, user_country, video_standard,
+      // internal_display_resolution) -> integer ids.
+      if (const auto* options = xe::ui::FindIntCvarEnumOptions(var_name)) {
+        for (const auto& option : *options) {
+          if (option.name == var_value) {
+            auto config_var = (*cvar::ConfigVars).find(var_name);
+            if (config_var != (*cvar::ConfigVars).end()) {
+              toml::value<int64_t> int_value(option.value);
+              static_cast<cvar::IConfigVar*>(config_var->second)
+                  ->LoadConfigValue(&int_value);
+            }
+            break;
+          }
+        }
+      }
+
       for (const auto& alias : xe::ui::GetCvarAliases()) {
         // Support wildcard "*" to match any value and copy it as-is
         bool name_matches = (var_name == alias.old_name);

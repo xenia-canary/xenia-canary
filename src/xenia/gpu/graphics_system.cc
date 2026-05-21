@@ -46,7 +46,7 @@ DEFINE_uint32(internal_display_resolution, 8,
               "   15=1920x540\n"
               "   16=1920x1080\n"
               "   17=internal_display_resolution_x/y",
-              "Video");
+              "Console");
 DEFINE_uint32(internal_display_resolution_x, 1280,
               "Custom width. See internal_display_resolution. Range 1-1920.",
               "Video");

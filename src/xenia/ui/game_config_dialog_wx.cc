@@ -331,7 +331,9 @@ void GameConfigDialog::AddRow(const std::string& name,
   auto* label = new wxStaticText(scroll_, wxID_ANY, wxString::FromUTF8(name),
                                  wxDefaultPosition, wxSize(280, -1));
   auto* var = cvar::ConfigVars ? (*cvar::ConfigVars)[name] : nullptr;
-  EditorBuild built = BuildEditor(scroll_, var, value);
+  // Integer cvars shown as string dropdowns display their option name.
+  EditorBuild built =
+      BuildEditor(scroll_, var, xe::ui::IntCvarValueToDisplayName(name, value));
   row->editor = built.editor;
   row->get_value = std::move(built.get_value);
   row->editor->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { dirty_ = true; });
@@ -419,7 +421,8 @@ void GameConfigDialog::SaveOverrides() {
     if (!var || var->is_transient()) {
       continue;
     }
-    InsertTypedValue(by_category[var->category()], row->name, value);
+    InsertTypedValue(by_category[var->category()], row->name,
+                     xe::ui::DisplayNameToIntCvarValue(row->name, value));
   }
   for (auto& [cat, tbl] : by_category) {
     out.insert_or_assign(cat, tbl);
