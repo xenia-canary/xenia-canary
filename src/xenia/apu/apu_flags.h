@@ -11,6 +11,6 @@
 #define XENIA_APU_APU_FLAGS_H_
 
 #include "xenia/base/cvar.h"
-DECLARE_bool(mute)
+DECLARE_uint32(volume)
 
 #endif  // XENIA_APU_APU_FLAGS_H_

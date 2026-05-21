@@ -259,15 +259,10 @@ void QuickSettingsDialog::Build() {
     remember_label("apu", apu_label);
     add_form_row(grid, apu_label, apu);
 
-    auto* xma = add_combo(box, "xma_decoder", find_options("xma_decoder"));
-    auto* xma_label = add_label(box, _("Audio Decoder:"));
-    remember_label("xma_decoder", xma_label);
-    add_form_row(grid, xma_label, xma);
-
-    auto* xma_thread = add_check(box, "use_dedicated_xma_thread");
-    auto* xma_thread_label = add_label(box, _("Dedicated Thread:"));
-    remember_label("use_dedicated_xma_thread", xma_thread_label);
-    add_form_row(grid, xma_thread_label, xma_thread);
+    auto* volume = add_spin(box, "volume", 0, 100);
+    auto* volume_label = add_label(box, _("Default Volume:"));
+    remember_label("volume", volume_label);
+    add_form_row(grid, volume_label, volume);
 
     box_sizer->Add(grid, 1, wxEXPAND | wxALL, 6);
     main_sizer->Add(box_sizer, 0, wxEXPAND | wxALL, 6);
@@ -552,6 +547,11 @@ void QuickSettingsDialog::Save() {
       try {
         apply(var, toml::value(
                        static_cast<int64_t>(std::stoull(opt.pending_value))));
+      } catch (...) {
+      }
+    } else if (name == "volume") {
+      try {
+        apply(var, toml::value(std::stoi(opt.pending_value)));
       } catch (...) {
       }
     } else if (name == "license_mask") {

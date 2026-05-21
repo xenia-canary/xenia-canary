@@ -64,6 +64,9 @@ class XAudio2AudioDriver : public AudioDriver {
 
   void MTAThread();
 
+  // Applies volume_ scaled by the master volume cvar to the voice.
+  void ApplyVolume();
+
   void* xaudio2_module_ = nullptr;
   // clang-format off
   HRESULT (__stdcall* xaudio2_create_)(
@@ -110,6 +113,9 @@ class XAudio2AudioDriver : public AudioDriver {
 
   float frames_[frame_count_][kFrameSamplesMax];
   uint32_t current_frame_ = 0;
+
+  // Base voice volume (1.0 for game audio; the XMP player sets its own).
+  float volume_ = 1.0f;
 };
 
 }  // namespace xaudio2

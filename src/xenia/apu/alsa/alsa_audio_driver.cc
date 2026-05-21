@@ -385,7 +385,8 @@ void ALSAAudioDriver::WorkerThread() {
 
       // Apply volume using SIMD-optimized function
       // Cache volume to ensure consistency across the entire frame
-      float vol = volume_.load(std::memory_order_relaxed);
+      uint32_t mv = cvars::volume > 100 ? 100 : cvars::volume;
+      float vol = volume_.load(std::memory_order_relaxed) * (mv / 100.0f);
       ApplyVolume(output, output_channels_ * channel_samples_, vol);
 
       // Apply time scaling / resampling

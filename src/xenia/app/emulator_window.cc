@@ -37,6 +37,7 @@
 #include "xenia/base/system.h"
 #include "xenia/base/threading.h"
 #include "xenia/config.h"
+#include "xenia/ui/imgui_audio_dialog.h"
 #include "xenia/ui/imgui_confirm_dialog.h"
 #include "xenia/ui/imgui_context_menu.h"
 #include "xenia/ui/imgui_debug_dialog.h"
@@ -108,6 +109,7 @@
 #endif
 #endif
 
+#include "xenia/apu/apu_flags.h"
 #include "xenia/apu/audio_system.h"
 #include "xenia/cpu/backend/backend.h"
 #include "xenia/cpu/processor.h"
@@ -285,6 +287,10 @@ struct WxToolbarState {
   wxBitmapBundle open_bundle;
   wxBitmapBundle back_bundle;
   wxBitmapBundle profile_default_bundle;
+  wxBitmapBundle audio_no_bundle;
+  wxBitmapBundle audio_low_bundle;
+  wxBitmapBundle audio_mid_bundle;
+  wxBitmapBundle audio_full_bundle;
   wxStaticText* profile_label = nullptr;
 };
 
@@ -293,6 +299,7 @@ namespace {
 constexpr int kToolIdOpenBack = 11000;
 constexpr int kToolIdSettings = 11001;
 constexpr int kToolIdProfile = 11002;
+constexpr int kToolIdAudio = 11003;
 constexpr int kToolbarIconSize = 32;
 }  // namespace
 
@@ -735,6 +742,16 @@ bool EmulatorWindow::Initialize() {
     }
     main_menu->AddChild(std::move(view_menu));
 
+    // In-game volume overlay; enabled only while a title is running.
+    auto audio_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&Audio"));
+    {
+      audio_menu->AddChild(
+          WxMenuItem::Create(MenuItem::Type::kString, _("&Volume"), "",
+                             [this]() { ToggleAudioDialog(); }));
+    }
+    audio_menu_ = audio_menu.get();
+    main_menu->AddChild(std::move(audio_menu));
+
     // Tools menu.
     auto tools_menu = WxMenuItem::Create(MenuItem::Type::kPopup, _("&Tools"));
     {
@@ -819,6 +836,21 @@ bool EmulatorWindow::Initialize() {
                       ui::embedded_icons::icons8_settings_96_png_size);
       toolbar->AddTool(kToolIdSettings, _("Settings"), settings_bundle,
                        _("Settings"));
+      wx_toolbar_state_->audio_no_bundle =
+          load_bundle(ui::embedded_icons::icons8_no_audio_96_png_data,
+                      ui::embedded_icons::icons8_no_audio_96_png_size);
+      wx_toolbar_state_->audio_low_bundle =
+          load_bundle(ui::embedded_icons::icons8_low_audio_96_png_data,
+                      ui::embedded_icons::icons8_low_audio_96_png_size);
+      wx_toolbar_state_->audio_mid_bundle =
+          load_bundle(ui::embedded_icons::icons8_mid_audio_96_png_data,
+                      ui::embedded_icons::icons8_mid_audio_96_png_size);
+      wx_toolbar_state_->audio_full_bundle =
+          load_bundle(ui::embedded_icons::icons8_audio_96_png_data,
+                      ui::embedded_icons::icons8_audio_96_png_size);
+      toolbar->AddTool(kToolIdAudio, _("Volume"),
+                       wx_toolbar_state_->audio_no_bundle, _("Volume"));
+      toolbar->EnableTool(kToolIdAudio, false);
       toolbar->AddStretchSpacer(1);
       wx_toolbar_state_->profile_default_bundle =
           load_bundle(ui::embedded_icons::icons8_user_96_png_data,
@@ -864,6 +896,9 @@ bool EmulatorWindow::Initialize() {
             }
           },
           kToolIdSettings);
+      frame->Bind(
+          wxEVT_TOOL, [this](wxCommandEvent&) { ToggleAudioDialog(); },
+          kToolIdAudio);
       frame->Bind(
           wxEVT_TOOL, [this](wxCommandEvent&) { ShowProfilePopupMenu(); },
           kToolIdProfile);
@@ -1182,6 +1217,8 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
 
   context_menu->AddAction("Profiles Menu",
                           [this]() { ToggleProfilesConfigDialog(); });
+
+  context_menu->AddAction("Audio", [this]() { ToggleAudioDialog(); });
 
   context_menu->AddSeparator();
 
@@ -1598,6 +1635,7 @@ void EmulatorWindow::ApplyContentVisibility() {
       tb->SetToolShortHelp(kToolIdSettings,
                            title_open ? _("Guide") : _("Settings"));
     }
+    RefreshAudioIcon();
     tb->Refresh();
   }
 
@@ -1615,6 +1653,9 @@ void EmulatorWindow::ApplyContentVisibility() {
   }
   if (tools_menu_) {
     tools_menu_->SetEnabled(!title_open);
+  }
+  if (audio_menu_) {
+    audio_menu_->SetEnabled(title_open);
   }
 }
 
@@ -2171,6 +2212,67 @@ void EmulatorWindow::OpenConfigDialog(const std::string& category) {
     dlg.SelectCategory(category);
   }
   dlg.ShowModal();
+}
+
+void EmulatorWindow::ToggleAudioDialog() {
+  if (audio_dialog_) {
+    audio_dialog_->CloseDialog();
+    audio_dialog_ = nullptr;
+    return;
+  }
+
+  audio_dialog_ =
+      new ui::ImGuiAudioDialog(imgui_drawer(), emulator()->input_system());
+  audio_dialog_->SetOnCloseCallback([this]() {
+    audio_dialog_ = nullptr;
+    RefreshAudioIcon();
+  });
+  // The dialog draws on the UI thread, so refresh the icon directly (live).
+  audio_dialog_->SetOnChangeCallback([this]() { RefreshAudioIcon(); });
+}
+
+void EmulatorWindow::RefreshAudioIcon() {
+  if (!wx_toolbar_state_ || !wx_toolbar_state_->toolbar) {
+    return;
+  }
+  auto* tb = wx_toolbar_state_->toolbar;
+  const bool title_open = emulator_ && emulator_->is_title_open();
+
+  int percent = cvars::volume > 100 ? 100 : static_cast<int>(cvars::volume);
+
+  // 0 = no audio, 1 = low, 2 = mid, 3 = full (disabled game list shows
+  // no-audio).
+  int bucket = 0;
+  if (title_open && percent > 0) {
+    bucket = percent <= 33 ? 1 : (percent <= 67 ? 2 : 3);
+  }
+
+  const int key = (title_open ? 1 : 0) * 10 + bucket;
+  if (key == audio_icon_key_) {
+    return;
+  }
+  audio_icon_key_ = key;
+
+  const wxBitmapBundle* bundle = &wx_toolbar_state_->audio_no_bundle;
+  switch (bucket) {
+    case 1:
+      bundle = &wx_toolbar_state_->audio_low_bundle;
+      break;
+    case 2:
+      bundle = &wx_toolbar_state_->audio_mid_bundle;
+      break;
+    case 3:
+      bundle = &wx_toolbar_state_->audio_full_bundle;
+      break;
+    default:
+      break;
+  }
+  tb->EnableTool(kToolIdAudio, title_open);
+  tb->SetToolBitmap(kToolIdAudio, *bundle);
+  tb->Refresh();
+  // Force a repaint now; the open dialog's continuous repaint starves the
+  // queue.
+  tb->Update();
 }
 
 void EmulatorWindow::ToggleControllerVibration() {
@@ -3099,6 +3201,10 @@ void EmulatorWindow::ClearDialogs() {
   if (profile_dialog_) {
     profile_dialog_->CloseDialog();
     profile_dialog_ = nullptr;
+  }
+  if (audio_dialog_) {
+    audio_dialog_->CloseDialog();
+    audio_dialog_ = nullptr;
   }
 
   imgui_drawer_.get()->ClearDialogs();

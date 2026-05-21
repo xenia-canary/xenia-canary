@@ -130,6 +130,19 @@ void MigrateLegacyCvars(const toml::table& config) {
         var_value = var_value.substr(1, var_value.length() - 2);
       }
 
+      // Legacy: the removed "mute" bool now just means volume = 0.
+      if (var_name == "mute") {
+        if (value.value<bool>().value_or(var_value == "true")) {
+          auto volume_var = cvar::ConfigVars->find("volume");
+          if (volume_var != cvar::ConfigVars->end()) {
+            toml::value<int64_t> zero(0);
+            static_cast<cvar::IConfigVar*>(volume_var->second)
+                ->LoadConfigValue(&zero);
+          }
+        }
+        continue;
+      }
+
       // String values for integer cvars presented as UI dropdowns
       // (user_language, user_country, video_standard,
       // internal_display_resolution) -> integer ids.

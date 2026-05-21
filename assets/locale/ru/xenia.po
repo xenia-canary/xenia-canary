@@ -149,10 +149,6 @@ msgstr "Звук"
 msgid "Audio Backend:"
 msgstr "Бэкенд звука:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio Decoder:"
-msgstr "Декодер звука:"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:71
 msgid "Australia"
 msgstr "Австралия"
@@ -306,10 +302,6 @@ msgstr "Чешская Республика"
 msgid "DLC"
 msgstr "DLC"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:257
-msgid "Dedicated Thread:"
-msgstr "Отдельный поток:"
-
 #: src/xenia/ui/game_list_panel_wx.cc:617
 msgid "Default"
 msgstr "По умолчанию"
@@ -419,10 +411,6 @@ msgstr ""
 "\n"
 "Шрифт: Inter, автор Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
 "Иконки: Icons8 (https://icons8.com)."
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:239
-msgid "Extract To: "
-msgstr "Извлечь в: "
 
 #: src/xenia/app/emulator_window.cc:740
 msgid "FA&Q..."
@@ -900,21 +888,9 @@ msgstr "Открыть игру"
 msgid "Open containing folder"
 msgstr "Открыть папку с файлом"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:206
-msgid "Operation: Create Archive"
-msgstr "Операция: создание архива"
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:207
-msgid "Operation: Extract Archive"
-msgstr "Операция: извлечение архива"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:267
 msgid "Other"
 msgstr "Прочее"
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:238
-msgid "Output: "
-msgstr "Вывод: "
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:560
 msgid "PNG Images (*.png)|*.png|All Files (*.*)|*.*"
@@ -1054,9 +1030,6 @@ msgid "Rendering:"
 msgstr "Рендеринг:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings to their default values?"
-msgstr "Сбросить все настройки к значениям по умолчанию?"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"
 msgstr "Сбросить все настройки к значениям по умолчанию?"
@@ -1202,10 +1175,6 @@ msgstr "Остановить игру и вернуться к списку"
 msgid "Subscription Tier:"
 msgstr "Уровень подписки:"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:292
-msgid "Successfully completed %d operation(s)."
-msgstr "Успешно выполнено операций: %d."
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:294
 msgid "Successfully installed %d package(s)."
 msgstr "Успешно установлено контента: %d."
@@ -1331,10 +1300,6 @@ msgstr "Есть несохранённые изменения. Отменить
 msgid "You have unsaved changes. Save them before opening advanced settings?"
 msgstr "Есть несохранённые изменения. Сохранить их перед открытием расширенных настроек?"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:79
-msgid "Zarchive Progress"
-msgstr "Прогресс Zarchive"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:175
 msgid "Zimbabwe"
 msgstr "Зимбабве"
@@ -1451,3 +1416,19 @@ msgstr ""
 #: src/xenia/ui/game_list_panel_wx.cc:217
 msgid "Search %zu games..."
 msgstr "Поиск среди %zu игр…"
+
+#: src/xenia/app/emulator_window.cc:746
+msgid "&Audio"
+msgstr "&Звук"
+
+#: src/xenia/app/emulator_window.cc:749
+msgid "&Volume"
+msgstr "&Громкость"
+
+#: src/xenia/app/emulator_window.cc:852
+msgid "Volume"
+msgstr "Громкость"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:263
+msgid "Default Volume:"
+msgstr "Громкость по умолчанию:"

@@ -149,10 +149,6 @@ msgstr "صدا"
 msgid "Audio Backend:"
 msgstr "بک‌اند صدا:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio Decoder:"
-msgstr "رمزگشای صدا:"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:71
 msgid "Australia"
 msgstr "استرالیا"
@@ -306,10 +302,6 @@ msgstr "جمهوری چک"
 msgid "DLC"
 msgstr "DLC"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:257
-msgid "Dedicated Thread:"
-msgstr "نخ اختصاصی:"
-
 #: src/xenia/ui/game_list_panel_wx.cc:617
 msgid "Default"
 msgstr "پیش‌فرض"
@@ -419,10 +411,6 @@ msgstr ""
 "\n"
 "فونت رابط: Inter اثر Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
 "آیکون‌ها از Icons8 (https://icons8.com)."
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:239
-msgid "Extract To: "
-msgstr "استخراج در: "
 
 #: src/xenia/app/emulator_window.cc:740
 msgid "FA&Q..."
@@ -896,21 +884,9 @@ msgstr "باز کردن یک بازی"
 msgid "Open containing folder"
 msgstr "باز کردن پوشه حاوی"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:206
-msgid "Operation: Create Archive"
-msgstr "عملیات: ایجاد آرشیو"
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:207
-msgid "Operation: Extract Archive"
-msgstr "عملیات: استخراج آرشیو"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:267
 msgid "Other"
 msgstr "سایر"
-
-#: src/xenia/ui/install_progress_dialog_wx.cc:238
-msgid "Output: "
-msgstr "خروجی: "
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:560
 msgid "PNG Images (*.png)|*.png|All Files (*.*)|*.*"
@@ -1050,9 +1026,6 @@ msgid "Rendering:"
 msgstr "رندرینگ:"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:544
-msgid "Reset all settings to their default values?"
-msgstr "همه تنظیمات به مقادیر پیش‌فرض بازنشانی شوند؟"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:434
 msgid "Reset all settings to their default values?"
 msgstr "همه تنظیمات به مقادیر پیش‌فرض بازنشانی شوند؟"
@@ -1198,10 +1171,6 @@ msgstr "توقف بازی در حال اجرا و بازگشت به لیست"
 msgid "Subscription Tier:"
 msgstr "سطح اشتراک:"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:292
-msgid "Successfully completed %d operation(s)."
-msgstr "%d عملیات با موفقیت تکمیل شد."
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:294
 msgid "Successfully installed %d package(s)."
 msgstr "%d بسته با موفقیت نصب شد."
@@ -1327,10 +1296,6 @@ msgstr "تغییرات ذخیره‌نشده‌ای دارید. آنها را ن
 msgid "You have unsaved changes. Save them before opening advanced settings?"
 msgstr "تغییرات ذخیره‌نشده‌ای دارید. قبل از باز کردن تنظیمات پیشرفته آنها را ذخیره می‌کنید؟"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:79
-msgid "Zarchive Progress"
-msgstr "پیشرفت Zarchive"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:175
 msgid "Zimbabwe"
 msgstr "زیمبابوه"
@@ -1447,3 +1412,19 @@ msgstr ""
 #: src/xenia/ui/game_list_panel_wx.cc:217
 msgid "Search %zu games..."
 msgstr "جستجو در %zu بازی…"
+
+#: src/xenia/app/emulator_window.cc:746
+msgid "&Audio"
+msgstr "صدا(&A)"
+
+#: src/xenia/app/emulator_window.cc:749
+msgid "&Volume"
+msgstr "بلندی صدا(&V)"
+
+#: src/xenia/app/emulator_window.cc:852
+msgid "Volume"
+msgstr "بلندی صدا"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:263
+msgid "Default Volume:"
+msgstr "بلندی صدای پیش‌فرض:"

@@ -195,9 +195,8 @@ bool XAudio2AudioDriver::InitializeObjects(Objects& objects) {
     return false;
   }
 
-  if (cvars::mute) {
-    objects.pcm_voice->SetVolume(0.0f);
-  }
+  uint32_t mv = cvars::volume > 100 ? 100 : cvars::volume;
+  objects.pcm_voice->SetVolume(mv / 100.0f);
 
   return true;
 }
@@ -246,6 +245,9 @@ void XAudio2AudioDriver::SubmitFrame(float* frame) {
 
   current_frame_ = (current_frame_ + 1) % frame_count_;
 
+  // Re-apply volume each frame so live volume changes take effect.
+  ApplyVolume();
+
   // Update playback ratio to our time scalar.
   // This will keep audio in sync with the game clock.
   float frequency_ratio = static_cast<float>(xe::Clock::guest_time_scalar());
@@ -273,9 +275,13 @@ void XAudio2AudioDriver::Resume() {
 }
 
 void XAudio2AudioDriver::SetVolume(float volume) {
-  if (cvars::mute) {
-    return;
-  }
+  volume_ = volume;
+  ApplyVolume();
+}
+
+void XAudio2AudioDriver::ApplyVolume() {
+  uint32_t mv = cvars::volume > 100 ? 100 : cvars::volume;
+  float volume = volume_ * (mv / 100.0f);
 
   if (api_minor_version_ >= 8) {
     objects_.api_2_8.pcm_voice->SetVolume(volume);

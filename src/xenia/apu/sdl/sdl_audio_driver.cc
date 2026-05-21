@@ -165,9 +165,7 @@ void SDLAudioDriver::SDLCallback(void* userdata, Uint8* stream, int len) {
   } else {
     auto buffer = driver->frames_queued_.front();
     driver->frames_queued_.pop();
-    if (cvars::mute) {
-      std::memset(stream, 0, len);
-    } else if (driver->need_format_conversion_) {
+    if (driver->need_format_conversion_) {
       switch (driver->sdl_device_channels_) {
         case 2:
           conversion::sequential_6_BE_to_interleaved_2_LE(
@@ -185,13 +183,16 @@ void SDLAudioDriver::SDLCallback(void* userdata, Uint8* stream, int len) {
       }
     } else {
       assert_true(driver->sdl_device_channels_ == driver->frame_channels_);
-      if (driver->volume_ != 1.0f) {
-        std::memset(stream, 0, len);
-        SDL_MixAudioFormat(
-            stream, reinterpret_cast<Uint8*>(buffer), AUDIO_F32, len,
-            static_cast<int>(driver->volume_ * SDL_MIX_MAXVOLUME));
-      } else {
-        std::memcpy(stream, buffer, len);
+      std::memcpy(stream, buffer, len);
+    }
+    // Scale by master (cvar) and per-driver volume.
+    const uint32_t mv = cvars::volume > 100 ? 100 : cvars::volume;
+    const float volume = driver->volume_ * (mv / 100.0f);
+    if (volume != 1.0f) {
+      float* samples = reinterpret_cast<float*>(stream);
+      const size_t count = len / sizeof(float);
+      for (size_t i = 0; i < count; ++i) {
+        samples[i] *= volume;
       }
     }
     driver->frames_unused_.push(buffer);
