@@ -205,20 +205,29 @@ bool XmaContextNew::Work() {
     }
   }
 
-  data.output_buffer_write_offset =
-      output_rb.write_offset() / kOutputBytesPerBlock;
+  if (initial_data.IsAnyInputBufferValid()) {
+    data.output_buffer_write_offset =
+        output_rb.write_offset() / kOutputBytesPerBlock;
+
+  } else {
+    // NFS: Carbon and NFS: MW use write_offset as a stall detector
+    // make sure that they are equal if we're starved on input.
+    if (data.output_buffer_write_offset != data.output_buffer_read_offset) {
+      data.output_buffer_write_offset = data.output_buffer_read_offset;
+      data.output_buffer_valid = 0;
+    }
+  }
+
+  // Signal the game that the output buffer is full
+  if (remaining_subframe_blocks_in_output_buffer_ == 0) {
+    XELOGAPU("XmaContext {}: Output ring buffer is full, invalidating output",
+             id());
+    data.output_buffer_write_offset = data.output_buffer_read_offset;
+    data.output_buffer_valid = 0;
+  }
 
   XELOGAPU("XmaContext {}: Read Output: {} Write Output: {}", id(),
            data.output_buffer_read_offset, data.output_buffer_write_offset);
-
-  // That's a bit misleading due to nature of ringbuffer
-  // when write and read offset matches it might mean that we wrote nothing
-  // or we fully saturated allocated space.
-  if (output_rb.empty()) {
-    XELOGAPU("XmaContext {}: Output ring buffer empty, invalidating output",
-             id());
-    data.output_buffer_valid = 0;
-  }
 
   StoreContextMerged(data, initial_data, context_ptr);
   return true;
