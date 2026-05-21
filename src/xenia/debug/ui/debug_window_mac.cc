@@ -1255,7 +1255,7 @@ void DebugWindow::DrawBreakpointsPane() {
     auto& all_exports = emulator_->export_resolver()->all_exports_by_name();
     auto call_rankings = xe::fuzzy_filter(state.kernel_call_filter, all_exports,
                                           offsetof(cpu::Export, name));
-    bool has_any_call_filter = std::strlen(state.kernel_call_filter) > 0;
+    bool has_any_call_filter = state.kernel_call_filter[0] != '\0';
     if (has_any_call_filter) {
       std::sort(call_rankings.begin(), call_rankings.end(),
                 [](std::pair<size_t, int>& a, std::pair<size_t, int>& b) {
