@@ -30,19 +30,15 @@ class wxStaticText;
 namespace xe {
 namespace ui {
 
-// Modal progress dialog used for content package installs and zar archive
-// extracts. Each entry gets one row with icon / name / path / type / status /
-// progress bar; a wxTimer polls the shared entry vector while the actual
-// install thread runs in the background.
+// Modal progress dialog used for content package installs. Each entry gets one
+// row with icon / name / path / type / status / progress bar; a wxTimer polls
+// the shared entry vector while the actual install thread runs in the
+// background.
 class InstallProgressDialog : public wxDialog {
  public:
   InstallProgressDialog(
       wxWindow* parent, const std::filesystem::path& content_root,
       std::shared_ptr<std::vector<Emulator::ContentInstallEntry>> entries);
-
-  InstallProgressDialog(
-      wxWindow* parent,
-      std::shared_ptr<std::vector<Emulator::ZarchiveEntry>> entries);
 
   // Sets work to run on the UI event loop once the dialog is being shown
   // (typically: spawn the install thread). Without this, a fast install can
@@ -72,8 +68,6 @@ class InstallProgressDialog : public wxDialog {
 
   std::filesystem::path content_root_;
   std::shared_ptr<std::vector<Emulator::ContentInstallEntry>> content_entries_;
-  std::shared_ptr<std::vector<Emulator::ZarchiveEntry>> zarchive_entries_;
-  bool is_zarchive_mode_ = false;
 
   wxScrolledWindow* list_panel_ = nullptr;
   wxButton* cancel_button_ = nullptr;

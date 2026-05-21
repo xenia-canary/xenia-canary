@@ -61,34 +61,9 @@ InstallProgressDialog::InstallProgressDialog(
   Centre();
 }
 
-InstallProgressDialog::InstallProgressDialog(
-    wxWindow* parent,
-    std::shared_ptr<std::vector<Emulator::ZarchiveEntry>> entries)
-    : wxDialog(parent, wxID_ANY, _("Zarchive Progress"), wxDefaultPosition,
-               wxSize(640, 460), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
-      zarchive_entries_(std::move(entries)),
-      is_zarchive_mode_(true),
-      timer_(this) {
-  Build();
-  Bind(wxEVT_TIMER, [this](wxTimerEvent&) { Tick(); });
-  Bind(wxEVT_SHOW, [this](wxShowEvent& evt) {
-    if (evt.IsShown() && kickoff_) {
-      auto work = std::move(kickoff_);
-      CallAfter([work = std::move(work)] { work(); });
-    }
-    evt.Skip();
-  });
-  timer_.Start(kTimerMs);
-  Tick();
-  Centre();
-}
-
 InstallProgressDialog::~InstallProgressDialog() { timer_.Stop(); }
 
 size_t InstallProgressDialog::EntryCount() const {
-  if (is_zarchive_mode_) {
-    return zarchive_entries_ ? zarchive_entries_->size() : 0;
-  }
   return content_entries_ ? content_entries_->size() : 0;
 }
 
@@ -107,13 +82,8 @@ void InstallProgressDialog::Build() {
 
     widgets.icon = new wxStaticBitmap(row_box, wxID_ANY, wxBitmapBundle());
     widgets.icon->SetMinSize(wxSize(kIconSize, kIconSize));
-    if (is_zarchive_mode_) {
-      widgets.icon->SetBitmap(
-          DecodePngIcon((*zarchive_entries_)[i].icon_data_, kIconSize));
-    } else {
-      widgets.icon->SetBitmap(
-          DecodePngIcon((*content_entries_)[i].icon_data_, kIconSize));
-    }
+    widgets.icon->SetBitmap(
+        DecodePngIcon((*content_entries_)[i].icon_data_, kIconSize));
     row_sizer->Add(widgets.icon, 0, wxALL, 6);
 
     auto* col = new wxBoxSizer(wxVERTICAL);
@@ -123,12 +93,8 @@ void InstallProgressDialog::Build() {
         new wxHyperlinkCtrl(row_box, wxID_ANY, " ", " ", wxDefaultPosition,
                             wxDefaultSize, wxHL_ALIGN_LEFT);
     widgets.path_link->Bind(wxEVT_HYPERLINK, [this, i](wxHyperlinkEvent&) {
-      std::filesystem::path target;
-      if (is_zarchive_mode_) {
-        target = (*zarchive_entries_)[i].data_installation_path_.parent_path();
-      } else {
-        target = content_root_ / (*content_entries_)[i].data_installation_path_;
-      }
+      std::filesystem::path target =
+          content_root_ / (*content_entries_)[i].data_installation_path_;
       std::thread(xe::LaunchFileExplorer, std::move(target)).detach();
     });
     auto* path_row = new wxBoxSizer(wxHORIZONTAL);
@@ -176,26 +142,9 @@ void InstallProgressDialog::Tick() {
     std::string error;
     uint64_t total = 0;
     uint64_t current = 0;
-    bool cancelled = false;
     wxString type_text;
 
-    if (is_zarchive_mode_) {
-      auto& entry = (*zarchive_entries_)[i];
-      {
-        std::lock_guard<std::mutex> lock(*entry.mutex_);
-        name = entry.name_;
-        dest = entry.data_installation_path_;
-        state = entry.installation_state_;
-        result = entry.installation_result_;
-        error = entry.installation_error_message_;
-      }
-      total = entry.content_size_.load();
-      current = entry.currently_installed_size_.load();
-      cancelled = entry.cancelled_.load();
-      type_text = entry.operation_ == Emulator::ZarchiveOperation::Create
-                      ? _("Operation: Create Archive")
-                      : _("Operation: Extract Archive");
-    } else {
+    {
       auto& entry = (*content_entries_)[i];
       XContentType content_type{};
       {
@@ -209,7 +158,6 @@ void InstallProgressDialog::Tick() {
       }
       total = entry.content_size_.load();
       current = entry.currently_installed_size_.load();
-      cancelled = entry.cancelled_.load();
       if (content_type != XContentType::kInvalid) {
         auto it = XContentTypeMap.find(content_type);
         if (it != XContentTypeMap.end()) {
@@ -222,12 +170,7 @@ void InstallProgressDialog::Tick() {
 
     widgets.name->SetLabel(
         wxString::Format(_("Name: %s"), wxString::FromUTF8(name)));
-    wxString path_label = is_zarchive_mode_
-                              ? (zarchive_entries_->at(i).operation_ ==
-                                         Emulator::ZarchiveOperation::Create
-                                     ? _("Output: ")
-                                     : _("Extract To: "))
-                              : _("Installation Path: ");
+    wxString path_label = _("Installation Path: ");
     std::string dest_str = xe::path_to_utf8(dest);
     widgets.path_prefix->SetLabel(path_label);
     widgets.path_link->SetLabel(wxString::FromUTF8(dest_str));
@@ -267,27 +210,15 @@ void InstallProgressDialog::Tick() {
       std::lock_guard<std::mutex> lock(*e.mutex_);
       return e.installation_state_ == Emulator::InstallState::installed;
     };
-    if (is_zarchive_mode_) {
-      for (auto& e : *zarchive_entries_) {
-        if (is_installed(e)) {
-          ++success_count;
-        }
-      }
-    } else {
-      for (auto& e : *content_entries_) {
-        if (is_installed(e)) {
-          ++success_count;
-        }
+    for (auto& e : *content_entries_) {
+      if (is_installed(e)) {
+        ++success_count;
       }
     }
     if (success_count > 0) {
-      wxMessageBox(
-          is_zarchive_mode_
-              ? wxString::Format(_("Successfully completed %d operation(s)."),
-                                 success_count)
-              : wxString::Format(_("Successfully installed %d package(s)."),
-                                 success_count),
-          _("Complete"), wxOK | wxICON_INFORMATION, this);
+      wxMessageBox(wxString::Format(_("Successfully installed %d package(s)."),
+                                    success_count),
+                   _("Complete"), wxOK | wxICON_INFORMATION, this);
     }
   }
   was_done_ = done;
@@ -306,14 +237,8 @@ void InstallProgressDialog::OnCancel() {
       e.cancelled_.store(true);
     }
   };
-  if (is_zarchive_mode_) {
-    for (auto& e : *zarchive_entries_) {
-      cancel_if_active(e);
-    }
-  } else {
-    for (auto& e : *content_entries_) {
-      cancel_if_active(e);
-    }
+  for (auto& e : *content_entries_) {
+    cancel_if_active(e);
   }
   cancel_button_->Disable();
   cancel_button_->SetLabel(_("Cancelling..."));
@@ -339,17 +264,9 @@ bool InstallProgressDialog::IsEverythingDone() const {
     }
     return false;
   };
-  if (is_zarchive_mode_) {
-    for (auto& e : *zarchive_entries_) {
-      if (!entry_done(e)) {
-        return false;
-      }
-    }
-  } else {
-    for (auto& e : *content_entries_) {
-      if (!entry_done(e)) {
-        return false;
-      }
+  for (auto& e : *content_entries_) {
+    if (!entry_done(e)) {
+      return false;
     }
   }
   return true;
