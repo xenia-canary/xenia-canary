@@ -42,7 +42,6 @@
 #include "xenia/ui/imgui_debug_dialog.h"
 #include "xenia/ui/imgui_performance_dialog.h"
 #include "xenia/ui/imgui_postprocessing_dialog.h"
-#include "xenia/ui/imgui_xmp_dialog.h"
 #include "xenia/ui/profile_dialogs.h"
 #include "xenia/vfs/devices/disc_zarchive_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
@@ -1184,9 +1183,6 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
   context_menu->AddAction("Profiles Menu",
                           [this]() { ToggleProfilesConfigDialog(); });
 
-  context_menu->AddAction("XMP Audio Player",
-                          [this]() { ToggleXMPConfigDialog(); });
-
   context_menu->AddSeparator();
 
   context_menu->AddAction("Return to Game List", [this, input_sys]() {
@@ -2177,18 +2173,6 @@ void EmulatorWindow::OpenConfigDialog(const std::string& category) {
   dlg.ShowModal();
 }
 
-void EmulatorWindow::ToggleXMPConfigDialog() {
-  if (xmp_dialog_) {
-    xmp_dialog_->CloseDialog();
-    xmp_dialog_ = nullptr;
-    return;
-  }
-
-  xmp_dialog_ =
-      new ui::ImGuiXmpDialog(imgui_drawer(), this, emulator()->input_system());
-  xmp_dialog_->SetOnCloseCallback([this]() { xmp_dialog_ = nullptr; });
-}
-
 void EmulatorWindow::ToggleControllerVibration() {
   auto input_sys = emulator()->input_system();
   if (input_sys) {
@@ -3111,10 +3095,6 @@ void EmulatorWindow::ClearDialogs() {
   if (debug_dialog_) {
     debug_dialog_->CloseDialog();
     debug_dialog_ = nullptr;
-  }
-  if (xmp_dialog_) {
-    xmp_dialog_->CloseDialog();
-    xmp_dialog_ = nullptr;
   }
   if (profile_dialog_) {
     profile_dialog_->CloseDialog();
