@@ -160,19 +160,6 @@ class UserProfile {
   // Public accessor for dashboard GPD (for getting title paths)
   const GpdInfoProfile& dashboard_gpd() const { return dashboard_gpd_; }
 
-  // Helper for setting disc labels
-  void SetDiscLabel(uint32_t title_id, const std::filesystem::path& path,
-                    const std::string& label) {
-    dashboard_gpd_.SetDiscLabel(title_id, path, label);
-    WriteGpd(kDashboardID);
-  }
-
-  // Helper for removing disc paths
-  void RemoveDiscPath(uint32_t title_id, const std::filesystem::path& path) {
-    dashboard_gpd_.RemoveDiscPath(title_id, path);
-    WriteGpd(kDashboardID);
-  }
-
   // Public accessor for getting title icon from title GPD
   std::vector<uint8_t> GetTitleIcon(uint32_t title_id) const {
     const GpdInfo* gpd = GetGpd(title_id);

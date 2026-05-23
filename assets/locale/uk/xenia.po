@@ -5,12 +5,14 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: xenia-edge\n"
+"POT-Creation-Date: 2026-05-23 04:33+0000\n"
+"Language: uk\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Language: uk\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: src/xenia/ui/game_list_panel_wx.cc:501
+#: src/xenia/ui/game_list_panel_wx.cc:596
 msgid ""
 "\n"
 "\n"
@@ -20,96 +22,133 @@ msgstr ""
 "\n"
 "Знайти файл вручну?"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1012
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:55
+msgid "   %zu already installed"
+msgstr "   уже встановлено: %zu"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1240
 msgid " (%zu discs)"
 msgstr " (дисків: %zu)"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:252
+#: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
 
-#: src/xenia/ui/patches_dialog_wx.cc:36
+#: src/xenia/ui/game_config_dialog_wx.cc:285
+msgid "%08X - Config Overrides"
+msgstr ""
+
+#: src/xenia/ui/patches_dialog_wx.cc:37
 msgid "%s (%08X)"
 msgstr "%s (%08X)"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/game_config_dialog_wx.cc:266
 msgid "%s (%08X) - Config Overrides"
 msgstr "%s (%08X) — перевизначення конфігурації"
 
-#: src/xenia/app/emulator_window.cc:1683
+#: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
 msgstr "%s (Слот %d)"
 
-#: src/xenia/app/emulator_window.cc:748
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:52
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr ""
+"переглянуто каталогів: %zu   перевірено файлів: %zu   знайдено ігор: %zu"
+
+#: src/xenia/app/emulator_window.cc:895
 msgid "&About..."
 msgstr "Про програму(&A)…"
 
-#: src/xenia/app/emulator_window.cc:693
+#: src/xenia/app/emulator_window.cc:794
+msgid "&Add Games..."
+msgstr "Додати ігри(&A)…"
+
+#: src/xenia/app/emulator_window.cc:864
+msgid "&Audio"
+msgstr "Звук(&A)"
+
+#: src/xenia/app/emulator_window.cc:824
 msgid "&Configuration"
 msgstr "Налаштування(&C)"
 
-#: src/xenia/app/emulator_window.cc:660
+#: src/xenia/app/emulator_window.cc:786
 msgid "&File"
 msgstr "Файл(&F)"
 
-#: src/xenia/app/emulator_window.cc:737
+#: src/xenia/app/emulator_window.cc:884
 msgid "&Help"
 msgstr "Довідка(&H)"
 
-#: src/xenia/app/emulator_window.cc:730
+#: src/xenia/app/emulator_window.cc:877
 msgid "&Install Content..."
 msgstr "Встановити вміст(&I)…"
 
-#: src/xenia/app/emulator_window.cc:695
+#: src/xenia/app/emulator_window.cc:826
 msgid "&Main"
 msgstr "Головне(&M)"
 
-#: src/xenia/app/emulator_window.cc:663
+#: src/xenia/app/emulator_window.cc:789
 msgid "&Open..."
 msgstr "Відкрити(&O)…"
 
-#: src/xenia/app/emulator_window.cc:685
+#: src/xenia/app/emulator_window.cc:816
 msgid "&Profile"
 msgstr "Профіль(&P)"
 
-#: src/xenia/app/emulator_window.cc:668
+#: src/xenia/app/emulator_window.cc:799
 msgid "&Stop Game"
 msgstr "Зупинити гру(&S)"
 
-#: src/xenia/app/emulator_window.cc:727
+#: src/xenia/app/emulator_window.cc:874
 msgid "&Tools"
 msgstr "Інструменти(&T)"
 
-#: src/xenia/app/emulator_window.cc:716
+#: src/xenia/app/emulator_window.cc:853
 msgid "&View"
 msgstr "Вигляд(&V)"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:197
+#: src/xenia/app/emulator_window.cc:867
+msgid "&Volume"
+msgstr "Гучність(&V)"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:276
+msgid "(Installed) "
+msgstr "(установлено) "
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:62
+msgid "(unknown title)"
+msgstr "(невідома гра)"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:209
 msgid "50Hz"
 msgstr "50 Гц"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:198
+#: src/xenia/ui/quick_settings_dialog_wx.cc:210
 msgid "60Hz"
 msgstr "60 Гц"
 
-#: src/xenia/ui/game_list_panel_wx.cc:263
+#: src/xenia/ui/game_list_panel_wx.cc:304
 msgid "Achievements"
 msgstr "Досягнення"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:178
-#: src/xenia/ui/game_config_dialog_wx.cc:430
+#: src/xenia/app/emulator_window.cc:2257
+msgid "Add Games"
+msgstr "Додати ігри"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:187
+#: src/xenia/ui/game_config_dialog_wx.cc:468
 msgid "Add Override"
 msgstr "Додати перевизначення"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:290
+#: src/xenia/app/emulator_window.cc:2258
+msgid "Add games"
+msgstr "Додати ігри"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:307
 msgid "Add..."
 msgstr "Додати…"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:321
+#: src/xenia/ui/quick_settings_dialog_wx.cc:327
 msgid "Advanced..."
 msgstr "Розширені…"
 
@@ -121,7 +160,7 @@ msgstr "Албанія"
 msgid "Algeria"
 msgstr "Алжир"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:277
+#: src/xenia/ui/quick_settings_dialog_wx.cc:283
 msgid "All"
 msgstr "Усі"
 
@@ -129,7 +168,7 @@ msgstr "Усі"
 msgid "All Files"
 msgstr "Усі файли"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:430
+#: src/xenia/ui/game_config_dialog_wx.cc:468
 msgid "All cvars are already overridden."
 msgstr "Усі cvar уже перевизначено."
 
@@ -141,11 +180,11 @@ msgstr "Аргентина"
 msgid "Armenia"
 msgstr "Вірменія"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:241
+#: src/xenia/ui/quick_settings_dialog_wx.cc:252
 msgid "Audio"
 msgstr "Звук"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:247
+#: src/xenia/ui/quick_settings_dialog_wx.cc:258
 msgid "Audio Backend:"
 msgstr "Бекенд звуку:"
 
@@ -185,8 +224,8 @@ msgstr "Болівія"
 msgid "Brazil"
 msgstr "Бразилія"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:277
-#: src/xenia/ui/game_config_dialog_wx.cc:94
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:306
+#: src/xenia/ui/game_config_dialog_wx.cc:98
 msgid "Browse..."
 msgstr "Огляд…"
 
@@ -202,22 +241,28 @@ msgstr "Болгарія"
 msgid "Canada"
 msgstr "Канада"
 
-#: src/xenia/ui/game_list_panel_wx.cc:835
+#: src/xenia/ui/game_list_panel_wx.cc:1043
 msgid "Canary"
 msgstr "Canary"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:296
-#: src/xenia/ui/install_progress_dialog_wx.cc:167
-#: src/xenia/ui/profile_editor_dialog_wx.cc:514
-#: src/xenia/ui/quick_settings_dialog_wx.cc:330
+#: src/xenia/ui/game_config_dialog_wx.cc:313
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:193
+#: src/xenia/ui/install_progress_dialog_wx.cc:123
+#: src/xenia/ui/profile_editor_dialog_wx.cc:536
+#: src/xenia/ui/quick_settings_dialog_wx.cc:336
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:321
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:421
+msgid "Cancelled."
+msgstr "Скасовано."
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:454
+#: src/xenia/ui/install_progress_dialog_wx.cc:244
 msgid "Cancelling..."
 msgstr "Скасування…"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:369
+#: src/xenia/ui/profile_editor_dialog_wx.cc:391
 msgid "Change Icon..."
 msgstr "Змінити значок…"
 
@@ -229,13 +274,14 @@ msgstr "Чилі"
 msgid "China"
 msgstr "Китай"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:387
+#: src/xenia/ui/profile_editor_dialog_wx.cc:409
 msgid "Clear Icon"
 msgstr "Очистити значок"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:201
-#: src/xenia/ui/game_list_panel_wx.cc:566
-#: src/xenia/ui/install_progress_dialog_wx.cc:171
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:228
+#: src/xenia/ui/game_list_panel_wx.cc:730
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:206
+#: src/xenia/ui/install_progress_dialog_wx.cc:127
 msgid "Close"
 msgstr "Закрити"
 
@@ -243,28 +289,28 @@ msgstr "Закрити"
 msgid "Colombia"
 msgstr "Колумбія"
 
-#: src/xenia/ui/game_list_panel_wx.cc:855
+#: src/xenia/ui/game_list_panel_wx.cc:1063
 msgid "Compatibility"
 msgstr "Сумісність"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:296
+#: src/xenia/ui/install_progress_dialog_wx.cc:221
 msgid "Complete"
 msgstr "Завершено"
 
-#: src/xenia/ui/game_list_panel_wx.cc:820
+#: src/xenia/ui/game_list_panel_wx.cc:1028
 msgid "Config Overrides..."
 msgstr "Перевизначення конфігурації…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:95
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:380
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:104
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
 msgstr "Менеджер конфігурації"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:379
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:418
 msgid "Configuration Manager *"
 msgstr "Менеджер конфігурації *"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:227
+#: src/xenia/ui/install_progress_dialog_wx.cc:165
 msgid "Content Type: %s"
 msgstr "Тип вмісту: %s"
 
@@ -272,23 +318,28 @@ msgstr "Тип вмісту: %s"
 msgid "Costa Rica"
 msgstr "Коста-Рика"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+#: src/xenia/ui/profile_editor_dialog_wx.cc:602
 msgid "Could not decode the selected image."
 msgstr "Не вдалося декодувати вибране зображення."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:448
-#: src/xenia/ui/quick_settings_dialog_wx.cc:311
+#: src/xenia/ui/profile_editor_dialog_wx.cc:470
+#: src/xenia/ui/quick_settings_dialog_wx.cc:317
 msgid "Country:"
 msgstr "Країна:"
 
-#: src/xenia/app/emulator_window.cc:1759
+#: src/xenia/app/emulator_window.cc:2073
 msgid "Create new..."
 msgstr "Створити новий…"
 
-#: src/xenia/app/emulator_window.cc:1763
-#: src/xenia/app/emulator_window.cc:1771
+#: src/xenia/app/emulator_window.cc:2077 src/xenia/app/emulator_window.cc:2089
+#: src/xenia/app/emulator_window.cc:2214 src/xenia/app/emulator_window.cc:2221
+#: src/xenia/app/emulator_window.cc:2233
 msgid "Create profile"
 msgstr "Створення профілю"
+
+#: src/xenia/app/emulator_window.cc:2213
+msgid "Create profile && migrate data"
+msgstr "Створити профіль і перенести дані"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:106
 msgid "Croatia"
@@ -298,33 +349,39 @@ msgstr "Хорватія"
 msgid "Czech Republic"
 msgstr "Чеська Республіка"
 
-#: src/xenia/ui/game_list_panel_wx.cc:782
+#: src/xenia/ui/game_list_panel_wx.cc:990
 msgid "DLC"
 msgstr "DLC"
 
-#: src/xenia/ui/game_list_panel_wx.cc:617
+#: src/xenia/ui/game_list_panel_wx.cc:690
+#: src/xenia/ui/game_list_panel_wx.cc:693
 msgid "Default"
 msgstr "За замовчуванням"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:263
+msgid "Default Volume:"
+msgstr "Гучність за замовчуванням:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
 msgstr "Данія"
 
-#: src/xenia/ui/game_list_panel_wx.cc:550
-#: src/xenia/ui/game_list_panel_wx.cc:719
+#: src/xenia/ui/game_list_panel_wx.cc:674
+#: src/xenia/ui/game_list_panel_wx.cc:710
+#: src/xenia/ui/game_list_panel_wx.cc:927
 msgid "Disc %zu"
 msgstr "Диск %zu"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:194
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:221
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:534
 msgid "Discard Changes"
 msgstr "Скасувати зміни"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:534
 msgid "Discard all unsaved changes?"
 msgstr "Скасувати всі незбережені зміни?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:291
+#: src/xenia/ui/quick_settings_dialog_wx.cc:297
 msgid "Discord Rich Presence:"
 msgstr "Discord Rich Presence:"
 
@@ -332,7 +389,7 @@ msgstr "Discord Rich Presence:"
 msgid "Dominican Republic"
 msgstr "Домініканська Республіка"
 
-#: src/xenia/app/emulator_window.cc:678
+#: src/xenia/app/emulator_window.cc:809
 msgid "E&xit"
 msgstr "Вихід(&X)"
 
@@ -340,15 +397,15 @@ msgstr "Вихід(&X)"
 msgid "Ecuador"
 msgstr "Еквадор"
 
-#: src/xenia/ui/game_list_panel_wx.cc:536
+#: src/xenia/ui/game_list_panel_wx.cc:648
 msgid "Edit Discs"
 msgstr "Редагування дисків"
 
-#: src/xenia/ui/game_list_panel_wx.cc:729
+#: src/xenia/ui/game_list_panel_wx.cc:937
 msgid "Edit Discs..."
 msgstr "Редагувати диски…"
 
-#: src/xenia/app/emulator_window.cc:1739
+#: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "Редагувати…"
 
@@ -360,11 +417,11 @@ msgstr "Єгипет"
 msgid "El Salvador"
 msgstr "Сальвадор"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:216
+#: src/xenia/ui/quick_settings_dialog_wx.cc:227
 msgid "Emulated Display Refresh Rate:"
 msgstr "Емульована частота оновлення:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:69
+#: src/xenia/ui/quick_settings_dialog_wx.cc:79
 msgid "Emulator Settings"
 msgstr "Налаштування емулятора"
 
@@ -372,15 +429,15 @@ msgstr "Налаштування емулятора"
 msgid "English"
 msgstr "англійська"
 
-#: src/xenia/app/emulator_window.cc:1763
+#: src/xenia/app/emulator_window.cc:2076 src/xenia/app/emulator_window.cc:2220
 msgid "Enter gamertag for new profile:"
 msgstr "Введіть ґеймертеґ для нового профілю:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
+#: src/xenia/ui/game_list_panel_wx.cc:754
 msgid "Enter new label:"
 msgstr "Введіть нову мітку:"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:405
+#: src/xenia/ui/game_config_dialog_wx.cc:435
 msgid "Error"
 msgstr "Помилка"
 
@@ -388,7 +445,7 @@ msgstr "Помилка"
 msgid "Estonia"
 msgstr "Естонія"
 
-#: src/xenia/app/emulator_window.cc:1977
+#: src/xenia/app/emulator_window.cc:2421
 msgid ""
 "Experimental fork of Xenia Canary.\n"
 "\n"
@@ -398,7 +455,8 @@ msgid ""
 "Commit: %s\n"
 "Build Date: %s\n"
 "\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
+"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
+"License 1.1).\n"
 "Icons by Icons8 (https://icons8.com)."
 msgstr ""
 "Експериментальний форк Xenia Canary.\n"
@@ -409,22 +467,23 @@ msgstr ""
 "Коміт: %s\n"
 "Дата збірки: %s\n"
 "\n"
-"Шрифт інтерфейсу: Inter, автор Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
+"Шрифт інтерфейсу: Inter, автор Rasmus Andersson (https://rsms.me/inter/, SIL "
+"Open Font License 1.1).\n"
 "Значки: Icons8 (https://icons8.com)."
 
-#: src/xenia/app/emulator_window.cc:740
+#: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
 msgstr "FAQ(&Q)…"
 
-#: src/xenia/ui/patches_dialog_wx.cc:213
+#: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "Не вдалося зберегти зміни."
 
-#: src/xenia/ui/game_config_dialog_wx.cc:404
+#: src/xenia/ui/game_config_dialog_wx.cc:434
 msgid "Failed to save: %s"
 msgstr "Не вдалося зберегти: %s"
 
-#: src/xenia/ui/patches_dialog_wx.cc:202
+#: src/xenia/ui/patches_dialog_wx.cc:214
 msgid "Failed to update patch state."
 msgstr "Не вдалося оновити стан патча."
 
@@ -437,11 +496,11 @@ msgstr "Family"
 msgid "Faroe Islands"
 msgstr "Фарерські острови"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1008
+#: src/xenia/ui/game_list_panel_wx.cc:1236
 msgid "File Corrupted"
 msgstr "Файл пошкоджено"
 
-#: src/xenia/ui/game_list_panel_wx.cc:499
+#: src/xenia/ui/game_list_panel_wx.cc:594
 msgid ""
 "File not found:\n"
 "%s"
@@ -449,7 +508,7 @@ msgstr ""
 "Файл не знайдено:\n"
 "%s"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:184
+#: src/xenia/ui/game_config_dialog_wx.cc:193
 msgid "Filter cvars"
 msgstr "Фільтр cvar"
 
@@ -457,7 +516,7 @@ msgstr "Фільтр cvar"
 msgid "Finland"
 msgstr "Фінляндія"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:187
+#: src/xenia/ui/quick_settings_dialog_wx.cc:199
 msgid "Framerate Limit (0 = unlimited):"
 msgstr "Обмеження кадрів (0 = без обмеження):"
 
@@ -469,55 +528,55 @@ msgstr "Франція"
 msgid "French"
 msgstr "французька"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:275
+#: src/xenia/ui/quick_settings_dialog_wx.cc:281
 msgid "Full"
 msgstr "Повний"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:226
+#: src/xenia/ui/quick_settings_dialog_wx.cc:237
 msgid "Full Screen:"
 msgstr "Повний екран:"
 
-#: src/xenia/app/emulator_window.cc:744
+#: src/xenia/app/emulator_window.cc:891
 msgid "Game &compatibility..."
 msgstr "Сумісність ігор(&C)…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:250
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:277
 msgid "GameMode not in PATH; install to enable."
 msgstr "GameMode не знайдено в PATH; установіть для увімкнення."
 
-#: src/xenia/ui/game_list_panel_wx.cc:127
+#: src/xenia/ui/game_list_panel_wx.cc:96
 msgid "Gameplay"
 msgstr "Геймплей"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:436
+#: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"
 msgstr "Про себе:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:429
+#: src/xenia/ui/profile_editor_dialog_wx.cc:451
 msgid "Gamer Motto:"
 msgstr "Девіз:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:423
+#: src/xenia/ui/profile_editor_dialog_wx.cc:445
 msgid "Gamer Name:"
 msgstr "Ім’я гравця:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:490
+#: src/xenia/ui/profile_editor_dialog_wx.cc:512
 msgid "Gamer Zone:"
 msgstr "Зона гравця:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:266
+#: src/xenia/ui/profile_editor_dialog_wx.cc:276
 msgid "Gamercard Editor"
 msgstr "Редактор Gamercard"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:271
+#: src/xenia/ui/profile_editor_dialog_wx.cc:281
 msgid "Gamercard Editor - %s"
 msgstr "Редактор Gamercard — %s"
 
-#: src/xenia/ui/game_list_panel_wx.cc:264
+#: src/xenia/ui/game_list_panel_wx.cc:305
 msgid "Gamerscore"
 msgstr "Очки гравця"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:412
+#: src/xenia/ui/profile_editor_dialog_wx.cc:434
 msgid "Gamertag:"
 msgstr "Ґеймертеґ:"
 
@@ -537,11 +596,11 @@ msgstr "Німеччина"
 msgid "Gold"
 msgstr "Gold"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:145
+#: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Graphics"
 msgstr "Графіка"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:151
+#: src/xenia/ui/quick_settings_dialog_wx.cc:163
 msgid "Graphics Backend:"
 msgstr "Графічний бекенд:"
 
@@ -557,7 +616,7 @@ msgstr "Греція"
 msgid "Guatemala"
 msgstr "Гватемала"
 
-#: src/xenia/app/emulator_window.cc:1449
+#: src/xenia/app/emulator_window.cc:1722
 msgid "Guide"
 msgstr "Довідник"
 
@@ -577,15 +636,27 @@ msgstr "Угорщина"
 msgid "Iceland"
 msgstr "Ісландія"
 
-#: src/xenia/ui/game_list_panel_wx.cc:261
+#: src/xenia/ui/game_list_panel_wx.cc:302
 msgid "Icon"
 msgstr "Значок"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:374
+#: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "Зміна значка недоступна, поки запущено гру."
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:299
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:198
+msgid "Import"
+msgstr "Імпорт"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:431
+msgid "Import %zu New Items"
+msgstr "Імпортувати нових елементів: %zu"
+
+#: src/xenia/app/emulator_window.cc:1553
+msgid "Import failed"
+msgstr "Не вдалося імпортувати"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:305
 msgid "In-Process Title Relaunch:"
 msgstr "Перезапуск гри в процесі:"
 
@@ -597,32 +668,32 @@ msgstr "Індія"
 msgid "Indonesia"
 msgstr "Індонезія"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:240
+#: src/xenia/ui/install_progress_dialog_wx.cc:173
 msgid "Installation Path: "
 msgstr "Шлях установлення: "
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:57
+#: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "Перебіг установлення"
 
-#: src/xenia/ui/game_list_panel_wx.cc:590
+#: src/xenia/ui/game_list_panel_wx.cc:761
 msgid "Invalid Label"
 msgstr "Неприпустима мітка"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:566
-#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+#: src/xenia/ui/profile_editor_dialog_wx.cc:594
+#: src/xenia/ui/profile_editor_dialog_wx.cc:602
 msgid "Invalid file"
 msgstr "Неприпустимий файл"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:554
+#: src/xenia/ui/profile_editor_dialog_wx.cc:580
 msgid "Invalid gamertag"
 msgstr "Неприпустимий ґеймертеґ"
 
-#: src/xenia/app/emulator_window.cc:1771
+#: src/xenia/app/emulator_window.cc:2089 src/xenia/app/emulator_window.cc:2233
 msgid "Invalid gamertag."
 msgstr "Неприпустимий ґеймертеґ."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:583
+#: src/xenia/ui/profile_editor_dialog_wx.cc:611
 msgid "Invalid resolution"
 msgstr "Неприпустима роздільна здатність"
 
@@ -690,20 +761,21 @@ msgstr "Кувейт"
 msgid "Kyrgyzstan"
 msgstr "Киргизстан"
 
-#: src/xenia/ui/game_list_panel_wx.cc:618
+#: src/xenia/ui/game_list_panel_wx.cc:691
+#: src/xenia/ui/game_list_panel_wx.cc:695
 msgid "Label"
 msgstr "Мітка"
 
-#: src/xenia/ui/game_list_panel_wx.cc:590
+#: src/xenia/ui/game_list_panel_wx.cc:761
 msgid "Label cannot contain '::'."
 msgstr "Мітка не може містити '::'."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:442
-#: src/xenia/ui/quick_settings_dialog_wx.cc:305
+#: src/xenia/ui/profile_editor_dialog_wx.cc:464
+#: src/xenia/ui/quick_settings_dialog_wx.cc:311
 msgid "Language:"
 msgstr "Мова:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:265
+#: src/xenia/ui/game_list_panel_wx.cc:306
 msgid "Last Played"
 msgstr "Останній запуск"
 
@@ -711,8 +783,8 @@ msgstr "Останній запуск"
 msgid "Latvia"
 msgstr "Латвія"
 
-#: src/xenia/ui/game_list_panel_wx.cc:728
-#: src/xenia/ui/game_list_panel_wx.cc:735
+#: src/xenia/ui/game_list_panel_wx.cc:936
+#: src/xenia/ui/game_list_panel_wx.cc:943
 msgid "Launch"
 msgstr "Запустити"
 
@@ -720,7 +792,7 @@ msgstr "Запустити"
 msgid "Lebanon"
 msgstr "Ліван"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:231
+#: src/xenia/ui/quick_settings_dialog_wx.cc:242
 msgid "Letterbox:"
 msgstr "Леттербокс:"
 
@@ -728,7 +800,7 @@ msgstr "Леттербокс:"
 msgid "Libya"
 msgstr "Лівія"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:286
+#: src/xenia/ui/quick_settings_dialog_wx.cc:292
 msgid "License:"
 msgstr "Ліцензія:"
 
@@ -740,19 +812,23 @@ msgstr "Ліхтенштейн"
 msgid "Lithuania"
 msgstr "Литва"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:457
+#: src/xenia/ui/profile_editor_dialog_wx.cc:479
 msgid "Live Enabled"
 msgstr "Live увімкнено"
 
-#: src/xenia/ui/game_list_panel_wx.cc:129
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:182
+msgid "Loading titles..."
+msgstr "Завантаження ігор…"
+
+#: src/xenia/ui/game_list_panel_wx.cc:98
 msgid "Loads"
 msgstr "Завантажується"
 
-#: src/xenia/app/emulator_window.cc:1691
+#: src/xenia/app/emulator_window.cc:2003
 msgid "Login"
 msgstr "Увійти"
 
-#: src/xenia/app/emulator_window.cc:1719
+#: src/xenia/app/emulator_window.cc:2031
 msgid "Logout"
 msgstr "Вийти"
 
@@ -776,21 +852,29 @@ msgstr "Малайзія"
 msgid "Maldives"
 msgstr "Мальдіви"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:158
-msgid "Manage emulator configuration. Changes are saved to config.toml; some settings need a relaunch to take effect."
-msgstr "Керування налаштуваннями емулятора. Зміни зберігаються у config.toml; деякі параметри потребують перезапуску."
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:181
+msgid ""
+"Manage emulator configuration. Changes are saved to config.toml; some "
+"settings need a relaunch to take effect."
+msgstr ""
+"Керування налаштуваннями емулятора. Зміни зберігаються у config.toml; деякі "
+"параметри потребують перезапуску."
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:246
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:273
 msgid "MangoHUD not in PATH; install to enable."
 msgstr "MangoHUD не знайдено в PATH; установіть для увімкнення."
 
-#: src/xenia/ui/game_list_panel_wx.cc:836
+#: src/xenia/ui/game_list_panel_wx.cc:1044
 msgid "Master"
 msgstr "Master"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:136
 msgid "Mexico"
 msgstr "Мексика"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:98
+msgid "Module: %s"
+msgstr "Модуль: %s"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:131
 msgid "Monaco"
@@ -804,11 +888,11 @@ msgstr "Монголія"
 msgid "Morocco"
 msgstr "Марокко"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:234
+#: src/xenia/ui/install_progress_dialog_wx.cc:172
 msgid "Name: %s"
 msgstr "Назва: %s"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:163
+#: src/xenia/ui/quick_settings_dialog_wx.cc:175
 msgid "Native"
 msgstr "Рідне"
 
@@ -824,13 +908,17 @@ msgstr "Нова Зеландія"
 msgid "Nicaragua"
 msgstr "Нікарагуа"
 
-#: src/xenia/ui/game_list_panel_wx.cc:498
+#: src/xenia/app/emulator_window.cc:2211
+msgid "No Profiles Found"
+msgstr "Профілі не знайдено"
+
+#: src/xenia/ui/game_list_panel_wx.cc:593
 msgid "No file path is set for this title."
 msgstr "Для цієї гри не задано шлях до файлу."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:178
 #: src/xenia/ui/profile_editor_dialog_wx.cc:184
-#: src/xenia/ui/quick_settings_dialog_wx.cc:273
+#: src/xenia/ui/quick_settings_dialog_wx.cc:279
 msgid "None"
 msgstr "Немає"
 
@@ -838,15 +926,7 @@ msgstr "Немає"
 msgid "Norway"
 msgstr "Норвегія"
 
-#: src/xenia/ui/game_list_panel_wx.cc:113
-msgid ""
-"Not\n"
-"logged in"
-msgstr ""
-"Не виконано\n"
-"вхід"
-
-#: src/xenia/ui/game_list_panel_wx.cc:118
+#: src/xenia/ui/game_list_panel_wx.cc:278
 msgid ""
 "Not\n"
 "played"
@@ -854,49 +934,51 @@ msgstr ""
 "Ще не\n"
 "грали"
 
-#: src/xenia/app/emulator_window.cc:815
-#: src/xenia/app/emulator_window.cc:1850
+#: src/xenia/app/emulator_window.cc:977 src/xenia/app/emulator_window.cc:2182
 msgid "Not logged in"
 msgstr "Не виконано вхід"
+
+#: src/xenia/app/emulator_window.cc:2215 src/xenia/app/emulator_window.cc:2258
+msgid "Not now"
+msgstr "Не зараз"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:142
 msgid "Oman"
 msgstr "Оман"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:478
+#: src/xenia/ui/profile_editor_dialog_wx.cc:500
 msgid "Online Domain:"
 msgstr "Мережевий домен:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:454
+#: src/xenia/ui/profile_editor_dialog_wx.cc:476
 msgid "Online Profile Settings"
 msgstr "Налаштування мережевого профілю"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:473
+#: src/xenia/ui/profile_editor_dialog_wx.cc:495
 msgid "Online XUID:"
 msgstr "Мережевий XUID:"
 
-#: src/xenia/app/emulator_window.cc:803
+#: src/xenia/app/emulator_window.cc:950
 msgid "Open"
 msgstr "Відкрити"
 
-#: src/xenia/app/emulator_window.cc:804
-#: src/xenia/app/emulator_window.cc:1443
+#: src/xenia/app/emulator_window.cc:951 src/xenia/app/emulator_window.cc:1716
 msgid "Open a title"
 msgstr "Відкрити гру"
 
-#: src/xenia/ui/game_list_panel_wx.cc:741
+#: src/xenia/ui/game_list_panel_wx.cc:949
 msgid "Open containing folder"
 msgstr "Відкрити теку з файлом"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:267
+#: src/xenia/ui/quick_settings_dialog_wx.cc:273
 msgid "Other"
 msgstr "Інше"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:560
+#: src/xenia/ui/profile_editor_dialog_wx.cc:586
 msgid "PNG Images (*.png)|*.png|All Files (*.*)|*.*"
 msgstr "Зображення PNG (*.png)|*.png|Усі файли (*.*)|*.*"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:380
+#: src/xenia/ui/profile_editor_dialog_wx.cc:402
 msgid "PNG, 64x64 or 32x32. Refresh after re-login."
 msgstr "PNG, 64x64 або 32x32. Оновиться після повторного входу."
 
@@ -912,16 +994,17 @@ msgstr "Панама"
 msgid "Paraguay"
 msgstr "Парагвай"
 
-#: src/xenia/ui/patches_dialog_wx.cc:104
+#: src/xenia/ui/patches_dialog_wx.cc:112
 msgid "Patch #%zu"
 msgstr "Патч №%zu"
 
-#: src/xenia/ui/game_list_panel_wx.cc:792
-#: src/xenia/ui/game_list_panel_wx.cc:817
+#: src/xenia/ui/game_list_panel_wx.cc:1000
+#: src/xenia/ui/game_list_panel_wx.cc:1025
 msgid "Patches"
 msgstr "Патчі"
 
-#: src/xenia/ui/game_list_panel_wx.cc:619
+#: src/xenia/ui/game_list_panel_wx.cc:692
+#: src/xenia/ui/game_list_panel_wx.cc:697
 msgid "Path"
 msgstr "Шлях"
 
@@ -933,7 +1016,7 @@ msgstr "Перу"
 msgid "Philippines"
 msgstr "Філіппіни"
 
-#: src/xenia/ui/game_list_panel_wx.cc:125
+#: src/xenia/ui/game_list_panel_wx.cc:94
 msgid "Playable"
 msgstr "Грабельна"
 
@@ -957,22 +1040,25 @@ msgstr "португальська"
 msgid "Pro"
 msgstr "Pro"
 
-#: src/xenia/app/emulator_window.cc:818
-#: src/xenia/app/emulator_window.cc:819
+#: src/xenia/app/emulator_window.cc:980 src/xenia/app/emulator_window.cc:981
 msgid "Profile"
 msgstr "Профіль"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:358
+#: src/xenia/ui/profile_editor_dialog_wx.cc:380
 msgid "Profile Settings"
 msgstr "Налаштування профілю"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:580
+#: src/xenia/ui/profile_editor_dialog_wx.cc:608
 msgid "Profile icon must be 64x64 or 32x32. Selected image is %dx%d."
 msgstr "Значок профілю має бути 64x64 або 32x32. Вибране зображення: %dx%d."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:377
+#: src/xenia/ui/profile_editor_dialog_wx.cc:399
 msgid "Profile must be signed in to change the icon."
 msgstr "Щоб змінити значок, профіль має бути в мережі."
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:94
+msgid "Publisher: %s"
+msgstr "Видавець: %s"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:148
 msgid "Puerto Rico"
@@ -986,65 +1072,65 @@ msgstr "Катар"
 msgid "Recreation"
 msgstr "Recreation"
 
-#: src/xenia/ui/game_list_panel_wx.cc:565
+#: src/xenia/ui/game_list_panel_wx.cc:729
 msgid "Remove"
 msgstr "Видалити"
 
-#: src/xenia/ui/game_list_panel_wx.cc:867
+#: src/xenia/ui/game_list_panel_wx.cc:1075
 msgid ""
 "Remove %s from the list?\n"
 "\n"
-"This only clears it from the dashboard records; game files on disk are kept."
+"This only removes it from the list in Xenia; game files on disk are kept."
 msgstr ""
 "Видалити %s зі списку?\n"
 "\n"
-"Це лише прибирає запис з панелі; файли гри на диску залишаються."
+"Це лише видалить його зі списку в Xenia; самі ігрові файли збережуться."
 
-#: src/xenia/ui/game_list_panel_wx.cc:609
+#: src/xenia/ui/game_list_panel_wx.cc:790
 msgid "Remove '%s' from the disc list?"
 msgstr "Видалити '%s' зі списку дисків?"
 
-#: src/xenia/ui/game_list_panel_wx.cc:610
+#: src/xenia/ui/game_list_panel_wx.cc:791
 msgid "Remove Disc"
 msgstr "Видалення диска"
 
-#: src/xenia/ui/game_list_panel_wx.cc:858
-#: src/xenia/ui/game_list_panel_wx.cc:870
+#: src/xenia/ui/game_list_panel_wx.cc:1066
+#: src/xenia/ui/game_list_panel_wx.cc:1078
 msgid "Remove from list"
 msgstr "Видалити зі списку"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:327
+#: src/xenia/ui/game_config_dialog_wx.cc:346
 msgid "Remove this override"
 msgstr "Видалити це перевизначення"
 
-#: src/xenia/ui/game_list_panel_wx.cc:681
+#: src/xenia/ui/game_list_panel_wx.cc:754
 msgid "Rename Label"
 msgstr "Перейменування мітки"
 
-#: src/xenia/ui/game_list_panel_wx.cc:655
+#: src/xenia/ui/game_list_panel_wx.cc:728
 msgid "Rename Label..."
 msgstr "Перейменувати мітку…"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:157
+#: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
 msgstr "Рендеринг:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:544
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:434
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/quick_settings_dialog_wx.cc:584
 msgid "Reset all settings to their default values?"
 msgstr "Скинути всі налаштування до типових значень?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:323
+#: src/xenia/ui/quick_settings_dialog_wx.cc:329
 msgid "Reset to Default"
 msgstr "Скинути до типового"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:197
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:435
-#: src/xenia/ui/quick_settings_dialog_wx.cc:545
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:224
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:482
+#: src/xenia/ui/quick_settings_dialog_wx.cc:585
 msgid "Reset to Defaults"
 msgstr "Скинути до типових"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:173
+#: src/xenia/ui/quick_settings_dialog_wx.cc:185
 msgid "Resolution Scale:"
 msgstr "Масштаб роздільної здатності:"
 
@@ -1064,62 +1150,74 @@ msgstr "Російська Федерація"
 msgid "Saudi Arabia"
 msgstr "Саудівська Аравія"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:295
-#: src/xenia/ui/profile_editor_dialog_wx.cc:512
-#: src/xenia/ui/quick_settings_dialog_wx.cc:325
+#: src/xenia/ui/game_config_dialog_wx.cc:312
+#: src/xenia/ui/profile_editor_dialog_wx.cc:534
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
 msgid "Save"
 msgstr "Зберегти"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:188
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:213
 msgid "Save Changes"
 msgstr "Зберегти зміни"
 
-#: src/xenia/ui/patches_dialog_wx.cc:222
+#: src/xenia/ui/patches_dialog_wx.cc:236
 msgid "Saved. Takes effect on next launch."
 msgstr "Збережено. Застосується при наступному запуску."
 
-#: src/xenia/ui/game_list_panel_wx.cc:773
+#: src/xenia/ui/game_list_panel_wx.cc:981
 msgid "Saves"
 msgstr "Збереження"
 
-#: src/xenia/ui/game_list_panel_wx.cc:233
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:120
+msgid "Scan for Games"
+msgstr "Сканувати ігри"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:45
+msgid "Scanning: %s"
+msgstr "Сканування: %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:457
+msgid "Search %zu games..."
+msgstr "Пошук серед %zu ігор…"
+
+#: src/xenia/ui/game_list_panel_wx.cc:248
+#: src/xenia/ui/game_list_panel_wx.cc:453
 msgid "Search games..."
 msgstr "Пошук ігор…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:283
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:291
-#: src/xenia/ui/game_config_dialog_wx.cc:105
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:313
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:323
+#: src/xenia/ui/game_config_dialog_wx.cc:110
 msgid "Select %s"
 msgstr "Вибрати %s"
 
-#: src/xenia/ui/game_list_panel_wx.cc:508
+#: src/xenia/ui/game_list_panel_wx.cc:603
 msgid "Select Content Package"
 msgstr "Вибрати пакет вмісту"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:559
+#: src/xenia/ui/profile_editor_dialog_wx.cc:585
 msgid "Select PNG image"
 msgstr "Вибрати зображення PNG"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:299
-#: src/xenia/ui/game_config_dialog_wx.cc:112
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:332
+#: src/xenia/ui/game_config_dialog_wx.cc:117
 msgid "Select directory for %s"
 msgstr "Вибрати теку для %s"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:565
+#: src/xenia/ui/profile_editor_dialog_wx.cc:593
 msgid "Selected file is not a valid PNG image."
 msgstr "Вибраний файл не є коректним PNG-зображенням."
 
-#: src/xenia/app/emulator_window.cc:808
-#: src/xenia/app/emulator_window.cc:809
-#: src/xenia/app/emulator_window.cc:1449
+#: src/xenia/app/emulator_window.cc:955 src/xenia/app/emulator_window.cc:956
+#: src/xenia/app/emulator_window.cc:1722
 msgid "Settings"
 msgstr "Налаштування"
 
-#: src/xenia/app/emulator_window.cc:719
+#: src/xenia/app/emulator_window.cc:856
 msgid "Show &Toolbar"
 msgstr "Показати панель інструментів(&T)"
 
-#: src/xenia/app/emulator_window.cc:674
+#: src/xenia/app/emulator_window.cc:805
 msgid "Show content directory..."
 msgstr "Показати каталог вмісту…"
 
@@ -1135,7 +1233,7 @@ msgstr "китайська (спрощена)"
 msgid "Singapore"
 msgstr "Сингапур"
 
-#: src/xenia/app/emulator_window.cc:1695
+#: src/xenia/app/emulator_window.cc:2007
 msgid "Slot %d"
 msgstr "Слот %d"
 
@@ -1159,29 +1257,37 @@ msgstr "Іспанія"
 msgid "Spanish"
 msgstr "іспанська"
 
-#: src/xenia/ui/game_list_panel_wx.cc:260
+#: src/xenia/ui/game_list_panel_wx.cc:301
 msgid "Status"
 msgstr "Стан"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:248
+#: src/xenia/ui/install_progress_dialog_wx.cc:181
 msgid "Status: %s"
 msgstr "Стан: %s"
 
-#: src/xenia/app/emulator_window.cc:1440
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:239
+msgid "Status: Installed"
+msgstr "Стан: установлено"
+
+#: src/xenia/app/emulator_window.cc:1713
 msgid "Stop the running title and return to the list"
 msgstr "Зупинити гру й повернутися до списку"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:498
+#: src/xenia/ui/profile_editor_dialog_wx.cc:520
 msgid "Subscription Tier:"
 msgstr "Рівень підписки:"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:294
+#: src/xenia/ui/install_progress_dialog_wx.cc:219
 msgid "Successfully installed %d package(s)."
 msgstr "Успішно встановлено пакетів: %d."
 
-#: src/xenia/ui/game_list_panel_wx.cc:513
-msgid "Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*.zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
-msgstr "Підтримувані файли|*;*.iso;*.xex;*.zar|Образ диска (*.iso)|*.iso|Архів диска (*.zar)|*.zar|Виконуваний файл Xbox (*.xex)|*.xex|Усі файли (*.*)|*.*"
+#: src/xenia/ui/game_list_panel_wx.cc:608
+msgid ""
+"Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*."
+"zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
+msgstr ""
+"Підтримувані файли|*;*.iso;*.xex;*.zar|Образ диска (*.iso)|*.iso|Архів диска "
+"(*.zar)|*.zar|Виконуваний файл Xbox (*.xex)|*.xex|Усі файли (*.*)|*.*"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:155
 msgid "Sweden"
@@ -1203,19 +1309,29 @@ msgstr "Тайвань"
 msgid "Thailand"
 msgstr "Таїланд"
 
-#: src/xenia/ui/game_list_panel_wx.cc:262
+#: src/xenia/app/emulator_window.cc:2209
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"Немає доступного профілю. Без профілю ви не зможете зберігати.\n"
+"\n"
+"Хочете створити профіль зараз?"
+
+#: src/xenia/ui/game_list_panel_wx.cc:303
 msgid "Title"
 msgstr "Назва"
 
-#: src/xenia/ui/game_list_panel_wx.cc:777
+#: src/xenia/ui/game_list_panel_wx.cc:985
 msgid "Title Updates"
 msgstr "Оновлення гри"
 
-#: src/xenia/ui/game_list_panel_wx.cc:502
+#: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
 msgstr "Гру не знайдено"
 
-#: src/xenia/ui/patches_dialog_wx.cc:145
+#: src/xenia/ui/patches_dialog_wx.cc:155
 msgid "Toggles take effect on next launch."
 msgstr "Зміни застосуються при наступному запуску."
 
@@ -1235,11 +1351,15 @@ msgstr "Туніс"
 msgid "Turkey"
 msgstr "Туреччина"
 
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:89
+msgid "Type: %s"
+msgstr "Тип: %s"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:167
 msgid "Ukraine"
 msgstr "Україна"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:195
+#: src/xenia/ui/quick_settings_dialog_wx.cc:207
 msgid "Uncapped"
 msgstr "Без обмежень"
 
@@ -1255,16 +1375,16 @@ msgstr "Об’єднані Арабські Емірати"
 msgid "United States"
 msgstr "Сполучені Штати"
 
-#: src/xenia/ui/game_list_panel_wx.cc:134
+#: src/xenia/ui/game_list_panel_wx.cc:103
 msgid "Unknown"
 msgstr "Невідомо"
 
-#: src/xenia/ui/game_list_panel_wx.cc:131
+#: src/xenia/ui/game_list_panel_wx.cc:100
 msgid "Unplayable"
 msgstr "Неграбельна"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:335
-#: src/xenia/ui/quick_settings_dialog_wx.cc:571
+#: src/xenia/ui/quick_settings_dialog_wx.cc:341
+#: src/xenia/ui/quick_settings_dialog_wx.cc:619
 msgid "Unsaved Changes"
 msgstr "Незбережені зміни"
 
@@ -1276,7 +1396,7 @@ msgstr "Уругвай"
 msgid "Uzbekistan"
 msgstr "Узбекистан"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:221
+#: src/xenia/ui/quick_settings_dialog_wx.cc:232
 msgid "VSync:"
 msgstr "Вертикальна синхронізація:"
 
@@ -1284,126 +1404,19 @@ msgstr "Вертикальна синхронізація:"
 msgid "Venezuela"
 msgstr "Венесуела"
 
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:102
+msgid "Version: %s"
+msgstr "Версія: %s"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:172
 msgid "Viet Nam"
 msgstr "В’єтнам"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:173
-msgid "Yemen"
-msgstr "Ємен"
+#: src/xenia/app/emulator_window.cc:969 src/xenia/app/emulator_window.cc:970
+msgid "Volume"
+msgstr "Гучність"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:334
-msgid "You have unsaved changes. Discard them?"
-msgstr "Є незбережені зміни. Скасувати їх?"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:569
-msgid "You have unsaved changes. Save them before opening advanced settings?"
-msgstr "Є незбережені зміни. Зберегти їх перед відкриттям розширених налаштувань?"
-
-#: src/xenia/ui/profile_editor_dialog_wx.cc:175
-msgid "Zimbabwe"
-msgstr "Зімбабве"
-
-#: src/xenia/ui/patches_dialog_wx.cc:126
-msgid "by %s"
-msgstr "автор: %s"
-
-#: src/xenia/ui/game_list_panel_wx.cc:864
-msgid "title %08X"
-msgstr "гра %08X"
-
-msgid "Scan for Games"
-msgstr "Сканувати ігри"
-
-msgid "Scanning: %s"
-msgstr "Сканування: %s"
-
-msgid "Loading titles..."
-msgstr "Завантаження ігор…"
-
-msgid "Cancelled."
-msgstr "Скасовано."
-
-msgid "(unknown title)"
-msgstr "(невідома гра)"
-
-msgid "Type: %s"
-msgstr "Тип: %s"
-
-msgid "Publisher: %s"
-msgstr "Видавець: %s"
-
-msgid "Module: %s"
-msgstr "Модуль: %s"
-
-msgid "Version: %s"
-msgstr "Версія: %s"
-
-msgid "Status: Installed"
-msgstr "Стан: установлено"
-
-msgid "(Installed) "
-msgstr "(установлено) "
-
-msgid "Import"
-msgstr "Імпорт"
-
-msgid "Import %zu New Items"
-msgstr "Імпортувати нових елементів: %zu"
-
-msgid "Import failed"
-msgstr "Не вдалося імпортувати"
-
-msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
-msgstr "Xenia ще не повністю ініціалізовано. Спробуйте знову після завершення запуску програми."
-
-msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
-msgstr "Немає профілю для імпорту. Створіть профіль або увійдіть до нього (меню «Профіль») і спробуйте знову."
-
-msgid "Sign in to a profile (Profile menu) to enable importing."
-msgstr "Увійдіть до профілю (меню «Профіль»), щоб увімкнути імпорт."
-
-msgid "&Add Games..."
-msgstr "Додати ігри(&A)…"
-
-msgid "   %zu already installed"
-msgstr "   уже встановлено: %zu"
-
-msgid "%zu directories scanned   %zu files probed   %zu games found"
-msgstr "переглянуто каталогів: %zu   перевірено файлів: %zu   знайдено ігор: %zu"
-
-
-#: src/xenia/app/emulator_window.cc:2153
-msgid "Add Games"
-msgstr "Додати ігри"
-
-#: src/xenia/app/emulator_window.cc:2154
-msgid "Add games"
-msgstr "Додати ігри"
-
-#: src/xenia/app/emulator_window.cc:2108
-msgid "Create profile && migrate data"
-msgstr "Створити профіль і перенести дані"
-
-#: src/xenia/app/emulator_window.cc:2105
-msgid "No Profiles Found"
-msgstr "Профілі не знайдено"
-
-#: src/xenia/app/emulator_window.cc:2154
-msgid "Not now"
-msgstr "Не зараз"
-
-#: src/xenia/app/emulator_window.cc:2103
-msgid ""
-"There is no profile available. You will not be able to save without one.\n"
-"\n"
-"Would you like to create one now?"
-msgstr ""
-"Немає доступного профілю. Без профілю ви не зможете зберігати.\n"
-"\n"
-"Хочете створити профіль зараз?"
-
-#: src/xenia/app/emulator_window.cc:2151
+#: src/xenia/app/emulator_window.cc:2255
 msgid ""
 "Would you like to add games now?\n"
 "\n"
@@ -1413,22 +1426,35 @@ msgstr ""
 "\n"
 "Ви також можете зробити це пізніше в меню Файл -> Додати ігри."
 
-#: src/xenia/ui/game_list_panel_wx.cc:217
-msgid "Search %zu games..."
-msgstr "Пошук серед %zu ігор…"
+#: src/xenia/app/emulator_window.cc:1551
+msgid ""
+"Xenia is not fully initialized yet. Try again after the app finishes "
+"starting up."
+msgstr ""
+"Xenia ще не повністю ініціалізовано. Спробуйте знову після завершення "
+"запуску програми."
 
-#: src/xenia/app/emulator_window.cc:746
-msgid "&Audio"
-msgstr "Звук(&A)"
+#: src/xenia/ui/profile_editor_dialog_wx.cc:173
+msgid "Yemen"
+msgstr "Ємен"
 
-#: src/xenia/app/emulator_window.cc:749
-msgid "&Volume"
-msgstr "Гучність(&V)"
+#: src/xenia/ui/quick_settings_dialog_wx.cc:340
+msgid "You have unsaved changes. Discard them?"
+msgstr "Є незбережені зміни. Скасувати їх?"
 
-#: src/xenia/app/emulator_window.cc:852
-msgid "Volume"
-msgstr "Гучність"
+#: src/xenia/ui/quick_settings_dialog_wx.cc:617
+msgid "You have unsaved changes. Save them before opening advanced settings?"
+msgstr ""
+"Є незбережені зміни. Зберегти їх перед відкриттям розширених налаштувань?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "Гучність за замовчуванням:"
+#: src/xenia/ui/profile_editor_dialog_wx.cc:175
+msgid "Zimbabwe"
+msgstr "Зімбабве"
+
+#: src/xenia/ui/patches_dialog_wx.cc:137
+msgid "by %s"
+msgstr "автор: %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1072
+msgid "title %08X"
+msgstr "гра %08X"

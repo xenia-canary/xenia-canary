@@ -54,8 +54,7 @@ class UserTracker {
   bool RemoveUser(uint64_t xuid);
 
   // SPA related methods
-  void UpdateSpaInfo(SpaInfo* spa_info,
-                     const std::filesystem::path& title_path = {});
+  void UpdateSpaInfo(SpaInfo* spa_info);
 
   // User related methods
   bool UnlockAchievement(uint64_t xuid, uint32_t achievement_id);
@@ -86,16 +85,7 @@ class UserTracker {
 
   // Titles
   void AddTitleToPlayedList();
-  void AddTitleToPlayedList(uint64_t xuid, const std::filesystem::path& path);
-  void AddDiscPathToAllTrackedUsers(uint32_t title_id,
-                                    const std::filesystem::path& path);
-  // Scan-time variant of the launch write path (no SpaInfo available). The
-  // optional icon_png seeds the per-title GPD so the game list can render
-  // the icon before first launch; the launch flow fills in everything else.
-  void AddDiscoveredTitleToAllTrackedUsers(
-      uint32_t title_id, const std::u16string& title_name,
-      const std::filesystem::path& path, std::span<const uint8_t> icon_png = {},
-      const std::string& disc_label = {});
+  void AddTitleToPlayedList(uint64_t xuid);
   void RemoveTitleFromPlayedList(uint64_t xuid, uint32_t title_id);
   std::vector<TitleInfo> GetPlayedTitles(uint64_t xuid) const;
   std::optional<TitleInfo> GetUserTitleInfo(uint64_t xuid,
@@ -127,12 +117,7 @@ class UserTracker {
 
   void FlushUserData(const uint64_t xuid);
 
-  // Helper to add disc path with auto-labeling to a single user profile
-  void AddDiscPathToUserProfile(UserProfile* user, uint32_t title_id,
-                                const std::filesystem::path& path);
-
   SpaInfo* spa_data_ = nullptr;
-  std::filesystem::path current_title_path_;
 
   std::set<uint64_t> tracked_xuids_;
 };

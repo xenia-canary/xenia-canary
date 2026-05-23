@@ -93,8 +93,7 @@ bool XamState::IsUserSignedIn(uint64_t xuid) const {
   return GetUserProfile(xuid) != nullptr;
 }
 
-void XamState::LoadSpaInfo(const SpaInfo* info,
-                           const std::filesystem::path& title_path) {
+void XamState::LoadSpaInfo(const SpaInfo* info) {
   if (!info) {
     return;
   }
@@ -109,7 +108,7 @@ void XamState::LoadSpaInfo(const SpaInfo* info,
 
   spa_info_ = std::make_unique<SpaInfo>(*info);
   spa_info_->Load();
-  user_tracker_->UpdateSpaInfo(spa_info_.get(), title_path);
+  user_tracker_->UpdateSpaInfo(spa_info_.get());
 }
 
 void XamState::SetContentRegisterCallback(uint32_t callback) {

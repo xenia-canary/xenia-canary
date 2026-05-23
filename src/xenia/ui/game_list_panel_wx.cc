@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 
 #include <wx/button.h>
 #include <wx/dcclient.h>
@@ -87,39 +88,6 @@ std::string FormatLastPlayed(time_t timestamp) {
   return fmt::format("{:%Y-%m-%d %H:%M}", tm);
 }
 
-// `text` may contain a single \n to split into two centered lines; translators
-// pick the break point. No newline = single centered line. `size_px` is the
-// device-pixel size; `scale` is the DPI scale factor so the bundle reports a
-// 1x logical size of `size_px / scale` instead of upscaling the source.
-wxBitmapBundle MakeTextPlaceholder(const wxString& text, int size_px,
-                                   double scale) {
-  wxBitmap bmp(size_px, size_px, 32);
-  wxMemoryDC dc(bmp);
-  dc.SetBackground(wxBrush(wxColour(60, 60, 60)));
-  dc.Clear();
-  wxFont font = dc.GetFont();
-  font.Scale(0.85f * static_cast<float>(scale));
-  dc.SetFont(font);
-  dc.SetTextForeground(wxColour(180, 180, 180));
-  wxString line1 = text.BeforeFirst('\n');
-  wxString line2 = text.AfterFirst('\n');
-  wxSize l1 = dc.GetTextExtent(line1);
-  const int gap = std::max(1, static_cast<int>(2 * scale));
-  if (line2.empty()) {
-    int y = (size_px - l1.y) / 2;
-    dc.DrawText(line1, (size_px - l1.x) / 2, y);
-  } else {
-    wxSize l2 = dc.GetTextExtent(line2);
-    int total_h = l1.y + l2.y + gap;
-    int y = (size_px - total_h) / 2;
-    dc.DrawText(line1, (size_px - l1.x) / 2, y);
-    dc.DrawText(line2, (size_px - l2.x) / 2, y + l1.y + gap);
-  }
-  dc.SelectObject(wxNullBitmap);
-  bmp.SetScaleFactor(scale);
-  return wxBitmapBundle::FromBitmap(bmp);
-}
-
 wxString CompatStateName(CompatState state) {
   switch (state) {
     case CompatState::kPlayable:
@@ -151,8 +119,38 @@ wxColour CompatColor(CompatState state) {
   }
 }
 
+// Centered text on a dark tile; a single '\n' in `text` splits two lines.
+wxBitmapBundle MakeTextPlaceholder(const wxString& text, int size_px,
+                                   double scale) {
+  wxBitmap bmp(size_px, size_px, 32);
+  wxMemoryDC dc(bmp);
+  dc.SetBackground(wxBrush(wxColour(60, 60, 60)));
+  dc.Clear();
+  wxFont font = dc.GetFont();
+  font.Scale(0.85f * static_cast<float>(scale));
+  dc.SetFont(font);
+  dc.SetTextForeground(wxColour(180, 180, 180));
+  wxString line1 = text.BeforeFirst('\n');
+  wxString line2 = text.AfterFirst('\n');
+  wxSize l1 = dc.GetTextExtent(line1);
+  const int gap = std::max(1, static_cast<int>(2 * scale));
+  if (line2.empty()) {
+    int y = (size_px - l1.y) / 2;
+    dc.DrawText(line1, (size_px - l1.x) / 2, y);
+  } else {
+    wxSize l2 = dc.GetTextExtent(line2);
+    int total_h = l1.y + l2.y + gap;
+    int y = (size_px - total_h) / 2;
+    dc.DrawText(line1, (size_px - l1.x) / 2, y);
+    dc.DrawText(line2, (size_px - l2.x) / 2, y + l1.y + gap);
+  }
+  dc.SelectObject(wxNullBitmap);
+  bmp.SetScaleFactor(scale);
+  return wxBitmapBundle::FromBitmap(bmp);
+}
+
 // Pixel-AA filled circle on a transparent bitmap; portable across themes.
-// `size_px` and `scale` follow the same contract as MakeTextPlaceholder.
+// `size_px` is the device-pixel size; `scale` is the DPI scale factor.
 wxBitmapBundle MakeCompatBall(CompatState state, int size_px, double scale) {
   const float radius = (kCompatBallSize * 0.25f) * static_cast<float>(scale);
   wxColour color = CompatColor(state);
@@ -276,8 +274,6 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
   dpi_scale_ = GetDPIScaleFactor();
   icon_size_px_ = FromDIP(kIconSize);
   const int icon_pad_px = FromDIP(8);
-  logged_out_placeholder_ =
-      MakeTextPlaceholder(_("Not\nlogged in"), icon_size_px_, dpi_scale_);
   not_played_placeholder_ =
       MakeTextPlaceholder(_("Not\nplayed"), icon_size_px_, dpi_scale_);
   const int ball_size_px = FromDIP(kCompatBallSize);
@@ -420,38 +416,27 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
 void GameListPanel::Reload() {
   entries_.clear();
 
-  if (!emulator_window_ || !emulator_window_->emulator()) {
+  if (!emulator_window_) {
     Repopulate();
     return;
   }
-  auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) {
-    Repopulate();
-    return;
-  }
-  auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) {
-    Repopulate();
-    return;
-  }
-  auto* profile_manager = xam_state->profile_manager();
-  if (!profile_manager) {
+  auto* library = emulator_window_->game_library();
+  if (!library) {
     Repopulate();
     return;
   }
 
-  auto scanned = profile_manager->ScanAllProfilesForTitles();
-  entries_.reserve(scanned.size());
-  for (const auto& s : scanned) {
+  const auto& games = library->entries();
+  entries_.reserve(games.size());
+  for (const auto& g : games) {
     Entry e;
-    e.title_id = s.title_id;
-    e.title_name = s.title_name;
-    e.path = s.path_to_file;
-    e.discs.reserve(s.all_discs.size());
-    for (const auto& d : s.all_discs) {
-      e.discs.push_back(Disc{d.path, d.label});
+    e.title_id = g.title_id;
+    e.title_name = g.name;
+    e.path = g.default_path().path;
+    e.discs.reserve(g.paths.size());
+    for (const auto& p : g.paths) {
+      e.discs.push_back(Disc{p.path, p.label});
     }
-    e.last_run_time = s.last_run_time;
     entries_.push_back(std::move(e));
   }
 
@@ -529,23 +514,33 @@ void GameListPanel::StartIconLoad() {
   CallAfter([this, gen]() { ProcessIconChunk(0, gen); });
 }
 
+static std::vector<uint8_t> ReadIconFile(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file) {
+    return {};
+  }
+  const std::streamoff size = file.tellg();
+  if (size <= 0) {
+    return {};
+  }
+  std::vector<uint8_t> data(static_cast<size_t>(size));
+  file.seekg(0);
+  file.read(reinterpret_cast<char*>(data.data()), data.size());
+  if (!file) {
+    return {};
+  }
+  return data;
+}
+
 void GameListPanel::ProcessIconChunk(size_t start, int gen) {
   if (gen != icon_load_generation_) {
     return;
   }
-  if (!emulator_window_ || !emulator_window_->emulator()) {
+  if (!emulator_window_) {
     return;
   }
-  auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state) {
-    return;
-  }
-  auto* xam_state = kernel_state->xam_state();
-  if (!xam_state) {
-    return;
-  }
-  auto* profile_manager = xam_state->profile_manager();
-  if (!profile_manager) {
+  auto* library = emulator_window_->game_library();
+  if (!library) {
     return;
   }
 
@@ -558,14 +553,7 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
     if (entry.icon.IsOk()) {
       continue;
     }
-    std::vector<uint8_t> data;
-    for (uint8_t user_index = 0; user_index < 4 && data.empty(); ++user_index) {
-      auto* profile = profile_manager->GetProfile(user_index);
-      if (!profile) {
-        continue;
-      }
-      data = profile->GetTitleIcon(entry.title_id);
-    }
+    std::vector<uint8_t> data = ReadIconFile(library->IconPath(entry.title_id));
     if (data.empty()) {
       continue;
     }
@@ -585,14 +573,6 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
   if (end < entries_.size()) {
     CallAfter([this, end, gen]() { ProcessIconChunk(end, gen); });
   }
-}
-
-void GameListPanel::SetProfileSignedIn(bool signed_in) {
-  if (profile_signed_in_ == signed_in) {
-    return;
-  }
-  profile_signed_in_ = signed_in;
-  Repopulate();
 }
 
 void GameListPanel::OnSearch(wxCommandEvent&) {
@@ -640,23 +620,30 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
   if (entry_index >= entries_.size()) {
     return;
   }
-  if (!emulator_window_ || !emulator_window_->emulator()) {
+  if (!emulator_window_) {
     return;
   }
-  auto* kernel_state = emulator_window_->emulator()->kernel_state();
-  if (!kernel_state || !kernel_state->xam_state()) {
-    return;
-  }
-  auto* profile_manager = kernel_state->xam_state()->profile_manager();
-  if (!profile_manager) {
-    return;
-  }
-  auto* profile = profile_manager->GetProfile(static_cast<uint8_t>(0));
-  if (!profile) {
+  auto* library = emulator_window_->game_library();
+  if (!library) {
     return;
   }
 
   uint32_t title_id = entries_[entry_index].title_id;
+
+  // Re-pull this entry from the library after an edit.
+  auto resync = [&]() {
+    auto* le = library->Find(title_id);
+    if (!le) {
+      entries_[entry_index].discs.clear();
+      return;
+    }
+    entries_[entry_index].title_name = le->name;
+    entries_[entry_index].path = le->default_path().path;
+    entries_[entry_index].discs.clear();
+    for (const auto& p : le->paths) {
+      entries_[entry_index].discs.push_back(Disc{p.path, p.label});
+    }
+  };
 
   wxDialog dlg(this, wxID_ANY, _("Edit Discs"), wxDefaultPosition,
                wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
@@ -776,8 +763,16 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
           .ShowModal();
       return;
     }
-    profile->SetDiscLabel(title_id, current_disc_path(), new_label);
-    entries_[entry_index].discs[sel].label = new_label;
+    const auto disc_path = current_disc_path();
+    if (auto* le = library->Find(title_id)) {
+      for (auto& p : le->paths) {
+        if (p.path == disc_path) {
+          p.label = new_label;
+        }
+      }
+      library->Upsert(*le);
+    }
+    resync();
     refresh();
     list->SelectRow(sel);
   });
@@ -797,9 +792,19 @@ void GameListPanel::ShowEditDiscsDialog(size_t entry_index) {
     if (confirm.ShowModal() != wxID_YES) {
       return;
     }
-    profile->RemoveDiscPath(title_id, current_disc_path());
-    entries_[entry_index].discs.erase(entries_[entry_index].discs.begin() +
-                                      sel);
+    const auto disc_path = current_disc_path();
+    if (auto* le = library->Find(title_id)) {
+      le->paths.erase(
+          std::remove_if(le->paths.begin(), le->paths.end(),
+                         [&](const auto& p) { return p.path == disc_path; }),
+          le->paths.end());
+      if (le->paths.empty()) {
+        library->Remove(title_id);
+      } else {
+        library->Upsert(*le);
+      }
+    }
+    resync();
     refresh();
   });
 
@@ -1067,8 +1072,8 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
                               ? wxString::Format(_("title %08X"), title_id)
                               : wxString::FromUTF8(display_name);
           wxString message = wxString::Format(
-              _("Remove %s from the list?\n\nThis only clears it from the "
-                "dashboard records; game files on disk are kept."),
+              _("Remove %s from the list?\n\nThis only removes it from the "
+                "list in Xenia; game files on disk are kept."),
               name);
           int reply = wxMessageBox(message, _("Remove from list"),
                                    wxYES_NO | wxICON_QUESTION,
@@ -1076,16 +1081,12 @@ void GameListPanel::OnItemContextMenu(wxDataViewEvent& event) {
           if (reply != wxYES) {
             return;
           }
-          if (!emulator_window_ || !emulator_window_->emulator()) {
+          auto* library =
+              emulator_window_ ? emulator_window_->game_library() : nullptr;
+          if (!library) {
             return;
           }
-          auto* kernel_state = emulator_window_->emulator()->kernel_state();
-          auto* xam_state = kernel_state ? kernel_state->xam_state() : nullptr;
-          auto* pm = xam_state ? xam_state->profile_manager() : nullptr;
-          if (!pm) {
-            return;
-          }
-          pm->RemoveTitleFromAllProfiles(title_id);
+          library->Remove(title_id);
           Reload();
         },
         remove->GetId());
@@ -1245,13 +1246,7 @@ void GameListPanel::Repopulate() {
         << compat_balls_[static_cast<size_t>(GetEntryCompatState(e))];
     row.push_back(compat_variant);
     wxVariant icon_variant;
-    if (!profile_signed_in_) {
-      icon_variant << logged_out_placeholder_;
-    } else if (e.icon.IsOk()) {
-      icon_variant << e.icon;
-    } else {
-      icon_variant << not_played_placeholder_;
-    }
+    icon_variant << (e.icon.IsOk() ? e.icon : not_played_placeholder_);
     row.push_back(icon_variant);
     wxString title_markup =
         "<b><span size='x-large'>" + EscapeMarkup(base_title) + "</span></b>";

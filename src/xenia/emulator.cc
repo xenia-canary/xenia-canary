@@ -1471,34 +1471,16 @@ const std::filesystem::path Emulator::GetNewDiscPath(
     std::string window_message) {
   std::filesystem::path path = "";
 
-  // Get the title ID and check for saved disc paths
   uint32_t current_title_id = !title_id_.has_value() ? 0 : title_id_.value();
-  std::vector<kernel::xam::GpdInfoProfile::DiscInfo> saved_discs;
+  std::vector<TitleDisc> saved_discs;
 
-  if (kernel_state_ && current_title_id != 0) {
-    auto xam_state = kernel_state_->xam_state();
-    if (xam_state) {
-      auto profile_manager = xam_state->profile_manager();
-      if (profile_manager && profile_manager->IsAnyProfileSignedIn()) {
-        // Try to get the first signed-in profile
-        for (uint8_t i = 0; i < 4; i++) {
-          auto profile = profile_manager->GetProfile(i);
-          if (profile) {
-            const auto& dashboard_gpd = profile->dashboard_gpd();
-            saved_discs = dashboard_gpd.GetTitleDiscs(current_title_id);
-            if (!saved_discs.empty()) {
-              // Sort discs alphanumerically by label
-              std::sort(saved_discs.begin(), saved_discs.end(),
-                        [](const kernel::xam::GpdInfoProfile::DiscInfo& a,
-                           const kernel::xam::GpdInfoProfile::DiscInfo& b) {
-                          return a.label < b.label;
-                        });
-              break;  // Found saved discs, use them
-            }
-          }
-        }
-      }
-    }
+  if (current_title_id != 0 && disc_provider_) {
+    saved_discs = disc_provider_(current_title_id);
+    // Sort discs alphanumerically by label.
+    std::sort(saved_discs.begin(), saved_discs.end(),
+              [](const TitleDisc& a, const TitleDisc& b) {
+                return a.label < b.label;
+              });
   }
 
   // Get the original game launch path from XAM loader data
@@ -1914,12 +1896,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
     game_info_database_ =
         std::make_unique<kernel::util::GameInfoDatabase>(db.get());
-    // Don't persist disc path during in-process relaunch; only for
-    // user-initiated file opens.
-    kernel_state_->xam_state()->LoadSpaInfo(
-        db.get(), relaunching_ ? std::filesystem::path{} : path);
-
-    // AddTitleToPlayedList is now called inside LoadSpaInfo/UpdateSpaInfo
+    kernel_state_->xam_state()->LoadSpaInfo(db.get());
 
     if (game_info_database_->IsValid()) {
       title_name_ = game_info_database_->GetTitleName(static_cast<XLanguage>(

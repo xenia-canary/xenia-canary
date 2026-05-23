@@ -668,133 +668,6 @@ bool ProfileManager::DeleteProfile(const uint64_t xuid) {
   return true;
 }
 
-bool ProfileManager::ClearTitlePath(uint32_t title_id) {
-  if (title_id == 0) {
-    return false;
-  }
-
-  auto content_root = kernel_state_->emulator()->content_root();
-  auto profiles_directory = xe::filesystem::FilterByName(
-      xe::filesystem::ListDirectories(content_root),
-      std::regex("[0-9A-F]{16}"));
-
-  bool modified_any = false;
-
-  for (const auto& profile_dir : profiles_directory) {
-    const std::string profile_xuid = xe::path_to_utf8(profile_dir.name);
-    if (profile_xuid == fmt::format("{:016X}", 0)) {
-      continue;  // Skip shared content directory
-    }
-
-    // Construct path to dashboard GPD
-    std::filesystem::path dashboard_gpd_path =
-        profile_dir.path / profile_dir.name / kDashboardStringID /
-        fmt::format("{:08X}", static_cast<uint32_t>(XContentType::kProfile)) /
-        profile_dir.name / fmt::format("{:08X}.gpd", kDashboardID);
-
-    if (!std::filesystem::exists(dashboard_gpd_path)) {
-      continue;
-    }
-
-    // Read dashboard GPD file
-    std::ifstream file(dashboard_gpd_path, std::ios::binary);
-    if (!file.is_open()) {
-      continue;
-    }
-
-    file.seekg(0, std::ios::end);
-    size_t file_size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> gpd_data(file_size);
-    file.read(reinterpret_cast<char*>(gpd_data.data()), file_size);
-    file.close();
-
-    // Parse dashboard GPD
-    GpdInfoProfile dashboard_gpd(gpd_data);
-    if (!dashboard_gpd.IsValid()) {
-      continue;
-    }
-
-    // Clear the path for this title
-    dashboard_gpd.SetTitlePath(title_id, std::filesystem::path());
-
-    // Write back the modified GPD
-    std::vector<uint8_t> serialized_gpd = dashboard_gpd.Serialize();
-
-    std::ofstream out_file(dashboard_gpd_path, std::ios::binary);
-    if (out_file.is_open()) {
-      out_file.write(reinterpret_cast<const char*>(serialized_gpd.data()),
-                     serialized_gpd.size());
-      out_file.close();
-      modified_any = true;
-    }
-  }
-
-  return modified_any;
-}
-
-bool ProfileManager::RemoveTitleFromAllProfiles(uint32_t title_id) {
-  if (title_id == 0) {
-    return false;
-  }
-
-  auto content_root = kernel_state_->emulator()->content_root();
-  auto profiles_directory = xe::filesystem::FilterByName(
-      xe::filesystem::ListDirectories(content_root),
-      std::regex("[0-9A-F]{16}"));
-
-  bool removed_from_any = false;
-
-  for (const auto& profile_dir : profiles_directory) {
-    const std::string profile_xuid = xe::path_to_utf8(profile_dir.name);
-    if (profile_xuid == fmt::format("{:016X}", 0)) {
-      continue;  // Skip shared content directory
-    }
-
-    std::filesystem::path dashboard_gpd_path =
-        profile_dir.path / profile_dir.name / kDashboardStringID /
-        fmt::format("{:08X}", static_cast<uint32_t>(XContentType::kProfile)) /
-        profile_dir.name / fmt::format("{:08X}.gpd", kDashboardID);
-
-    if (!std::filesystem::exists(dashboard_gpd_path)) {
-      continue;
-    }
-
-    std::ifstream file(dashboard_gpd_path, std::ios::binary);
-    if (!file.is_open()) {
-      continue;
-    }
-
-    file.seekg(0, std::ios::end);
-    size_t file_size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> gpd_data(file_size);
-    file.read(reinterpret_cast<char*>(gpd_data.data()), file_size);
-    file.close();
-
-    GpdInfoProfile dashboard_gpd(gpd_data);
-    if (!dashboard_gpd.IsValid()) {
-      continue;
-    }
-
-    if (dashboard_gpd.RemoveTitle(title_id)) {
-      std::vector<uint8_t> serialized_gpd = dashboard_gpd.Serialize();
-
-      std::ofstream out_file(dashboard_gpd_path, std::ios::binary);
-      if (out_file.is_open()) {
-        out_file.write(reinterpret_cast<const char*>(serialized_gpd.data()),
-                       serialized_gpd.size());
-        out_file.close();
-        removed_from_any = true;
-      }
-    }
-  }
-
-  return removed_from_any;
-}
-
 std::vector<ScannedTitleInfo> ProfileManager::ScanAllProfilesForTitles() const {
   std::map<uint32_t, ScannedTitleInfo> titles_by_id;
 
@@ -894,10 +767,45 @@ std::vector<ScannedTitleInfo> ProfileManager::ScanAllProfilesForTitles() const {
   return result;
 }
 
-std::filesystem::path ProfileManager::GetMostRecentlyPlayedTitlePath() const {
-  auto titles = ScanAllProfilesForTitles();
-  if (!titles.empty() && !titles[0].path_to_file.empty()) {
-    return titles[0].path_to_file;
+std::vector<uint8_t> ProfileManager::ReadTitleIcon(uint32_t title_id) const {
+  auto content_root = kernel_state_->emulator()->content_root();
+  auto profiles_directory = xe::filesystem::FilterByName(
+      xe::filesystem::ListDirectories(content_root),
+      std::regex("[0-9A-F]{16}"));
+
+  for (const auto& profile_dir : profiles_directory) {
+    if (xe::path_to_utf8(profile_dir.name) == fmt::format("{:016X}", 0)) {
+      continue;  // Skip shared content directory
+    }
+
+    std::filesystem::path gpd_path =
+        profile_dir.path / profile_dir.name / kDashboardStringID /
+        fmt::format("{:08X}", static_cast<uint32_t>(XContentType::kProfile)) /
+        profile_dir.name / fmt::format("{:08X}.gpd", title_id);
+
+    if (!std::filesystem::exists(gpd_path)) {
+      continue;
+    }
+
+    std::ifstream file(gpd_path, std::ios::binary);
+    if (!file.is_open()) {
+      continue;
+    }
+    file.seekg(0, std::ios::end);
+    size_t file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<uint8_t> gpd_data(file_size);
+    file.read(reinterpret_cast<char*>(gpd_data.data()), file_size);
+    file.close();
+
+    GpdInfoTitle title_gpd(title_id, gpd_data);
+    if (!title_gpd.IsValid()) {
+      continue;
+    }
+    auto image = title_gpd.GetImage(kXdbfIdTitle);
+    if (!image.empty()) {
+      return std::vector<uint8_t>(image.begin(), image.end());
+    }
   }
   return {};
 }

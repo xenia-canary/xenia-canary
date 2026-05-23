@@ -40,7 +40,6 @@ class GameListPanel : public wxPanel {
 
   void Reload();
   void SetLaunchCallback(LaunchCallback cb) { launch_cb_ = std::move(cb); }
-  void SetProfileSignedIn(bool signed_in);
   void SetSelectionChangedCallback(SelectionChangedCallback cb) {
     selection_changed_cb_ = std::move(cb);
   }
@@ -111,13 +110,11 @@ class GameListPanel : public wxPanel {
   std::string filter_lower_;
   // Bumped on each Reload so in-flight icon-load chunks abort.
   int icon_load_generation_ = 0;
-  bool profile_signed_in_ = false;
   // Resolved at construction time from the panel's monitor; used for sizing
   // bitmaps, column widths, and the row height so the list grows with the
   // current display's DPI scale.
   int icon_size_px_ = 0;
   double dpi_scale_ = 1.0;
-  wxBitmapBundle logged_out_placeholder_;
   wxBitmapBundle not_played_placeholder_;
   std::array<wxBitmapBundle, 5> compat_balls_;
 };

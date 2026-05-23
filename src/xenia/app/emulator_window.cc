@@ -404,6 +404,102 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
   presenter_painting_ = nullptr;
 }
 
+void EmulatorWindow::InitializeGameLibrary() {
+  const auto library_root = emulator_->storage_root() / "library";
+  auto* profile_manager =
+      emulator_->kernel_state()->xam_state()->profile_manager();
+
+  std::error_code ec;
+  if (!std::filesystem::exists(library_root, ec) && profile_manager) {
+    // One-time GPD->library migration; staged, then renamed in atomically.
+    // TODO(has207): remove this migration in 2027, along with the GPD readers
+    // it relies on (ScanAllProfilesForTitles, ReadTitleIcon,
+    // GpdInfoProfile::GetTitlePath/GetTitleDiscs).
+    const auto staging_root = emulator_->storage_root() / "library.tmp";
+    std::filesystem::remove_all(staging_root, ec);
+    std::filesystem::create_directories(staging_root, ec);
+
+    GameLibrary staging(staging_root);
+    size_t migrated = 0;
+    for (const auto& title : profile_manager->ScanAllProfilesForTitles()) {
+      if (title.title_id == 0) {
+        continue;  // Not a real title id; an "unknown title" grab-bag.
+      }
+      LibraryEntry entry;
+      entry.title_id = title.title_id;
+      entry.name = title.title_name;
+      if (!title.all_discs.empty()) {
+        for (const auto& disc : title.all_discs) {
+          if (!disc.path.empty()) {
+            entry.paths.push_back({disc.path, disc.label, false});
+          }
+        }
+      } else if (!title.path_to_file.empty()) {
+        entry.paths.push_back({title.path_to_file, std::string(), false});
+      }
+      if (entry.paths.empty()) {
+        continue;  // nothing launchable
+      }
+      if (!staging.Upsert(entry)) {
+        continue;
+      }
+      auto icon = profile_manager->ReadTitleIcon(entry.title_id);
+      if (!icon.empty()) {
+        staging.SetIcon(entry.title_id, icon);
+      }
+      ++migrated;
+    }
+
+    std::filesystem::rename(staging_root, library_root, ec);
+    if (ec) {
+      XELOGE("InitializeGameLibrary: migration failed to commit: {}",
+             ec.message());
+      std::filesystem::remove_all(staging_root, ec);
+    } else {
+      XELOGI("InitializeGameLibrary: migrated {} title(s) from profile GPDs",
+             migrated);
+    }
+  }
+
+  game_library_ = std::make_unique<GameLibrary>(library_root);
+  game_library_->Load();
+}
+
+void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
+                                               const std::string& name) {
+  if (!game_library_) {
+    return;
+  }
+  game_library_->AddDisc(title_id, name, emulator_->last_launch_path(),
+                         std::string());
+
+  // Adopt the running title's icon if we have no art yet. The SPA writes it to
+  // the per-title GPD on boot, so a signed-in profile has it by now.
+  std::error_code ec;
+  if (title_id == 0 ||
+      std::filesystem::exists(game_library_->IconPath(title_id), ec)) {
+    return;
+  }
+  auto* xam_state = emulator_->kernel_state()
+                        ? emulator_->kernel_state()->xam_state()
+                        : nullptr;
+  auto* pm = xam_state ? xam_state->profile_manager() : nullptr;
+  if (!pm) {
+    return;
+  }
+  for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
+    auto* profile = pm->GetProfile(slot);
+    if (!profile) {
+      continue;
+    }
+    auto icon = profile->GetTitleIcon(title_id);
+    if (!icon.empty()) {
+      game_library_->SetIcon(title_id, icon);
+      break;
+    }
+  }
+}
+
 void EmulatorWindow::OnEmulatorInitialized() {
   if (!emulator_->kernel_state()
            ->xam_state()
@@ -416,18 +512,40 @@ void EmulatorWindow::OnEmulatorInitialized() {
   // line, or a relaunch from the kernel), ApplyContentVisibility wouldn't
   // otherwise rerun. Hook on_launch to keep the render/list visibility in
   // sync with title state.
-  emulator_->on_launch.AddListener([this](uint32_t, const std::string_view) {
-    app_context_.CallInUIThread([this]() {
-      UpdateTitle();
-      ApplyContentVisibility();
-    });
-  });
+  emulator_->on_launch.AddListener(
+      [this](uint32_t title_id, const std::string_view title_name) {
+        app_context_.CallInUIThread(
+            [this, title_id, name = std::string(title_name)]() {
+              AddLaunchedTitleToLibrary(title_id, name);
+              UpdateTitle();
+              ApplyContentVisibility();
+            });
+      });
 
   window_->SetCursorVisibility(ui::Window::CursorVisibility::kAutoHidden);
 
   emulator_initialized_ = true;
   window_->SetMainMenuEnabled(true);
   RefreshProfileMenu();
+  InitializeGameLibrary();
+  emulator_->set_disc_provider([this](uint32_t title_id) {
+    std::vector<Emulator::TitleDisc> discs;
+    if (game_library_) {
+      if (auto* entry = game_library_->Find(title_id)) {
+        for (const auto& p : entry->paths) {
+          discs.push_back({p.label, p.path});
+        }
+      }
+    }
+    return discs;
+  });
+  emulator_->set_disc_recorder([this](uint32_t title_id,
+                                      const std::string& label,
+                                      const std::filesystem::path& path) {
+    if (game_library_) {
+      game_library_->AddDisc(title_id, std::string(), path, label);
+    }
+  });
   // Now that the kernel is up and profiles are mounted, populate the list.
   if (game_list_panel_ && !emulator_->is_title_open()) {
     game_list_panel_->Reload();
@@ -1415,58 +1533,24 @@ void EmulatorWindow::FileAddGames() {
   std::filesystem::path root = selected[0];
 
   ui::GameScanProgressDialog::InstalledTitleMap already_installed;
-  bool any_profile_signed_in = false;
-  if (auto* ks = emulator_->kernel_state()) {
-    if (auto* xs = ks->xam_state()) {
-      if (auto* pm = xs->profile_manager()) {
-        for (const auto& info : pm->ScanAllProfilesForTitles()) {
-          auto& discs = already_installed[info.title_id];
-          for (const auto& d : info.all_discs) {
-            discs.push_back({d.path, d.label});
-          }
-        }
-        for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
-          if (pm->GetProfile(slot)) {
-            any_profile_signed_in = true;
-            break;
-          }
-        }
+  if (auto* library = game_library()) {
+    for (const auto& g : library->entries()) {
+      auto& discs = already_installed[g.title_id];
+      for (const auto& p : g.paths) {
+        discs.push_back({p.path, p.label});
       }
     }
-  }
-  wxString import_disabled_reason;
-  if (!any_profile_signed_in) {
-    import_disabled_reason =
-        _("Sign in to a profile (Profile menu) to enable importing.");
   }
 
   using PendingImport = ui::GameScanProgressDialog::PendingImport;
   auto import_cb =
       [this](std::vector<std::vector<PendingImport>> groups) -> bool {
-    auto* ks = emulator_->kernel_state();
-    auto* xs = ks ? ks->xam_state() : nullptr;
-    auto* pm = xs ? xs->profile_manager() : nullptr;
-    auto* ut = xs ? xs->user_tracker() : nullptr;
-    if (!ut || !pm) {
-      XELOGE("FileAddGames: no user tracker / profile manager");
+    auto* library = game_library();
+    if (!library) {
+      XELOGE("FileAddGames: game library not initialized");
       wxMessageBox(_("Xenia is not fully initialized yet. Try again "
                      "after the app finishes starting up."),
                    _("Import failed"), wxOK | wxICON_ERROR);
-      return false;
-    }
-    bool any_signed_in = false;
-    for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
-      if (pm->GetProfile(slot)) {
-        any_signed_in = true;
-        break;
-      }
-    }
-    if (!any_signed_in) {
-      XELOGW("FileAddGames: no signed-in profile to import into");
-      wxMessageBox(
-          _("No signed-in profile to import into. Create or sign in to "
-            "a profile (Profile menu), then try again."),
-          _("Import failed"), wxOK | wxICON_WARNING);
       return false;
     }
     size_t imported = 0;
@@ -1475,19 +1559,22 @@ void EmulatorWindow::FileAddGames() {
         continue;
       }
       const auto& primary = group.front().game;
-      const std::u16string title_name_u16 =
-          xe::to_utf16(app::PreferredName(primary));
-      // Group's icon — all discs of one title share the same image.
-      std::span<const uint8_t> icon(primary.icon_png.data(),
-                                    primary.icon_png.size());
+      const std::string name = app::PreferredName(primary);
+      bool changed = false;
       for (const auto& pi : group) {
-        ut->AddDiscoveredTitleToAllTrackedUsers(pi.game.title_id,
-                                                title_name_u16, pi.game.path,
-                                                icon, pi.disc_label);
+        changed |= library->AddDisc(primary.title_id, name, pi.game.path,
+                                    pi.disc_label);
+      }
+      if (!changed) {
+        continue;
+      }
+      // STFS provides an icon; XEX/ISO don't. Only overwrite when we have one.
+      if (!primary.icon_png.empty()) {
+        library->SetIcon(primary.title_id, primary.icon_png);
       }
       ++imported;
     }
-    XELOGI("FileAddGames: imported {} new title(s)", imported);
+    XELOGI("FileAddGames: imported {} title(s)", imported);
     if (game_list_panel_ && !emulator_->is_title_open()) {
       game_list_panel_->Reload();
     }
@@ -1497,8 +1584,7 @@ void EmulatorWindow::FileAddGames() {
   auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
   ui::GameScanProgressDialog dlg(wx_window ? wx_window->frame() : nullptr, root,
                                  std::move(already_installed),
-                                 std::move(import_cb),
-                                 std::move(import_disabled_reason));
+                                 std::move(import_cb), wxString());
   dlg.ShowModal();
 }
 
@@ -1884,21 +1970,8 @@ void EmulatorWindow::UpdateAddGamesMenuState() {
   if (!file_add_games_menu_item_) {
     return;
   }
-  bool any_signed_in = false;
-  if (auto* ks = emulator_ ? emulator_->kernel_state() : nullptr) {
-    if (auto* xs = ks->xam_state()) {
-      if (auto* pm = xs->profile_manager()) {
-        for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
-          if (pm->GetProfile(slot)) {
-            any_signed_in = true;
-            break;
-          }
-        }
-      }
-    }
-  }
   const bool title_open = emulator_ && emulator_->is_title_open();
-  file_add_games_menu_item_->SetEnabled(!title_open && any_signed_in);
+  file_add_games_menu_item_->SetEnabled(!title_open);
 }
 
 void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
@@ -2121,10 +2194,6 @@ void EmulatorWindow::RefreshProfileIcon() {
     wx_toolbar_state_->profile_label->SetLabel(text);
   }
   tb->Refresh();
-
-  if (game_list_panel_) {
-    game_list_panel_->SetProfileSignedIn(signed_in != nullptr);
-  }
 }
 
 void EmulatorWindow::ShowNoProfilePrompt() {
@@ -3160,25 +3229,25 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
 std::filesystem::path EmulatorWindow::GetFilePickerInitialDirectory() const {
   auto kernel_state = emulator_->kernel_state();
-  if (!kernel_state) {
+  auto xam_state = kernel_state ? kernel_state->xam_state() : nullptr;
+  auto profile_manager = xam_state ? xam_state->profile_manager() : nullptr;
+  if (!profile_manager || !game_library_) {
     return {};
   }
 
-  auto xam_state = kernel_state->xam_state();
-  if (!xam_state) {
-    return {};
-  }
-
-  auto profile_manager = xam_state->profile_manager();
-  if (!profile_manager) {
-    return {};
-  }
-
-  auto recent_path = profile_manager->GetMostRecentlyPlayedTitlePath();
-  if (!recent_path.empty() && std::filesystem::exists(recent_path)) {
-    auto parent_dir = recent_path.parent_path();
-    if (!parent_dir.empty() && std::filesystem::exists(parent_dir)) {
-      return parent_dir;
+  // Recency from play data (newest first); the launch path from the library.
+  for (const auto& title : profile_manager->ScanAllProfilesForTitles()) {
+    auto* entry = game_library_->Find(title.title_id);
+    if (!entry) {
+      continue;
+    }
+    const auto& path = entry->default_path().path;
+    std::error_code ec;
+    if (!path.empty() && std::filesystem::exists(path, ec)) {
+      auto parent_dir = path.parent_path();
+      if (!parent_dir.empty() && std::filesystem::exists(parent_dir, ec)) {
+        return parent_dir;
+      }
     }
   }
 

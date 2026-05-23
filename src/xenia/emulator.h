@@ -94,6 +94,11 @@ class Emulator {
   // Folder files safe to remove without significant side effects are stored in.
   const std::filesystem::path& cache_root() const { return cache_root_; }
 
+  // Host path of the most recently launched title.
+  const std::filesystem::path& last_launch_path() const {
+    return last_launch_path_;
+  }
+
   // Name of the title in the default language.
   const std::string& title_name() const { return title_name_; }
 
@@ -341,6 +346,29 @@ class Emulator {
   // (no title loaded). Must be called from a non-guest thread.
   void ResetTitle();
 
+  struct TitleDisc {
+    std::string label;
+    std::filesystem::path path;
+  };
+  // The app sets these so the core can reach the game library it can't include.
+  using DiscProvider = std::function<std::vector<TitleDisc>(uint32_t title_id)>;
+  void set_disc_provider(DiscProvider provider) {
+    disc_provider_ = std::move(provider);
+  }
+
+  using DiscRecorder =
+      std::function<void(uint32_t title_id, const std::string& label,
+                         const std::filesystem::path& path)>;
+  void set_disc_recorder(DiscRecorder recorder) {
+    disc_recorder_ = std::move(recorder);
+  }
+  void RecordDisc(uint32_t title_id, const std::string& label,
+                  const std::filesystem::path& path) {
+    if (disc_recorder_) {
+      disc_recorder_(title_id, label, path);
+    }
+  }
+
   // The game can request another title to be loaded.
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
@@ -391,6 +419,8 @@ class Emulator {
 
   std::filesystem::path command_line_;
   std::filesystem::path last_launch_path_;  // persists across relaunch
+  DiscProvider disc_provider_;
+  DiscRecorder disc_recorder_;
   std::filesystem::path storage_root_;
   std::filesystem::path content_root_;
   std::filesystem::path cache_root_;

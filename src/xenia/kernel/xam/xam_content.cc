@@ -792,15 +792,12 @@ dword_result_t XamSwapDisc_entry(
             uint8_t(exec_info.disc_number), uint8_t(exec_info.disc_count),
             uint32_t(exec_info.title_id), uint32_t(exec_info.media_id));
 
-        // Add the disc path to all tracked users' GPDs with proper label
-        auto xam_state = kernel_state()->xam_state();
-        if (xam_state) {
-          auto user_tracker = xam_state->user_tracker();
-          if (user_tracker) {
-            user_tracker->AddDiscPathToAllTrackedUsers(info->title_id,
-                                                       new_disc_path);
-          }
+        std::string disc_label;
+        if (exec_info.disc_count > 1 && exec_info.disc_number > 0) {
+          disc_label = fmt::format("Disc {}", uint8_t(exec_info.disc_number));
         }
+        kernel_state()->emulator()->RecordDisc(info->title_id, disc_label,
+                                               new_disc_path);
 
         // Update the host_path in loader_data so title restarts use the new
         // disc

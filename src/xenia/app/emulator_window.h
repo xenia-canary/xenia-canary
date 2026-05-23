@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 
+#include "xenia/app/game_library.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/ui/imgui_audio_dialog.h"
@@ -72,6 +73,7 @@ class EmulatorWindow {
   steady_clock::time_point last_mouse_down = steady_clock::now();
 
   Emulator* emulator() const { return emulator_; }
+  GameLibrary* game_library() const { return game_library_.get(); }
   ui::WindowedAppContext& app_context() const { return app_context_; }
   ui::Window* window() const { return window_.get(); }
   ui::ImGuiDrawer* imgui_drawer() const { return imgui_drawer_.get(); }
@@ -193,6 +195,14 @@ class EmulatorWindow {
 
   bool Initialize();
 
+  // Builds game_library_, running the one-time GPD->library migration if
+  // needed.
+  void InitializeGameLibrary();
+
+  // Registers a just-launched title in the library so games opened outside the
+  // import flow still appear in the list.
+  void AddLaunchedTitleToLibrary(uint32_t title_id, const std::string& name);
+
   void OnKeyDown(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
   void OnMouseDoubleClick(const ui::MouseEvent& e);
@@ -259,6 +269,7 @@ class EmulatorWindow {
   ui::ImGuiContextMenu* context_menu_ = nullptr;
 
   GameListPanel* game_list_panel_ = nullptr;
+  std::unique_ptr<GameLibrary> game_library_;
   std::unique_ptr<WxToolbarState> wx_toolbar_state_;
   // True when the app was started with --target and the title hasn't been
   // explicitly stopped yet — keeps the render pane visible during the gap

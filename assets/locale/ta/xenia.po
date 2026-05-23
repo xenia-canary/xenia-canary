@@ -5,12 +5,13 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: xenia-edge\n"
+"POT-Creation-Date: 2026-05-23 04:33+0000\n"
+"Language: ta\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Language: ta\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/xenia/ui/game_list_panel_wx.cc:501
+#: src/xenia/ui/game_list_panel_wx.cc:596
 msgid ""
 "\n"
 "\n"
@@ -20,96 +21,134 @@ msgstr ""
 "\n"
 "கோப்பைத் தேடவா?"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1012
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:55
+msgid "   %zu already installed"
+msgstr "   %zu ஏற்கனவே நிறுவப்பட்டுள்ளது"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1240
 msgid " (%zu discs)"
 msgstr " (%zu வட்டுகள்)"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:252
+#: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
 
-#: src/xenia/ui/patches_dialog_wx.cc:36
+#: src/xenia/ui/game_config_dialog_wx.cc:285
+msgid "%08X - Config Overrides"
+msgstr ""
+
+#: src/xenia/ui/patches_dialog_wx.cc:37
 msgid "%s (%08X)"
 msgstr "%s (%08X)"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/game_config_dialog_wx.cc:266
 msgid "%s (%08X) - Config Overrides"
 msgstr "%s (%08X) — கட்டமைப்பு மேலெழுதல்கள்"
 
-#: src/xenia/app/emulator_window.cc:1683
+#: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
 msgstr "%s (இடம் %d)"
 
-#: src/xenia/app/emulator_window.cc:748
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:52
+msgid "%zu directories scanned   %zu files probed   %zu games found"
+msgstr ""
+"%zu கோப்பகங்கள் ஸ்கேன் செய்யப்பட்டன   %zu கோப்புகள் ஆராயப்பட்டன   %zu விளையாட்டுகள் "
+"கண்டறியப்பட்டன"
+
+#: src/xenia/app/emulator_window.cc:895
 msgid "&About..."
 msgstr "பற்றி(&A)…"
 
-#: src/xenia/app/emulator_window.cc:693
+#: src/xenia/app/emulator_window.cc:794
+msgid "&Add Games..."
+msgstr "விளையாட்டுகளைச் சேர்(&A)…"
+
+#: src/xenia/app/emulator_window.cc:864
+msgid "&Audio"
+msgstr "ஆடியோ(&A)"
+
+#: src/xenia/app/emulator_window.cc:824
 msgid "&Configuration"
 msgstr "கட்டமைப்பு(&C)"
 
-#: src/xenia/app/emulator_window.cc:660
+#: src/xenia/app/emulator_window.cc:786
 msgid "&File"
 msgstr "கோப்பு(&F)"
 
-#: src/xenia/app/emulator_window.cc:737
+#: src/xenia/app/emulator_window.cc:884
 msgid "&Help"
 msgstr "உதவி(&H)"
 
-#: src/xenia/app/emulator_window.cc:730
+#: src/xenia/app/emulator_window.cc:877
 msgid "&Install Content..."
 msgstr "உள்ளடக்கத்தை நிறுவு(&I)…"
 
-#: src/xenia/app/emulator_window.cc:695
+#: src/xenia/app/emulator_window.cc:826
 msgid "&Main"
 msgstr "முதன்மை(&M)"
 
-#: src/xenia/app/emulator_window.cc:663
+#: src/xenia/app/emulator_window.cc:789
 msgid "&Open..."
 msgstr "திற(&O)…"
 
-#: src/xenia/app/emulator_window.cc:685
+#: src/xenia/app/emulator_window.cc:816
 msgid "&Profile"
 msgstr "சுயவிவரம்(&P)"
 
-#: src/xenia/app/emulator_window.cc:668
+#: src/xenia/app/emulator_window.cc:799
 msgid "&Stop Game"
 msgstr "விளையாட்டை நிறுத்து(&S)"
 
-#: src/xenia/app/emulator_window.cc:727
+#: src/xenia/app/emulator_window.cc:874
 msgid "&Tools"
 msgstr "கருவிகள்(&T)"
 
-#: src/xenia/app/emulator_window.cc:716
+#: src/xenia/app/emulator_window.cc:853
 msgid "&View"
 msgstr "காட்சி(&V)"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:197
+#: src/xenia/app/emulator_window.cc:867
+msgid "&Volume"
+msgstr "ஒலி அளவு(&V)"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:276
+msgid "(Installed) "
+msgstr "(நிறுவப்பட்டது) "
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:62
+msgid "(unknown title)"
+msgstr "(தெரியாத தலைப்பு)"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:209
 msgid "50Hz"
 msgstr "50Hz"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:198
+#: src/xenia/ui/quick_settings_dialog_wx.cc:210
 msgid "60Hz"
 msgstr "60Hz"
 
-#: src/xenia/ui/game_list_panel_wx.cc:263
+#: src/xenia/ui/game_list_panel_wx.cc:304
 msgid "Achievements"
 msgstr "சாதனைகள்"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:178
-#: src/xenia/ui/game_config_dialog_wx.cc:430
+#: src/xenia/app/emulator_window.cc:2257
+msgid "Add Games"
+msgstr "விளையாட்டுகளைச் சேர்"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:187
+#: src/xenia/ui/game_config_dialog_wx.cc:468
 msgid "Add Override"
 msgstr "மேலெழுதலைச் சேர்"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:290
+#: src/xenia/app/emulator_window.cc:2258
+msgid "Add games"
+msgstr "விளையாட்டுகளைச் சேர்"
+
+#: src/xenia/ui/game_config_dialog_wx.cc:307
 msgid "Add..."
 msgstr "சேர்…"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:321
+#: src/xenia/ui/quick_settings_dialog_wx.cc:327
 msgid "Advanced..."
 msgstr "மேம்பட்டவை…"
 
@@ -121,7 +160,7 @@ msgstr "அல்பேனியா"
 msgid "Algeria"
 msgstr "அல்ஜீரியா"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:277
+#: src/xenia/ui/quick_settings_dialog_wx.cc:283
 msgid "All"
 msgstr "அனைத்தும்"
 
@@ -129,7 +168,7 @@ msgstr "அனைத்தும்"
 msgid "All Files"
 msgstr "அனைத்து கோப்புகள்"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:430
+#: src/xenia/ui/game_config_dialog_wx.cc:468
 msgid "All cvars are already overridden."
 msgstr "அனைத்து cvar-களும் ஏற்கனவே மேலெழுதப்பட்டுள்ளன."
 
@@ -141,11 +180,11 @@ msgstr "அர்ஜென்டினா"
 msgid "Armenia"
 msgstr "ஆர்மீனியா"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:241
+#: src/xenia/ui/quick_settings_dialog_wx.cc:252
 msgid "Audio"
 msgstr "ஆடியோ"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:247
+#: src/xenia/ui/quick_settings_dialog_wx.cc:258
 msgid "Audio Backend:"
 msgstr "ஆடியோ பின்நிலை:"
 
@@ -185,8 +224,8 @@ msgstr "பொலிவியா"
 msgid "Brazil"
 msgstr "பிரேசில்"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:277
-#: src/xenia/ui/game_config_dialog_wx.cc:94
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:306
+#: src/xenia/ui/game_config_dialog_wx.cc:98
 msgid "Browse..."
 msgstr "உலாவு…"
 
@@ -202,22 +241,28 @@ msgstr "பல்கேரியா"
 msgid "Canada"
 msgstr "கனடா"
 
-#: src/xenia/ui/game_list_panel_wx.cc:835
+#: src/xenia/ui/game_list_panel_wx.cc:1043
 msgid "Canary"
 msgstr "Canary"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:296
-#: src/xenia/ui/install_progress_dialog_wx.cc:167
-#: src/xenia/ui/profile_editor_dialog_wx.cc:514
-#: src/xenia/ui/quick_settings_dialog_wx.cc:330
+#: src/xenia/ui/game_config_dialog_wx.cc:313
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:193
+#: src/xenia/ui/install_progress_dialog_wx.cc:123
+#: src/xenia/ui/profile_editor_dialog_wx.cc:536
+#: src/xenia/ui/quick_settings_dialog_wx.cc:336
 msgid "Cancel"
 msgstr "ரத்து செய்"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:321
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:421
+msgid "Cancelled."
+msgstr "ரத்து செய்யப்பட்டது."
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:454
+#: src/xenia/ui/install_progress_dialog_wx.cc:244
 msgid "Cancelling..."
 msgstr "ரத்து செய்யப்படுகிறது…"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:369
+#: src/xenia/ui/profile_editor_dialog_wx.cc:391
 msgid "Change Icon..."
 msgstr "சின்னத்தை மாற்று…"
 
@@ -229,13 +274,14 @@ msgstr "சிலி"
 msgid "China"
 msgstr "சீனா"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:387
+#: src/xenia/ui/profile_editor_dialog_wx.cc:409
 msgid "Clear Icon"
 msgstr "சின்னத்தை நீக்கு"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:201
-#: src/xenia/ui/game_list_panel_wx.cc:566
-#: src/xenia/ui/install_progress_dialog_wx.cc:171
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:228
+#: src/xenia/ui/game_list_panel_wx.cc:730
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:206
+#: src/xenia/ui/install_progress_dialog_wx.cc:127
 msgid "Close"
 msgstr "மூடு"
 
@@ -243,28 +289,28 @@ msgstr "மூடு"
 msgid "Colombia"
 msgstr "கொலம்பியா"
 
-#: src/xenia/ui/game_list_panel_wx.cc:855
+#: src/xenia/ui/game_list_panel_wx.cc:1063
 msgid "Compatibility"
 msgstr "இணக்கத்தன்மை"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:296
+#: src/xenia/ui/install_progress_dialog_wx.cc:221
 msgid "Complete"
 msgstr "முடிந்தது"
 
-#: src/xenia/ui/game_list_panel_wx.cc:820
+#: src/xenia/ui/game_list_panel_wx.cc:1028
 msgid "Config Overrides..."
 msgstr "கட்டமைப்பு மேலெழுதல்கள்…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:95
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:380
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:104
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
 msgstr "கட்டமைப்பு மேலாளர்"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:379
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:418
 msgid "Configuration Manager *"
 msgstr "கட்டமைப்பு மேலாளர் *"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:227
+#: src/xenia/ui/install_progress_dialog_wx.cc:165
 msgid "Content Type: %s"
 msgstr "உள்ளடக்க வகை: %s"
 
@@ -272,23 +318,28 @@ msgstr "உள்ளடக்க வகை: %s"
 msgid "Costa Rica"
 msgstr "கோஸ்டா ரிகா"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+#: src/xenia/ui/profile_editor_dialog_wx.cc:602
 msgid "Could not decode the selected image."
 msgstr "தேர்ந்தெடுக்கப்பட்ட படத்தை டிகோட் செய்ய முடியவில்லை."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:448
-#: src/xenia/ui/quick_settings_dialog_wx.cc:311
+#: src/xenia/ui/profile_editor_dialog_wx.cc:470
+#: src/xenia/ui/quick_settings_dialog_wx.cc:317
 msgid "Country:"
 msgstr "நாடு:"
 
-#: src/xenia/app/emulator_window.cc:1759
+#: src/xenia/app/emulator_window.cc:2073
 msgid "Create new..."
 msgstr "புதியதை உருவாக்கு…"
 
-#: src/xenia/app/emulator_window.cc:1763
-#: src/xenia/app/emulator_window.cc:1771
+#: src/xenia/app/emulator_window.cc:2077 src/xenia/app/emulator_window.cc:2089
+#: src/xenia/app/emulator_window.cc:2214 src/xenia/app/emulator_window.cc:2221
+#: src/xenia/app/emulator_window.cc:2233
 msgid "Create profile"
 msgstr "சுயவிவரத்தை உருவாக்கு"
+
+#: src/xenia/app/emulator_window.cc:2213
+msgid "Create profile && migrate data"
+msgstr "சுயவிவரம் உருவாக்கி தரவை மாற்று"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:106
 msgid "Croatia"
@@ -298,33 +349,39 @@ msgstr "குரோஷியா"
 msgid "Czech Republic"
 msgstr "செக் குடியரசு"
 
-#: src/xenia/ui/game_list_panel_wx.cc:782
+#: src/xenia/ui/game_list_panel_wx.cc:990
 msgid "DLC"
 msgstr "DLC"
 
-#: src/xenia/ui/game_list_panel_wx.cc:617
+#: src/xenia/ui/game_list_panel_wx.cc:690
+#: src/xenia/ui/game_list_panel_wx.cc:693
 msgid "Default"
 msgstr "இயல்பு"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:263
+msgid "Default Volume:"
+msgstr "இயல்பு ஒலி அளவு:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
 msgstr "டென்மார்க்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:550
-#: src/xenia/ui/game_list_panel_wx.cc:719
+#: src/xenia/ui/game_list_panel_wx.cc:674
+#: src/xenia/ui/game_list_panel_wx.cc:710
+#: src/xenia/ui/game_list_panel_wx.cc:927
 msgid "Disc %zu"
 msgstr "வட்டு %zu"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:194
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:221
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:534
 msgid "Discard Changes"
 msgstr "மாற்றங்களை நிராகரி"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:534
 msgid "Discard all unsaved changes?"
 msgstr "சேமிக்கப்படாத அனைத்து மாற்றங்களையும் நிராகரிக்கவா?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:291
+#: src/xenia/ui/quick_settings_dialog_wx.cc:297
 msgid "Discord Rich Presence:"
 msgstr "Discord Rich Presence:"
 
@@ -332,7 +389,7 @@ msgstr "Discord Rich Presence:"
 msgid "Dominican Republic"
 msgstr "டொமினிக்கன் குடியரசு"
 
-#: src/xenia/app/emulator_window.cc:678
+#: src/xenia/app/emulator_window.cc:809
 msgid "E&xit"
 msgstr "வெளியேறு(&X)"
 
@@ -340,15 +397,15 @@ msgstr "வெளியேறு(&X)"
 msgid "Ecuador"
 msgstr "ஈக்வடார்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:536
+#: src/xenia/ui/game_list_panel_wx.cc:648
 msgid "Edit Discs"
 msgstr "வட்டுகளைத் திருத்து"
 
-#: src/xenia/ui/game_list_panel_wx.cc:729
+#: src/xenia/ui/game_list_panel_wx.cc:937
 msgid "Edit Discs..."
 msgstr "வட்டுகளைத் திருத்து…"
 
-#: src/xenia/app/emulator_window.cc:1739
+#: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "திருத்து…"
 
@@ -360,11 +417,11 @@ msgstr "எகிப்து"
 msgid "El Salvador"
 msgstr "எல் சால்வடார்"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:216
+#: src/xenia/ui/quick_settings_dialog_wx.cc:227
 msgid "Emulated Display Refresh Rate:"
 msgstr "உருவகப்படுத்தப்பட்ட காட்சி புதுப்பிப்பு வீதம்:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:69
+#: src/xenia/ui/quick_settings_dialog_wx.cc:79
 msgid "Emulator Settings"
 msgstr "உருவகப்படுத்தி அமைப்புகள்"
 
@@ -372,15 +429,15 @@ msgstr "உருவகப்படுத்தி அமைப்புகள�
 msgid "English"
 msgstr "ஆங்கிலம்"
 
-#: src/xenia/app/emulator_window.cc:1763
+#: src/xenia/app/emulator_window.cc:2076 src/xenia/app/emulator_window.cc:2220
 msgid "Enter gamertag for new profile:"
 msgstr "புதிய சுயவிவரத்திற்கான கேமர்டாக்கை உள்ளிடவும்:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:585
+#: src/xenia/ui/game_list_panel_wx.cc:754
 msgid "Enter new label:"
 msgstr "புதிய லேபிளை உள்ளிடவும்:"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:405
+#: src/xenia/ui/game_config_dialog_wx.cc:435
 msgid "Error"
 msgstr "பிழை"
 
@@ -388,7 +445,7 @@ msgstr "பிழை"
 msgid "Estonia"
 msgstr "எஸ்டோனியா"
 
-#: src/xenia/app/emulator_window.cc:1977
+#: src/xenia/app/emulator_window.cc:2421
 msgid ""
 "Experimental fork of Xenia Canary.\n"
 "\n"
@@ -398,7 +455,8 @@ msgid ""
 "Commit: %s\n"
 "Build Date: %s\n"
 "\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
+"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
+"License 1.1).\n"
 "Icons by Icons8 (https://icons8.com)."
 msgstr ""
 "Xenia Canary-ன் சோதனை ஃபோர்க்.\n"
@@ -409,22 +467,23 @@ msgstr ""
 "கமிட்: %s\n"
 "உருவாக்க தேதி: %s\n"
 "\n"
-"UI எழுத்துரு: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font License 1.1).\n"
+"UI எழுத்துரு: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open "
+"Font License 1.1).\n"
 "சின்னங்கள் Icons8 (https://icons8.com) வழங்கியவை."
 
-#: src/xenia/app/emulator_window.cc:740
+#: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
 msgstr "FAQ(&Q)…"
 
-#: src/xenia/ui/patches_dialog_wx.cc:213
+#: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "மாற்றங்களைச் சேமிப்பதில் தோல்வி."
 
-#: src/xenia/ui/game_config_dialog_wx.cc:404
+#: src/xenia/ui/game_config_dialog_wx.cc:434
 msgid "Failed to save: %s"
 msgstr "சேமிப்பதில் தோல்வி: %s"
 
-#: src/xenia/ui/patches_dialog_wx.cc:202
+#: src/xenia/ui/patches_dialog_wx.cc:214
 msgid "Failed to update patch state."
 msgstr "திட்டுநிலையைப் புதுப்பிப்பதில் தோல்வி."
 
@@ -437,11 +496,11 @@ msgstr "Family"
 msgid "Faroe Islands"
 msgstr "ஃபரோ தீவுகள்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1008
+#: src/xenia/ui/game_list_panel_wx.cc:1236
 msgid "File Corrupted"
 msgstr "கோப்பு சிதைந்துள்ளது"
 
-#: src/xenia/ui/game_list_panel_wx.cc:499
+#: src/xenia/ui/game_list_panel_wx.cc:594
 msgid ""
 "File not found:\n"
 "%s"
@@ -449,7 +508,7 @@ msgstr ""
 "கோப்பு கிடைக்கவில்லை:\n"
 "%s"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:184
+#: src/xenia/ui/game_config_dialog_wx.cc:193
 msgid "Filter cvars"
 msgstr "cvar-களை வடிகட்டு"
 
@@ -457,7 +516,7 @@ msgstr "cvar-களை வடிகட்டு"
 msgid "Finland"
 msgstr "பின்லாந்து"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:187
+#: src/xenia/ui/quick_settings_dialog_wx.cc:199
 msgid "Framerate Limit (0 = unlimited):"
 msgstr "சட்டக வீத வரம்பு (0 = வரம்பற்றது):"
 
@@ -469,55 +528,55 @@ msgstr "பிரான்ஸ்"
 msgid "French"
 msgstr "பிரெஞ்சு"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:275
+#: src/xenia/ui/quick_settings_dialog_wx.cc:281
 msgid "Full"
 msgstr "முழு"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:226
+#: src/xenia/ui/quick_settings_dialog_wx.cc:237
 msgid "Full Screen:"
 msgstr "முழுத் திரை:"
 
-#: src/xenia/app/emulator_window.cc:744
+#: src/xenia/app/emulator_window.cc:891
 msgid "Game &compatibility..."
 msgstr "விளையாட்டு இணக்கத்தன்மை(&C)…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:250
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:277
 msgid "GameMode not in PATH; install to enable."
 msgstr "GameMode PATH-ல் இல்லை; செயல்படுத்த நிறுவவும்."
 
-#: src/xenia/ui/game_list_panel_wx.cc:127
+#: src/xenia/ui/game_list_panel_wx.cc:96
 msgid "Gameplay"
 msgstr "விளையாட்டுமுறை"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:436
+#: src/xenia/ui/profile_editor_dialog_wx.cc:458
 msgid "Gamer Bio:"
 msgstr "கேமர் வாழ்க்கைக் குறிப்பு:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:429
+#: src/xenia/ui/profile_editor_dialog_wx.cc:451
 msgid "Gamer Motto:"
 msgstr "கேமர் குறிக்கோள்:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:423
+#: src/xenia/ui/profile_editor_dialog_wx.cc:445
 msgid "Gamer Name:"
 msgstr "கேமர் பெயர்:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:490
+#: src/xenia/ui/profile_editor_dialog_wx.cc:512
 msgid "Gamer Zone:"
 msgstr "கேமர் மண்டலம்:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:266
+#: src/xenia/ui/profile_editor_dialog_wx.cc:276
 msgid "Gamercard Editor"
 msgstr "கேமர்கார்டு திருத்தி"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:271
+#: src/xenia/ui/profile_editor_dialog_wx.cc:281
 msgid "Gamercard Editor - %s"
 msgstr "கேமர்கார்டு திருத்தி — %s"
 
-#: src/xenia/ui/game_list_panel_wx.cc:264
+#: src/xenia/ui/game_list_panel_wx.cc:305
 msgid "Gamerscore"
 msgstr "கேமர்ஸ்கோர்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:412
+#: src/xenia/ui/profile_editor_dialog_wx.cc:434
 msgid "Gamertag:"
 msgstr "கேமர்டாக்:"
 
@@ -537,11 +596,11 @@ msgstr "ஜெர்மனி"
 msgid "Gold"
 msgstr "Gold"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:145
+#: src/xenia/ui/quick_settings_dialog_wx.cc:157
 msgid "Graphics"
 msgstr "வரைகலை"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:151
+#: src/xenia/ui/quick_settings_dialog_wx.cc:163
 msgid "Graphics Backend:"
 msgstr "வரைகலை பின்நிலை:"
 
@@ -557,7 +616,7 @@ msgstr "கிரீஸ்"
 msgid "Guatemala"
 msgstr "குவாத்தமாலா"
 
-#: src/xenia/app/emulator_window.cc:1449
+#: src/xenia/app/emulator_window.cc:1722
 msgid "Guide"
 msgstr "வழிகாட்டி"
 
@@ -577,15 +636,27 @@ msgstr "ஹங்கேரி"
 msgid "Iceland"
 msgstr "ஐஸ்லாந்து"
 
-#: src/xenia/ui/game_list_panel_wx.cc:261
+#: src/xenia/ui/game_list_panel_wx.cc:302
 msgid "Icon"
 msgstr "சின்னம்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:374
+#: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "தலைப்பு இயங்கும்போது சின்னத்தை மாற்றுவது முடக்கப்பட்டுள்ளது."
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:299
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:198
+msgid "Import"
+msgstr "இறக்குமதி செய்"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:431
+msgid "Import %zu New Items"
+msgstr "%zu புதிய உருப்படிகளை இறக்குமதி செய்"
+
+#: src/xenia/app/emulator_window.cc:1553
+msgid "Import failed"
+msgstr "இறக்குமதி தோல்வியடைந்தது"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:305
 msgid "In-Process Title Relaunch:"
 msgstr "செயல்முறையில் தலைப்பு மீள்தொடக்கம்:"
 
@@ -597,32 +668,32 @@ msgstr "இந்தியா"
 msgid "Indonesia"
 msgstr "இந்தோனேசியா"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:240
+#: src/xenia/ui/install_progress_dialog_wx.cc:173
 msgid "Installation Path: "
 msgstr "நிறுவல் பாதை: "
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:57
+#: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "நிறுவல் முன்னேற்றம்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:590
+#: src/xenia/ui/game_list_panel_wx.cc:761
 msgid "Invalid Label"
 msgstr "தவறான லேபிள்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:566
-#: src/xenia/ui/profile_editor_dialog_wx.cc:574
+#: src/xenia/ui/profile_editor_dialog_wx.cc:594
+#: src/xenia/ui/profile_editor_dialog_wx.cc:602
 msgid "Invalid file"
 msgstr "தவறான கோப்பு"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:554
+#: src/xenia/ui/profile_editor_dialog_wx.cc:580
 msgid "Invalid gamertag"
 msgstr "தவறான கேமர்டாக்"
 
-#: src/xenia/app/emulator_window.cc:1771
+#: src/xenia/app/emulator_window.cc:2089 src/xenia/app/emulator_window.cc:2233
 msgid "Invalid gamertag."
 msgstr "தவறான கேமர்டாக்."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:583
+#: src/xenia/ui/profile_editor_dialog_wx.cc:611
 msgid "Invalid resolution"
 msgstr "தவறான தெளிவுத்திறன்"
 
@@ -690,20 +761,21 @@ msgstr "குவைத்"
 msgid "Kyrgyzstan"
 msgstr "கிர்கிஸ்தான்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:618
+#: src/xenia/ui/game_list_panel_wx.cc:691
+#: src/xenia/ui/game_list_panel_wx.cc:695
 msgid "Label"
 msgstr "லேபிள்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:590
+#: src/xenia/ui/game_list_panel_wx.cc:761
 msgid "Label cannot contain '::'."
 msgstr "லேபிளில் '::' இருக்கக் கூடாது."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:442
-#: src/xenia/ui/quick_settings_dialog_wx.cc:305
+#: src/xenia/ui/profile_editor_dialog_wx.cc:464
+#: src/xenia/ui/quick_settings_dialog_wx.cc:311
 msgid "Language:"
 msgstr "மொழி:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:265
+#: src/xenia/ui/game_list_panel_wx.cc:306
 msgid "Last Played"
 msgstr "கடைசியாக விளையாடியது"
 
@@ -711,8 +783,8 @@ msgstr "கடைசியாக விளையாடியது"
 msgid "Latvia"
 msgstr "லாட்வியா"
 
-#: src/xenia/ui/game_list_panel_wx.cc:728
-#: src/xenia/ui/game_list_panel_wx.cc:735
+#: src/xenia/ui/game_list_panel_wx.cc:936
+#: src/xenia/ui/game_list_panel_wx.cc:943
 msgid "Launch"
 msgstr "தொடங்கு"
 
@@ -720,7 +792,7 @@ msgstr "தொடங்கு"
 msgid "Lebanon"
 msgstr "லெபனான்"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:231
+#: src/xenia/ui/quick_settings_dialog_wx.cc:242
 msgid "Letterbox:"
 msgstr "லெட்டர்பாக்ஸ்:"
 
@@ -728,7 +800,7 @@ msgstr "லெட்டர்பாக்ஸ்:"
 msgid "Libya"
 msgstr "லிபியா"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:286
+#: src/xenia/ui/quick_settings_dialog_wx.cc:292
 msgid "License:"
 msgstr "உரிமம்:"
 
@@ -740,19 +812,23 @@ msgstr "லீக்டென்ஸ்டைன்"
 msgid "Lithuania"
 msgstr "லித்துவேனியா"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:457
+#: src/xenia/ui/profile_editor_dialog_wx.cc:479
 msgid "Live Enabled"
 msgstr "Live இயக்கப்பட்டது"
 
-#: src/xenia/ui/game_list_panel_wx.cc:129
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:182
+msgid "Loading titles..."
+msgstr "தலைப்புகள் ஏற்றப்படுகின்றன…"
+
+#: src/xenia/ui/game_list_panel_wx.cc:98
 msgid "Loads"
 msgstr "ஏற்றல்கள்"
 
-#: src/xenia/app/emulator_window.cc:1691
+#: src/xenia/app/emulator_window.cc:2003
 msgid "Login"
 msgstr "உள்நுழை"
 
-#: src/xenia/app/emulator_window.cc:1719
+#: src/xenia/app/emulator_window.cc:2031
 msgid "Logout"
 msgstr "வெளியேறு"
 
@@ -776,21 +852,29 @@ msgstr "மலேசியா"
 msgid "Maldives"
 msgstr "மாலத்தீவுகள்"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:158
-msgid "Manage emulator configuration. Changes are saved to config.toml; some settings need a relaunch to take effect."
-msgstr "உருவகப்படுத்தி கட்டமைப்பை நிர்வகி. மாற்றங்கள் config.toml-ல் சேமிக்கப்படுகின்றன; சில அமைப்புகள் செயல்பட மீள்தொடக்கம் தேவை."
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:181
+msgid ""
+"Manage emulator configuration. Changes are saved to config.toml; some "
+"settings need a relaunch to take effect."
+msgstr ""
+"உருவகப்படுத்தி கட்டமைப்பை நிர்வகி. மாற்றங்கள் config.toml-ல் சேமிக்கப்படுகின்றன; சில "
+"அமைப்புகள் செயல்பட மீள்தொடக்கம் தேவை."
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:246
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:273
 msgid "MangoHUD not in PATH; install to enable."
 msgstr "MangoHUD PATH-ல் இல்லை; செயல்படுத்த நிறுவவும்."
 
-#: src/xenia/ui/game_list_panel_wx.cc:836
+#: src/xenia/ui/game_list_panel_wx.cc:1044
 msgid "Master"
 msgstr "Master"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:136
 msgid "Mexico"
 msgstr "மெக்சிகோ"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:98
+msgid "Module: %s"
+msgstr "தொகுதி: %s"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:131
 msgid "Monaco"
@@ -804,11 +888,11 @@ msgstr "மங்கோலியா"
 msgid "Morocco"
 msgstr "மொராக்கோ"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:234
+#: src/xenia/ui/install_progress_dialog_wx.cc:172
 msgid "Name: %s"
 msgstr "பெயர்: %s"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:163
+#: src/xenia/ui/quick_settings_dialog_wx.cc:175
 msgid "Native"
 msgstr "சொந்த"
 
@@ -824,13 +908,17 @@ msgstr "நியூசிலாந்து"
 msgid "Nicaragua"
 msgstr "நிகராகுவா"
 
-#: src/xenia/ui/game_list_panel_wx.cc:498
+#: src/xenia/app/emulator_window.cc:2211
+msgid "No Profiles Found"
+msgstr "சுயவிவரங்கள் இல்லை"
+
+#: src/xenia/ui/game_list_panel_wx.cc:593
 msgid "No file path is set for this title."
 msgstr "இந்தத் தலைப்புக்கு கோப்புப் பாதை எதுவும் அமைக்கப்படவில்லை."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:178
 #: src/xenia/ui/profile_editor_dialog_wx.cc:184
-#: src/xenia/ui/quick_settings_dialog_wx.cc:273
+#: src/xenia/ui/quick_settings_dialog_wx.cc:279
 msgid "None"
 msgstr "எதுவுமில்லை"
 
@@ -838,61 +926,57 @@ msgstr "எதுவுமில்லை"
 msgid "Norway"
 msgstr "நார்வே"
 
-#: src/xenia/ui/game_list_panel_wx.cc:113
-msgid ""
-"Not\n"
-"logged in"
-msgstr "உள்நுழையவில்லை"
-
-#: src/xenia/ui/game_list_panel_wx.cc:118
+#: src/xenia/ui/game_list_panel_wx.cc:278
 msgid ""
 "Not\n"
 "played"
 msgstr "விளையாடவில்லை"
 
-#: src/xenia/app/emulator_window.cc:815
-#: src/xenia/app/emulator_window.cc:1850
+#: src/xenia/app/emulator_window.cc:977 src/xenia/app/emulator_window.cc:2182
 msgid "Not logged in"
 msgstr "உள்நுழையவில்லை"
+
+#: src/xenia/app/emulator_window.cc:2215 src/xenia/app/emulator_window.cc:2258
+msgid "Not now"
+msgstr "இப்போது இல்லை"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:142
 msgid "Oman"
 msgstr "ஓமான்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:478
+#: src/xenia/ui/profile_editor_dialog_wx.cc:500
 msgid "Online Domain:"
 msgstr "ஆன்லைன் டொமைன்:"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:454
+#: src/xenia/ui/profile_editor_dialog_wx.cc:476
 msgid "Online Profile Settings"
 msgstr "ஆன்லைன் சுயவிவர அமைப்புகள்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:473
+#: src/xenia/ui/profile_editor_dialog_wx.cc:495
 msgid "Online XUID:"
 msgstr "ஆன்லைன் XUID:"
 
-#: src/xenia/app/emulator_window.cc:803
+#: src/xenia/app/emulator_window.cc:950
 msgid "Open"
 msgstr "திற"
 
-#: src/xenia/app/emulator_window.cc:804
-#: src/xenia/app/emulator_window.cc:1443
+#: src/xenia/app/emulator_window.cc:951 src/xenia/app/emulator_window.cc:1716
 msgid "Open a title"
 msgstr "தலைப்பைத் திற"
 
-#: src/xenia/ui/game_list_panel_wx.cc:741
+#: src/xenia/ui/game_list_panel_wx.cc:949
 msgid "Open containing folder"
 msgstr "உள்ளடக்கிய கோப்புறையைத் திற"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:267
+#: src/xenia/ui/quick_settings_dialog_wx.cc:273
 msgid "Other"
 msgstr "மற்றவை"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:560
+#: src/xenia/ui/profile_editor_dialog_wx.cc:586
 msgid "PNG Images (*.png)|*.png|All Files (*.*)|*.*"
 msgstr "PNG படங்கள் (*.png)|*.png|அனைத்து கோப்புகள் (*.*)|*.*"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:380
+#: src/xenia/ui/profile_editor_dialog_wx.cc:402
 msgid "PNG, 64x64 or 32x32. Refresh after re-login."
 msgstr "PNG, 64x64 அல்லது 32x32. மீண்டும் உள்நுழைந்த பிறகு புதுப்பி."
 
@@ -908,16 +992,17 @@ msgstr "பனாமா"
 msgid "Paraguay"
 msgstr "பராகுவே"
 
-#: src/xenia/ui/patches_dialog_wx.cc:104
+#: src/xenia/ui/patches_dialog_wx.cc:112
 msgid "Patch #%zu"
 msgstr "திட்டு #%zu"
 
-#: src/xenia/ui/game_list_panel_wx.cc:792
-#: src/xenia/ui/game_list_panel_wx.cc:817
+#: src/xenia/ui/game_list_panel_wx.cc:1000
+#: src/xenia/ui/game_list_panel_wx.cc:1025
 msgid "Patches"
 msgstr "திட்டுகள்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:619
+#: src/xenia/ui/game_list_panel_wx.cc:692
+#: src/xenia/ui/game_list_panel_wx.cc:697
 msgid "Path"
 msgstr "பாதை"
 
@@ -929,7 +1014,7 @@ msgstr "பெரு"
 msgid "Philippines"
 msgstr "பிலிப்பைன்ஸ்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:125
+#: src/xenia/ui/game_list_panel_wx.cc:94
 msgid "Playable"
 msgstr "விளையாடக்கூடியது"
 
@@ -953,22 +1038,26 @@ msgstr "போர்த்துகீசியம்"
 msgid "Pro"
 msgstr "Pro"
 
-#: src/xenia/app/emulator_window.cc:818
-#: src/xenia/app/emulator_window.cc:819
+#: src/xenia/app/emulator_window.cc:980 src/xenia/app/emulator_window.cc:981
 msgid "Profile"
 msgstr "சுயவிவரம்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:358
+#: src/xenia/ui/profile_editor_dialog_wx.cc:380
 msgid "Profile Settings"
 msgstr "சுயவிவர அமைப்புகள்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:580
+#: src/xenia/ui/profile_editor_dialog_wx.cc:608
 msgid "Profile icon must be 64x64 or 32x32. Selected image is %dx%d."
-msgstr "சுயவிவர சின்னம் 64x64 அல்லது 32x32 ஆக இருக்க வேண்டும். தேர்ந்தெடுக்கப்பட்ட படம் %dx%d."
+msgstr ""
+"சுயவிவர சின்னம் 64x64 அல்லது 32x32 ஆக இருக்க வேண்டும். தேர்ந்தெடுக்கப்பட்ட படம் %dx%d."
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:377
+#: src/xenia/ui/profile_editor_dialog_wx.cc:399
 msgid "Profile must be signed in to change the icon."
 msgstr "சின்னத்தை மாற்ற சுயவிவரம் உள்நுழைந்திருக்க வேண்டும்."
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:94
+msgid "Publisher: %s"
+msgstr "வெளியீட்டாளர்: %s"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:148
 msgid "Puerto Rico"
@@ -982,65 +1071,65 @@ msgstr "கத்தார்"
 msgid "Recreation"
 msgstr "Recreation"
 
-#: src/xenia/ui/game_list_panel_wx.cc:565
+#: src/xenia/ui/game_list_panel_wx.cc:729
 msgid "Remove"
 msgstr "அகற்று"
 
-#: src/xenia/ui/game_list_panel_wx.cc:867
+#: src/xenia/ui/game_list_panel_wx.cc:1075
 msgid ""
 "Remove %s from the list?\n"
 "\n"
-"This only clears it from the dashboard records; game files on disk are kept."
+"This only removes it from the list in Xenia; game files on disk are kept."
 msgstr ""
 "%s-ஐ பட்டியலில் இருந்து அகற்றவா?\n"
 "\n"
-"இது டேஷ்போர்டு பதிவுகளில் இருந்து மட்டுமே நீக்கும்; வட்டில் உள்ள விளையாட்டு கோப்புகள் வைக்கப்படும்."
+"இது Xenia இன் பட்டியலிலிருந்து மட்டுமே நீக்கப்படும்; விளையாட்டு கோப்புகள் தாமே வைத்திருக்கப்படும்."
 
-#: src/xenia/ui/game_list_panel_wx.cc:609
+#: src/xenia/ui/game_list_panel_wx.cc:790
 msgid "Remove '%s' from the disc list?"
 msgstr "'%s'-ஐ வட்டுப் பட்டியலில் இருந்து அகற்றவா?"
 
-#: src/xenia/ui/game_list_panel_wx.cc:610
+#: src/xenia/ui/game_list_panel_wx.cc:791
 msgid "Remove Disc"
 msgstr "வட்டை அகற்று"
 
-#: src/xenia/ui/game_list_panel_wx.cc:858
-#: src/xenia/ui/game_list_panel_wx.cc:870
+#: src/xenia/ui/game_list_panel_wx.cc:1066
+#: src/xenia/ui/game_list_panel_wx.cc:1078
 msgid "Remove from list"
 msgstr "பட்டியலில் இருந்து அகற்று"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:327
+#: src/xenia/ui/game_config_dialog_wx.cc:346
 msgid "Remove this override"
 msgstr "இந்த மேலெழுதலை அகற்று"
 
-#: src/xenia/ui/game_list_panel_wx.cc:681
+#: src/xenia/ui/game_list_panel_wx.cc:754
 msgid "Rename Label"
 msgstr "லேபிளுக்கு மறுபெயரிடு"
 
-#: src/xenia/ui/game_list_panel_wx.cc:655
+#: src/xenia/ui/game_list_panel_wx.cc:728
 msgid "Rename Label..."
 msgstr "லேபிளுக்கு மறுபெயரிடு…"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:157
+#: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
 msgstr "வழங்குதல்:"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:544
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:434
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:481
+#: src/xenia/ui/quick_settings_dialog_wx.cc:584
 msgid "Reset all settings to their default values?"
 msgstr "அனைத்து அமைப்புகளையும் அவற்றின் இயல்பு மதிப்புகளுக்கு மீட்டமைக்கவா?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:323
+#: src/xenia/ui/quick_settings_dialog_wx.cc:329
 msgid "Reset to Default"
 msgstr "இயல்புக்கு மீட்டமை"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:197
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:435
-#: src/xenia/ui/quick_settings_dialog_wx.cc:545
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:224
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:482
+#: src/xenia/ui/quick_settings_dialog_wx.cc:585
 msgid "Reset to Defaults"
 msgstr "இயல்புகளுக்கு மீட்டமை"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:173
+#: src/xenia/ui/quick_settings_dialog_wx.cc:185
 msgid "Resolution Scale:"
 msgstr "தெளிவுத்திறன் அளவு:"
 
@@ -1060,62 +1149,74 @@ msgstr "ரஷ்ய கூட்டமைப்பு"
 msgid "Saudi Arabia"
 msgstr "சவுதி அரேபியா"
 
-#: src/xenia/ui/game_config_dialog_wx.cc:295
-#: src/xenia/ui/profile_editor_dialog_wx.cc:512
-#: src/xenia/ui/quick_settings_dialog_wx.cc:325
+#: src/xenia/ui/game_config_dialog_wx.cc:312
+#: src/xenia/ui/profile_editor_dialog_wx.cc:534
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
 msgid "Save"
 msgstr "சேமி"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:188
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:213
 msgid "Save Changes"
 msgstr "மாற்றங்களைச் சேமி"
 
-#: src/xenia/ui/patches_dialog_wx.cc:222
+#: src/xenia/ui/patches_dialog_wx.cc:236
 msgid "Saved. Takes effect on next launch."
 msgstr "சேமிக்கப்பட்டது. அடுத்த தொடக்கத்தில் செயல்படும்."
 
-#: src/xenia/ui/game_list_panel_wx.cc:773
+#: src/xenia/ui/game_list_panel_wx.cc:981
 msgid "Saves"
 msgstr "சேமிப்புகள்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:233
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:120
+msgid "Scan for Games"
+msgstr "விளையாட்டுகளுக்காக ஸ்கேன் செய்"
+
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:45
+msgid "Scanning: %s"
+msgstr "ஸ்கேன் செய்யப்படுகிறது: %s"
+
+#: src/xenia/ui/game_list_panel_wx.cc:457
+msgid "Search %zu games..."
+msgstr "%zu விளையாட்டுகளில் தேடு…"
+
+#: src/xenia/ui/game_list_panel_wx.cc:248
+#: src/xenia/ui/game_list_panel_wx.cc:453
 msgid "Search games..."
 msgstr "விளையாட்டுகளைத் தேடு…"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:283
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:291
-#: src/xenia/ui/game_config_dialog_wx.cc:105
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:313
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:323
+#: src/xenia/ui/game_config_dialog_wx.cc:110
 msgid "Select %s"
 msgstr "%s-ஐத் தேர்ந்தெடு"
 
-#: src/xenia/ui/game_list_panel_wx.cc:508
+#: src/xenia/ui/game_list_panel_wx.cc:603
 msgid "Select Content Package"
 msgstr "உள்ளடக்க தொகுப்பைத் தேர்ந்தெடு"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:559
+#: src/xenia/ui/profile_editor_dialog_wx.cc:585
 msgid "Select PNG image"
 msgstr "PNG படத்தைத் தேர்ந்தெடு"
 
-#: src/xenia/ui/advanced_settings_dialog_wx.cc:299
-#: src/xenia/ui/game_config_dialog_wx.cc:112
+#: src/xenia/ui/advanced_settings_dialog_wx.cc:332
+#: src/xenia/ui/game_config_dialog_wx.cc:117
 msgid "Select directory for %s"
 msgstr "%s-க்கான கோப்பகத்தைத் தேர்ந்தெடு"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:565
+#: src/xenia/ui/profile_editor_dialog_wx.cc:593
 msgid "Selected file is not a valid PNG image."
 msgstr "தேர்ந்தெடுக்கப்பட்ட கோப்பு செல்லத்தக்க PNG படம் அல்ல."
 
-#: src/xenia/app/emulator_window.cc:808
-#: src/xenia/app/emulator_window.cc:809
-#: src/xenia/app/emulator_window.cc:1449
+#: src/xenia/app/emulator_window.cc:955 src/xenia/app/emulator_window.cc:956
+#: src/xenia/app/emulator_window.cc:1722
 msgid "Settings"
 msgstr "அமைப்புகள்"
 
-#: src/xenia/app/emulator_window.cc:719
+#: src/xenia/app/emulator_window.cc:856
 msgid "Show &Toolbar"
 msgstr "கருவிப்பட்டியைக் காட்டு(&T)"
 
-#: src/xenia/app/emulator_window.cc:674
+#: src/xenia/app/emulator_window.cc:805
 msgid "Show content directory..."
 msgstr "உள்ளடக்க கோப்பகத்தைக் காட்டு…"
 
@@ -1131,7 +1232,7 @@ msgstr "எளிய சீன மொழி"
 msgid "Singapore"
 msgstr "சிங்கப்பூர்"
 
-#: src/xenia/app/emulator_window.cc:1695
+#: src/xenia/app/emulator_window.cc:2007
 msgid "Slot %d"
 msgstr "இடம் %d"
 
@@ -1155,29 +1256,37 @@ msgstr "ஸ்பெயின்"
 msgid "Spanish"
 msgstr "ஸ்பானிஷ்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:260
+#: src/xenia/ui/game_list_panel_wx.cc:301
 msgid "Status"
 msgstr "நிலை"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:248
+#: src/xenia/ui/install_progress_dialog_wx.cc:181
 msgid "Status: %s"
 msgstr "நிலை: %s"
 
-#: src/xenia/app/emulator_window.cc:1440
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:239
+msgid "Status: Installed"
+msgstr "நிலை: நிறுவப்பட்டது"
+
+#: src/xenia/app/emulator_window.cc:1713
 msgid "Stop the running title and return to the list"
 msgstr "இயங்கும் தலைப்பை நிறுத்தி பட்டியலுக்குத் திரும்பு"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:498
+#: src/xenia/ui/profile_editor_dialog_wx.cc:520
 msgid "Subscription Tier:"
 msgstr "சந்தா அடுக்கு:"
 
-#: src/xenia/ui/install_progress_dialog_wx.cc:294
+#: src/xenia/ui/install_progress_dialog_wx.cc:219
 msgid "Successfully installed %d package(s)."
 msgstr "%d தொகுப்பு(கள்) வெற்றிகரமாக நிறுவப்பட்டன."
 
-#: src/xenia/ui/game_list_panel_wx.cc:513
-msgid "Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*.zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
-msgstr "ஆதரிக்கப்படும் கோப்புகள்|*;*.iso;*.xex;*.zar|வட்டுப் படிமம் (*.iso)|*.iso|வட்டுக் காப்பகம் (*.zar)|*.zar|Xbox இயக்கக்கூடியது (*.xex)|*.xex|அனைத்து கோப்புகள் (*.*)|*.*"
+#: src/xenia/ui/game_list_panel_wx.cc:608
+msgid ""
+"Supported Files|*;*.iso;*.xex;*.zar|Disc Image (*.iso)|*.iso|Disc Archive (*."
+"zar)|*.zar|Xbox Executable (*.xex)|*.xex|All Files (*.*)|*.*"
+msgstr ""
+"ஆதரிக்கப்படும் கோப்புகள்|*;*.iso;*.xex;*.zar|வட்டுப் படிமம் (*.iso)|*.iso|வட்டுக் "
+"காப்பகம் (*.zar)|*.zar|Xbox இயக்கக்கூடியது (*.xex)|*.xex|அனைத்து கோப்புகள் (*.*)|*.*"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:155
 msgid "Sweden"
@@ -1199,19 +1308,29 @@ msgstr "தைவான்"
 msgid "Thailand"
 msgstr "தாய்லாந்து"
 
-#: src/xenia/ui/game_list_panel_wx.cc:262
+#: src/xenia/app/emulator_window.cc:2209
+msgid ""
+"There is no profile available. You will not be able to save without one.\n"
+"\n"
+"Would you like to create one now?"
+msgstr ""
+"எந்த சுயவிவரமும் இல்லை. சுயவிவரம் இல்லாமல் சேமிக்க முடியாது.\n"
+"\n"
+"இப்போது ஒன்றை உருவாக்க விரும்புகிறீர்களா?"
+
+#: src/xenia/ui/game_list_panel_wx.cc:303
 msgid "Title"
 msgstr "தலைப்பு"
 
-#: src/xenia/ui/game_list_panel_wx.cc:777
+#: src/xenia/ui/game_list_panel_wx.cc:985
 msgid "Title Updates"
 msgstr "தலைப்பு புதுப்பிப்புகள்"
 
-#: src/xenia/ui/game_list_panel_wx.cc:502
+#: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
 msgstr "தலைப்பு கிடைக்கவில்லை"
 
-#: src/xenia/ui/patches_dialog_wx.cc:145
+#: src/xenia/ui/patches_dialog_wx.cc:155
 msgid "Toggles take effect on next launch."
 msgstr "மாற்றிகள் அடுத்த தொடக்கத்தில் செயல்படும்."
 
@@ -1231,11 +1350,15 @@ msgstr "துனிசியா"
 msgid "Turkey"
 msgstr "துருக்கி"
 
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:89
+msgid "Type: %s"
+msgstr "வகை: %s"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:167
 msgid "Ukraine"
 msgstr "உக்ரைன்"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:195
+#: src/xenia/ui/quick_settings_dialog_wx.cc:207
 msgid "Uncapped"
 msgstr "வரம்பற்றது"
 
@@ -1251,16 +1374,16 @@ msgstr "ஐக்கிய அரபு அமீரகம்"
 msgid "United States"
 msgstr "ஐக்கிய அமெரிக்கா"
 
-#: src/xenia/ui/game_list_panel_wx.cc:134
+#: src/xenia/ui/game_list_panel_wx.cc:103
 msgid "Unknown"
 msgstr "தெரியாதது"
 
-#: src/xenia/ui/game_list_panel_wx.cc:131
+#: src/xenia/ui/game_list_panel_wx.cc:100
 msgid "Unplayable"
 msgstr "விளையாட முடியாதது"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:335
-#: src/xenia/ui/quick_settings_dialog_wx.cc:571
+#: src/xenia/ui/quick_settings_dialog_wx.cc:341
+#: src/xenia/ui/quick_settings_dialog_wx.cc:619
 msgid "Unsaved Changes"
 msgstr "சேமிக்கப்படாத மாற்றங்கள்"
 
@@ -1272,7 +1395,7 @@ msgstr "உருகுவே"
 msgid "Uzbekistan"
 msgstr "உஸ்பெகிஸ்தான்"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:221
+#: src/xenia/ui/quick_settings_dialog_wx.cc:232
 msgid "VSync:"
 msgstr "VSync:"
 
@@ -1280,126 +1403,19 @@ msgstr "VSync:"
 msgid "Venezuela"
 msgstr "வெனிசுலா"
 
+#: src/xenia/ui/game_scan_progress_dialog_wx.cc:102
+msgid "Version: %s"
+msgstr "பதிப்பு: %s"
+
 #: src/xenia/ui/profile_editor_dialog_wx.cc:172
 msgid "Viet Nam"
 msgstr "வியட்நாம்"
 
-#: src/xenia/ui/profile_editor_dialog_wx.cc:173
-msgid "Yemen"
-msgstr "ஏமன்"
+#: src/xenia/app/emulator_window.cc:969 src/xenia/app/emulator_window.cc:970
+msgid "Volume"
+msgstr "ஒலி அளவு"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:334
-msgid "You have unsaved changes. Discard them?"
-msgstr "சேமிக்கப்படாத மாற்றங்கள் உள்ளன. அவற்றை நிராகரிக்கவா?"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:569
-msgid "You have unsaved changes. Save them before opening advanced settings?"
-msgstr "சேமிக்கப்படாத மாற்றங்கள் உள்ளன. மேம்பட்ட அமைப்புகளைத் திறப்பதற்கு முன் அவற்றைச் சேமிக்கவா?"
-
-#: src/xenia/ui/profile_editor_dialog_wx.cc:175
-msgid "Zimbabwe"
-msgstr "ஜிம்பாப்வே"
-
-#: src/xenia/ui/patches_dialog_wx.cc:126
-msgid "by %s"
-msgstr "%s மூலம்"
-
-#: src/xenia/ui/game_list_panel_wx.cc:864
-msgid "title %08X"
-msgstr "தலைப்பு %08X"
-
-msgid "Scan for Games"
-msgstr "விளையாட்டுகளுக்காக ஸ்கேன் செய்"
-
-msgid "Scanning: %s"
-msgstr "ஸ்கேன் செய்யப்படுகிறது: %s"
-
-msgid "Loading titles..."
-msgstr "தலைப்புகள் ஏற்றப்படுகின்றன…"
-
-msgid "Cancelled."
-msgstr "ரத்து செய்யப்பட்டது."
-
-msgid "(unknown title)"
-msgstr "(தெரியாத தலைப்பு)"
-
-msgid "Type: %s"
-msgstr "வகை: %s"
-
-msgid "Publisher: %s"
-msgstr "வெளியீட்டாளர்: %s"
-
-msgid "Module: %s"
-msgstr "தொகுதி: %s"
-
-msgid "Version: %s"
-msgstr "பதிப்பு: %s"
-
-msgid "Status: Installed"
-msgstr "நிலை: நிறுவப்பட்டது"
-
-msgid "(Installed) "
-msgstr "(நிறுவப்பட்டது) "
-
-msgid "Import"
-msgstr "இறக்குமதி செய்"
-
-msgid "Import %zu New Items"
-msgstr "%zu புதிய உருப்படிகளை இறக்குமதி செய்"
-
-msgid "Import failed"
-msgstr "இறக்குமதி தோல்வியடைந்தது"
-
-msgid "Xenia is not fully initialized yet. Try again after the app finishes starting up."
-msgstr "Xenia இன்னும் முழுமையாக துவக்கப்படவில்லை. பயன்பாடு தொடங்கி முடிந்த பிறகு மீண்டும் முயற்சிக்கவும்."
-
-msgid "No signed-in profile to import into. Create or sign in to a profile (Profile menu), then try again."
-msgstr "இறக்குமதி செய்ய உள்நுழைந்த சுயவிவரம் எதுவும் இல்லை. ஒரு சுயவிவரத்தை உருவாக்கவும் அல்லது அதில் உள்நுழையவும் (சுயவிவர மெனு), பிறகு மீண்டும் முயற்சிக்கவும்."
-
-msgid "Sign in to a profile (Profile menu) to enable importing."
-msgstr "இறக்குமதியை செயல்படுத்த ஒரு சுயவிவரத்தில் உள்நுழையவும் (சுயவிவர மெனு)."
-
-msgid "&Add Games..."
-msgstr "விளையாட்டுகளைச் சேர்(&A)…"
-
-msgid "   %zu already installed"
-msgstr "   %zu ஏற்கனவே நிறுவப்பட்டுள்ளது"
-
-msgid "%zu directories scanned   %zu files probed   %zu games found"
-msgstr "%zu கோப்பகங்கள் ஸ்கேன் செய்யப்பட்டன   %zu கோப்புகள் ஆராயப்பட்டன   %zu விளையாட்டுகள் கண்டறியப்பட்டன"
-
-
-#: src/xenia/app/emulator_window.cc:2153
-msgid "Add Games"
-msgstr "விளையாட்டுகளைச் சேர்"
-
-#: src/xenia/app/emulator_window.cc:2154
-msgid "Add games"
-msgstr "விளையாட்டுகளைச் சேர்"
-
-#: src/xenia/app/emulator_window.cc:2108
-msgid "Create profile && migrate data"
-msgstr "சுயவிவரம் உருவாக்கி தரவை மாற்று"
-
-#: src/xenia/app/emulator_window.cc:2105
-msgid "No Profiles Found"
-msgstr "சுயவிவரங்கள் இல்லை"
-
-#: src/xenia/app/emulator_window.cc:2154
-msgid "Not now"
-msgstr "இப்போது இல்லை"
-
-#: src/xenia/app/emulator_window.cc:2103
-msgid ""
-"There is no profile available. You will not be able to save without one.\n"
-"\n"
-"Would you like to create one now?"
-msgstr ""
-"எந்த சுயவிவரமும் இல்லை. சுயவிவரம் இல்லாமல் சேமிக்க முடியாது.\n"
-"\n"
-"இப்போது ஒன்றை உருவாக்க விரும்புகிறீர்களா?"
-
-#: src/xenia/app/emulator_window.cc:2151
+#: src/xenia/app/emulator_window.cc:2255
 msgid ""
 "Would you like to add games now?\n"
 "\n"
@@ -1409,22 +1425,35 @@ msgstr ""
 "\n"
 "இதைப் பின்னர் கோப்பு -> விளையாட்டுகளைச் சேர் என்பதிலிருந்தும் செய்யலாம்."
 
-#: src/xenia/ui/game_list_panel_wx.cc:217
-msgid "Search %zu games..."
-msgstr "%zu விளையாட்டுகளில் தேடு…"
+#: src/xenia/app/emulator_window.cc:1551
+msgid ""
+"Xenia is not fully initialized yet. Try again after the app finishes "
+"starting up."
+msgstr ""
+"Xenia இன்னும் முழுமையாக துவக்கப்படவில்லை. பயன்பாடு தொடங்கி முடிந்த பிறகு மீண்டும் "
+"முயற்சிக்கவும்."
 
-#: src/xenia/app/emulator_window.cc:746
-msgid "&Audio"
-msgstr "ஆடியோ(&A)"
+#: src/xenia/ui/profile_editor_dialog_wx.cc:173
+msgid "Yemen"
+msgstr "ஏமன்"
 
-#: src/xenia/app/emulator_window.cc:749
-msgid "&Volume"
-msgstr "ஒலி அளவு(&V)"
+#: src/xenia/ui/quick_settings_dialog_wx.cc:340
+msgid "You have unsaved changes. Discard them?"
+msgstr "சேமிக்கப்படாத மாற்றங்கள் உள்ளன. அவற்றை நிராகரிக்கவா?"
 
-#: src/xenia/app/emulator_window.cc:852
-msgid "Volume"
-msgstr "ஒலி அளவு"
+#: src/xenia/ui/quick_settings_dialog_wx.cc:617
+msgid "You have unsaved changes. Save them before opening advanced settings?"
+msgstr ""
+"சேமிக்கப்படாத மாற்றங்கள் உள்ளன. மேம்பட்ட அமைப்புகளைத் திறப்பதற்கு முன் அவற்றைச் சேமிக்கவா?"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "இயல்பு ஒலி அளவு:"
+#: src/xenia/ui/profile_editor_dialog_wx.cc:175
+msgid "Zimbabwe"
+msgstr "ஜிம்பாப்வே"
+
+#: src/xenia/ui/patches_dialog_wx.cc:137
+msgid "by %s"
+msgstr "%s மூலம்"
+
+#: src/xenia/ui/game_list_panel_wx.cc:1072
+msgid "title %08X"
+msgstr "தலைப்பு %08X"
