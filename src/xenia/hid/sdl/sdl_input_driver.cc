@@ -706,6 +706,30 @@ bool SDLInputDriver::TestSDLVersion() const {
   return true;
 }
 
+// SDL_JoystickType numbering diverges from XINPUT_DEVSUBTYPE_* past value 6.
+static uint8_t SdlTypeToXInputSubType(SDL_JoystickType t) {
+  switch (t) {
+    case SDL_JOYSTICK_TYPE_GAMECONTROLLER:
+      return 0x01;  // XINPUT_DEVSUBTYPE_GAMEPAD
+    case SDL_JOYSTICK_TYPE_WHEEL:
+      return 0x02;  // XINPUT_DEVSUBTYPE_WHEEL
+    case SDL_JOYSTICK_TYPE_ARCADE_STICK:
+      return 0x03;  // XINPUT_DEVSUBTYPE_ARCADE_STICK
+    case SDL_JOYSTICK_TYPE_FLIGHT_STICK:
+      return 0x04;  // XINPUT_DEVSUBTYPE_FLIGHT_STICK
+    case SDL_JOYSTICK_TYPE_DANCE_PAD:
+      return 0x05;  // XINPUT_DEVSUBTYPE_DANCE_PAD
+    case SDL_JOYSTICK_TYPE_GUITAR:
+      return 0x06;  // XINPUT_DEVSUBTYPE_GUITAR
+    case SDL_JOYSTICK_TYPE_DRUM_KIT:
+      return 0x08;  // XINPUT_DEVSUBTYPE_DRUM_KIT
+    case SDL_JOYSTICK_TYPE_ARCADE_PAD:
+      return 0x13;  // XINPUT_DEVSUBTYPE_ARCADE_PAD
+    default:
+      return 0x01;  // XINPUT_DEVSUBTYPE_GAMEPAD
+  }
+}
+
 void SDLInputDriver::UpdateXCapabilities(ControllerState& state) {
   assert(state.sdl);
   uint16_t cap_flags = 0x0;
@@ -741,8 +765,8 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state) {
 
   auto& c = state.caps;
   c.type = 0x01;  // XINPUT_DEVTYPE_GAMEPAD
-  c.sub_type = static_cast<uint8_t>(SDL_JoystickGetType(
-      SDL_GameControllerGetJoystick(state.sdl)));  // XINPUT_DEVSUBTYPE_GAMEPAD
+  c.sub_type = SdlTypeToXInputSubType(
+      SDL_JoystickGetType(SDL_GameControllerGetJoystick(state.sdl)));
   c.flags = cap_flags;
   c.gamepad.buttons =
       0xF3FF | (cvars::guide_button ? X_INPUT_GAMEPAD_GUIDE : 0x0);
