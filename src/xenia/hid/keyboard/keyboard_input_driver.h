@@ -38,13 +38,16 @@ class KeyboardInputDriver final : public InputDriver {
   virtual InputType GetInputType() const override;
 
  protected:
-  class KeyboardWindowInputListener final : public ui::WindowInputListener {
+  class KeyboardWindowInputListener final : public ui::WindowInputListener,
+                                            public ui::WindowListener {
    public:
     explicit KeyboardWindowInputListener(KeyboardInputDriver& driver)
         : driver_(driver) {}
 
     void OnKeyDown(ui::KeyEvent& e) override;
     void OnKeyUp(ui::KeyEvent& e) override;
+    void OnKeyChar(ui::KeyEvent& e) override;
+    void OnLostFocus(ui::UISetupEvent& e) override;
 
    private:
     KeyboardInputDriver& driver_;
@@ -58,12 +61,14 @@ class KeyboardInputDriver final : public InputDriver {
     bool is_capital = false;  // shift held at event time
     bool is_ctrl_pressed = false;
     bool is_alt_pressed = false;
+    uint16_t unicode = 0;  // attached from a following OnKeyChar, if any
   };
 
   struct KeyBinding {
     ui::VirtualKey input_key = ui::VirtualKey::kNone;
     ui::VirtualKey output_key = ui::VirtualKey::kNone;
-    bool uppercase = false;
+    bool lowercase = false;  // matches only when shift not held
+    bool uppercase = false;  // matches only when shift held
     bool is_pressed = false;
   };
 
@@ -72,6 +77,8 @@ class KeyboardInputDriver final : public InputDriver {
                        const std::string_view binding);
 
   void OnKey(ui::KeyEvent& e, bool is_down);
+  void OnChar(ui::KeyEvent& e);
+  void ClearPressedKeys();
 
   xe::global_critical_region global_critical_region_;
 

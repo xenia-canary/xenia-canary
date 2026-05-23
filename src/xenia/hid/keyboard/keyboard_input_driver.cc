@@ -42,6 +42,126 @@ namespace xe {
 namespace hid {
 namespace keyboard {
 
+// Map ui::VirtualKey (Windows VK_ numbering) to USB HID usage page 0x07.
+static uint8_t VirtualKeyToHIDUsage(ui::VirtualKey vk_enum) {
+  const uint32_t vk = static_cast<uint32_t>(vk_enum);
+
+  // Letters: contiguous in both VK and HID space.
+  if (vk >= 'A' && vk <= 'Z') {
+    return uint8_t(vk - 'A' + 0x04);
+  }
+
+  // Digits 1-9 (0 is irregular: 0x27).
+  if (vk >= '1' && vk <= '9') {
+    return uint8_t(vk - '1' + 0x1E);
+  }
+
+  // F1-F12 (VK_F1 = 0x70).
+  if (vk >= 0x70 && vk <= 0x7B) {
+    return uint8_t(vk - 0x70 + 0x3A);
+  }
+  // F13-F24 (VK_F13 = 0x7C).
+  if (vk >= 0x7C && vk <= 0x87) {
+    return uint8_t(vk - 0x7C + 0x68);
+  }
+
+  // Numpad 1-9 (VK_NUMPAD1 = 0x61; 0 is irregular: 0x62).
+  if (vk >= 0x61 && vk <= 0x69) {
+    return uint8_t(vk - 0x61 + 0x59);
+  }
+
+  // L / R modifiers (Ctrl/Shift/Alt).
+  if (vk >= 0xA2 && vk <= 0xA5) {
+    return uint8_t(vk - 0xA2 + 0xE0);
+  }
+  if (vk >= 0xA6 && vk <= 0xA9) {
+    return uint8_t(vk - 0xA6 + 0xE4);
+  }
+
+  switch (vk) {
+    case '0':
+      return 0x27;
+    case 0x0D:
+      return 0x28;  // VK_RETURN
+    case 0x1B:
+      return 0x29;  // VK_ESCAPE
+    case 0x08:
+      return 0x2A;  // VK_BACK
+    case 0x09:
+      return 0x2B;  // VK_TAB
+    case 0x20:
+      return 0x2C;  // VK_SPACE
+    case 0xBD:
+      return 0x2D;  // VK_OEM_MINUS
+    case 0xBB:
+      return 0x2E;  // VK_OEM_PLUS
+    case 0xDB:
+      return 0x2F;  // VK_OEM_4
+    case 0xDD:
+      return 0x30;  // VK_OEM_6
+    case 0xDC:
+      return 0x31;  // VK_OEM_5
+    case 0xBA:
+      return 0x33;  // VK_OEM_1
+    case 0xDE:
+      return 0x34;  // VK_OEM_7
+    case 0xC0:
+      return 0x35;  // VK_OEM_3
+    case 0xBC:
+      return 0x36;  // VK_OEM_COMMA
+    case 0xBE:
+      return 0x37;  // VK_OEM_PERIOD
+    case 0xBF:
+      return 0x38;  // VK_OEM_2
+    case 0x14:
+      return 0x39;  // VK_CAPITAL
+    case 0x2C:
+      return 0x46;  // VK_SNAPSHOT
+    case 0x91:
+      return 0x47;  // VK_SCROLL
+    case 0x13:
+      return 0x48;  // VK_PAUSE
+    case 0x2D:
+      return 0x49;  // VK_INSERT
+    case 0x24:
+      return 0x4A;  // VK_HOME
+    case 0x21:
+      return 0x4B;  // VK_PRIOR
+    case 0x2E:
+      return 0x4C;  // VK_DELETE
+    case 0x23:
+      return 0x4D;  // VK_END
+    case 0x22:
+      return 0x4E;  // VK_NEXT
+    case 0x27:
+      return 0x4F;  // VK_RIGHT
+    case 0x25:
+      return 0x50;  // VK_LEFT
+    case 0x28:
+      return 0x51;  // VK_DOWN
+    case 0x26:
+      return 0x52;  // VK_UP
+    case 0x90:
+      return 0x53;  // VK_NUMLOCK
+    case 0x6F:
+      return 0x54;  // VK_DIVIDE
+    case 0x6A:
+      return 0x55;  // VK_MULTIPLY
+    case 0x6D:
+      return 0x56;  // VK_SUBTRACT
+    case 0x6B:
+      return 0x57;  // VK_ADD
+    case 0x60:
+      return 0x62;  // VK_NUMPAD0
+    case 0x6E:
+      return 0x63;  // VK_DECIMAL
+    case 0x5D:
+      return 0x65;  // VK_APPS
+    default:
+      return 0x00;
+  }
+}
+
 static bool IsPassthroughEnabled() {
   return static_cast<KeyboardMode>(cvars::keyboard_mode) ==
          KeyboardMode::Passthrough;
@@ -55,6 +175,14 @@ static bool IsKeyboardForUserEnabled(uint32_t user_index) {
   return cvars::keyboard_user_index == static_cast<int32_t>(user_index);
 }
 
+// No prefix (both flags false) matches either caps state.
+static bool MatchesCaps(bool lowercase, bool uppercase, bool is_capital) {
+  if (lowercase == uppercase) {
+    return true;
+  }
+  return uppercase ? is_capital : !is_capital;
+}
+
 void KeyboardInputDriver::ParseKeyBinding(
     ui::VirtualKey output_key, const std::string_view description,
     const std::string_view source_tokens) {
@@ -66,7 +194,7 @@ void KeyboardInputDriver::ParseKeyBinding(
     std::string_view token = source_token;
 
     if (utf8::starts_with(token, "_")) {
-      key_binding.uppercase = false;
+      key_binding.lowercase = true;
       token = token.substr(1);
     } else if (utf8::starts_with(token, "^")) {
       key_binding.uppercase = true;
@@ -108,9 +236,11 @@ KeyboardInputDriver::KeyboardInputDriver(xe::ui::Window* window,
 #undef XE_HID_KEYBOARD_BINDING
 
   window->AddInputListener(&window_input_listener_, window_z_order);
+  window->AddListener(&window_input_listener_);
 }
 
 KeyboardInputDriver::~KeyboardInputDriver() {
+  window()->RemoveListener(&window_input_listener_);
   window()->RemoveInputListener(&window_input_listener_);
 }
 
@@ -299,16 +429,20 @@ X_RESULT KeyboardInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
   if (!IsPassthroughEnabled()) {
     if (IsKeyboardForUserEnabled(user_index)) {
       for (const KeyBinding& b : key_bindings_) {
-        if (b.input_key == evt.virtual_key && b.uppercase == evt.is_capital) {
+        if (b.input_key == evt.virtual_key &&
+            MatchesCaps(b.lowercase, b.uppercase, evt.is_capital)) {
           xinput_virtual_key = b.output_key;
         }
       }
     }
   } else {
-    // Passthrough: surface the raw key plus modifier flags.
-    // TODO(has207): plumb unicode (via OnKeyChar text()) and a VirtualKey ->
-    // HID usage table so passthrough matches winkey's full keystroke shape.
+    // Passthrough: surface the raw key plus modifier/unicode/HID-usage.
     xinput_virtual_key = evt.virtual_key;
+    hid_code = VirtualKeyToHIDUsage(evt.virtual_key);
+    if (evt.unicode) {
+      unicode = evt.unicode;
+      keystroke_flags |= 0x1000;  // XINPUT_KEYSTROKE_VALIDUNICODE
+    }
 
     if (evt.is_capital) {
       keystroke_flags |= 0x0008;  // XINPUT_KEYSTROKE_SHIFT
@@ -356,6 +490,25 @@ void KeyboardInputDriver::KeyboardWindowInputListener::OnKeyUp(
   driver_.OnKey(e, false);
 }
 
+void KeyboardInputDriver::KeyboardWindowInputListener::OnKeyChar(
+    ui::KeyEvent& e) {
+  driver_.OnChar(e);
+}
+
+void KeyboardInputDriver::KeyboardWindowInputListener::OnLostFocus(
+    ui::UISetupEvent& e) {
+  driver_.ClearPressedKeys();
+}
+
+void KeyboardInputDriver::ClearPressedKeys() {
+  // Releases happening to another focused window aren't seen as KeyUp here;
+  // clear all bindings on focus loss to avoid stuck keys on refocus.
+  auto global_lock = global_critical_region_.Acquire();
+  for (auto& b : key_bindings_) {
+    b.is_pressed = false;
+  }
+}
+
 void KeyboardInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
   if (static_cast<KeyboardMode>(cvars::keyboard_mode) ==
       KeyboardMode::Disabled) {
@@ -381,7 +534,8 @@ void KeyboardInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
       continue;
     }
     if (is_down) {
-      if (key_binding.uppercase == is_capital) {
+      if (MatchesCaps(key_binding.lowercase, key_binding.uppercase,
+                      is_capital)) {
         key_binding.is_pressed = true;
       }
     } else {
@@ -389,6 +543,22 @@ void KeyboardInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
       // can't leave a binding stuck.
       key_binding.is_pressed = false;
     }
+  }
+}
+
+void KeyboardInputDriver::OnChar(ui::KeyEvent& e) {
+  if (static_cast<KeyboardMode>(cvars::keyboard_mode) !=
+      KeyboardMode::Passthrough) {
+    return;
+  }
+  // WM_CHAR convention: OnKeyChar's virtual_key carries the unicode codepoint.
+  auto global_lock = global_critical_region_.Acquire();
+  if (key_events_.empty()) {
+    return;
+  }
+  auto& last = key_events_.back();
+  if (last.transition && last.unicode == 0) {
+    last.unicode = static_cast<uint16_t>(e.virtual_key());
   }
 }
 
