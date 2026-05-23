@@ -67,13 +67,12 @@
 #endif
 #if XE_PLATFORM_WIN32
 #include "xenia/hid/winkey/winkey_hid.h"
-#include "xenia/hid/xinput/xinput_hid.h"
 #endif  // XE_PLATFORM_WIN32
 
 #if XE_PLATFORM_WIN32
 #define APU_OPTIONS "[xaudio2, sdl, nop]"
 #define GPU_OPTIONS "[d3d12, vulkan, null]"
-#define HID_OPTIONS "[sdl, winkey, xinput, nop]"
+#define HID_OPTIONS "[sdl, winkey, nop]"
 DEFINE_string(apu, "xaudio2", "Audio system. Use: " APU_OPTIONS, "APU");
 DEFINE_string(gpu, "d3d12", "Graphics system. Use: " GPU_OPTIONS, "GPU");
 DEFINE_string(hid, "sdl", "Input system. Use: " HID_OPTIONS, "HID");
@@ -537,9 +536,6 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
         xe::hid::nop::Create(window, EmulatorWindow::kZOrderHidInput));
   } else {
     Factory<hid::InputDriver, ui::Window*, size_t> factory;
-#if XE_PLATFORM_WIN32
-    factory.Add("xinput", xe::hid::xinput::Create);
-#endif  // XE_PLATFORM_WIN32
 #if !XE_PLATFORM_ANDROID
     factory.Add("sdl", xe::hid::sdl::Create);
 #endif  // !XE_PLATFORM_ANDROID

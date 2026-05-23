@@ -297,7 +297,7 @@ GetKnownEnumOptions() {
 #if XE_PLATFORM_WIN32
         {"gpu", {"d3d12", "vulkan", "null"}},
         {"apu", {"xaudio2", "sdl", "nop"}},
-        {"hid", {"sdl", "winkey", "xinput", "nop"}},
+        {"hid", {"sdl", "winkey", "nop"}},
 #elif XE_PLATFORM_LINUX
         {"gpu", {"vulkan", "null"}},
         {"apu", {"alsa", "sdl", "nop"}},

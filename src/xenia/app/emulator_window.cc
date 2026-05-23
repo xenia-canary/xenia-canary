@@ -2543,7 +2543,7 @@ void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
 }
 
 // Notes:
-// SDL and XInput both support the guide button
+// SDL supports the guide button.
 //
 // Assumes titles do not use the guide button.
 // For titles that do such as dashboards these titles could be excluded based on
@@ -2559,12 +2559,6 @@ void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
 //
 // This is not an issue with DualShock controllers because Windows will not
 // open the gamebar overlay using the PlayStation menu button.
-//
-// Xbox One S Controller:
-// The guide button on this controller is very buggy no idea why.
-// Using xinput usually registers after a double tap.
-// Doesn't work at all using SDL.
-// Needs more testing.
 //
 // Steam:
 // If guide button focus is enabled steam will open.
