@@ -285,12 +285,36 @@ spv::Id SpirvShaderTranslator::ProcessVectorAluOperation(
         }
       }
       if (instr.vector_opcode == ucode::AluVectorOpcode::kMad) {
-        // Not replacing true `0 + term` with conditional selection of the term
-        // because +0 + -0 should result in +0, not -0.
-        result = builder_->createNoContractionBinOp(
-            spv::OpFAdd, result_type, result,
+        // Fused-multiply-add instead of separate FMul+FAdd
+        // is assumed to be closer to the real hardware
+        // (fixes black ground in AC6).
+        spv::Id addend =
             GetOperandComponents(operand_storage[2], instr.vector_operands[2],
-                                 used_result_components));
+                                 used_result_components);
+        result = builder_->createTriBuiltinCall(
+            result_type, ext_inst_glsl_std_450_, GLSLstd450Fma,
+            multiplicands[0], multiplicands[1], addend);
+        // SM3 forces 0 * anything = +0, but Fma would propagate NaN through
+        // `0 * NaN + c`. Substitute `+0 + c` (not just `c`) so signed-zero
+        // semantics preserve `+0 + (-0) = +0` matching the hardware.
+        if (multiplicands_different) {
+          spv::Id abs_a =
+              GetAbsoluteOperand(multiplicands[0], instr.vector_operands[0]);
+          spv::Id abs_b =
+              GetAbsoluteOperand(multiplicands[1], instr.vector_operands[1]);
+          spv::Id any_zero = builder_->createBinOp(
+              spv::OpFOrdEqual,
+              type_bool_vectors_[used_result_component_count - 1],
+              builder_->createBinBuiltinCall(result_type,
+                                             ext_inst_glsl_std_450_,
+                                             GLSLstd450NMin, abs_a, abs_b),
+              const_float_vectors_0_[used_result_component_count - 1]);
+          spv::Id zero_plus_addend = builder_->createNoContractionBinOp(
+              spv::OpFAdd, result_type,
+              const_float_vectors_0_[used_result_component_count - 1], addend);
+          result = builder_->createTriOp(spv::OpSelect, result_type, any_zero,
+                                         zero_plus_addend, result);
+        }
       }
       return result;
     }

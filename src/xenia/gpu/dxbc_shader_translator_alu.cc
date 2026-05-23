@@ -90,33 +90,49 @@ void DxbcShaderTranslator::ProcessVectorAluOperation(
       break;
     case AluVectorOpcode::kMul:
     case AluVectorOpcode::kMad: {
-      // Not using DXBC mad to prevent fused multiply-add (mul followed by add
-      // may be optimized into non-fused mad by the driver in the identical
-      // operands case also).
-      a_.OpMul(per_component_dest, operands[0], operands[1]);
+      bool is_mad = instr.vector_opcode == AluVectorOpcode::kMad;
+      // Fused-multiply-add instead of separate Mul+Add
+      // is assumed to be closer to the real hardware
+      // (fixes black ground in AC6).
+      // DXBC `mad` stays fused because Xenia does not set
+      // kGlobalFlagRefactoringAllowed.
+      if (is_mad) {
+        a_.OpMAd(per_component_dest, operands[0], operands[1], operands[2]);
+      } else {
+        a_.OpMul(per_component_dest, operands[0], operands[1]);
+      }
       uint32_t multiplicands_different =
           used_result_components &
           ~instr.vector_operands[0].GetIdenticalComponents(
               instr.vector_operands[1]);
       if (multiplicands_different) {
-        // Shader Model 3: +-0 or denormal * anything = +0.
+        // SM3 forces 0 * anything = +0, but the FMA would propagate NaN
+        // through `0 * NaN + c`. For `mad`, substitute `+0 + c` (not just `c`)
+        // so signed-zero semantics preserve `+0 + (-0) = +0`.
+        // For `mul`, the substitute is plain +0.
         uint32_t is_zero_temp = PushSystemTemp();
         a_.OpMin(dxbc::Dest::R(is_zero_temp, multiplicands_different),
                  operands[0].Abs(), operands[1].Abs());
         // min isn't required to flush denormals, eq is.
         a_.OpEq(dxbc::Dest::R(is_zero_temp, multiplicands_different),
                 dxbc::Src::R(is_zero_temp), dxbc::Src::LF(0.0f));
-        // Not replacing true `0 + term` with movc of the term because +0 + -0
-        // should result in +0, not -0.
+        dxbc::Src replacement = dxbc::Src::LF(0.0f);
+        if (is_mad) {
+          uint32_t zero_plus_addend_temp = PushSystemTemp();
+          a_.OpAdd(
+              dxbc::Dest::R(zero_plus_addend_temp, multiplicands_different),
+              dxbc::Src::LF(0.0f), operands[2]);
+          replacement = dxbc::Src::R(zero_plus_addend_temp);
+        }
         a_.OpMovC(dxbc::Dest::R(system_temp_result_, multiplicands_different),
-                  dxbc::Src::R(is_zero_temp), dxbc::Src::LF(0.0f),
+                  dxbc::Src::R(is_zero_temp), replacement,
                   dxbc::Src::R(system_temp_result_));
+        if (is_mad) {
+          // Release zero_plus_addend_temp.
+          PopSystemTemp();
+        }
         // Release is_zero_temp.
         PopSystemTemp();
-      }
-      if (instr.vector_opcode == AluVectorOpcode::kMad) {
-        a_.OpAdd(per_component_dest, dxbc::Src::R(system_temp_result_),
-                 operands[2]);
       }
     } break;
 
