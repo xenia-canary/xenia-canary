@@ -35,7 +35,7 @@ msgstr " - %s (%08X)"
 
 #: src/xenia/ui/game_config_dialog_wx.cc:285
 msgid "%08X - Config Overrides"
-msgstr ""
+msgstr "%08X — Substituições de configuração"
 
 #: src/xenia/ui/patches_dialog_wx.cc:37
 msgid "%s (%08X)"
@@ -565,11 +565,11 @@ msgstr "Zona do jogador:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:276
 msgid "Gamercard Editor"
-msgstr "Editor de cartão do jogador"
+msgstr "Editor de Gamercard"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:281
 msgid "Gamercard Editor - %s"
-msgstr "Editor de cartão do jogador — %s"
+msgstr "Editor de Gamercard — %s"
 
 #: src/xenia/ui/game_list_panel_wx.cc:305
 msgid "Gamerscore"
