@@ -1669,9 +1669,8 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.sxtl2(VReg(0).s4, VReg(s).h8);
     LoadV128Const(e, 1, vec128i(0x40400000u), 0);
     e.add(VReg(0).s4, VReg(0).s4, VReg(1).s4);
-    // Reorder {w,z,y,x} → {x,y,z,w}: rev64 then swap halves.
-    e.rev64(VReg(0).s4, VReg(0).s4);                  // {z,w,x,y}
-    e.ext(VReg(0).b16, VReg(0).b16, VReg(0).b16, 8);  // {x,y,z,w}
+    // Reorder the sign-extended pairs into PPC vector word order.
+    e.rev64(VReg(0).s4, VReg(0).s4);
     EmitMagicFloatOverflowCheck(e, d);
   }
   static void EmitUINT_2101010(A64Emitter& e, const EmitArgType& i) {

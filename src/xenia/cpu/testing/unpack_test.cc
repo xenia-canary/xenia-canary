@@ -117,6 +117,30 @@ TEST_CASE("UNPACK_SHORT_2", "[instr]") {
       });
 }
 
+TEST_CASE("UNPACK_SHORT_4", "[instr]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreVR(b, 3, b.Unpack(LoadVR(b, 4), PACK_TYPE_SHORT_4));
+    b.Return();
+  });
+  test.Run([](PPCContext* ctx) { ctx->v[4] = vec128i(0); },
+           [](PPCContext* ctx) {
+             auto result = ctx->v[3];
+             REQUIRE(result ==
+                     vec128i(0x40400000, 0x40400000, 0x40400000, 0x40400000));
+           });
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] =
+            vec128i(0xCDCDCDCD, 0xCDCDCDCD, 0x512E2A47, 0x568EE95B);
+      },
+      [](PPCContext* ctx) {
+        auto result = ctx->v[3];
+        // Regression: A64 once swapped these two 64-bit result halves.
+        REQUIRE(result ==
+                vec128i(0x4040512E, 0x40402A47, 0x4040568E, 0x403FE95B));
+      });
+}
+
 TEST_CASE("UNPACK_UINT_2101010", "[instr]") {
   TestFunction test([](HIRBuilder& b) {
     StoreVR(b, 3, b.Unpack(LoadVR(b, 4), PACK_TYPE_UINT_2101010));
