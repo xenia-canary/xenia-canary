@@ -1,0 +1,1181 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2020 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#include "xenia/kernel/user_module_mac.h"
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <thread>
+
+#include "xenia/base/byte_stream.h"
+#include "xenia/base/clock.h"
+#include "xenia/base/cvar.h"
+#include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
+#include "xenia/base/xxhash.h"
+#include "xenia/cpu/elf_module.h"
+#include "xenia/emulator_mac.h"
+
+#if XE_PLATFORM_MAC
+constexpr bool kDefaultKernelUserModuleLoadUseMmap = false;
+#else
+constexpr bool kDefaultKernelUserModuleLoadUseMmap = true;
+#endif
+DEFINE_bool(kernel_user_module_load_use_mmap,
+            kDefaultKernelUserModuleLoadUseMmap,
+            "Use mapped file reads for user-module load when supported by the "
+            "VFS entry.",
+            "Kernel");
+DEFINE_bool(kernel_user_module_load_force_buffered_cdrom, true,
+            "Force buffered (non-mapped) user-module reads for "
+            "\\Device\\Cdrom* paths.",
+            "Kernel");
+
+namespace xe {
+namespace kernel {
+
+namespace {
+
+class ScopedModuleStageWatchdog final {
+ public:
+  ScopedModuleStageWatchdog(std::string stage_name, std::string path,
+                            std::function<void()> heartbeat_fn = {})
+      : stage_name_(std::move(stage_name)),
+        path_(std::move(path)),
+        heartbeat_fn_(std::move(heartbeat_fn)),
+        begin_ms_(Clock::QueryHostUptimeMillis()) {
+    watchdog_thread_ = std::thread([this]() { Run(); });
+  }
+
+  ScopedModuleStageWatchdog(const ScopedModuleStageWatchdog&) = delete;
+  ScopedModuleStageWatchdog& operator=(const ScopedModuleStageWatchdog&) =
+      delete;
+
+  ~ScopedModuleStageWatchdog() { Stop(); }
+
+  void Stop() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (stopped_) {
+        return;
+      }
+      stopped_ = true;
+    }
+    condition_.notify_all();
+    if (watchdog_thread_.joinable()) {
+      watchdog_thread_.join();
+    }
+  }
+
+ private:
+  void Run() {
+    constexpr auto kInterval = std::chrono::milliseconds(1000);
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (!stopped_) {
+      if (condition_.wait_for(lock, kInterval, [this]() { return stopped_; })) {
+        break;
+      }
+      lock.unlock();
+      uint64_t elapsed_ms = Clock::QueryHostUptimeMillis() - begin_ms_;
+      XELOGW("DEBUG: {} still in progress ({} ms, path='{}')", stage_name_,
+             static_cast<unsigned long long>(elapsed_ms), path_);
+      if (heartbeat_fn_) {
+        heartbeat_fn_();
+      }
+      lock.lock();
+    }
+  }
+
+  std::string stage_name_;
+  std::string path_;
+  std::function<void()> heartbeat_fn_;
+  uint64_t begin_ms_ = 0;
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  std::thread watchdog_thread_;
+  bool stopped_ = false;
+};
+
+}  // namespace
+
+UserModule::UserModule(KernelState* kernel_state)
+    : XModule(kernel_state, ModuleType::kUserModule) {}
+
+UserModule::~UserModule() { Unload(); }
+
+uint32_t UserModule::title_id() const {
+  if (module_format_ != kModuleFormatXex) {
+    return 0;
+  }
+
+  xex2_opt_execution_info* opt_exec_info = nullptr;
+  if (xex_module()->GetOptHeader(XEX_HEADER_EXECUTION_INFO, &opt_exec_info)) {
+    return static_cast<uint32_t>(opt_exec_info->title_id);
+  }
+  return 0;
+}
+
+std::string UserModule::bounding_filename() const {
+  std::string bounding_filename = "";
+
+  if (module_format_ != kModuleFormatXex) {
+    return bounding_filename;
+  }
+
+  xex2_opt_bound_path* bounding_path = nullptr;
+  if (xex_module()->GetOptHeader(XEX_HEADER_BOUNDING_PATH, &bounding_path)) {
+    bounding_filename =
+        utf8::find_base_name_from_guest_path(std::string(bounding_path->path));
+  }
+
+  return bounding_filename;
+}
+
+uint32_t UserModule::disc_number() const {
+  if (module_format_ != kModuleFormatXex) {
+    return 1;
+  }
+
+  xex2_opt_execution_info* opt_exec_info = nullptr;
+  if (xex_module()->GetOptHeader(XEX_HEADER_EXECUTION_INFO, &opt_exec_info)) {
+    return static_cast<uint32_t>(opt_exec_info->disc_number);
+  }
+  return 1;
+}
+
+bool UserModule::is_multi_disc_title() const {
+  if (module_format_ != kModuleFormatXex) {
+    return false;
+  }
+
+  xex2_opt_execution_info* opt_exec_info = nullptr;
+  if (xex_module()->GetOptHeader(XEX_HEADER_EXECUTION_INFO, &opt_exec_info)) {
+    return opt_exec_info->disc_count > 1;
+  }
+  return false;
+}
+
+X_STATUS UserModule::LoadFromFile(const std::string_view path) {
+  X_STATUS result = X_STATUS_UNSUCCESSFUL;
+
+  uint64_t t0 = Clock::QueryHostUptimeMillis();
+  XELOGI("DEBUG: UserModule::LoadFromFile begin path='{}'", path);
+
+  // Resolve the file to open.
+  // TODO(benvanik): make this code shared?
+  auto fs_entry = kernel_state()->file_system()->ResolvePath(path);
+  uint64_t t_resolve = Clock::QueryHostUptimeMillis();
+  XELOGI("DEBUG: UserModule::LoadFromFile ResolvePath took {} ms",
+         static_cast<unsigned long long>(t_resolve - t0));
+  if (!fs_entry) {
+    XELOGE("File not found: {}", path);
+    return X_STATUS_NO_SUCH_FILE;
+  }
+
+  path_ = fs_entry->absolute_path();
+  name_ = utf8::find_base_name_from_guest_path(path_);
+
+  auto load_from_buffered_file = [&]() -> X_STATUS {
+    staged_buffered_source_.clear();
+    staged_buffered_source_.resize(fs_entry->size());
+
+    // Open file for reading.
+    vfs::File* file = nullptr;
+    uint64_t t_open_begin = Clock::QueryHostUptimeMillis();
+    X_STATUS open_result = fs_entry->Open(vfs::FileAccess::kGenericRead, &file);
+    uint64_t t_open_end = Clock::QueryHostUptimeMillis();
+    XELOGI("DEBUG: UserModule::LoadFromFile Open(file) took {} ms",
+           static_cast<unsigned long long>(t_open_end - t_open_begin));
+    if (XFAILED(open_result)) {
+      return open_result;
+    }
+    if (!file) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    auto destroy_file = [&file]() {
+      if (file) {
+        file->Destroy();
+        file = nullptr;
+      }
+    };
+
+    // Read entire file into memory.
+    // Ugh.
+    size_t bytes_read = 0;
+    uint64_t t_read_begin = Clock::QueryHostUptimeMillis();
+    X_STATUS read_result = file->ReadSync(
+        std::span<uint8_t>(staged_buffered_source_.data(),
+                           staged_buffered_source_.size()),
+        0, &bytes_read);
+    uint64_t t_read_end = Clock::QueryHostUptimeMillis();
+    XELOGI("DEBUG: UserModule::LoadFromFile ReadSync took {} ms bytes_read={}",
+           static_cast<unsigned long long>(t_read_end - t_read_begin),
+           static_cast<unsigned long long>(bytes_read));
+    if (XFAILED(read_result)) {
+      destroy_file();
+      return read_result;
+    }
+
+    // Once buffered, close the VFS file before heavy module decode/load work.
+    destroy_file();
+
+    // Load the module.
+    uint64_t t_load_begin = Clock::QueryHostUptimeMillis();
+    if (bytes_read < staged_buffered_source_.size()) {
+      staged_buffered_source_.resize(bytes_read);
+    }
+    X_STATUS load_result =
+        LoadFromMemory(staged_buffered_source_.data(), bytes_read);
+    uint64_t t_load_end = Clock::QueryHostUptimeMillis();
+    XELOGI("DEBUG: UserModule::LoadFromFile LoadFromMemory(buffer) took {} ms",
+           static_cast<unsigned long long>(t_load_end - t_load_begin));
+
+    if (XFAILED(load_result)) {
+      staged_buffered_source_.clear();
+      staged_buffered_source_.shrink_to_fit();
+    }
+
+    destroy_file();
+    return load_result;
+  };
+
+  bool force_buffered_cdrom =
+      cvars::kernel_user_module_load_force_buffered_cdrom &&
+      utf8::starts_with_case(path_, "\\Device\\Cdrom");
+  bool try_mapped = cvars::kernel_user_module_load_use_mmap &&
+                    fs_entry->can_map() && !force_buffered_cdrom;
+
+  // If the FS supports mapping, map the file in and load from that.
+  if (try_mapped) {
+    uint64_t t_map_begin = Clock::QueryHostUptimeMillis();
+    auto mmap = fs_entry->OpenMapped(MappedMemory::Mode::kRead);
+    uint64_t t_map_end = Clock::QueryHostUptimeMillis();
+    XELOGI("DEBUG: UserModule::LoadFromFile OpenMapped took {} ms",
+           static_cast<unsigned long long>(t_map_end - t_map_begin));
+    if (mmap) {
+      uint64_t t_load_begin = Clock::QueryHostUptimeMillis();
+      result = LoadFromMemory(mmap->data(), mmap->size());
+      uint64_t t_load_end = Clock::QueryHostUptimeMillis();
+      XELOGI("DEBUG: UserModule::LoadFromFile LoadFromMemory(mapped) took {} ms",
+             static_cast<unsigned long long>(t_load_end - t_load_begin));
+      if (!XFAILED(result)) {
+        uint64_t t_end = Clock::QueryHostUptimeMillis();
+        XELOGI("DEBUG: UserModule::LoadFromFile end total={} ms result={:08X}",
+               static_cast<unsigned long long>(t_end - t0), result);
+        return result;
+      }
+      XELOGW("DEBUG: UserModule::LoadFromFile mapped load failed ({:08X}); "
+             "falling back to buffered load",
+             result);
+    } else {
+      XELOGW("DEBUG: UserModule::LoadFromFile OpenMapped returned null; "
+             "falling back to buffered load");
+    }
+  } else if (force_buffered_cdrom) {
+    XELOGI("DEBUG: UserModule::LoadFromFile using buffered load for Cdrom path='{}'",
+           path_);
+  }
+
+  result = load_from_buffered_file();
+  uint64_t t_end = Clock::QueryHostUptimeMillis();
+  XELOGI("DEBUG: UserModule::LoadFromFile end total={} ms result={:08X}",
+         static_cast<unsigned long long>(t_end - t0), result);
+  return result;
+}
+
+X_STATUS UserModule::LoadFromMemory(const void* addr, const size_t length) {
+  uint64_t t0 = Clock::QueryHostUptimeMillis();
+  XELOGI("DEBUG: UserModule::LoadFromMemory begin length={} path='{}'",
+         static_cast<unsigned long long>(length), path_);
+  XELOGI("DEBUG: UserModule::LoadFromMemory stage=entry addr={} length={}",
+    addr, static_cast<unsigned long long>(length));
+  kernel_state()->NoteUserModuleLoadProgress();
+
+  auto processor = kernel_state()->processor();
+
+  be<fourcc_t> magic;
+  magic.value = xe::load<fourcc_t>(addr);
+  if (magic == xe::cpu::kXEX2Signature || magic == xe::cpu::kXEX1Signature) {
+    module_format_ = kModuleFormatXex;
+    XELOGI("DEBUG: UserModule::LoadFromMemory stage=magic_detected format=XEX "
+           "magic={:08X}",
+           magic.get());
+  } else if (magic == xe::cpu::kElfSignature) {
+    module_format_ = kModuleFormatElf;
+    XELOGI("DEBUG: UserModule::LoadFromMemory stage=magic_detected format=ELF "
+           "magic={:08X}",
+           magic.get());
+  } else {
+    uint8_t M = xe::load<uint8_t>(addr);
+    uint8_t Z = xe::load<uint8_t>(reinterpret_cast<void*>(
+        reinterpret_cast<uint64_t>(addr) + sizeof(uint8_t)));
+
+    magic = make_fourcc(M, Z, 0, 0);
+    if (magic == kEXESignature) {
+      XELOGE("XNA executables are not yet implemented");
+      return X_STATUS_NOT_IMPLEMENTED;
+    } else {
+      XELOGE("Unknown module magic: {:08X}", magic.get());
+      return X_STATUS_NOT_IMPLEMENTED;
+    }
+  }
+
+  if (module_format_ == kModuleFormatXex) {
+    // Prepare the module for execution.
+    // Runtime takes ownership.
+    XELOGI("DEBUG: UserModule::LoadFromMemory stage=xex.create.begin");
+    auto xex_module =
+        std::make_unique<cpu::XexModule>(processor, kernel_state());
+    XELOGI("DEBUG: UserModule::LoadFromMemory stage=xex.create.end module_ptr={}",
+           static_cast<void*>(xex_module.get()));
+
+    uint64_t t_xex_load_begin = Clock::QueryHostUptimeMillis();
+        XELOGI("DEBUG: UserModule::LoadFromMemory calling XexModule::Load module='{}' "
+          "path='{}'",
+          name_, path_);
+    if (!xex_module->Load(name_, path_, addr, length)) {
+      XELOGE("DEBUG: UserModule::LoadFromMemory stage=xex.load.fail");
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    kernel_state()->NoteUserModuleLoadProgress();
+    XELOGI("DEBUG: UserModule::LoadFromMemory XexModule::Load returned in {} ms",
+           static_cast<unsigned long long>(Clock::QueryHostUptimeMillis() -
+                                           t_xex_load_begin));
+
+    processor_module_ = xex_module.get();
+        XELOGI("DEBUG: UserModule::LoadFromMemory processor_module_ staged module='{}' "
+          "entry={:08X}",
+          name(), entry_point());
+
+    uint64_t t_add_module_begin = Clock::QueryHostUptimeMillis();
+        XELOGI("DEBUG: UserModule::LoadFromMemory calling Processor::AddModule "
+          "module='{}'",
+          name());
+    if (!processor->AddModule(std::move(xex_module))) {
+      XELOGE("DEBUG: UserModule::LoadFromMemory stage=processor.add_module.fail");
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    kernel_state()->NoteUserModuleLoadProgress();
+    XELOGI("DEBUG: UserModule::LoadFromMemory AddModule returned in {} ms",
+           static_cast<unsigned long long>(Clock::QueryHostUptimeMillis() -
+                                           t_add_module_begin));
+
+    const bool is_patch_module = this->xex_module()->is_patch();
+    const bool is_executable_module =
+        processor_module_ && processor_module_->is_executable();
+    if (!is_patch_module && is_executable_module) {
+      // Defer executable module wiring until LoadUserModule/CompleteLaunch.
+      // Doing full SetExecutableModule work here can stall module-load flow
+      // before LoadFromMemory returns, which blocks prelaunch transitions.
+      XELOGI(
+          "DEBUG: UserModule::LoadFromMemory deferring executable module wiring: "
+          "module='{}' entry={:08X}",
+          name(), entry_point());
+    }
+
+    // Only XEX headers + image are loaded right now
+    // Caller will have to call LoadXexContinue after they've loaded in a patch
+    // (or after patch isn't found anywhere)
+    // or if this is an XEXP being loaded return success since there's nothing
+    // else to load
+    X_STATUS load_status =
+        is_patch_module ? X_STATUS_SUCCESS : X_STATUS_PENDING;
+    XELOGI("DEBUG: UserModule::LoadFromMemory end total={} ms status={:08X}",
+           static_cast<unsigned long long>(Clock::QueryHostUptimeMillis() -
+                                           t0),
+           load_status);
+    return load_status;
+
+  } else if (module_format_ == kModuleFormatElf) {
+    auto elf_module =
+        std::make_unique<cpu::ElfModule>(processor, kernel_state());
+    if (!elf_module->Load(name_, path_, addr, length)) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+
+    entry_point_ = elf_module->entry_point();
+    stack_size_ = 1024 * 1024;  // 1 MB
+    is_dll_module_ = false;     // Hardcoded not a DLL (for now)
+
+    processor_module_ = elf_module.get();
+    if (!processor->AddModule(std::move(elf_module))) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+  }
+
+  OnLoad();
+
+  XELOGI("DEBUG: UserModule::LoadFromMemory end total={} ms status={:08X}",
+         static_cast<unsigned long long>(Clock::QueryHostUptimeMillis() - t0),
+         X_STATUS_SUCCESS);
+
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS UserModule::LoadFromMemoryNamed(const std::string_view raw_name,
+                                         const void* addr,
+                                         const size_t length) {
+  name_ = std::string(raw_name);
+  return LoadFromMemory(addr, length);
+}
+
+X_STATUS UserModule::LoadContinue() {
+  // LoadXexContinue: finishes loading XEX after a patch has been applied (or
+  // patch wasn't found)
+
+  if (!this->xex_module()) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
+  // If guest_xex_header is set we must have already loaded the XEX
+  if (guest_xex_header_) {
+    return X_STATUS_SUCCESS;
+  }
+
+  // Finish XexModule load (PE sections/imports/symbols...)
+  if (!xex_module()->LoadContinue()) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
+  // Copy the xex2 header into guest memory.
+  auto header = this->xex_module()->xex_header();
+  auto security_header = this->xex_module()->xex_security_info();
+  guest_xex_header_ = memory()->SystemHeapAlloc(header->header_size);
+
+  uint8_t* xex_header_ptr = memory()->TranslateVirtual(guest_xex_header_);
+  std::memcpy(xex_header_ptr, header, header->header_size);
+
+  // Cache some commonly used headers...
+  this->xex_module()->GetOptHeader(XEX_HEADER_ENTRY_POINT, &entry_point_);
+  this->xex_module()->GetOptHeader(XEX_HEADER_DEFAULT_STACK_SIZE, &stack_size_);
+
+  xe::be<uint32_t>* ws_size = 0;
+  this->xex_module()->GetOptHeader(XEX_HEADER_TITLE_WORKSPACE_SIZE, &ws_size);
+  // ToDo: Find better way to handle default and mimimal values!
+  if (ws_size && *ws_size) {
+    workspace_size_ = std::max(ws_size->get(), uint32_t(256 * 1024));
+  }
+  is_dll_module_ = !!(header->module_flags & XEX_MODULE_DLL_MODULE);
+
+  // Setup the loader data entry
+  auto ldr_data =
+      memory()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule_ptr_);
+
+  ldr_data->dll_base = 0;  // GetProcAddress will read this.
+  ldr_data->xex_header_base = guest_xex_header_;
+  ldr_data->full_image_size = security_header->image_size;
+  ldr_data->image_base = this->xex_module()->base_address();
+
+  ldr_data->entry_point = entry_point_;
+
+  OnLoad();
+
+  if (!staged_buffered_source_.empty()) {
+    XELOGI("DEBUG: UserModule::LoadContinue releasing staged buffered source ({} bytes)",
+           static_cast<unsigned long long>(staged_buffered_source_.size()));
+    staged_buffered_source_.clear();
+    staged_buffered_source_.shrink_to_fit();
+  }
+
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS UserModule::Unload() {
+  staged_buffered_source_.clear();
+  staged_buffered_source_.shrink_to_fit();
+
+  if (module_format_ == kModuleFormatXex &&
+      (!processor_module_ || !xex_module()->loaded())) {
+    // Quick abort.
+    return X_STATUS_SUCCESS;
+  }
+
+  if (module_format_ == kModuleFormatXex && processor_module_ &&
+      xex_module()->Unload()) {
+    OnUnload();
+    return X_STATUS_SUCCESS;
+  }
+
+  return X_STATUS_UNSUCCESSFUL;
+}
+
+uint32_t UserModule::GetProcAddressByOrdinal(uint16_t ordinal) {
+  return xex_module()->GetProcAddress(ordinal);
+}
+
+uint32_t UserModule::GetProcAddressByName(std::string_view name) {
+  return xex_module()->GetProcAddress(name);
+}
+
+X_STATUS UserModule::GetSection(const std::string_view name,
+                                uint32_t* out_section_data,
+                                uint32_t* out_section_size) {
+  xex2_opt_resource_info* resource_header = nullptr;
+  if (!cpu::XexModule::GetOptHeader(xex_header(), XEX_HEADER_RESOURCE_INFO,
+                                    &resource_header)) {
+    // No resources.
+    return X_STATUS_NOT_FOUND;
+  }
+  uint32_t count = (resource_header->size - 4) / sizeof(xex2_resource);
+  for (uint32_t i = 0; i < count; i++) {
+    auto& res = resource_header->resources[i];
+    if (utf8::equal_z(name, std::string_view(res.name, 8))) {
+      // Found!
+      *out_section_data = res.address;
+      *out_section_size = res.size;
+      return X_STATUS_SUCCESS;
+    }
+  }
+
+  return X_STATUS_NOT_FOUND;
+}
+
+X_STATUS UserModule::GetOptHeader(xex2_header_keys key, void** out_ptr) {
+  assert_not_null(out_ptr);
+
+  if (module_format_ == kModuleFormatElf) {
+    // Quick die.
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
+  bool ret = xex_module()->GetOptHeader(key, out_ptr);
+  if (!ret) {
+    return X_STATUS_NOT_FOUND;
+  }
+
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS UserModule::GetOptHeader(xex2_header_keys key,
+                                  uint32_t* out_header_guest_ptr) {
+  if (module_format_ == kModuleFormatElf) {
+    // Quick die.
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
+  auto header =
+      memory()->TranslateVirtual<const xex2_header*>(guest_xex_header_);
+  if (!header) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  return GetOptHeader(memory(), header, key, out_header_guest_ptr);
+}
+
+X_STATUS UserModule::GetOptHeader(const Memory* memory,
+                                  const xex2_header* header,
+                                  xex2_header_keys key,
+                                  uint32_t* out_header_guest_ptr) {
+  assert_not_null(out_header_guest_ptr);
+  uint32_t field_value = 0;
+  bool field_found = false;
+  for (uint32_t i = 0; i < header->header_count; i++) {
+    auto& opt_header = header->headers[i];
+    if (opt_header.key != key) {
+      continue;
+    }
+    field_found = true;
+    switch (opt_header.key & 0xFF) {
+      case 0x00:
+        // Return data stored in header value.
+        field_value = opt_header.value;
+        break;
+      case 0x01:
+        // Return pointer to data stored in header value.
+        field_value = memory->HostToGuestVirtual(&opt_header.value);
+        break;
+      default:
+        // Data stored at offset to header.
+        field_value = memory->HostToGuestVirtual(header) + opt_header.offset;
+        break;
+    }
+    break;
+  }
+  *out_header_guest_ptr = field_value;
+  if (!field_found) {
+    return X_STATUS_NOT_FOUND;
+  }
+  return X_STATUS_SUCCESS;
+}
+
+bool UserModule::Save(ByteStream* stream) {
+  if (!XModule::Save(stream)) {
+    return false;
+  }
+
+  // A lot of the information stored on this class can be reconstructed at
+  // runtime.
+
+  return true;
+}
+
+object_ref<UserModule> UserModule::Restore(KernelState* kernel_state,
+                                           ByteStream* stream,
+                                           const std::string_view path) {
+  auto module = new UserModule(kernel_state);
+
+  // XModule::Save took care of this earlier...
+  // TODO: Find a nicer way to represent that here.
+  if (!module->RestoreObject(stream)) {
+    return nullptr;
+  }
+
+  auto result = module->LoadFromFile(path);
+  if (XFAILED(result)) {
+    XELOGD("UserModule::Restore LoadFromFile({}) FAILED - code {:08X}", path,
+           result);
+    return nullptr;
+  }
+
+  if (!kernel_state->RegisterUserModule(retain_object(module))) {
+    // Already loaded?
+    assert_always();
+  }
+
+  return object_ref<UserModule>(module);
+}
+
+void UserModule::Dump() {
+  if (module_format_ == kModuleFormatElf) {
+    // Quick die.
+    return;
+  }
+
+  StringBuffer sb;
+
+  xe::cpu::ExportResolver* export_resolver =
+      kernel_state_->emulator()->export_resolver();
+  auto header = xex_header();
+
+  CalculateHash();
+
+  // XEX header.
+  sb.AppendFormat("Module {}:\n", path_);
+
+  sb.AppendFormat("Module Hash: {:016X}\n", hash_.value_or(UINT64_MAX));
+
+  sb.AppendFormat("    Module Flags: {:08X}\n", (uint32_t)header->module_flags);
+
+  // Security header
+  auto security_info = xex_module()->xex_security_info();
+  sb.Append("Security Header:\n");
+  sb.AppendFormat("     Image Flags: {:08X}\n",
+                  (uint32_t)security_info->image_flags);
+  sb.AppendFormat("    Load Address: {:08X}\n",
+                  (uint32_t)security_info->load_address);
+  sb.AppendFormat("      Image Size: {:08X}\n",
+                  (uint32_t)security_info->image_size);
+  sb.AppendFormat("    Export Table: {:08X}\n",
+                  (uint32_t)security_info->export_table);
+
+  // Optional headers
+  sb.AppendFormat("Optional Header Count: {}\n",
+                  (uint32_t)header->header_count);
+
+  for (uint32_t i = 0; i < header->header_count; i++) {
+    auto& opt_header = header->headers[i];
+
+    // Stash a pointer (although this isn't used in every case)
+    auto opt_header_ptr =
+        reinterpret_cast<const uint8_t*>(header) + opt_header.offset;
+    switch (opt_header.key) {
+      case XEX_HEADER_RESOURCE_INFO: {
+        sb.Append("  XEX_HEADER_RESOURCE_INFO:\n");
+        auto opt_resource_info =
+            reinterpret_cast<const xex2_opt_resource_info*>(opt_header_ptr);
+
+        uint32_t count = (opt_resource_info->size - 4) / 16;
+        for (uint32_t j = 0; j < count; j++) {
+          auto& res = opt_resource_info->resources[j];
+
+          // Manually NULL-terminate the name.
+          char name[9];
+          std::memcpy(name, res.name, sizeof(res.name));
+          name[8] = 0;
+
+          sb.AppendFormat(
+              "    {:<8} {:08X}-{:08X}, {}b\n", name, (uint32_t)res.address,
+              (uint32_t)res.address + (uint32_t)res.size, (uint32_t)res.size);
+        }
+      } break;
+      case XEX_HEADER_FILE_FORMAT_INFO: {
+        sb.Append("  XEX_HEADER_FILE_FORMAT_INFO (TODO):\n");
+      } break;
+      case XEX_HEADER_DELTA_PATCH_DESCRIPTOR: {
+        sb.Append("  XEX_HEADER_DELTA_PATCH_DESCRIPTOR (TODO):\n");
+      } break;
+      case XEX_HEADER_BOUNDING_PATH: {
+        auto opt_bound_path =
+            reinterpret_cast<const xex2_opt_bound_path*>(opt_header_ptr);
+        sb.AppendFormat("  XEX_HEADER_BOUNDING_PATH: {}\n",
+                        opt_bound_path->path);
+      } break;
+      case XEX_HEADER_ORIGINAL_BASE_ADDRESS: {
+        sb.AppendFormat("  XEX_HEADER_ORIGINAL_BASE_ADDRESS: {:08X}\n",
+                        (uint32_t)opt_header.value);
+      } break;
+      case XEX_HEADER_ENTRY_POINT: {
+        sb.AppendFormat("  XEX_HEADER_ENTRY_POINT: {:08X}\n",
+                        (uint32_t)opt_header.value);
+      } break;
+      case XEX_HEADER_IMAGE_BASE_ADDRESS: {
+        sb.AppendFormat("  XEX_HEADER_IMAGE_BASE_ADDRESS: {:08X}\n",
+                        (uint32_t)opt_header.value);
+      } break;
+      case XEX_HEADER_IMPORT_LIBRARIES: {
+        sb.Append("  XEX_HEADER_IMPORT_LIBRARIES:\n");
+        auto opt_import_libraries =
+            reinterpret_cast<const xex2_opt_import_libraries*>(opt_header_ptr);
+
+        // FIXME: Don't know if 32 is the actual limit, but haven't seen more
+        // than 2.
+        const char* string_table[32];
+        std::memset(string_table, 0, sizeof(string_table));
+
+        // Parse the string table
+        for (size_t j = 0, o = 0; j < opt_import_libraries->string_table.size &&
+                                  o < opt_import_libraries->string_table.count;
+             o++) {
+          assert_true(o < xe::countof(string_table));
+          const char* str = &opt_import_libraries->string_table.data[j];
+          const size_t remaining =
+              opt_import_libraries->string_table.size - j;
+          const auto* terminator =
+              static_cast<const char*>(std::memchr(str, '\0', remaining));
+          if (!terminator) {
+            break;
+          }
+
+          string_table[o] = str;
+          j += static_cast<size_t>(terminator - str) + 1;
+
+          // Padding
+          if ((j % 4) != 0) {
+            j += 4 - (j % 4);
+          }
+        }
+
+        auto library_data =
+            reinterpret_cast<const uint8_t*>(opt_import_libraries);
+        uint32_t library_offset = opt_import_libraries->string_table.size + 12;
+        while (library_offset < opt_import_libraries->size) {
+          auto library = reinterpret_cast<const xex2_import_library*>(
+              library_data + library_offset);
+          if (!library->size) {
+            break;
+          }
+          auto name = string_table[library->name_index & 0xFF];
+          assert_not_null(name);
+          uint16_t import_record_count = library->count;
+          sb.AppendFormat("    {} - {} import records\n", name,
+                          import_record_count);
+          if ((import_record_count % 2) == 0) {
+            sb.AppendFormat("      Approx logical imports (record pairs): {}\n",
+                            import_record_count / 2);
+          }
+
+          xex2_version version, version_min;
+          version = library->version();
+          version_min = library->version_min();
+          sb.AppendFormat("      Version: {}.{}.{}.{}\n", version.major,
+                          version.minor, version.build, version.qfe);
+          sb.AppendFormat("      Min Version: {}.{}.{}.{}\n", version_min.major,
+                          version_min.minor, version_min.build,
+                          version_min.qfe);
+
+          library_offset += library->size;
+        }
+      } break;
+      case XEX_HEADER_CHECKSUM_TIMESTAMP: {
+        // TODO(Byrom): Relocate parts of this to somewhere more suitable
+        // (if possible) to leave only the log printing portion.
+        auto opt_checksum_timedatestamp =
+            reinterpret_cast<const xex2_opt_checksum_timedatestamp*>(
+                opt_header_ptr);
+
+        // Store the checksum & timedatestamp just in case we need them later.
+        mod_checksum_ = opt_checksum_timedatestamp->checksum;
+        time_date_stamp_ = opt_checksum_timedatestamp->timedatestamp;
+        // Update the ldr data with the timedatestamp only.
+        // The checksum field is being used to store the kernel object handle
+        // (xmodule.cc XModule::XModule)
+        auto ldr_data =
+            memory()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule_ptr_);
+        ldr_data->time_date_stamp = time_date_stamp_;
+
+        time_t time = (time_t)opt_checksum_timedatestamp->timedatestamp;
+        struct tm* timeinfo = localtime(&time);
+        sb.AppendFormat("  XEX_HEADER_CHECKSUM_TIMESTAMP:\n");
+        sb.AppendFormat(
+            "    Checksum : {:08X}\n",
+            static_cast<uint32_t>(opt_checksum_timedatestamp->checksum));
+        sb.AppendFormat(
+            "    Time Stamp: {:08X} - {}",
+            static_cast<uint32_t>(opt_checksum_timedatestamp->timedatestamp),
+            asctime(timeinfo));
+      } break;
+      case XEX_HEADER_ORIGINAL_PE_NAME: {
+        auto opt_pe_name =
+            reinterpret_cast<const xex2_opt_original_pe_name*>(opt_header_ptr);
+        sb.AppendFormat("  XEX_HEADER_ORIGINAL_PE_NAME: {}\n",
+                        opt_pe_name->name);
+      } break;
+      case XEX_HEADER_STATIC_LIBRARIES: {
+        sb.Append("  XEX_HEADER_STATIC_LIBRARIES:\n");
+        auto opt_static_libraries =
+            reinterpret_cast<const xex2_opt_static_libraries*>(opt_header_ptr);
+
+        uint32_t count = (opt_static_libraries->size - 4) / 0x10;
+        for (uint32_t l = 0; l < count; l++) {
+          auto& library = opt_static_libraries->libraries[l];
+          sb.AppendFormat("    {:<8} : {}.{}.{}.{}\n", library.name,
+                          static_cast<uint16_t>(library.version_major),
+                          static_cast<uint16_t>(library.version_minor),
+                          static_cast<uint16_t>(library.version_build),
+                          static_cast<uint16_t>(library.version_qfe));
+        }
+      } break;
+      case XEX_HEADER_TLS_INFO: {
+        sb.Append("  XEX_HEADER_TLS_INFO:\n");
+        auto opt_tls_info =
+            reinterpret_cast<const xex2_opt_tls_info*>(opt_header_ptr);
+
+        sb.AppendFormat("          Slot Count: {}\n",
+                        static_cast<uint32_t>(opt_tls_info->slot_count));
+        sb.AppendFormat("    Raw Data Address: {:08X}\n",
+                        static_cast<uint32_t>(opt_tls_info->raw_data_address));
+        sb.AppendFormat("           Data Size: {}\n",
+                        static_cast<uint32_t>(opt_tls_info->data_size));
+        sb.AppendFormat("       Raw Data Size: {}\n",
+                        static_cast<uint32_t>(opt_tls_info->raw_data_size));
+      } break;
+      case XEX_HEADER_DEFAULT_STACK_SIZE: {
+        sb.AppendFormat("  XEX_HEADER_DEFAULT_STACK_SIZE: {}\n",
+                        static_cast<uint32_t>(opt_header.value));
+      } break;
+      case XEX_HEADER_DEFAULT_FILESYSTEM_CACHE_SIZE: {
+        sb.AppendFormat("  XEX_HEADER_DEFAULT_FILESYSTEM_CACHE_SIZE: {}\n",
+                        static_cast<uint32_t>(opt_header.value));
+      } break;
+      case XEX_HEADER_DEFAULT_HEAP_SIZE: {
+        sb.AppendFormat("  XEX_HEADER_DEFAULT_HEAP_SIZE: {}\n",
+                        static_cast<uint32_t>(opt_header.value));
+      } break;
+      case XEX_HEADER_PAGE_HEAP_SIZE_AND_FLAGS: {
+        sb.Append("  XEX_HEADER_PAGE_HEAP_SIZE_AND_FLAGS (TODO):\n");
+      } break;
+      case XEX_HEADER_SYSTEM_FLAGS: {
+        sb.AppendFormat("  XEX_HEADER_SYSTEM_FLAGS: {:08X}\n",
+                        static_cast<uint32_t>(opt_header.value));
+
+        for (const auto& entry : xex2_system_flags_map) {
+          if (opt_header.value & entry.first) {
+            sb.AppendFormat("    {}\n", entry.second);
+          }
+        }
+      } break;
+      case XEX_HEADER_EXECUTION_INFO: {
+        sb.Append("  XEX_HEADER_EXECUTION_INFO:\n");
+        auto opt_exec_info =
+            reinterpret_cast<const xex2_opt_execution_info*>(opt_header_ptr);
+
+        sb.AppendFormat("       Media ID: {:08X}\n",
+                        static_cast<uint32_t>(opt_exec_info->media_id));
+        sb.AppendFormat("       Title ID: {:08X}\n",
+                        static_cast<uint32_t>(opt_exec_info->title_id));
+        sb.AppendFormat("    Savegame ID: {:08X}\n",
+                        static_cast<uint32_t>(opt_exec_info->title_id));
+        sb.AppendFormat("    Disc Number / Total: {} / {}\n",
+                        opt_exec_info->disc_number, opt_exec_info->disc_count);
+      } break;
+      case XEX_HEADER_TITLE_WORKSPACE_SIZE: {
+        sb.AppendFormat("  XEX_HEADER_TITLE_WORKSPACE_SIZE: {}\n",
+                        uint32_t(opt_header.value));
+      } break;
+      case XEX_HEADER_GAME_RATINGS: {
+        sb.Append("  XEX_HEADER_GAME_RATINGS (TODO):\n");
+      } break;
+      case XEX_HEADER_LAN_KEY: {
+        sb.Append("  XEX_HEADER_LAN_KEY:");
+        auto opt_lan_key =
+            reinterpret_cast<const xex2_opt_lan_key*>(opt_header_ptr);
+
+        for (int l = 0; l < 16; l++) {
+          sb.AppendFormat(" {:02X}", opt_lan_key->key[l]);
+        }
+        sb.Append("\n");
+      } break;
+      case XEX_HEADER_XBOX360_LOGO: {
+        sb.Append("  XEX_HEADER_XBOX360_LOGO (TODO):\n");
+      } break;
+      case XEX_HEADER_MULTIDISC_MEDIA_IDS: {
+        sb.Append("  XEX_HEADER_MULTIDISC_MEDIA_IDS (TODO):\n");
+      } break;
+      case XEX_HEADER_ALTERNATE_TITLE_IDS: {
+        sb.Append("  XEX_HEADER_ALTERNATE_TITLE_IDS:");
+        auto opt_alternate_title_id =
+            reinterpret_cast<const xex2_opt_generic_u32*>(opt_header_ptr);
+
+        std::string title_ids = "";
+
+        for (uint32_t i = 0; i < opt_alternate_title_id->count(); i++) {
+          if (opt_alternate_title_id->values[i] != 0) {
+            title_ids.append(fmt::format(
+                " {:08X},", opt_alternate_title_id->values[i].get()));
+          }
+        }
+        // Remove last character as it is not necessary
+        if (!title_ids.empty()) {
+          title_ids.pop_back();
+          sb.AppendFormat("{}\n", title_ids);
+        }
+      } break;
+      case XEX_HEADER_ADDITIONAL_TITLE_MEMORY: {
+        sb.AppendFormat("  XEX_HEADER_ADDITIONAL_TITLE_MEMORY: {}\n",
+                        uint32_t(opt_header.value));
+      } break;
+      case XEX_HEADER_EXPORTS_BY_NAME: {
+        sb.Append("  XEX_HEADER_EXPORTS_BY_NAME:\n");
+        auto dir =
+            reinterpret_cast<const xex2_opt_data_directory*>(opt_header_ptr);
+
+        auto exe_address = xex_module()->base_address();
+        auto e = memory()->TranslateVirtual<const X_IMAGE_EXPORT_DIRECTORY*>(
+            exe_address + dir->offset);
+        auto e_base = reinterpret_cast<uintptr_t>(e);
+
+        // e->AddressOfX RVAs are relative to the IMAGE_EXPORT_DIRECTORY!
+        auto function_table =
+            reinterpret_cast<const uint32_t*>(e_base + e->AddressOfFunctions);
+        // Names relative to directory.
+        auto name_table =
+            reinterpret_cast<const uint32_t*>(e_base + e->AddressOfNames);
+        // Table of ordinals (by name).
+        auto ordinal_table = reinterpret_cast<const uint16_t*>(
+            e_base + e->AddressOfNameOrdinals);
+        for (uint32_t n = 0; n < e->NumberOfNames; n++) {
+          auto name = reinterpret_cast<const char*>(e_base + name_table[n]);
+          uint16_t ordinal = ordinal_table[n];
+          uint32_t addr = exe_address + function_table[ordinal];
+          sb.AppendFormat("    {:<28} - {:03X} - {:08X}\n", name, ordinal,
+                          addr);
+        }
+      } break;
+      default: {
+        sb.AppendFormat("  Unknown Header {:08X}\n", (uint32_t)opt_header.key);
+      } break;
+    }
+  }
+
+  sb.Append("Sections:\n");
+  for (uint32_t i = 0, page = 0; i < security_info->page_descriptor_count;
+       i++) {
+    // Manually byteswap the bitfield data.
+    xex2_page_descriptor page_descriptor;
+    page_descriptor.value =
+        xe::byte_swap(security_info->page_descriptors[i].value);
+
+    const char* type = "UNKNOWN";
+    switch (page_descriptor.info) {
+      case XEX_SECTION_CODE:
+        type = "CODE   ";
+        break;
+      case XEX_SECTION_DATA:
+        type = "RWDATA ";
+        break;
+      case XEX_SECTION_READONLY_DATA:
+        type = "RODATA ";
+        break;
+    }
+
+    const uint32_t page_size =
+        xex_module()->base_address() < 0x90000000 ? 64 * 1024 : 4 * 1024;
+    uint32_t start_address = xex_module()->base_address() + (page * page_size);
+    uint32_t end_address =
+        start_address + (page_descriptor.page_count * page_size);
+
+    sb.AppendFormat("  {:3} {} {:3} pages    {:08X} - {:08X} ({} bytes)\n",
+                    page, type, page_descriptor.page_count, start_address,
+                    end_address, page_descriptor.page_count * page_size);
+    page += page_descriptor.page_count;
+  }
+
+  // Print out imports.
+
+  auto import_libs = xex_module()->import_libraries();
+
+  sb.Append("Imports:\n");
+  for (std::vector<cpu::XexModule::ImportLibrary>::const_iterator library =
+           import_libs->begin();
+       library != import_libs->end(); ++library) {
+    if (library->imports.size() > 0) {
+      sb.AppendFormat(" {} - {} imports\n", library->name,
+                      library->imports.size());
+      sb.AppendFormat("   Version: {}.{}.{}.{}\n", library->version.major,
+                      library->version.minor, library->version.build,
+                      library->version.qfe);
+      sb.AppendFormat("   Min Version: {}.{}.{}.{}\n",
+                      library->min_version.major, library->min_version.minor,
+                      library->min_version.build, library->min_version.qfe);
+      sb.AppendFormat(
+          "   Import Records: {} (variables={}, thunks={}, unknown={})\n",
+          library->import_record_count, library->variable_record_count,
+          library->thunk_record_count, library->unknown_record_count);
+      if (library->variable_record_count != library->imports.size()) {
+        sb.AppendFormat(
+            "   !! Import record mismatch: logical imports={} but variable "
+            "records={}\n",
+            library->imports.size(), library->variable_record_count);
+      }
+      if (library->unknown_record_count != 0) {
+        sb.AppendFormat(
+            "   !! Import record anomaly: unknown record types present (count={})\n",
+            library->unknown_record_count);
+      }
+      sb.Append("\n");
+
+      // Counts.
+      int known_count = 0;
+      int unknown_count = 0;
+      int impl_count = 0;
+      int unimpl_count = 0;
+
+      for (std::vector<cpu::XexModule::ImportLibraryFn>::const_iterator info =
+               library->imports.begin();
+           info != library->imports.end(); ++info) {
+        if (kernel_state_->IsKernelModule(library->name)) {
+          auto kernel_export =
+              export_resolver->GetExportByOrdinal(library->name, info->ordinal);
+          if (kernel_export) {
+            known_count++;
+            if (kernel_export->is_implemented()) {
+              impl_count++;
+            } else {
+              unimpl_count++;
+            }
+          } else {
+            unknown_count++;
+            unimpl_count++;
+          }
+        } else {
+          auto module = kernel_state_->GetModule(library->name);
+          if (module) {
+            uint32_t export_addr =
+                module->GetProcAddressByOrdinal(info->ordinal);
+            if (export_addr) {
+              impl_count++;
+              known_count++;
+            } else {
+              unimpl_count++;
+              unknown_count++;
+            }
+          } else {
+            unimpl_count++;
+            unknown_count++;
+          }
+        }
+      }
+      float total_count = static_cast<float>(library->imports.size()) / 100.0f;
+      sb.AppendFormat("         Total: {:4}\n", library->imports.size());
+      sb.AppendFormat("         Known:  {:3}% ({} known, {} unknown)\n",
+                      static_cast<int>(known_count / total_count), known_count,
+                      unknown_count);
+      sb.AppendFormat(
+          "   Implemented:  {:3}% ({} implemented, {} unimplemented)\n",
+          static_cast<int>(impl_count / total_count), impl_count, unimpl_count);
+      sb.AppendFormat("\n");
+
+      // Listing.
+      for (std::vector<cpu::XexModule::ImportLibraryFn>::const_iterator info =
+               library->imports.begin();
+           info != library->imports.end(); ++info) {
+        const char* name = "UNKNOWN";
+        bool implemented = false;
+
+        cpu::Export* kernel_export = nullptr;
+        if (kernel_state_->IsKernelModule(library->name)) {
+          kernel_export =
+              export_resolver->GetExportByOrdinal(library->name, info->ordinal);
+          if (kernel_export) {
+            name = kernel_export->name;
+            implemented = kernel_export->is_implemented();
+          }
+        } else {
+          auto module = kernel_state_->GetModule(library->name);
+          if (module && module->GetProcAddressByOrdinal(info->ordinal)) {
+            // TODO(benvanik): name lookup.
+            implemented = true;
+          }
+        }
+        if (kernel_export &&
+            kernel_export->get_type() == cpu::Export::Type::kVariable) {
+          sb.AppendFormat("   V {:08X}          {:03X} ({:4}) {} {}\n",
+                          info->value_address, info->ordinal, info->ordinal,
+                          implemented ? "  " : "!!", name);
+        } else if (info->thunk_address) {
+          sb.AppendFormat("   F {:08X} {:08X} {:03X} ({:4}) {} {}\n",
+                          info->value_address, info->thunk_address,
+                          info->ordinal, info->ordinal,
+                          implemented ? "  " : "!!", name);
+        }
+      }
+    }
+
+    sb.Append("\n");
+  }
+
+  xe::logging::AppendLogLine(xe::LogLevel::Info, 'i', sb.to_string_view());
+}
+
+void UserModule::CalculateHash() {
+  const BaseHeap* module_heap =
+      kernel_state_->memory()->LookupHeap(xex_module()->base_address());
+
+  if (!module_heap) {
+    XELOGE("Invalid heap for xex module! Address: {:08X}",
+           xex_module()->base_address());
+    return;
+  }
+
+  const uint32_t page_size = module_heap->page_size();
+  auto security_info = xex_module()->xex_security_info();
+
+  auto find_code_section_page = [&security_info](bool from_bottom) {
+    for (uint32_t i = 0; i < security_info->page_descriptor_count; i++) {
+      const uint32_t page_index =
+          from_bottom ? i : (security_info->page_descriptor_count - 1) - i;
+      xex2_page_descriptor page_descriptor;
+      page_descriptor.value =
+          xe::byte_swap(security_info->page_descriptors[page_index].value);
+      if (page_descriptor.info != XEX_SECTION_CODE) {
+        continue;
+      }
+      return page_index;
+    }
+    return UINT32_MAX;
+  };
+
+  const uint32_t start_address =
+      xex_module()->base_address() + (find_code_section_page(true) * page_size);
+  const uint32_t end_address =
+      xex_module()->base_address() +
+      ((find_code_section_page(false) + 1) * page_size);
+
+  uint8_t* base_code_adr = memory()->TranslateVirtual(start_address);
+
+  XXH3_state_t hash_state;
+  XXH3_64bits_reset(&hash_state);
+  XXH3_64bits_update(&hash_state, base_code_adr, end_address - start_address);
+  hash_ = XXH3_64bits_digest(&hash_state);
+}
+}  // namespace kernel
+}  // namespace xe
