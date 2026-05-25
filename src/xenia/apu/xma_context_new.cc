@@ -138,6 +138,10 @@ bool XmaContextNew::Work() {
     Consume(&output_rb, &data);
     data.output_buffer_write_offset =
         output_rb.write_offset() / kOutputBytesPerBlock;
+
+    if (output_rb.empty()) {
+      data.output_buffer_valid = false;
+    }
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
