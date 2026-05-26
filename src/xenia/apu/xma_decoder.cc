@@ -348,16 +348,6 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
     }
     // Signal the decoder thread to start processing.
     work_event_->SetBoostPriority();
-    if (cvars::use_dedicated_xma_thread) {
-      // Block until the worker finishes, so the game sees updated context data.
-      uint32_t remaining = kicked_value;
-      while (remaining) {
-        const uint32_t context_id =
-            base_context_id + std::countr_zero(remaining);
-        contexts_[context_id]->WaitForWorkDone();
-        remaining &= remaining - 1;
-      }
-    }
   } else if (r >= XmaRegister::Context0Lock && r <= XmaRegister::Context9Lock) {
     // Context lock command.
     // This requests a lock by flagging the context.
