@@ -637,5 +637,19 @@ Thread* Thread::GetCurrentThread() {
 
 void Thread::Exit(int exit_code) { ExitThread(exit_code); }
 
+bool WaitOnAddress32(std::atomic<uint32_t>* addr, uint32_t expected,
+                     std::chrono::milliseconds timeout) {
+  static_assert(sizeof(std::atomic<uint32_t>) == sizeof(uint32_t),
+                "atomic<uint32_t> must be lock-free and same size as uint32_t");
+  const DWORD ms =
+      timeout.count() < 0 ? INFINITE : static_cast<DWORD>(timeout.count());
+  return ::WaitOnAddress(reinterpret_cast<volatile VOID*>(addr), &expected,
+                         sizeof(expected), ms) != FALSE;
+}
+
+void WakeOneByAddress32(std::atomic<uint32_t>* addr) {
+  ::WakeByAddressSingle(reinterpret_cast<PVOID>(addr));
+}
+
 }  // namespace threading
 }  // namespace xe

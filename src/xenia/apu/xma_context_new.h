@@ -138,6 +138,11 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+
+  // Counts how many Work() invocations in a row found the input starved.
+  // Used to delay the catchup write=read collapse so the game's consumer
+  // has time to drain any in-flight PCM before we discard it.
+  uint8_t starved_kicks_in_a_row_ = 0;
 };
 
 }  // namespace apu

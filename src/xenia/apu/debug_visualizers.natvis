@@ -3,7 +3,7 @@
 
   <!-- Shims -->
   <Type Name="xe::apu::XmaContext">
-    <DisplayString>id={id_}, allocated={is_allocated_}, enabled={is_enabled_}</DisplayString>
+    <DisplayString>id={id_}, allocated={(state_._Storage._Value &amp; 1) != 0}, enabled={(state_._Storage._Value &amp; 2) != 0}</DisplayString>
   </Type>
 
 </AutoVisualizer>

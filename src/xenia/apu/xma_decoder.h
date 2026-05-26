@@ -10,7 +10,9 @@
 #ifndef XENIA_APU_XMA_DECODER_H_
 #define XENIA_APU_XMA_DECODER_H_
 
+#include <array>
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <queue>
 
@@ -55,7 +57,7 @@ class XmaDecoder {
   int GetContextId(uint32_t guest_ptr);
 
  private:
-  void WorkerThreadMain();
+  void PoolWorkerMain(size_t group_index);
 
   static uint32_t MMIOReadRegisterThunk(void* ppc_context, XmaDecoder* as,
                                         uint32_t addr) {
@@ -71,16 +73,34 @@ class XmaDecoder {
   cpu::Processor* processor_ = nullptr;
 
   std::atomic<bool> worker_running_ = {false};
-  kernel::object_ref<kernel::XHostThread> worker_thread_;
-  std::unique_ptr<xe::threading::Event> work_event_ = nullptr;
 
+  // Each worker is asigned to Context0Kick..Context9Kick.
+  // Each worker owns up to 2 groups (64 contexts) and is woken
+  // directly by the Kick handler that targets one of its groups.
+  static constexpr size_t kKickGroupCount = 10;
+  static constexpr size_t kKickGroupsPerWorker = 2;
+  static constexpr size_t kWorkerPoolSize =
+      kKickGroupCount / kKickGroupsPerWorker;
+  struct PoolWorker {
+    std::atomic<uint32_t> wake_signal{0};
+    std::atomic<uint64_t> pending_mask{0};
+  };
+  std::array<PoolWorker, kWorkerPoolSize> worker_pool_;
+  std::array<kernel::object_ref<kernel::XHostThread>, kWorkerPoolSize>
+      pool_threads_;
+
+  // Pause coordination across all pool workers. paused_ is the public-facing
+  // flag; paused_count_ tallies how many workers are currently parked.
   std::atomic<bool> paused_ = false;
-  xe::threading::Fence pause_fence_;   // Signaled when worker paused.
-  xe::threading::Fence resume_fence_;  // Signaled when resume requested.
+  std::mutex pause_mutex_;
+  std::condition_variable pause_cv_;
+  int paused_count_ = 0;
 
   XmaRegisterFile register_file_;
 
   static const uint32_t kContextCount = 320;
+  static_assert(kContextCount == kWorkerPoolSize * kKickGroupsPerWorker * 32,
+                "Pool partitioning must cover every context exactly once.");
   XmaContext* contexts_[kContextCount];
   BitMap context_bitmap_;
 

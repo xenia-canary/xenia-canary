@@ -113,6 +113,20 @@ void MaybeYield();
 // Memory barrier (request - may be ignored).
 void SyncMemory();
 
+// Low-latency wait/wake on a 32-bit address.
+//
+// Subject to spurious and stolen wakeups — callers must
+// re-check their condition after returning.
+//
+// Blocks the calling thread while *addr == expected. Returns true if a wake
+// was observed; false on timeout. Negative timeout means infinite.
+bool WaitOnAddress32(
+    std::atomic<uint32_t>* addr, uint32_t expected,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(-1));
+
+// Wakes one thread (if any) waiting on this address.
+void WakeOneByAddress32(std::atomic<uint32_t>* addr);
+
 // Sleeps the current thread for at least as long as the given duration.
 void Sleep(std::chrono::microseconds duration);
 void NanoSleep(int64_t ns);

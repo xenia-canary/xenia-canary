@@ -221,26 +221,55 @@ class XmaContext {
 
   uint32_t id() { return id_; }
   uint32_t guest_ptr() { return guest_ptr_; }
-  bool is_allocated() { return is_allocated_.load(std::memory_order_acquire); }
-  bool is_enabled() { return is_enabled_.load(std::memory_order_acquire); }
+  bool is_allocated() {
+    return (state_.load(std::memory_order_acquire) & kFlagAllocated) != 0;
+  }
+  bool is_enabled() {
+    return (state_.load(std::memory_order_acquire) & kFlagEnabled) != 0;
+  }
 
   void set_is_allocated(bool is_allocated) {
-    is_allocated_.store(is_allocated, std::memory_order_release);
+    if (is_allocated) {
+      state_.fetch_or(kFlagAllocated, std::memory_order_release);
+    } else {
+      state_.fetch_and(static_cast<uint8_t>(~kFlagAllocated),
+                       std::memory_order_release);
+    }
   }
   void set_is_enabled(bool is_enabled) {
-    is_enabled_.store(is_enabled, std::memory_order_release);
+    if (is_enabled) {
+      state_.fetch_or(kFlagEnabled, std::memory_order_release);
+    } else {
+      state_.fetch_and(static_cast<uint8_t>(~kFlagEnabled),
+                       std::memory_order_release);
+    }
+  }
+
+  // True if the context had pending work; clears the enabled bit.
+  bool ConsumeIsEnabledBit() {
+    const uint8_t old = state_.fetch_and(static_cast<uint8_t>(~kFlagEnabled),
+                                         std::memory_order_acquire);
+    return (old & kFlagsAllocatedAndEnabled) == kFlagsAllocatedAndEnabled;
   }
 
   // Signals that the worker has finished processing this context after a kick.
   void SignalWorkDone() {
-    if (work_completion_event_) {
-      work_completion_event_->Set();
-    }
+    work_done_signal_.store(1, std::memory_order_release);
+    xe::threading::WakeOneByAddress32(&work_done_signal_);
   }
+
   // Blocks until the worker has finished processing this context.
   void WaitForWorkDone() {
-    if (work_completion_event_) {
-      xe::threading::Wait(work_completion_event_.get(), false);
+    for (;;) {
+      uint32_t v = work_done_signal_.load(std::memory_order_acquire);
+      if (v != 0) {
+        if (work_done_signal_.compare_exchange_strong(
+                v, 0, std::memory_order_acq_rel, std::memory_order_acquire)) {
+          return;
+        }
+        continue;  // Another consumer stole it — re-check.
+      }
+      xe::threading::WaitOnAddress32(&work_done_signal_, 0);
     }
   }
 
@@ -250,14 +279,20 @@ class XmaContext {
   static void ConvertFrame(const uint8_t** samples, bool is_two_channel,
                            uint8_t* output_buffer);
 
+  enum : uint8_t {
+    kFlagAllocated = 1 << 0,
+    kFlagEnabled = 1 << 1,
+  };
+  static constexpr uint8_t kFlagsAllocatedAndEnabled =
+      kFlagAllocated | kFlagEnabled;
+
   Memory* memory_ = nullptr;
 
   uint32_t id_ = 0;
   uint32_t guest_ptr_ = 0;
   xe_mutex lock_;
-  std::atomic<bool> is_allocated_ = false;
-  std::atomic<bool> is_enabled_ = false;
-  std::unique_ptr<xe::threading::Event> work_completion_event_;
+  std::atomic<uint8_t> state_{0};
+  std::atomic<uint32_t> work_done_signal_{0};
 
   // ffmpeg structures
   AVPacket* av_packet_ = nullptr;

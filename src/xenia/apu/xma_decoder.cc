@@ -171,66 +171,89 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
   context_bitmap_.Resize(kContextCount);
 
   worker_running_ = true;
-  work_event_ = xe::threading::Event::CreateAutoResetEvent(false);
-  assert_not_null(work_event_);
-  worker_thread_ =
-      kernel::object_ref<kernel::XHostThread>(new kernel::XHostThread(
-          kernel_state, 128 * 1024, 0,
-          [this]() {
-            if (cvars::use_dedicated_xma_thread) {
-              WorkerThreadMain();
-            }
-            return 0;
-          },
-          kernel_state
-              ->GetIdleProcess()));  // this one doesnt need any process
-                                     // actually. never calls any guest code
-  worker_thread_->set_name("XMA Decoder");
-  worker_thread_->set_can_debugger_suspend(true);
-  worker_thread_->Create();
+  for (size_t i = 0; i < kWorkerPoolSize; ++i) {
+    pool_threads_[i] =
+        kernel::object_ref<kernel::XHostThread>(new kernel::XHostThread(
+            kernel_state, 128 * 1024, 0,
+            [this, i]() {
+              if (cvars::use_dedicated_xma_thread) {
+                PoolWorkerMain(i);
+              }
+              return 0;
+            },
+            kernel_state->GetIdleProcess()));
+    pool_threads_[i]->set_name(fmt::format("XMA Decoder {}", i));
+    pool_threads_[i]->set_can_debugger_suspend(true);
+    pool_threads_[i]->Create();
+  }
 
   return X_STATUS_SUCCESS;
 }
 
-void XmaDecoder::WorkerThreadMain() {
+void XmaDecoder::PoolWorkerMain(size_t worker_index) {
+  // Each worker owns kKickGroupsPerWorker consecutive groups of 32 contexts,
+  // packed into a single 64-bit pending mask.
+  const uint32_t base_context_id =
+      static_cast<uint32_t>(worker_index) * kKickGroupsPerWorker * 32;
+  PoolWorker& worker = worker_pool_[worker_index];
   while (worker_running_) {
-    // Okay, let's loop through XMA contexts to find ones we need to decode!
+    const uint32_t signal_before =
+        worker.wake_signal.load(std::memory_order_acquire);
+    uint64_t mask = worker.pending_mask.exchange(0, std::memory_order_relaxed);
+
     bool did_work = false;
-    for (uint32_t n = 0; n < kContextCount; n++) {
-      bool worked = contexts_[n]->Work();
-      if (worked) {
-        contexts_[n]->SignalWorkDone();
+    while (mask) {
+      const uint32_t bit_index = static_cast<uint32_t>(std::countr_zero(mask));
+      const uint32_t context_id = base_context_id + bit_index;
+      if (contexts_[context_id]->Work()) {
+        contexts_[context_id]->SignalWorkDone();
+        did_work = true;
       }
-      did_work = did_work || worked;
+      mask &= mask - 1;
     }
 
-    if (paused_) {
-      pause_fence_.Signal();
-      resume_fence_.Wait();
+    if (paused_.load(std::memory_order_acquire)) {
+      std::unique_lock<std::mutex> lock(pause_mutex_);
+      ++paused_count_;
+      pause_cv_.notify_all();
+      pause_cv_.wait(lock, [this] {
+        return !paused_.load(std::memory_order_acquire) || !worker_running_;
+      });
+      --paused_count_;
+      pause_cv_.notify_all();
     }
 
     if (did_work) {
       continue;
     }
-    xe::threading::Wait(work_event_.get(), false);
+
+    // Worker wakeup cadence ~ 5 ms (1/4 of a 24 kHz XMA frame).
+    constexpr auto kWaitTimeout = std::chrono::milliseconds(5);
+    xe::threading::WaitOnAddress32(&worker.wake_signal, signal_before,
+                                   kWaitTimeout);
   }
 }
 
 void XmaDecoder::Shutdown() {
   worker_running_ = false;
 
-  if (work_event_) {
-    work_event_->Set();
-  }
-
   if (paused_) {
     Resume();
   }
 
-  if (worker_thread_) {
-    // Wait for work thread.
-    xe::threading::Wait(worker_thread_->thread(), false);
-    worker_thread_.reset();
+  // Wake every pool worker so they observe worker_running_ == false.
+  for (auto& worker : worker_pool_) {
+    worker.wake_signal.fetch_add(1, std::memory_order_release);
+    xe::threading::WakeOneByAddress32(&worker.wake_signal);
+  }
+  // In case anyone is parked in the pause cv waiting for resume/teardown.
+  pause_cv_.notify_all();
+
+  for (auto& thread : pool_threads_) {
+    if (thread) {
+      xe::threading::Wait(thread->thread(), false);
+      thread.reset();
+    }
   }
 
   if (context_data_first_ptr_) {
@@ -335,7 +358,10 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
     // XMAEnableContext
 
     // The context ID is a bit in the range of the entire context array.
-    const uint32_t base_context_id = (r - XmaRegister::Context0Kick) * 32;
+    const uint32_t group_index = r - XmaRegister::Context0Kick;
+    const uint32_t worker_index = group_index / kKickGroupsPerWorker;
+    const uint32_t group_within_worker = group_index % kKickGroupsPerWorker;
+    const uint32_t base_context_id = group_index * 32;
     const uint32_t kicked_value = value;
     while (value) {
       const uint32_t context_id = base_context_id + std::countr_zero(value);
@@ -346,17 +372,13 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
       }
       value &= value - 1;
     }
-    // Signal the decoder thread to start processing.
-    work_event_->SetBoostPriority();
     if (cvars::use_dedicated_xma_thread) {
-      // Block until the worker finishes, so the game sees updated context data.
-      uint32_t remaining = kicked_value;
-      while (remaining) {
-        const uint32_t context_id =
-            base_context_id + std::countr_zero(remaining);
-        contexts_[context_id]->WaitForWorkDone();
-        remaining &= remaining - 1;
-      }
+      PoolWorker& worker = worker_pool_[worker_index];
+      const uint64_t shifted_mask = static_cast<uint64_t>(kicked_value)
+                                    << (group_within_worker * 32);
+      worker.pending_mask.fetch_or(shifted_mask, std::memory_order_relaxed);
+      worker.wake_signal.fetch_add(1, std::memory_order_release);
+      xe::threading::WakeOneByAddress32(&worker.wake_signal);
     }
   } else if (r >= XmaRegister::Context0Lock && r <= XmaRegister::Context9Lock) {
     // Context lock command.
@@ -404,21 +426,34 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
 }
 
 void XmaDecoder::Pause() {
-  if (paused_) {
+  if (paused_.exchange(true, std::memory_order_acq_rel)) {
     return;
   }
-  paused_ = true;
-
-  pause_fence_.Wait();
+  // Wake every worker so they observe paused_ and park in the pause cv.
+  for (auto& worker : worker_pool_) {
+    worker.wake_signal.fetch_add(1, std::memory_order_release);
+    xe::threading::WakeOneByAddress32(&worker.wake_signal);
+  }
+  std::unique_lock<std::mutex> lock(pause_mutex_);
+  pause_cv_.wait(lock, [this] {
+    return paused_count_ == static_cast<int>(kWorkerPoolSize) ||
+           !worker_running_;
+  });
 }
 
 void XmaDecoder::Resume() {
-  if (!paused_) {
+  if (!paused_.exchange(false, std::memory_order_acq_rel)) {
     return;
   }
-  paused_ = false;
-
-  resume_fence_.Signal();
+  {
+    std::lock_guard<std::mutex> lock(pause_mutex_);
+    pause_cv_.notify_all();
+  }
+  // Wait until every worker has left the parked state, so a subsequent
+  // Pause() doesn't observe stale count.
+  std::unique_lock<std::mutex> lock(pause_mutex_);
+  pause_cv_.wait(lock,
+                 [this] { return paused_count_ == 0 || !worker_running_; });
 }
 
 }  // namespace apu

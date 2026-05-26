@@ -111,12 +111,11 @@ RingBuffer XmaContextNew::PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data) {
 }
 
 bool XmaContextNew::Work() {
-  if (!is_enabled() || !is_allocated()) {
+  if (!ConsumeIsEnabledBit()) {
     return false;
   }
 
   std::lock_guard<xe_mutex> lock(lock_);
-  set_is_enabled(false);
 
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
   XMA_CONTEXT_DATA data(context_ptr);
@@ -208,13 +207,19 @@ bool XmaContextNew::Work() {
   if (initial_data.IsAnyInputBufferValid()) {
     data.output_buffer_write_offset =
         output_rb.write_offset() / kOutputBytesPerBlock;
-
+    starved_kicks_in_a_row_ = 0;
   } else {
     // NFS: Carbon and NFS: MW use write_offset as a stall detector
     // make sure that they are equal if we're starved on input.
-    if (data.output_buffer_write_offset != data.output_buffer_read_offset) {
-      data.output_buffer_write_offset = data.output_buffer_read_offset;
-      data.output_buffer_valid = 0;
+    constexpr uint8_t kStarvedKicksGrace = 1;
+    if (starved_kicks_in_a_row_ < kStarvedKicksGrace) {
+      ++starved_kicks_in_a_row_;
+    } else {
+      if (data.output_buffer_write_offset != data.output_buffer_read_offset) {
+        data.output_buffer_write_offset = data.output_buffer_read_offset;
+        data.output_buffer_valid = 0;
+        starved_kicks_in_a_row_ = 0;
+      }
     }
   }
 
@@ -257,6 +262,7 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  starved_kicks_in_a_row_ = 0;
 }
 
 void XmaContextNew::Disable() { set_is_enabled(false); }

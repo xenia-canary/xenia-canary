@@ -25,6 +25,10 @@
 #include <cstddef>
 #include <ctime>
 
+#if XE_PLATFORM_LINUX
+#include <linux/futex.h>
+#endif
+
 #include "logging.h"
 
 #if XE_PLATFORM_ANDROID
@@ -1397,6 +1401,64 @@ static void signal_handler(int signal, siginfo_t* info, void* context) {
       assert_always();
   }
 }
+
+#if XE_PLATFORM_LINUX
+
+bool WaitOnAddress32(std::atomic<uint32_t>* addr, uint32_t expected,
+                     std::chrono::milliseconds timeout) {
+  timespec ts{};
+  timespec* ts_ptr = nullptr;
+  if (timeout.count() >= 0) {
+    ts.tv_sec = timeout.count() / 1000;
+    ts.tv_nsec = (timeout.count() % 1000) * 1000000;
+    ts_ptr = &ts;
+  }
+  const long rc =
+      syscall(SYS_futex, reinterpret_cast<uint32_t*>(addr), FUTEX_WAIT_PRIVATE,
+              static_cast<int>(expected), ts_ptr, nullptr, 0);
+  // Returns 0 on wake / spurious, -1 on error (errno = ETIMEDOUT on timeout,
+  // EAGAIN if value didn't match expected at check time, EINTR on signal).
+  if (rc == 0) {
+    return true;
+  }
+  return errno != ETIMEDOUT;
+}
+
+void WakeOneByAddress32(std::atomic<uint32_t>* addr) {
+  syscall(SYS_futex, reinterpret_cast<uint32_t*>(addr), FUTEX_WAKE_PRIVATE, 1,
+          nullptr, nullptr, 0);
+}
+
+#elif !XE_PLATFORM_MAC
+
+// Fallback for unsupported platforms:
+// Single shared auto-reset Event. Multiple unrelated callers across
+// the codebase share this event, but spurious-wake semantics let each caller
+// re-check its own address after returning.
+
+namespace {
+Event* shared_wake_event() {
+  static auto* e = Event::CreateAutoResetEvent(false).release();
+  return e;
+}
+}  // namespace
+
+bool WaitOnAddress32(std::atomic<uint32_t>* addr, uint32_t expected,
+                     std::chrono::milliseconds timeout) {
+  if (addr->load(std::memory_order_acquire) != expected) {
+    return true;
+  }
+  const auto result = timeout.count() < 0
+                          ? Wait(shared_wake_event(), false)
+                          : Wait(shared_wake_event(), false, timeout);
+  return result == WaitResult::kSuccess;
+}
+
+void WakeOneByAddress32(std::atomic<uint32_t>* /*addr*/) {
+  shared_wake_event()->Set();
+}
+
+#endif  // XE_PLATFORM_LINUX
 
 }  // namespace threading
 }  // namespace xe
