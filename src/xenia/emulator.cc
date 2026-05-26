@@ -1250,6 +1250,24 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
   return true;
 }
 
+const std::filesystem::path Emulator::GetNewDiscPathPrediction(
+    std::string disc_number) {
+  std::filesystem::path path = "";
+
+  auto xam = kernel_state()->GetKernelModule<kernel::xam::XamModule>("xam.xex");
+  if (!xam->loader_data().host_path.empty()) {
+    std::string host_path = xam->loader_data().host_path;
+    std::regex pattern(R"((\(Disc )(\d+)(\)))", std::regex_constants::icase);
+    std::string replacement = "$01" + disc_number + "$03";
+    std::filesystem::path path_prediction = std::filesystem::path(
+        std::regex_replace(host_path, pattern, replacement));
+    if (std::filesystem::exists(path_prediction)) {
+      path = path_prediction;
+    }
+  }
+  return path;
+}
+
 const std::filesystem::path Emulator::GetNewDiscPath(
     std::string window_message) {
   std::filesystem::path path = "";

@@ -721,6 +721,19 @@ dword_result_t XamSwapDisc_entry(
   std::u16string text_message = xe::load_and_swap<std::u16string>(
       kernel_state()->memory()->TranslateVirtual(error_message->stringTextPtr));
 
+  const std::filesystem::path new_predict_disc_path =
+      kernel_state()->emulator()->GetNewDiscPathPrediction(
+          std::to_string(disc_number));
+  XELOGI("GetNewDiscPathPrediction returned path {}.",
+         new_predict_disc_path.string().c_str());
+
+  if (new_predict_disc_path != "") {
+    kernel_state()->emulator()->MountPath(new_predict_disc_path, mount_path);
+    completion_event();
+
+    return X_ERROR_SUCCESS;
+  }
+
   const std::filesystem::path new_disc_path =
       kernel_state()->emulator()->GetNewDiscPath(xe::to_utf8(text_message));
   XELOGI("GetNewDiscPath returned path {}.", new_disc_path.string().c_str());
