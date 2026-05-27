@@ -691,7 +691,7 @@ dword_result_t XamSwapDisc_entry(
   kernel_state()->GetExecutableModule()->GetOptHeader(XEX_HEADER_EXECUTION_INFO,
                                                       &info);
 
-  if (info->disc_number > info->disc_count) {
+  if (disc_number > info->disc_count) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -706,10 +706,10 @@ dword_result_t XamSwapDisc_entry(
     }
   };
 
-  if (info->disc_number == disc_number) {
-    completion_event();
-    return X_ERROR_SUCCESS;
-  }
+  // if (info->disc_number == disc_number) {
+  // completion_event();
+  // return X_ERROR_SUCCESS;
+  // }
 
   auto filesystem = kernel_state()->file_system();
   auto mount_path = "\\Device\\LauncherData";
