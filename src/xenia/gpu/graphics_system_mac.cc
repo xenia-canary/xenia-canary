@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 
 #include "xenia/base/byte_order_mac.h"
 #include "xenia/base/byte_stream.h"
@@ -585,6 +586,57 @@ namespace xe {
 namespace gpu {
 
 namespace {
+template <typename T>
+struct SafeVirtualTranslation {
+  bool success = false;
+  T pointer = nullptr;
+  std::string error;
+};
+
+template <typename T>
+SafeVirtualTranslation<T> TranslateVirtualSafe(xe::Memory* memory,
+                                               uint32_t guest_address) {
+  static_assert(std::is_pointer_v<T>);
+  SafeVirtualTranslation<T> result;
+  if (!memory) {
+    result.error = "memory unavailable";
+    return result;
+  }
+
+  constexpr uint32_t kAccessSize =
+      static_cast<uint32_t>(sizeof(std::remove_pointer_t<T>));
+  uint32_t access_end = guest_address + kAccessSize;
+  if (access_end < guest_address) {
+    result.error = "address overflow";
+    return result;
+  }
+
+  auto* heap = memory->LookupHeap(guest_address);
+  if (!heap) {
+    result.error = "heap unavailable";
+    return result;
+  }
+
+  xe::HeapAllocationInfo info = {};
+  if (!heap->QueryRegionInfo(guest_address, &info)) {
+    result.error = "region query failed";
+    return result;
+  }
+  uint32_t region_end = info.base_address + info.region_size;
+  if ((info.state & xe::kMemoryAllocationCommit) == 0 ||
+      access_end > region_end) {
+    result.error = "region unavailable";
+    return result;
+  }
+
+  result.pointer = memory->TranslateVirtual<T>(guest_address);
+  result.success = result.pointer != nullptr;
+  if (!result.success) {
+    result.error = "translation failed";
+  }
+  return result;
+}
+
 void ForcedGpuInterruptCallback(xe::cpu::ppc::PPCContext* ppc_context,
                                 void* arg0, void* arg1) {
   (void)arg1;
@@ -1439,7 +1491,7 @@ BootstrapGateSnapshot ReadBootstrapGateSnapshot(
   }
   snapshot.committed = true;
   auto translated_ptr =
-      memory->TranslateVirtualSafe<::xe::be<uint32_t>*>(snapshot.address);
+      TranslateVirtualSafe<::xe::be<uint32_t>*>(memory, snapshot.address);
   if (translated_ptr.success && translated_ptr.pointer) {
     snapshot.value = ::xe::load_and_swap<uint32_t>(translated_ptr.pointer);
     snapshot.translated = true;
@@ -1459,7 +1511,7 @@ bool ReadGuestWordSnapshot(xe::Memory* memory, uint32_t address, uint32_t* out_v
         (info.state & xe::kMemoryAllocationCommit)) {
       committed = true;
     }
-    auto safe = memory->TranslateVirtualSafe<::xe::be<uint32_t>*>(address);
+    auto safe = TranslateVirtualSafe<::xe::be<uint32_t>*>(memory, address);
     if (safe.success && safe.pointer) {
       value = ::xe::load_and_swap<uint32_t>(safe.pointer);
       translated = true;
@@ -3393,7 +3445,7 @@ void GraphicsSystem::LogBootstrapMmioFirstWriteSnapshot(const char* reg_name,
     xe::StringBuffer sb;
     for (uint32_t i = 0; i < instr_count; ++i) {
       uint32_t addr_i = start + i * 4;
-      auto safe = memory->TranslateVirtualSafe<uint32_t*>(addr_i);
+      auto safe = TranslateVirtualSafe<uint32_t*>(memory, addr_i);
       if (!safe.success || !safe.pointer) {
         XELOGW("RING BUFFER: MMIO first-write disasm {:08X}: <invalid> ({})",
                addr_i, safe.error);
@@ -3413,7 +3465,7 @@ void GraphicsSystem::LogBootstrapMmioFirstWriteSnapshot(const char* reg_name,
   }
 
   if (r1 != 0) {
-    auto stack_safe = memory->TranslateVirtualSafe<uint32_t*>(r1);
+    auto stack_safe = TranslateVirtualSafe<uint32_t*>(memory, r1);
     if (stack_safe.success && stack_safe.pointer) {
       XELOGW(
           "RING BUFFER: MMIO first-write stack reg={} r1={:08X} "
@@ -3421,7 +3473,7 @@ void GraphicsSystem::LogBootstrapMmioFirstWriteSnapshot(const char* reg_name,
           reg_name ? reg_name : "<unknown>", r1);
       uint32_t frame_sp = r1;
       for (uint32_t i = 0; i < 8; ++i) {
-        auto frame_safe = memory->TranslateVirtualSafe<uint32_t*>(frame_sp);
+        auto frame_safe = TranslateVirtualSafe<uint32_t*>(memory, frame_sp);
         if (!frame_safe.success || !frame_safe.pointer) {
           XELOGW("RING BUFFER: MMIO first-write frame[{}] sp={:08X} <invalid> "
                  "({})",
@@ -4843,7 +4895,7 @@ void GraphicsSystem::DumpGuestThreadStates(const char* reason) {
       }
 
       auto kthread_result =
-          memory->TranslateVirtualSafe<kernel::X_KTHREAD*>(guest_kthread_ptr);
+          TranslateVirtualSafe<kernel::X_KTHREAD*>(memory, guest_kthread_ptr);
       if (!kthread_result.success || !kthread_result.pointer) {
         XELOGW(
             "RING BUFFER: thread wait snapshot unavailable id={} "
@@ -4874,8 +4926,9 @@ void GraphicsSystem::DumpGuestThreadStates(const char* reason) {
       const char* wait_object_stashed_type = "N/A";
       std::string wait_object_stashed_name = "<none>";
       if (wait_object_ptr && !wait_timeout_template) {
-        auto wait_object_result = memory->TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(
-            wait_object_ptr);
+        auto wait_object_result =
+            TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(memory,
+                                                             wait_object_ptr);
         if (wait_object_result.success && wait_object_result.pointer) {
           wait_object_mapped = true;
           wait_object_type = wait_object_result.pointer->type;
@@ -4941,7 +4994,7 @@ void GraphicsSystem::DumpGuestThreadStates(const char* reason) {
       }
 
       auto kthread_result =
-          memory->TranslateVirtualSafe<kernel::X_KTHREAD*>(guest_kthread_ptr);
+          TranslateVirtualSafe<kernel::X_KTHREAD*>(memory, guest_kthread_ptr);
       if (!kthread_result.success || !kthread_result.pointer) {
         XELOGW(
             "THREAD WAIT: snapshot unavailable id={} guest_kthread={:08X} "
@@ -4974,8 +5027,8 @@ void GraphicsSystem::DumpGuestThreadStates(const char* reason) {
       std::string wait_object_stashed_name = "<none>";
       if (wait_object_ptr && !wait_timeout_template) {
         auto wait_object_result =
-            memory->TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(
-                wait_object_ptr);
+            TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(memory,
+                                                             wait_object_ptr);
         if (wait_object_result.success && wait_object_result.pointer) {
           wait_object_mapped = true;
           wait_object_type = wait_object_result.pointer->type;
@@ -6018,7 +6071,7 @@ void GraphicsSystem::MarkVblank() {
           }
         }
         if (memory_ && import_value_addr) {
-          auto safe = memory_->TranslateVirtualSafe<uint32_t*>(import_value_addr);
+          auto safe = TranslateVirtualSafe<uint32_t*>(memory_, import_value_addr);
           if (safe.success && safe.pointer) {
             import_value_word = ::xe::load_and_swap<uint32_t>(safe.pointer);
             import_value_word_ok = true;
@@ -7568,7 +7621,7 @@ void GraphicsSystem::MarkVblank() {
           uint32_t value_word = 0;
           bool value_translated = false;
           if (value_addr) {
-            auto safe = memory_->TranslateVirtualSafe<uint32_t*>(value_addr);
+            auto safe = TranslateVirtualSafe<uint32_t*>(memory_, value_addr);
             if (safe.success && safe.pointer) {
               value_word = ::xe::load_and_swap<uint32_t>(safe.pointer);
               value_translated = true;
@@ -7580,9 +7633,9 @@ void GraphicsSystem::MarkVblank() {
           bool thunk_translated = false;
           bool thunk_has_sc2_stub = false;
           if (thunk_addr) {
-            auto safe0 = memory_->TranslateVirtualSafe<uint32_t*>(thunk_addr);
-            auto safe1 = memory_->TranslateVirtualSafe<uint32_t*>(
-                thunk_addr + sizeof(uint32_t));
+            auto safe0 = TranslateVirtualSafe<uint32_t*>(memory_, thunk_addr);
+            auto safe1 = TranslateVirtualSafe<uint32_t*>(
+                memory_, thunk_addr + sizeof(uint32_t));
             if (safe0.success && safe0.pointer && safe1.success &&
                 safe1.pointer) {
               thunk_word0 = ::xe::load_and_swap<uint32_t>(safe0.pointer);
@@ -7737,7 +7790,7 @@ void GraphicsSystem::MarkVblank() {
             uint32_t pc_branch_target = 0;
             bool pc_branch_link = false;
             bool pc_is_branch = false;
-            auto pc_safe = memory_->TranslateVirtualSafe<uint32_t*>(pc);
+            auto pc_safe = TranslateVirtualSafe<uint32_t*>(memory_, pc);
             if (pc_safe.success && pc_safe.pointer) {
               pc_instr = ::xe::load_and_swap<uint32_t>(pc_safe.pointer);
               pc_instr_valid = true;
@@ -7779,7 +7832,7 @@ void GraphicsSystem::MarkVblank() {
                 for (int i = -kWindowInstructions; i <= kWindowInstructions;
                      ++i) {
                   uint32_t addr = pc + static_cast<uint32_t>(i * 4);
-                  auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+                  auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
                   if (!safe.success || !safe.pointer) {
                     continue;
                   }
@@ -7857,7 +7910,7 @@ void GraphicsSystem::MarkVblank() {
                 for (int i = -kNearWindowInstructions; i <= kNearWindowInstructions;
                      ++i) {
                   uint32_t addr = pc + static_cast<uint32_t>(i * 4);
-                  auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+                  auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
                   if (!safe.success || !safe.pointer) {
                     continue;
                   }
@@ -7875,7 +7928,7 @@ void GraphicsSystem::MarkVblank() {
                 constexpr uint32_t kEntrypointScanInstructions = 4096;
                 for (uint32_t i = 0; i < kEntrypointScanInstructions; ++i) {
                   uint32_t addr = guest_main_start + i * sizeof(uint32_t);
-                  auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+                  auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
                   if (!safe.success || !safe.pointer) {
                     continue;
                   }
@@ -8191,7 +8244,7 @@ void GraphicsSystem::MarkVblank() {
                                                    : 0u;
                 if (mapped_ptr != 0 && probe_memory) {
                   auto slot_safe =
-                      probe_memory->TranslateVirtualSafe<uint32_t*>(0x820005E0);
+                      TranslateVirtualSafe<uint32_t*>(probe_memory, 0x820005E0);
                   if (slot_safe.success && slot_safe.pointer) {
                     xe::store_and_swap<uint32_t>(slot_safe.pointer, mapped_ptr);
                     slot_value = mapped_ptr;
@@ -8260,7 +8313,7 @@ void GraphicsSystem::MarkVblank() {
                                                    : 0u;
                 if (mapped_ptr != 0 && probe_memory) {
                   auto xex_slot_safe =
-                      probe_memory->TranslateVirtualSafe<uint32_t*>(0x8200083C);
+                      TranslateVirtualSafe<uint32_t*>(probe_memory, 0x8200083C);
                   if (xex_slot_safe.success && xex_slot_safe.pointer) {
                     xe::store_and_swap<uint32_t>(xex_slot_safe.pointer,
                                                  mapped_ptr);
@@ -8405,7 +8458,7 @@ void GraphicsSystem::MarkVblank() {
                 if (!label || !address) {
                   return;
                 }
-                auto safe = memory_->TranslateVirtualSafe<uint32_t*>(address);
+                auto safe = TranslateVirtualSafe<uint32_t*>(memory_, address);
                 if (!safe.success || !safe.pointer) {
                   XELOGE(
                       "RING BUFFER: callback path {} addr={:08X} "
@@ -8466,8 +8519,8 @@ void GraphicsSystem::MarkVblank() {
               if (vd_set_interrupt_callback_value_address) {
                 log_import_addr_word("value_slot",
                                     vd_set_interrupt_callback_value_address);
-                auto value_safe = memory_->TranslateVirtualSafe<uint32_t*>(
-                    vd_set_interrupt_callback_value_address);
+                auto value_safe = TranslateVirtualSafe<uint32_t*>(
+                    memory_, vd_set_interrupt_callback_value_address);
                 if (value_safe.success && value_safe.pointer) {
                   uint32_t value_target =
                       ::xe::load_and_swap<uint32_t>(value_safe.pointer);
@@ -8483,7 +8536,7 @@ void GraphicsSystem::MarkVblank() {
                 for (uint32_t i = 0; i < 4; ++i) {
                   uint32_t addr = vd_set_interrupt_callback_thunk_address +
                                   i * sizeof(uint32_t);
-                  auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+                  auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
                   if (!safe.success || !safe.pointer) {
                     XELOGE(
                         "RING BUFFER: callback path thunk disasm addr={:08X} "
@@ -10962,8 +11015,8 @@ void GraphicsSystem::MarkVblank() {
                               &probe->thunk_w0, &probe->thunk_committed,
                               &probe->thunk_translated);
         if (xex_loader_memory && probe->thunk_addr) {
-          auto thunk_safe = xex_loader_memory->TranslateVirtualSafe<uint32_t*>(
-              probe->thunk_addr);
+          auto thunk_safe = TranslateVirtualSafe<uint32_t*>(xex_loader_memory,
+                                                            probe->thunk_addr);
           if (thunk_safe.success && thunk_safe.pointer) {
             probe->thunk_w0 = xe::load_and_swap<uint32_t>(thunk_safe.pointer);
             probe->thunk_w1 = xe::load_and_swap<uint32_t>(thunk_safe.pointer + 1);
