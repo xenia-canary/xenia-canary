@@ -10,7 +10,9 @@
 #include <ranges>
 #ifdef __APPLE__
 #include <chrono>
+#include <string>
 #include <thread>
+#include <type_traits>
 #endif
 
 #include "xenia/kernel/kernel_state_mac.h"
@@ -87,6 +89,57 @@ static void SecureZeroMemory(void* buffer, size_t size) {
 
 #ifdef __APPLE__
 namespace {
+
+template <typename T>
+struct SafeVirtualTranslation {
+  bool success = false;
+  T pointer = nullptr;
+  std::string error;
+};
+
+template <typename T>
+SafeVirtualTranslation<T> TranslateVirtualSafe(Memory* memory,
+                                               uint32_t guest_address) {
+  static_assert(std::is_pointer_v<T>);
+  SafeVirtualTranslation<T> result;
+  if (!memory) {
+    result.error = "memory unavailable";
+    return result;
+  }
+
+  constexpr uint32_t kAccessSize =
+      static_cast<uint32_t>(sizeof(std::remove_pointer_t<T>));
+  uint32_t access_end = guest_address + kAccessSize;
+  if (access_end < guest_address) {
+    result.error = "address overflow";
+    return result;
+  }
+
+  auto* heap = memory->LookupHeap(guest_address);
+  if (!heap) {
+    result.error = "heap unavailable";
+    return result;
+  }
+
+  HeapAllocationInfo info = {};
+  if (!heap->QueryRegionInfo(guest_address, &info)) {
+    result.error = "region query failed";
+    return result;
+  }
+  uint32_t region_end = info.base_address + info.region_size;
+  if ((info.state & kMemoryAllocationCommit) == 0 ||
+      access_end > region_end) {
+    result.error = "region unavailable";
+    return result;
+  }
+
+  result.pointer = memory->TranslateVirtual<T>(guest_address);
+  result.success = result.pointer != nullptr;
+  if (!result.success) {
+    result.error = "translation failed";
+  }
+  return result;
+}
 
 void EnsureExecutingThreadBindings(XThread* thread, const char* phase) {
   if (!thread) {
@@ -402,7 +455,7 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
       module->stack_size(), main_thread_xapi_startup);
   for (uint32_t i = 0; i < 4; ++i) {
     uint32_t addr = module->entry_point() + i * 4;
-    auto word_result = memory_->TranslateVirtualSafe<xe::be<uint32_t>*>(addr);
+    auto word_result = TranslateVirtualSafe<xe::be<uint32_t>*>(memory_, addr);
     if (!word_result.success || !word_result.pointer) {
       XELOGW(
           "GUEST MAIN THREAD: LaunchModule entry probe word[{}] "
