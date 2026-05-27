@@ -14,8 +14,8 @@
 #include "third_party/capstone/include/capstone/x86.h"
 
 // Include new optimization systems
-#include "xenia/cpu/backend/x64/cpu_features.h"
-#include "xenia/cpu/backend/x64/thunk_optimizer.h"
+#include "xenia/cpu/backend/x64/cpu_features_mac.h"
+#include "xenia/cpu/backend/x64/thunk_optimizer_mac.h"
 
 #include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
@@ -26,7 +26,7 @@ DECLARE_bool(rosetta_force_avx);
 #include "xenia/cpu/backend/x64/x64_code_cache_mac.h"
 #include "xenia/cpu/backend/x64/x64_emitter_mac.h"
 #include "xenia/cpu/backend/x64/x64_function.h"
-#include "xenia/cpu/backend/x64/performance_manager.h"
+#include "xenia/cpu/backend/x64/performance_manager_mac.h"
 #include "xenia/cpu/backend/x64/x64_sequences_mac.h"
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 #include "xenia/cpu/breakpoint.h"
