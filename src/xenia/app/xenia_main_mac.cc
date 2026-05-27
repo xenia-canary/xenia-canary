@@ -25,7 +25,7 @@
 #include "xenia/app/discord/discord_presence.h"
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/cpu_features.h"
+#include "xenia/base/cpu_features_mac.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
