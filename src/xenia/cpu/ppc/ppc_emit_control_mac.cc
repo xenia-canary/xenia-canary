@@ -88,11 +88,20 @@ bool TryDecodeSaveGprLrStartFromGuestMemory(PPCHIRBuilder& f, uint32_t target,
   if (!f.memory()) {
     return false;
   }
-  auto safe = f.memory()->TranslateVirtualSafe<const uint32_t*>(target);
-  if (!safe.success || !safe.pointer) {
+  auto* memory = f.memory();
+  auto* heap = memory->LookupHeap(target);
+  xe::HeapAllocationInfo info = {};
+  uint32_t end = target + sizeof(uint32_t);
+  if (end < target || !heap || !heap->QueryRegionInfo(target, &info) ||
+      (info.state & xe::kMemoryAllocationCommit) == 0 ||
+      end > info.base_address + info.region_size) {
     return false;
   }
-  uint32_t code = xe::load_and_swap<uint32_t>(safe.pointer);
+  auto code_ptr = memory->TranslateVirtual<const uint32_t*>(target);
+  if (!code_ptr) {
+    return false;
+  }
+  uint32_t code = xe::load_and_swap<uint32_t>(code_ptr);
   static constexpr std::array<uint32_t, 18> kSaveGprLrCodeValues = {
       0x68FFC1F9,  // __savegprlr_14
       0x70FFE1F9,  // __savegprlr_15
