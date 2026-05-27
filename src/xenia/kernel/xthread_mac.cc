@@ -29,6 +29,8 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
 #ifdef __APPLE__
 #include <execinfo.h>
@@ -75,6 +77,57 @@ namespace xe {
 namespace kernel {
 
 namespace {
+
+template <typename T>
+struct SafeVirtualTranslation {
+  bool success = false;
+  T pointer = nullptr;
+  std::string error;
+};
+
+template <typename T>
+SafeVirtualTranslation<T> TranslateVirtualSafe(Memory* memory,
+                                               uint32_t guest_address) {
+  static_assert(std::is_pointer_v<T>);
+  SafeVirtualTranslation<T> result;
+  if (!memory) {
+    result.error = "memory unavailable";
+    return result;
+  }
+
+  constexpr uint32_t kAccessSize =
+      static_cast<uint32_t>(sizeof(std::remove_pointer_t<T>));
+  uint32_t access_end = guest_address + kAccessSize;
+  if (access_end < guest_address) {
+    result.error = "address overflow";
+    return result;
+  }
+
+  auto* heap = memory->LookupHeap(guest_address);
+  if (!heap) {
+    result.error = "heap unavailable";
+    return result;
+  }
+
+  HeapAllocationInfo info = {};
+  if (!heap->QueryRegionInfo(guest_address, &info)) {
+    result.error = "region query failed";
+    return result;
+  }
+  uint32_t region_end = info.base_address + info.region_size;
+  if ((info.state & kMemoryAllocationCommit) == 0 ||
+      access_end > region_end) {
+    result.error = "region unavailable";
+    return result;
+  }
+
+  result.pointer = memory->TranslateVirtual<T>(guest_address);
+  result.success = result.pointer != nullptr;
+  if (!result.success) {
+    result.error = "translation failed";
+  }
+  return result;
+}
 
 constexpr bool IsGpuBootstrapStartupFunction(uint32_t address) {
   switch (address) {
@@ -128,7 +181,7 @@ void LogGuestStartWords(Memory* memory, uint32_t base, const char* label) {
   bool saw_ppc_nop = false;
   for (uint32_t i = 0; i < kProbeWords; ++i) {
     uint32_t addr = base + i * 4;
-    auto word_result = memory->TranslateVirtualSafe<xe::be<uint32_t>*>(addr);
+    auto word_result = TranslateVirtualSafe<xe::be<uint32_t>*>(memory, addr);
     if (!word_result.success || !word_result.pointer) {
       XELOGW(
           "GUEST MAIN THREAD: startup probe {} word[{}] addr={:08X} "
@@ -712,8 +765,8 @@ void XThread::InitializeGuestObject() {
       }
 
       auto list_head_safe =
-          mem->TranslateVirtualSafe<X_LIST_ENTRY*>(list_head_guest);
-      auto entry_safe = mem->TranslateVirtualSafe<X_LIST_ENTRY*>(entry_guest);
+          TranslateVirtualSafe<X_LIST_ENTRY*>(mem, list_head_guest);
+      auto entry_safe = TranslateVirtualSafe<X_LIST_ENTRY*>(mem, entry_guest);
 
       fprintf(stderr,
               "[thread_list] handle=%08X attempt=%d head_guest=%08X entry_guest=%08X head_host=%p entry_host=%p\n",
@@ -782,7 +835,7 @@ void XThread::InitializeGuestObject() {
         fflush(stderr);
       } else {
         auto old_tail_safe =
-            mem->TranslateVirtualSafe<X_LIST_ENTRY*>(old_tail);
+            TranslateVirtualSafe<X_LIST_ENTRY*>(mem, old_tail);
         if (!old_tail_safe.success) {
           fprintf(stderr,
                   "[thread_list] handle=%08X old_tail translate failed: %s\n",
@@ -1155,7 +1208,7 @@ X_STATUS XThread::Create() {
   // Zero all of TLS.
   if (handle() == 0x01000010) {
     XELOGI("DEBUG: CRITICAL: Zeroing TLS ({} bytes)", tls_total_size_);
-    auto tls_host = memory()->TranslateVirtualSafe<uint8_t*>(tls_static_address_);
+    auto tls_host = TranslateVirtualSafe<uint8_t*>(memory(), tls_static_address_);
     if (tls_host.success) {
       fprintf(stderr,
               "[xthread] TLS memset begin guest=%08X host=%p size=%u\n",
