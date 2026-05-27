@@ -15,7 +15,7 @@
 #include "xenia/base/bit_map.h"
 #include "xenia/base/cvar.h"
 #include "xenia/cpu/backend/backend.h"
-#include "xenia/cpu/backend/x64/x64_performance_monitor.h"
+#include "xenia/cpu/backend/x64/x64_performance_monitor_mac.h"
 
 // Forward declarations
 #if XE_PLATFORM_WIN32 == 1
