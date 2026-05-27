@@ -251,11 +251,12 @@ uint64_t DebugMainLoopPc(void* raw_context, uint64_t pc_u64) {
       auto heap = memory->LookupHeap(gate_addr);
       xe::HeapAllocationInfo info = {};
       if (heap && heap->QueryRegionInfo(gate_addr, &info) &&
-          (info.state & xe::kMemoryAllocationCommit)) {
+          (info.state & xe::kMemoryAllocationCommit) &&
+          gate_addr + sizeof(uint32_t) <= info.base_address + info.region_size) {
         auto translated =
-            memory->TranslateVirtualSafe<xe::be<uint32_t>*>(gate_addr);
-        if (translated.success && translated.pointer) {
-          gate_value = xe::load_and_swap<uint32_t>(translated.pointer);
+            memory->TranslateVirtual<xe::be<uint32_t>*>(gate_addr);
+        if (translated) {
+          gate_value = xe::load_and_swap<uint32_t>(translated);
           gate_valid = true;
         }
       }
