@@ -936,6 +936,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
       const ParsedAluInstruction& instr,
       uint8_t memexport_eM_potentially_written_before, bool& predicate_written);
 
+  // Returns a positively-biased 1/x.
+  void ApproximateReciprocal(const dxbc::Dest& ps_dest, const dxbc::Src& ps_src,
+                             const dxbc::Src& operand);
+
   void WriteResourceDefinition();
   void WriteInputSignature();
   void WritePatchConstantSignature();

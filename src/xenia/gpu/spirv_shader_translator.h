@@ -632,6 +632,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // must be called with absolute values of operands - use GetAbsoluteOperand!
   spv::Id ZeroIfAnyOperandIsZero(spv::Id value, spv::Id operand_0_abs,
                                  spv::Id operand_1_abs);
+  // Returns a positively-biased 1/x.
+  spv::Id ApproximateReciprocal(spv::Id operand_value);
   // Conditionally discard the current fragment. Changes the build point.
   void KillPixel(spv::Id condition,
                  uint8_t memexport_eM_potentially_written_before);

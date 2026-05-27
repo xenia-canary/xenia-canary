@@ -42,7 +42,7 @@ DECLARE_bool(async_shader_compilation);
 
 DECLARE_bool(gpu_3d_to_2d_texture);
 
-DECLARE_bool(ac6_ground_fix);
+DECLARE_bool(gpu_refine_rcp);
 
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1
 

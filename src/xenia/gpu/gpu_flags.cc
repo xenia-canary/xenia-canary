@@ -110,7 +110,8 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
-    ac6_ground_fix, false,
-    "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
-    "Might cause issues in other titles.",
-    "HACKS");
+    gpu_refine_rcp, false,
+    "Refine the reciprocal with a Newton-Raphson step so it is correctly "
+    "rounded. Enable is you see artifacts on the ground in AC6. "
+    "Most GPUs (especially desktop ones) don't need this.",
+    "GPU");

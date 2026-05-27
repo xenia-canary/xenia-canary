@@ -14,6 +14,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/gpu_flags.h"
 
 namespace xe {
 namespace gpu {
@@ -650,6 +651,63 @@ void DxbcShaderTranslator::ProcessVectorAluOperation(
   PopSystemTemp(operand_temps);
 }
 
+void DxbcShaderTranslator::ApproximateReciprocal(const dxbc::Dest& ps_dest,
+                                                 const dxbc::Src& ps_src,
+                                                 const dxbc::Src& operand) {
+  // Library modulo division in HLSL is c*frac(x*rcp(c)) - the product lands
+  // ~1 ULP below an integer, so flooring undershoots the quotient by 1.
+  // Bias the reciprocal up for non-POW2 inputs to account for that.
+  // In pseudo-HLSL:
+  //   float r = 1.0 / x;
+  //   float b = asfloat(asuint(r) + 1);                 // +1 ULP
+  //   if ((asuint(x) & 0x7FFFFF) != 0 && isfinite(b))   // x is not 2^
+  //     r = b;
+  //   return r;
+  a_.OpDiv(ps_dest, dxbc::Src::LF(1.0f), operand);
+  if (cvars::gpu_refine_rcp) {
+    // One residual Newton-Raphson step (e = 1 - x*r; r = r + r*e).
+    // Pins OpDiv to correctly-rounded rcp.
+    uint32_t refine_temp = PushSystemTemp();
+    dxbc::Dest refine_dest(dxbc::Dest::R(refine_temp, 0b0001));
+    dxbc::Src refine_src(dxbc::Src::R(refine_temp, dxbc::Src::kXXXX));
+    a_.OpMAd(refine_dest, operand.WithNeg(true), ps_src, dxbc::Src::LF(1.0f));
+    a_.OpMAd(ps_dest, ps_src, refine_src, ps_src);
+    PopSystemTemp();
+  }
+  uint32_t reciprocal_bumped_temp = PushSystemTemp();
+  dxbc::Dest reciprocal_bumped_dest(
+      dxbc::Dest::R(reciprocal_bumped_temp, 0b0001));
+  dxbc::Src reciprocal_bumped_src(
+      dxbc::Src::R(reciprocal_bumped_temp, dxbc::Src::kXXXX));
+  uint32_t is_power_of_two_temp = PushSystemTemp();
+  dxbc::Dest is_power_of_two_dest(dxbc::Dest::R(is_power_of_two_temp, 0b0001));
+  dxbc::Src is_power_of_two_src(
+      dxbc::Src::R(is_power_of_two_temp, dxbc::Src::kXXXX));
+  uint32_t bumped_not_finite_temp = PushSystemTemp();
+  dxbc::Dest bumped_not_finite_dest(
+      dxbc::Dest::R(bumped_not_finite_temp, 0b0001));
+  dxbc::Src bumped_not_finite_src(
+      dxbc::Src::R(bumped_not_finite_temp, dxbc::Src::kXXXX));
+  // reciprocal_bumped = reciprocal + 1 ULP (towards larger magnitude).
+  a_.OpIAdd(reciprocal_bumped_dest, ps_src, dxbc::Src::LU(1u));
+  // is_power_of_two = operand mantissa bits all zero.
+  a_.OpAnd(is_power_of_two_dest, operand, dxbc::Src::LU(0x007FFFFFu));
+  a_.OpIEq(is_power_of_two_dest, is_power_of_two_src, dxbc::Src::LU(0u));
+  // bumped_not_finite = reciprocal_bumped is +-Inf or NaN (exponent all ones) -
+  // true when the +1 ULP overflowed FLT_MAX or the reciprocal was non-finite.
+  a_.OpAnd(bumped_not_finite_dest, reciprocal_bumped_src,
+           dxbc::Src::LU(0x7F800000u));
+  a_.OpIEq(bumped_not_finite_dest, bumped_not_finite_src,
+           dxbc::Src::LU(0x7F800000u));
+  // keep_unchanged = is_power_of_two || bumped_not_finite (reuses the
+  // register).
+  a_.OpOr(is_power_of_two_dest, is_power_of_two_src, bumped_not_finite_src);
+  // ps = keep_unchanged ? reciprocal : reciprocal_bumped.
+  a_.OpMovC(ps_dest, is_power_of_two_src, ps_src, reciprocal_bumped_src);
+  // Release the three system temps.
+  PopSystemTemp(3);
+}
+
 void DxbcShaderTranslator::ProcessScalarAluOperation(
     const ParsedAluInstruction& instr,
     uint8_t memexport_eM_potentially_written_before, bool& predicate_written) {
@@ -816,7 +874,7 @@ void DxbcShaderTranslator::ProcessScalarAluOperation(
       if (instr.scalar_opcode == AluScalarOpcode::kRsqc) {
         a_.OpRSq(ps_dest, operand_0_a);
       } else {
-        a_.OpRcp(ps_dest, operand_0_a);
+        ApproximateReciprocal(ps_dest, ps_src, operand_0_a);
       }
       uint32_t is_infinity_temp = PushSystemTemp();
       a_.OpEq(dxbc::Dest::R(is_infinity_temp, 0b0001), ps_src.Abs(),
@@ -833,7 +891,7 @@ void DxbcShaderTranslator::ProcessScalarAluOperation(
       if (instr.scalar_opcode == AluScalarOpcode::kRsqf) {
         a_.OpRSq(ps_dest, operand_0_a);
       } else {
-        a_.OpRcp(ps_dest, operand_0_a);
+        ApproximateReciprocal(ps_dest, ps_src, operand_0_a);
       }
       uint32_t is_not_infinity_temp = PushSystemTemp();
       a_.OpNE(dxbc::Dest::R(is_not_infinity_temp, 0b0001), ps_src.Abs(),
@@ -848,7 +906,7 @@ void DxbcShaderTranslator::ProcessScalarAluOperation(
       PopSystemTemp();
     } break;
     case AluScalarOpcode::kRcp:
-      a_.OpRcp(ps_dest, operand_0_a);
+      ApproximateReciprocal(ps_dest, ps_src, operand_0_a);
       break;
     case AluScalarOpcode::kRsq:
       a_.OpRSq(ps_dest, operand_0_a);

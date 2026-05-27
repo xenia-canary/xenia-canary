@@ -16,6 +16,7 @@
 #include "third_party/glslang/SPIRV/GLSL.std.450.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
 
 namespace xe {
@@ -37,6 +38,46 @@ spv::Id SpirvShaderTranslator::ZeroIfAnyOperandIsZero(spv::Id value,
               GLSLstd450NMin, operand_0_abs, operand_1_abs),
           const_float_vectors_0_[num_components - 1]),
       const_float_vectors_0_[num_components - 1], value);
+}
+
+spv::Id SpirvShaderTranslator::ApproximateReciprocal(spv::Id operand_value) {
+  // See DxbcShaderTranslator::ApproximateReciprocal for the algorithm.
+  spv::Id reciprocal = builder_->createNoContractionBinOp(
+      spv::OpFDiv, type_float_, const_float_1_, operand_value);
+  if (cvars::gpu_refine_rcp) {
+    spv::Id residual = builder_->createTriBuiltinCall(
+        type_float_, ext_inst_glsl_std_450_, GLSLstd450Fma,
+        builder_->createNoContractionUnaryOp(spv::OpFNegate, type_float_,
+                                             operand_value),
+        reciprocal, const_float_1_);
+    reciprocal = builder_->createTriBuiltinCall(
+        type_float_, ext_inst_glsl_std_450_, GLSLstd450Fma, reciprocal,
+        residual, reciprocal);
+  }
+  spv::Id operand_bits =
+      builder_->createUnaryOp(spv::OpBitcast, type_uint_, operand_value);
+  spv::Id is_power_of_two = builder_->createBinOp(
+      spv::OpIEqual, type_bool_,
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, operand_bits,
+                            builder_->makeUintConstant(0x007FFFFFu)),
+      builder_->makeUintConstant(0u));
+  spv::Id reciprocal_bumped = builder_->createUnaryOp(
+      spv::OpBitcast, type_float_,
+      builder_->createBinOp(
+          spv::OpIAdd, type_uint_,
+          builder_->createUnaryOp(spv::OpBitcast, type_uint_, reciprocal),
+          builder_->makeUintConstant(1u)));
+  spv::Id bumped_not_finite = builder_->createUnaryOp(
+      spv::OpLogicalNot, type_bool_,
+      builder_->createBinOp(
+          spv::OpFOrdLessThan, type_bool_,
+          builder_->createUnaryBuiltinCall(type_float_, ext_inst_glsl_std_450_,
+                                           GLSLstd450FAbs, reciprocal_bumped),
+          builder_->makeFloatConstant(INFINITY)));
+  spv::Id keep_unchanged = builder_->createBinOp(
+      spv::OpLogicalOr, type_bool_, is_power_of_two, bumped_not_finite);
+  return builder_->createTriOp(spv::OpSelect, type_float_, keep_unchanged,
+                               reciprocal, reciprocal_bumped);
 }
 
 void SpirvShaderTranslator::KillPixel(
@@ -1124,10 +1165,9 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
           builder_->makeFloatConstant(-FLT_MAX), result);
     }
     case ucode::AluScalarOpcode::kRcpc: {
-      spv::Id result = builder_->createNoContractionBinOp(
-          spv::OpFDiv, type_float_, const_float_1_,
-          GetOperandComponents(operand_storage[0], instr.scalar_operands[0],
-                               0b0001));
+      spv::Id operand = GetOperandComponents(operand_storage[0],
+                                             instr.scalar_operands[0], 0b0001);
+      spv::Id result = ApproximateReciprocal(operand);
       result = builder_->createTriOp(
           spv::OpSelect, type_float_,
           builder_->createBinOp(spv::OpFOrdEqual, type_bool_, result,
@@ -1140,10 +1180,9 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
           builder_->makeFloatConstant(FLT_MAX), result);
     }
     case ucode::AluScalarOpcode::kRcpf: {
-      spv::Id result = builder_->createNoContractionBinOp(
-          spv::OpFDiv, type_float_, const_float_1_,
-          GetOperandComponents(operand_storage[0], instr.scalar_operands[0],
-                               0b0001));
+      spv::Id operand = GetOperandComponents(operand_storage[0],
+                                             instr.scalar_operands[0], 0b0001);
+      spv::Id result = ApproximateReciprocal(operand);
       result = builder_->createTriOp(
           spv::OpSelect, type_float_,
           builder_->createBinOp(spv::OpFOrdEqual, type_bool_, result,
@@ -1160,10 +1199,9 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
       return builder_->createUnaryOp(spv::OpBitcast, type_float_, result);
     }
     case ucode::AluScalarOpcode::kRcp: {
-      return builder_->createNoContractionBinOp(
-          spv::OpFDiv, type_float_, const_float_1_,
-          GetOperandComponents(operand_storage[0], instr.scalar_operands[0],
-                               0b0001));
+      spv::Id operand = GetOperandComponents(operand_storage[0],
+                                             instr.scalar_operands[0], 0b0001);
+      return ApproximateReciprocal(operand);
     }
     case ucode::AluScalarOpcode::kRsqc: {
       spv::Id result = builder_->createUnaryBuiltinCall(
