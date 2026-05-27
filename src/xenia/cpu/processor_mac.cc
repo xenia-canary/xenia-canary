@@ -9,6 +9,8 @@
 
 #include "xenia/cpu/processor.h"
 
+#include <cstdio>
+
 #include "xenia/base/assert.h"
 #include "xenia/base/atomic.h"
 #include "xenia/base/byte_order_mac.h"
@@ -111,6 +113,32 @@ class BuiltinModule : public Module {
 };
 
 namespace {
+xe::be<uint32_t>* TranslateCommittedWord(xe::Memory* memory, uint32_t address,
+                                         uint32_t byte_count = sizeof(uint32_t)) {
+  if (!memory) {
+    return nullptr;
+  }
+
+  uint32_t end = address + byte_count;
+  if (end < address) {
+    return nullptr;
+  }
+
+  auto heap = memory->LookupHeap(address);
+  xe::HeapAllocationInfo info = {};
+  if (!heap || !heap->QueryRegionInfo(address, &info) ||
+      (info.state & xe::kMemoryAllocationCommit) == 0) {
+    return nullptr;
+  }
+
+  uint32_t region_end = info.base_address + info.region_size;
+  if (region_end < info.base_address || end > region_end) {
+    return nullptr;
+  }
+
+  return memory->TranslateVirtual<xe::be<uint32_t>*>(address);
+}
+
 constexpr bool IsMainLoopCallTarget(uint32_t address) {
   switch (address) {
     case 0x82097950:
@@ -490,9 +518,9 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
       bool instr_valid = false;
       auto* memory = thread_state ? thread_state->memory() : nullptr;
       if (memory) {
-        auto translated = memory->TranslateVirtualSafe<xe::be<uint32_t>*>(address);
-        if (translated.success && translated.pointer) {
-          instr = xe::load_and_swap<uint32_t>(translated.pointer);
+        auto translated = TranslateCommittedWord(memory, address);
+        if (translated) {
+          instr = xe::load_and_swap<uint32_t>(translated);
           instr_valid = true;
         }
       }
@@ -540,41 +568,23 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
       auto memory = thread_state ? thread_state->memory() : nullptr;
       if (context && memory) {
         uint32_t sp = static_cast<uint32_t>(context->r[1]);
-        auto heap = memory->LookupHeap(sp);
-        xe::HeapAllocationInfo info = {};
-        if (heap && heap->QueryRegionInfo(sp, &info) &&
-            (info.state & xe::kMemoryAllocationCommit)) {
-          uint32_t end = sp + 64;
-          uint32_t region_end = info.base_address + info.region_size;
-          if (end <= region_end) {
-            auto translated =
-                memory->TranslateVirtualSafe<xe::be<uint32_t>*>(sp);
-            if (translated.success && translated.pointer) {
-              uint32_t stack_vals[16] = {};
-              for (size_t i = 0; i < 16; ++i) {
-                stack_vals[i] =
-                    xe::load_and_swap<uint32_t>(translated.pointer + i);
-              }
-              XELOGI(
-                  "DEBUG: POLL SCAN stack @{:08X}: {:08X} {:08X} {:08X} {:08X} "
-                  "{:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} "
-                  "{:08X} {:08X} {:08X} {:08X}",
-                  sp, stack_vals[0], stack_vals[1], stack_vals[2],
-                  stack_vals[3], stack_vals[4], stack_vals[5], stack_vals[6],
-                  stack_vals[7], stack_vals[8], stack_vals[9], stack_vals[10],
-                  stack_vals[11], stack_vals[12], stack_vals[13],
-                  stack_vals[14], stack_vals[15]);
-            } else {
-              XELOGI("DEBUG: POLL SCAN stack: translation failed for SP={:08X}", sp);
-            }
-          } else {
-            XELOGI(
-                "DEBUG: POLL SCAN stack: SP range crosses region (sp={:08X} "
-                "end={:08X} region_end={:08X})",
-                sp, end, region_end);
+        auto translated = TranslateCommittedWord(memory, sp, 64);
+        if (translated) {
+          uint32_t stack_vals[16] = {};
+          for (size_t i = 0; i < 16; ++i) {
+            stack_vals[i] = xe::load_and_swap<uint32_t>(translated + i);
           }
+          XELOGI(
+              "DEBUG: POLL SCAN stack @{:08X}: {:08X} {:08X} {:08X} {:08X} "
+              "{:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} "
+              "{:08X} {:08X} {:08X} {:08X}",
+              sp, stack_vals[0], stack_vals[1], stack_vals[2], stack_vals[3],
+              stack_vals[4], stack_vals[5], stack_vals[6], stack_vals[7],
+              stack_vals[8], stack_vals[9], stack_vals[10], stack_vals[11],
+              stack_vals[12], stack_vals[13], stack_vals[14], stack_vals[15]);
         } else {
-          XELOGI("DEBUG: POLL SCAN stack: SP not committed or heap missing (sp={:08X})",
+          XELOGI("DEBUG: POLL SCAN stack: SP not committed or translation "
+                 "failed (sp={:08X})",
                  sp);
         }
       }
@@ -591,16 +601,10 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
       bool gate_valid = false;
       auto memory = thread_state ? thread_state->memory() : nullptr;
       if (memory) {
-        auto heap = memory->LookupHeap(gate_addr);
-        xe::HeapAllocationInfo info = {};
-        if (heap && heap->QueryRegionInfo(gate_addr, &info) &&
-            (info.state & xe::kMemoryAllocationCommit)) {
-          auto translated =
-              memory->TranslateVirtualSafe<xe::be<uint32_t>*>(gate_addr);
-          if (translated.success && translated.pointer) {
-            gate_value = xe::load_and_swap<uint32_t>(translated.pointer);
-            gate_valid = true;
-          }
+        auto translated = TranslateCommittedWord(memory, gate_addr);
+        if (translated) {
+          gate_value = xe::load_and_swap<uint32_t>(translated);
+          gate_valid = true;
         }
       }
       XELOGW(
@@ -630,21 +634,15 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
           (delay_ms == 0 || now_ms - first_ms >= delay_ms)) {
         uint32_t gate_addr = 0x821F4898;
         uint32_t gate_value = cvars::force_main_loop_gate_value;
-        auto heap = memory->LookupHeap(gate_addr);
-        xe::HeapAllocationInfo info = {};
-        if (heap && heap->QueryRegionInfo(gate_addr, &info) &&
-            (info.state & xe::kMemoryAllocationCommit)) {
-          auto translated =
-              memory->TranslateVirtualSafe<xe::be<uint32_t>*>(gate_addr);
-          if (translated.success && translated.pointer) {
-            xe::store_and_swap<uint32_t>(translated.pointer, gate_value);
-            gate_forced.store(true, std::memory_order_relaxed);
-            XELOGW(
-                "DEBUG: MainLoop gate forced: addr={:08X} value=0x{:08X} "
-                "delay_ms={} pc={:08X} thread_id={}",
-                gate_addr, gate_value, delay_ms, address,
-                thread_state ? thread_state->thread_id() : 0);
-          }
+        auto translated = TranslateCommittedWord(memory, gate_addr);
+        if (translated) {
+          xe::store_and_swap<uint32_t>(translated, gate_value);
+          gate_forced.store(true, std::memory_order_relaxed);
+          XELOGW(
+              "DEBUG: MainLoop gate forced: addr={:08X} value=0x{:08X} "
+              "delay_ms={} pc={:08X} thread_id={}",
+              gate_addr, gate_value, delay_ms, address,
+              thread_state ? thread_state->thread_id() : 0);
         } else {
           XELOGW(
               "DEBUG: MainLoop gate force skipped (uncommitted): addr={:08X} "
@@ -1220,9 +1218,10 @@ void Processor::UpdateThreadExecutionStates(
         frame.guest_function_address = function->address();
         frame.guest_function = function;
       } else {
-        std::strncpy(frame.name, cpu_frame.host_symbol.name,
-                     xe::countof(frame.name));
-        frame.name[xe::countof(frame.name) - 1] = 0;
+        std::snprintf(frame.name, xe::countof(frame.name), "%s",
+                      cpu_frame.host_symbol.name
+                          ? cpu_frame.host_symbol.name
+                          : "");
       }
     }
   }
