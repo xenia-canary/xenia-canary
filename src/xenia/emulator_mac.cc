@@ -12,6 +12,7 @@
 #include <ranges>
 #include <sstream>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #include "xenia/emulator_mac.h"
@@ -247,6 +248,63 @@ namespace xe {
 using namespace xe::literals;
 
 namespace {
+template <typename T>
+struct SafeVirtualTranslation {
+  bool success = false;
+  T pointer = nullptr;
+  std::string error;
+};
+
+template <typename T>
+SafeVirtualTranslation<T> TranslateVirtualSafe(xe::Memory* memory,
+                                               uint32_t guest_address) {
+  static_assert(std::is_pointer_v<T>);
+  SafeVirtualTranslation<T> result;
+  if (!memory) {
+    result.error = "memory unavailable";
+    return result;
+  }
+
+  constexpr uint32_t kAccessSize =
+      static_cast<uint32_t>(sizeof(std::remove_pointer_t<T>));
+  uint32_t access_end = guest_address + kAccessSize;
+  if (access_end < guest_address) {
+    result.error = "address overflow";
+    return result;
+  }
+
+  auto* heap = memory->LookupHeap(guest_address);
+  if (!heap) {
+    result.error = "heap unavailable";
+    return result;
+  }
+
+  xe::HeapAllocationInfo info = {};
+  if (!heap->QueryRegionInfo(guest_address, &info)) {
+    result.error = "region query failed";
+    return result;
+  }
+  uint32_t region_end = info.base_address + info.region_size;
+  if ((info.state & xe::kMemoryAllocationCommit) == 0 ||
+      region_end < info.base_address || access_end > region_end) {
+    result.error = "region unavailable";
+    return result;
+  }
+
+  result.pointer = memory->TranslateVirtual<T>(guest_address);
+  result.success = result.pointer != nullptr;
+  if (!result.success) {
+    result.error = "translation failed";
+  }
+  return result;
+}
+
+template <typename T>
+SafeVirtualTranslation<T> TranslateVirtualSafe(
+    const std::unique_ptr<xe::Memory>& memory, uint32_t guest_address) {
+  return TranslateVirtualSafe<T>(memory.get(), guest_address);
+}
+
 bool DecodeBranchTarget(uint32_t pc, uint32_t instr, uint32_t* target_out,
                         bool* link_out, bool* absolute_out) {
   uint32_t opcode = instr >> 26;
@@ -1940,7 +1998,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
                count);
         for (uint32_t i = 0; i < count; ++i) {
           uint32_t addr = base + (i * 4);
-          auto ins_safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+          auto ins_safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
           if (!ins_safe.success || !ins_safe.pointer) {
             XELOGW("DEBUG: {:08X}: <invalid> ({})", addr, ins_safe.error);
             continue;
@@ -1960,7 +2018,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
       }
 
       if (cvars::log_main_thread_pc_loop_dump_stack && memory_) {
-        auto stack_safe = memory_->TranslateVirtualSafe<uint32_t*>(sp);
+        auto stack_safe = TranslateVirtualSafe<uint32_t*>(memory_, sp);
         if (stack_safe.success && stack_safe.pointer) {
           XELOGW("DEBUG: PC loop stack window @ r1={:08X} (first 32 dwords):", sp);
           for (int i = 0; i < 32; ++i) {
@@ -2071,8 +2129,8 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
 
         if (kernel_state_ && memory_ && signal_obj != 0) {
           auto dispatch_safe =
-              memory_->TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(
-                  signal_obj);
+              TranslateVirtualSafe<kernel::X_DISPATCH_HEADER*>(memory_,
+                                                               signal_obj);
           if (dispatch_safe.success && dispatch_safe.pointer &&
               dispatch_safe.pointer->wait_list.flink_ptr ==
                   kernel::kXObjSignature) {
@@ -2179,17 +2237,20 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
                 : 0;
         if (ke_debug_var_addr != 0) {
           auto slot_safe =
-              memory_->TranslateVirtualSafe<xe::be<uint32_t>*>(ke_debug_var_addr);
+              TranslateVirtualSafe<xe::be<uint32_t>*>(memory_,
+                                                      ke_debug_var_addr);
           if (slot_safe.success && slot_safe.pointer) {
             uint32_t current_struct_ptr =
                 xe::load_and_swap<uint32_t>(slot_safe.pointer);
             uint32_t fallback_struct_ptr = ke_debug_var_addr + 4;
             auto current_struct_safe =
-                memory_->TranslateVirtualSafe<kernel::xboxkrnl::X_KEDEBUGMONITORDATA*>(
-                    current_struct_ptr);
+                TranslateVirtualSafe<
+                    kernel::xboxkrnl::X_KEDEBUGMONITORDATA*>(
+                    memory_, current_struct_ptr);
             auto fallback_struct_safe =
-                memory_->TranslateVirtualSafe<kernel::xboxkrnl::X_KEDEBUGMONITORDATA*>(
-                    fallback_struct_ptr);
+                TranslateVirtualSafe<
+                    kernel::xboxkrnl::X_KEDEBUGMONITORDATA*>(
+                    memory_, fallback_struct_ptr);
             uint32_t current_callback =
                 (current_struct_ptr != 0 && current_struct_safe.success &&
                  current_struct_safe.pointer)
@@ -2261,7 +2322,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
 
     // If we're stuck on a branch, decode and inspect the target.
     if (memory_) {
-      auto pc_safe = memory_->TranslateVirtualSafe<uint32_t*>(pc);
+      auto pc_safe = TranslateVirtualSafe<uint32_t*>(memory_, pc);
       if (pc_safe.success && pc_safe.pointer) {
         uint32_t instr = xe::load_and_swap<uint32_t>(pc_safe.pointer);
         uint32_t target = 0;
@@ -2338,7 +2399,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
           size_t nested_target_count = 0;
           for (int i = 0; i < 12; ++i) {
             uint32_t addr = target + (i * 4);
-            auto tgt_safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+            auto tgt_safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
             if (!tgt_safe.success || !tgt_safe.pointer) {
               XELOGW("DEBUG: {:08X}: <invalid> ({})", addr, tgt_safe.error);
               continue;
@@ -2394,7 +2455,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
 
             for (int i = 0; i < 8; ++i) {
               uint32_t addr = nested_target + (i * 4);
-              auto nested_safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+              auto nested_safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
               if (!nested_safe.success || !nested_safe.pointer) {
                 XELOGW("DEBUG: {:08X}: <invalid> ({})", addr, nested_safe.error);
                 continue;
@@ -2456,7 +2517,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
               for (int i = 0; i < 6; ++i) {
                 uint32_t addr = nested_level2_target + (i * 4);
                 auto nested_level2_safe =
-                    memory_->TranslateVirtualSafe<uint32_t*>(addr);
+                    TranslateVirtualSafe<uint32_t*>(memory_, addr);
                 if (!nested_level2_safe.success ||
                     !nested_level2_safe.pointer) {
                   XELOGW("DEBUG: {:08X}: <invalid> ({})", addr,
@@ -2479,7 +2540,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
     // Dump stack: current frame then walk back-chain so the dump is "full"
     // (multiple frames) instead of a single mostly-empty frame.
     if (memory_) {
-      auto stack_safe = memory_->TranslateVirtualSafe<uint32_t*>(sp);
+      auto stack_safe = TranslateVirtualSafe<uint32_t*>(memory_, sp);
       if (stack_safe.success && stack_safe.pointer) {
         XELOGI("DEBUG: MainThread stack dump @ r1={:08X} (first 16 dwords):", sp);
         for (int i = 0; i < 16; ++i) {
@@ -2495,7 +2556,8 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
         XELOGI("DEBUG: MainThread back-chain (up to {} frames):",
                kMaxBackChainFrames);
         while (frame_index < kMaxBackChainFrames) {
-          auto frame_safe = memory_->TranslateVirtualSafe<uint32_t*>(frame_sp);
+          auto frame_safe =
+              TranslateVirtualSafe<uint32_t*>(memory_, frame_sp);
           if (!frame_safe.success || !frame_safe.pointer) {
             XELOGW("DEBUG: frame {}: {:08X} <invalid>", frame_index, frame_sp);
             break;
@@ -2533,7 +2595,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
              base + (32 * 4) - 4);
       for (int i = 0; i < 32; ++i) {
         uint32_t addr = base + (i * 4);
-        auto word_safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+        auto word_safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
         if (!word_safe.success || !word_safe.pointer) {
           XELOGW("DEBUG: [{:08X}] <invalid> ({})", addr, word_safe.error);
           continue;
@@ -2549,7 +2611,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
       XELOGI("DEBUG: LR disasm @ {:08X}:", lr);
       for (int i = -2; i <= 1; ++i) {
         uint32_t addr = lr + (i * 4);
-        auto lr_safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+        auto lr_safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
         if (!lr_safe.success || !lr_safe.pointer) {
           XELOGW("DEBUG: {:08X}: <invalid> ({})", addr, lr_safe.error);
           continue;
@@ -2564,7 +2626,7 @@ void Emulator::LogMainThreadPcSample(const char* reason) const {
 
   // Disassemble a few instructions at the current PC for visibility.
   if (memory_) {
-    auto safe = memory_->TranslateVirtualSafe<uint32_t*>(pc);
+    auto safe = TranslateVirtualSafe<uint32_t*>(memory_, pc);
     if (!safe.success || !safe.pointer) {
       XELOGW("DEBUG: PC disasm failed at {:08X}: {}", pc, safe.error);
     } else {
@@ -2762,7 +2824,7 @@ void Emulator::LogMainThreadGpuDispatchStallSample(const char* reason,
     }
     for (int i = begin_word; i <= end_word; ++i) {
       uint32_t addr = base + (i * 4);
-      auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+      auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
       if (!safe.success || !safe.pointer) {
         XELOGW(
             "RING BUFFER: main-thread dispatch stall {} probe unreadable "
@@ -2910,7 +2972,7 @@ void Emulator::LogMainThreadGpuDispatchStallSample(const char* reason,
     if (memory_) {
       for (int i = 0; i < 3; ++i) {
         uint32_t addr = target + (i * 4);
-        auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+        auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
         if (!safe.success || !safe.pointer) {
           if (disasm_has_entry) {
             disasm_stream << " ; ";
@@ -2952,7 +3014,7 @@ void Emulator::LogMainThreadGpuDispatchStallSample(const char* reason,
     if (memory_ && scan_instructions != 0) {
       for (uint32_t i = 0; i < scan_instructions; ++i) {
         uint32_t addr = scan_begin + (i * 4);
-        auto safe = memory_->TranslateVirtualSafe<uint32_t*>(addr);
+        auto safe = TranslateVirtualSafe<uint32_t*>(memory_, addr);
         if (!safe.success || !safe.pointer) {
           continue;
         }
