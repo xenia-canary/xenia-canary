@@ -8,7 +8,7 @@
  */
 
 #include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
-#include "xenia/gpu/vulkan/vulkan_verification.h"
+#include "xenia/gpu/vulkan/vulkan_verification_mac.h"
 
 #include <atomic>
 #include <cstdint>
