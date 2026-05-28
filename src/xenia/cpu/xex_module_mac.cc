@@ -430,7 +430,7 @@ int XexModule::ApplyPatch(XexModule* module) {
 
   //size_t mem_size = module->xex_header_mem_.size();
 #ifdef __APPLE__
-  (void)mem_size;
+  //(void)mem_size;
 #endif
 
   // Increase xex header buffer length if needed
@@ -2227,7 +2227,7 @@ void XexModule::PrecompileKnownFunctions() {
 
   //uint32_t start = 0;
 #ifdef __APPLE__
-  (void)start;
+  //(void)start;
 #endif
 
   uint32_t end = (high_address_ - low_address_) / 4;
