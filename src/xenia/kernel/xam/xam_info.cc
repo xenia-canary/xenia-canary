@@ -338,6 +338,32 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
 DECLARE_XAM_EXPORT1(XamLoaderLaunchTitle, kNone, kSketchy);
 
 void XamLoaderTerminateTitle_entry() {
+  std::string title = "Title terminated";
+  std::string message = "Game requested exit to dashboard.";
+  assert_always("Game requested exit to dashboard via XamLoaderTerminateTitle");
+
+  auto display_window = kernel_state()->emulator()->display_window();
+  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
+
+  if (display_window && imgui_drawer) {
+    display_window->app_context().CallInUIThreadSynchronous(
+        [imgui_drawer, title, message]() {
+          auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
+              imgui_drawer, title.c_str(), message.c_str());
+
+          std::jthread([dialog]() {
+            while (!dialog->IsClosing()) {
+              std::this_thread::yield();
+            }
+
+            config::SaveConfig();
+            xe::FlushLog();
+
+            std::quick_exit(0);
+          }).detach();
+        });
+  }
+
   // This function does not return.
   kernel_state()->TerminateTitle();
 }
