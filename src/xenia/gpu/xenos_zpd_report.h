@@ -102,8 +102,7 @@ struct XenosZPDReport {
 
   static uint32_t SaturateSampleCount(uint32_t sample_count) {
     double saturation = std::clamp(
-        static_cast<double>(cvars::occlusion_query_sample_count_saturation),
-        0.0, 1.0);
+        static_cast<double>(cvars::occlusion_query_saturation), 0.0, 1.0);
 
     if (sample_count == 0 || saturation >= 1.0) {
       return sample_count;

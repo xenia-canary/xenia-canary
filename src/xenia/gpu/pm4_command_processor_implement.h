@@ -1011,7 +1011,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
       // No logical report is active for this slot, so this is likely an
       // orphaned END. In fast mode, replay the last cached delta so polling
       // code does not sit on the sentinel forever.
-      if (GetZPDMode() == ZPDMode::kFast) {
+      if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
         uint32_t cached_delta = 1;
         auto cache_it = fast_zpd_report_cached_values_.find(report_record_base);
         if (cache_it != fast_zpd_report_cached_values_.end()) {

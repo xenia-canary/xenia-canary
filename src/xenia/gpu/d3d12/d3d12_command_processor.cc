@@ -5312,7 +5312,7 @@ CommandProcessor::QueryOpenResult D3D12CommandProcessor::OpenZPDQuery(
   bool waited_for_submission = false;
 
   if (is_pool_exhausted) {
-    if (GetZPDMode() == ZPDMode::kFast) {
+    if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
       return QueryOpenResult::kPoolExhausted;
     }
 

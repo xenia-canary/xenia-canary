@@ -58,7 +58,10 @@ DEFINE_string(
     "       though some effects may look slightly wrong.\n"
     " fast: Ask the GPU but don't wait for the answer. Writes a cached\n"
     "       result immediately and updates it when the GPU catches up.\n"
-    "       (default)\n"
+    "       Cached results bias toward visible when guessing. (default)\n"
+    " fast-alt: Variant of fast mode that keeps cached zero results for\n"
+    "           unresolved reports. May improve effects relying on precise\n"
+    "           visibility, but may be less stable for occlusion culling.\n"
     " strict: Ask the GPU and wait for the real result before continuing.\n"
     "         Most accurate, but may be somewhat less performant.",
     "GPU");
@@ -130,6 +133,8 @@ ZPDMode GetZPDMode() {
     return ZPDMode::kFake;
   } else if (mode == "strict") {
     return ZPDMode::kStrict;
+  } else if (mode == "fast-alt") {
+    return ZPDMode::kFastAlt;
   }
   return ZPDMode::kFast;
 }
@@ -968,7 +973,7 @@ bool CommandProcessor::BeginZPDReport(uint32_t report_address) {
   PendingZPDSlot pending_slot = GetPendingZPDSlot(slot_base, end_record);
 
   if (pending_slot.report_handle != kInvalidReportHandle) {
-    if (GetZPDMode() == ZPDMode::kFast) {
+    if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
       if (pending_slot.has_cached_delta) {
         carried_cached_delta = pending_slot.cached_delta;
         has_carried_cached_delta = true;
@@ -1008,7 +1013,7 @@ bool CommandProcessor::BeginZPDReport(uint32_t report_address) {
   // By default, BEGIN drops the cached value so an orphaned END doesn't replay
   // something from a prior lifetime. The alternate fast path keeps it around
   // long enough for an async zero to help the next unresolved write.
-  if (!cvars::occlusion_query_fast_preserve_cached_zero) {
+  if (GetZPDMode() != ZPDMode::kFastAlt) {
     fast_zpd_report_cached_values_.erase(end_record);
   }
 
@@ -1136,7 +1141,7 @@ bool CommandProcessor::EndZPDReport(uint32_t report_address,
     WriteZPDReport(0, stored_end_record, 0, begin_value, false);
   }
 
-  if (GetZPDMode() == ZPDMode::kFast) {
+  if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
     bool write_begin = begin_record && report_record_base &&
                        begin_record != report_record_base;
     // Unknown still means visible in fast mode. Reusing cached zeroes can help
@@ -1147,8 +1152,7 @@ bool CommandProcessor::EndZPDReport(uint32_t report_address,
     if (!resolved_immediately) {
       speculative = 1;
       if (has_cached_delta &&
-          (cached_delta != 0 ||
-           cvars::occlusion_query_fast_preserve_cached_zero)) {
+          (cached_delta != 0 || GetZPDMode() == ZPDMode::kFastAlt)) {
         speculative = cached_delta;
       }
     }
@@ -1201,7 +1205,7 @@ void CommandProcessor::OpenQuerySegment(bool can_close_submission) {
     case QueryOpenResult::kDeferred:
       return;
     case QueryOpenResult::kPoolExhausted: {
-      if (GetZPDMode() == ZPDMode::kFast) {
+      if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
         // Fast mode favors forward progress over accuracy. Keep a minimal
         // accumulated value instead of waiting for a slot to become available.
         auto it = logical_zpd_reports_.find(zpd_active_segment_.report_handle);

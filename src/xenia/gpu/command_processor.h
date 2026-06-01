@@ -45,9 +45,10 @@ enum class ReadbackResolveMode {
 
 // Occlusion queries - ZPD report mode.
 enum class ZPDMode {
-  kFake,    // Fake sample counts, no real GPU queries (fake)
-  kFast,    // Real queries with speculative cached writes (fast)
-  kStrict,  // Real queries, waits before writeback (strict)
+  kFake,     // Fake sample counts, no real GPU queries (fake)
+  kFast,     // Real queries with speculative cached writes (fast)
+  kFastAlt,  // Fast queries, but preserves cached zeroes (fast-alt)
+  kStrict,   // Real queries, waits before writeback (strict)
 };
 
 void SaveGPUSetting(GPUSetting setting, uint64_t value);
@@ -324,8 +325,7 @@ class CommandProcessor {
     uint32_t begin_value = 0;
     uint32_t pending_segments = 0;
     // Last known delta. Carried forward on forced close so slot doesn't
-    // briefly look fully occluded. 0 is a valid delta if the alternate fast
-    // cvar is enabled.
+    // briefly look fully occluded. 0 is a valid delta for alternate fast path.
     uint32_t cached_delta = 0;
     bool has_cached_delta = false;
     bool ended = false;

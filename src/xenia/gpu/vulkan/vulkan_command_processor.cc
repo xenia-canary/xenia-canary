@@ -3318,7 +3318,8 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
       is_pool_exhausted = !zpd_host_query_pool_->has_free_indices();
     }
 
-    if (is_pool_exhausted && GetZPDMode() == ZPDMode::kFast) {
+    if (is_pool_exhausted &&
+        (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt)) {
       return QueryOpenResult::kPoolExhausted;
     }
 
