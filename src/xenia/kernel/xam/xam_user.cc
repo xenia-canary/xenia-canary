@@ -938,13 +938,16 @@ dword_result_t XamWriteGamerTile_entry(
     const auto gamerpic_small_png =
         kernel_state()->xam_state()->spa_info()->GetIcon(small_tile_id);
 
+    const std::error_code ec =
+        xe::filesystem::CreateFolder(gamer_pictures_storage_path);
+
     FILE* big_gamerpic_file = xe::filesystem::OpenFile(big_gamerpic_path, "ab");
     FILE* small_gamerpic_file =
         xe::filesystem::OpenFile(small_gamerpic_path, "ab");
 
     X_RESULT result = X_ERROR_SUCCESS;
 
-    if (!big_gamerpic_file || !small_gamerpic_file) {
+    if (ec || !big_gamerpic_file || !small_gamerpic_file) {
       extended_error = X_E_FUNCTION_FAILED;
       return X_ERROR_FUNCTION_FAILED;
     }
