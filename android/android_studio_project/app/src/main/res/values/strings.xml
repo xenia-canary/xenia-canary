@@ -1,5 +1,14 @@
 <resources>
-    <string name="app_name">Xenia</string>
+    <string name="app_name">AetherX360</string>
     <string name="activity_label_gpu_trace_viewer">GPU Trace Viewer</string>
     <string name="activity_label_window_demo">Window Demo</string>
+    <string name="dashboard_title">AetherX360 Dashboard</string>
+    <string name="dashboard_subtitle">Scan your game directory, launch titles, and tweak per-game settings.</string>
+    <string name="button_scan_games">Scan Game Directory</string>
+    <string name="button_play">Play</string>
+    <string name="button_game_settings">Settings</string>
+    <string name="settings_header">Per-game settings</string>
+    <string name="settings_gpu_backend">GPU backend</string>
+    <string name="settings_apu_backend">Audio backend</string>
+    <string name="empty_games">No Xbox 360 games were found yet. Scan your game directory to populate this dashboard.</string>
 </resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="gpu_backends">
+        <item>any</item>
+        <item>vulkan</item>
+        <item>null</item>
+    </string-array>
+
+    <string-array name="apu_backends">
+        <item>any</item>
+        <item>nop</item>
+        <item>sdl</item>
+    </string-array>
+</resources>

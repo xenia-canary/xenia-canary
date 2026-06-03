@@ -3,6 +3,7 @@ plugins {
 }
 
 android {
+    archivesBaseName = 'AetherX360'
     compileSdkVersion 33
     ndkVersion '25.0.8775105'
 
@@ -13,20 +14,6 @@ android {
         targetSdkVersion 33
         versionCode 1
         versionName 'Prototype'
-        externalNativeBuild {
-            ndkBuild {
-                arguments 'NDK_APPLICATION_MK:=../../../build/xenia.Application.mk',
-                        'PREMAKE_ANDROIDNDK_PLATFORMS:=Android-ARM64',
-                        'PREMAKE_ANDROIDNDK_PLATFORMS+=Android-x86_64',
-                        // ndk.jobs doesn't work as of Gradle 7.1.0.
-                        "-j${Runtime.runtime.availableProcessors()}",
-                        // Work around "Bad file descriptor" on Windows on NDK r22+.
-                        '--output-sync=none'
-                // For the app, don't build the executables designed for running from a terminal.
-                // To build the executables, run ndk-build manually.
-                targets 'xenia-app'
-            }
-        }
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'
             stl 'c++_static'
@@ -35,31 +22,16 @@ android {
 
     buildTypes {
         release {
-            externalNativeBuild {
-                ndkBuild {
-                    arguments 'PREMAKE_ANDROIDNDK_CONFIGURATIONS:=Release'
-                }
-            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
             applicationIdSuffix '.debug'
             debuggable true
-            externalNativeBuild {
-                ndkBuild {
-                    arguments 'PREMAKE_ANDROIDNDK_CONFIGURATIONS:=Debug'
-                }
-            }
         }
         checked {
             applicationIdSuffix '.checked'
             debuggable true
-            externalNativeBuild {
-                ndkBuild {
-                    arguments 'PREMAKE_ANDROIDNDK_CONFIGURATIONS:=Checked'
-                }
-            }
         }
     }
 
@@ -78,12 +50,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    externalNativeBuild {
-        ndkBuild {
-            path file('../../../build/xenia.wks.Android.mk')
-        }
     }
 }
 

@@ -14,6 +14,7 @@
 
     <!-- Granted automatically - guest sockets. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application
         android:allowBackup="true"
@@ -25,7 +26,8 @@
 
         <activity
             android:name="jp.xenia.emulator.LauncherActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -40,9 +42,17 @@
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
         <activity
+            android:name="jp.xenia.emulator.GameActivity"
+            android:exported="true"
+            android:label="AetherX360"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <activity
             android:name="jp.xenia.emulator.WindowDemoActivity"
             android:exported="true"
             android:label="@string/activity_label_window_demo"
+            android:screenOrientation="sensorLandscape"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
     </application>
