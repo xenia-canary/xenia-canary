@@ -204,9 +204,9 @@ static_assert_size(XMP_CAPTURE_OUTPUT, 0x10);
 
 struct XMP_SET_MEDIA_SOURCE_WORKSPACE {
   xe::be<apu::XMP_CLIENT> xmp_client;
-  xe::be<uint32_t> unk1;
+  xe::be<uint32_t> workspace_type;
   xe::be<uint32_t> storage_ptr;
-  xe::be<uint32_t> unk2;
+  xe::be<uint32_t> storage_length;
 };
 static_assert_size(XMP_SET_MEDIA_SOURCE_WORKSPACE, 0x10);
 

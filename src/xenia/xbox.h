@@ -275,7 +275,7 @@ enum : XNotificationID {
   kXNotificationXmpTitlePlayListContentChanged = 0x8A000005,
   kXNotificationXmpLocalMediaContentChanged = 0x8A000006,
   kXNotificationXmpDashNowPlayingQueueModeChanged = 0x8A000007,
-  kXNotificationXmpDashInItChanged = 0x8A000009,
+  kXNotificationXmpDashInitChanged = 0x8A000009,
   kXNotificationXmpPlaybackBehaviorChangedEx = 0x8A00000A,
 
   // XNotification Party
