@@ -111,6 +111,17 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       }* data = reinterpret_cast<XContentQueryVolumeDeviceType*>(buffer);
       assert_true(buffer_length == sizeof(XContentQueryVolumeDeviceType));
 
+      std::string target;
+      if (!kernel_state_->file_system()->FindSymbolicLink(
+              std::string(data->root_name) + ':', target)) {
+        return X_E_INVALIDARG;
+      }
+
+      // Only apply this check to XContent packages
+      if (!target.starts_with("\\Device\\Package_")) {
+        return X_E_INVALIDARG;
+      }
+
       xe::be<DeviceType>* device_type_ptr =
           memory_->TranslateVirtual<xe::be<DeviceType>*>(
               static_cast<uint32_t>(data->device_type_ptr.get()));
