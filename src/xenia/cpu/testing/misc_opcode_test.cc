@@ -13,6 +13,7 @@
 
 #include "xenia/cpu/testing/util.h"
 
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -628,4 +629,141 @@ TEST_CASE("LOAD_VECTOR_RIGHT", "[memory]") {
            });
 
   test.memory->SystemHeapFree(guest_addr);
+}
+
+// ============================================================================
+// STVL / STVR - partial vector store left/right
+// These are used by optimized memcpy implementations for unaligned heads/tails.
+// ============================================================================
+constexpr std::array<uint8_t, 16> kStoreVectorSource = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+constexpr uint32_t kPartialStoreOffsets[] = {0, 1, 4, 8, 12, 15};
+
+TEST_CASE("STORE_VECTOR_LEFT", "[memory]") {
+  TestFunction test([](HIRBuilder& b) {
+    b.StoreVectorLeft(LoadGPR(b, 4), LoadVR(b, 5));
+    b.Return();
+  });
+
+  for (const uint32_t offset : kPartialStoreOffsets) {
+    uint32_t guest_addr = test.memory->SystemHeapAlloc(64, 16);
+    REQUIRE(guest_addr != 0);
+    const uint32_t aligned_addr = (guest_addr + 15) & ~15u;
+    auto* host_ptr =
+        reinterpret_cast<uint8_t*>(test.memory->TranslateVirtual(aligned_addr));
+
+    std::array<uint8_t, 16> expected;
+    for (uint32_t i = 0; i < 16; ++i) {
+      host_ptr[i] = static_cast<uint8_t>(0xA0 + i);
+      expected[i] = host_ptr[i];
+    }
+
+    for (uint32_t i = offset; i < 16; ++i) {
+      expected[i] = kStoreVectorSource[(i - offset) ^ 3];
+    }
+
+    test.Run(
+        [&](PPCContext* ctx) {
+          ctx->r[4] = aligned_addr + offset;
+          ctx->v[5] =
+              vec128b(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        },
+        [&](PPCContext* ctx) {
+          REQUIRE(std::memcmp(host_ptr, expected.data(), expected.size()) == 0);
+        });
+
+    test.memory->SystemHeapFree(guest_addr);
+  }
+}
+
+TEST_CASE("STORE_VECTOR_RIGHT", "[memory]") {
+  TestFunction test([](HIRBuilder& b) {
+    b.StoreVectorRight(LoadGPR(b, 4), LoadVR(b, 5));
+    b.Return();
+  });
+
+  for (const uint32_t offset : kPartialStoreOffsets) {
+    uint32_t guest_addr = test.memory->SystemHeapAlloc(64, 16);
+    REQUIRE(guest_addr != 0);
+    const uint32_t aligned_addr = (guest_addr + 15) & ~15u;
+    auto* host_ptr =
+        reinterpret_cast<uint8_t*>(test.memory->TranslateVirtual(aligned_addr));
+
+    std::array<uint8_t, 16> expected;
+    for (uint32_t i = 0; i < 16; ++i) {
+      host_ptr[i] = static_cast<uint8_t>(0xA0 + i);
+      expected[i] = host_ptr[i];
+    }
+
+    for (uint32_t i = 0; i < offset; ++i) {
+      expected[i] = kStoreVectorSource[(16 - offset + i) ^ 3];
+    }
+
+    test.Run(
+        [&](PPCContext* ctx) {
+          ctx->r[4] = aligned_addr + offset;
+          ctx->v[5] =
+              vec128b(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        },
+        [&](PPCContext* ctx) {
+          REQUIRE(std::memcmp(host_ptr, expected.data(), expected.size()) == 0);
+        });
+
+    test.memory->SystemHeapFree(guest_addr);
+  }
+}
+
+TEST_CASE("STORE_VECTOR_LEFT_MEMCPY_HEAD", "[memory]") {
+  TestFunction test([](HIRBuilder& b) {
+    auto src_addr = LoadGPR(b, 4);
+    auto dest_addr = LoadGPR(b, 5);
+    auto aligned_src =
+        b.And(src_addr, b.LoadConstantInt64(static_cast<int64_t>(~0xFULL)));
+    auto next_src = b.And(b.Add(src_addr, b.LoadConstantInt64(15)),
+                          b.LoadConstantInt64(static_cast<int64_t>(~0xFULL)));
+    auto source_a = b.ByteSwap(b.Load(aligned_src, VEC128_TYPE));
+    auto source_b = b.ByteSwap(b.Load(next_src, VEC128_TYPE));
+    auto control = b.LoadVectorShl(
+        b.Truncate(b.And(src_addr, b.LoadConstantInt64(0xF)), INT8_TYPE));
+    auto head = b.Permute(control, source_a, source_b, INT8_TYPE);
+    b.StoreVectorLeft(dest_addr, head);
+    b.Return();
+  });
+
+  for (const uint32_t source_offset : {0u, 1u, 4u, 12u}) {
+    uint32_t guest_addr = test.memory->SystemHeapAlloc(128, 16);
+    REQUIRE(guest_addr != 0);
+    const uint32_t aligned_addr = (guest_addr + 15) & ~15u;
+    auto* host_ptr =
+        reinterpret_cast<uint8_t*>(test.memory->TranslateVirtual(aligned_addr));
+    auto* src_ptr = host_ptr;
+    auto* dest_block = host_ptr + 64;
+    const uint32_t src_addr = aligned_addr + source_offset;
+    const uint32_t dest_addr = aligned_addr + 64 + 12;
+
+    for (uint32_t i = 0; i < 64; ++i) {
+      src_ptr[i] = static_cast<uint8_t>(i);
+    }
+    for (uint32_t i = 0; i < 16; ++i) {
+      dest_block[i] = static_cast<uint8_t>(0xC0 + i);
+    }
+
+    std::array<uint8_t, 16> expected;
+    std::memcpy(expected.data(), dest_block, expected.size());
+    for (uint32_t i = 0; i < 4; ++i) {
+      expected[12 + i] = src_ptr[source_offset + i];
+    }
+
+    test.Run(
+        [&](PPCContext* ctx) {
+          ctx->r[4] = src_addr;
+          ctx->r[5] = dest_addr;
+        },
+        [&](PPCContext* ctx) {
+          REQUIRE(std::memcmp(dest_block, expected.data(), expected.size()) ==
+                  0);
+        });
+
+    test.memory->SystemHeapFree(guest_addr);
+  }
 }
