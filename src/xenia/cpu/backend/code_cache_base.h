@@ -375,7 +375,9 @@ class CodeCacheBase : public CodeCache {
     size_t old_commit_mark, new_commit_mark;
     do {
       old_commit_mark = generated_code_commit_mark_;
-      if (high_mark <= old_commit_mark) break;
+      if (high_mark <= old_commit_mark) {
+        break;
+      }
       new_commit_mark = old_commit_mark + 16_MiB;
       if (generated_code_execute_base_ == generated_code_write_base_) {
         xe::memory::AllocFixed(generated_code_execute_base_, new_commit_mark,

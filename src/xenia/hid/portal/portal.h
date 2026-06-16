@@ -25,7 +25,7 @@ class Portal {
   Portal();
   virtual ~Portal();
 
-  bool IsConnected();
+  virtual bool IsConnected() = 0;
 
   virtual X_STATUS Read(std::span<uint8_t> data, uint32_t& bytes_read,
                         uint16_t& state);
@@ -33,9 +33,6 @@ class Portal {
 
   virtual void OnDeviceArrival() = 0;
   virtual void OnDeviceRemoval() = 0;
-
- protected:
-  bool connected_ = false;
 
  private:
   virtual void OpenDevice() = 0;

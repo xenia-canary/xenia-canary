@@ -934,8 +934,47 @@ struct VECTOR_SHL_V128
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
     // TODO(benvanik): native version (with shift magic).
 
+    // gf2p8mulb's "x8 + x4 + x3 + x + 1"-polynomial-reduction only
+    // applies when the multiplication overflows. Masking away any bits
+    // that would have overflowed turns the polynomial-multiplication into
+    // regular modulo-multiplication
+    const uint64_t gfni_shift_mask = UINT64_C(0x01'03'07'0f'1f'3f'7f'ff);
+    // n << 0 == n * 1 | n << 1 == n * 2 | n << 2 == n * 4 | etc
+    const uint64_t gfni_multiply_table = UINT64_C(0x80'40'20'10'08'04'02'01);
+
     if (e.IsFeatureEnabled(kX64EmitAVX2)) {
       if (!i.src2.is_constant) {
+        if (e.IsFeatureEnabled(kX64EmitGFNI | kX64EmitAVX512Ortho |
+                               kX64EmitAVX512VBMI)) {
+          e.LoadConstantXmm(e.xmm0, vec128q(gfni_shift_mask, gfni_shift_mask));
+          e.vpermb(e.xmm0, i.src2, e.xmm0);
+          e.vpand(e.xmm0, i.src1, e.xmm0);
+
+          e.LoadConstantXmm(e.xmm1,
+                            vec128q(gfni_multiply_table, gfni_multiply_table));
+          e.vpermb(e.xmm1, i.src2, e.xmm1);
+
+          e.vgf2p8mulb(i.dest, e.xmm0, e.xmm1);
+          return;
+        } else if (e.IsFeatureEnabled(kX64EmitGFNI)) {
+          // Only use the lower 4 bits
+          // This also protects from vpshufb from writing zero when the MSB is
+          // set
+          e.LoadConstantXmm(e.xmm0, vec128b(0x0F));
+          e.vpand(e.xmm2, i.src2, e.xmm0);
+
+          e.LoadConstantXmm(e.xmm0, vec128q(gfni_shift_mask, gfni_shift_mask));
+          e.vpshufb(e.xmm0, e.xmm0, e.xmm2);
+          e.vpand(e.xmm0, i.src1, e.xmm0);
+
+          e.LoadConstantXmm(e.xmm1,
+                            vec128q(gfni_multiply_table, gfni_multiply_table));
+          e.vpshufb(e.xmm1, e.xmm1, e.xmm2);
+
+          e.vgf2p8mulb(i.dest, e.xmm0, e.xmm1);
+          return;
+        }
+
         // get high 8 bytes
         e.vpunpckhqdq(e.xmm1, i.src1, i.src1);
         e.vpunpckhqdq(e.xmm3, i.src2, i.src2);
@@ -980,6 +1019,15 @@ struct VECTOR_SHL_V128
           }
         }
         if (all_same) {
+          if (e.IsFeatureEnabled(kX64EmitGFNI)) {
+            // Every count is the same, so we can use gf2p8affineqb.
+            const uint8_t shift_amount = seenvalue & 0b111;
+            const uint64_t shift_matrix =
+                UINT64_C(0x0102040810204080) >> (shift_amount * 8);
+            e.vgf2p8affineqb(i.dest, i.src1,
+                             e.StashConstantXmm(0, vec128q(shift_matrix)), 0);
+            return;
+          }
           e.vpmovzxbw(e.ymm0, i.src1);
           e.vpsllw(e.ymm0, e.ymm0, seenvalue);
           e.vextracti128(e.xmm1, e.ymm0, 1);
@@ -991,6 +1039,39 @@ struct VECTOR_SHL_V128
 
         } else {
           e.LoadConstantXmm(e.xmm2, constmask);
+
+          if (e.IsFeatureEnabled(kX64EmitGFNI | kX64EmitAVX512Ortho |
+                                 kX64EmitAVX512VBMI)) {
+            e.LoadConstantXmm(e.xmm0,
+                              vec128q(gfni_shift_mask, gfni_shift_mask));
+            e.vpermb(e.xmm0, e.xmm2, e.xmm0);
+            e.vpand(e.xmm0, i.src1, e.xmm0);
+
+            e.LoadConstantXmm(
+                e.xmm1, vec128q(gfni_multiply_table, gfni_multiply_table));
+            e.vpermb(e.xmm1, e.xmm2, e.xmm1);
+
+            e.vgf2p8mulb(i.dest, e.xmm0, e.xmm1);
+            return;
+          } else if (e.IsFeatureEnabled(kX64EmitGFNI)) {
+            // Only use the lower 4 bits
+            // This also protects from vpshufb from writing zero when the MSB is
+            // set
+            e.LoadConstantXmm(e.xmm0, vec128b(0x0F));
+            e.vpand(e.xmm2, e.xmm2, e.xmm0);
+
+            e.LoadConstantXmm(e.xmm0,
+                              vec128q(gfni_shift_mask, gfni_shift_mask));
+            e.vpshufb(e.xmm0, e.xmm0, e.xmm2);
+            e.vpand(e.xmm0, i.src1, e.xmm0);
+
+            e.LoadConstantXmm(
+                e.xmm1, vec128q(gfni_multiply_table, gfni_multiply_table));
+            e.vpshufb(e.xmm1, e.xmm1, e.xmm2);
+
+            e.vgf2p8mulb(i.dest, e.xmm0, e.xmm1);
+            return;
+          }
 
           e.vpunpckhqdq(e.xmm1, i.src1, i.src1);
           e.vpunpckhqdq(e.xmm3, e.xmm2, e.xmm2);

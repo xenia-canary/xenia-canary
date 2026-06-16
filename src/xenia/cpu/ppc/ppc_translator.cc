@@ -74,9 +74,13 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
   // Loops until no changes are made.
   auto sap = std::make_unique<passes::ConditionalGroupPass>();
   sap->AddPass(std::make_unique<passes::SimplificationPass>());
-  if (validate) sap->AddPass(std::make_unique<passes::ValidationPass>());
+  if (validate) {
+    sap->AddPass(std::make_unique<passes::ValidationPass>());
+  }
   sap->AddPass(std::make_unique<passes::ConstantPropagationPass>());
-  if (validate) sap->AddPass(std::make_unique<passes::ValidationPass>());
+  if (validate) {
+    sap->AddPass(std::make_unique<passes::ValidationPass>());
+  }
   compiler_->AddPass(std::move(sap));
 
   if (backend->machine_info()->supports_extended_load_store) {
@@ -84,16 +88,21 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
     // These will save us a lot of HIR opcodes.
     compiler_->AddPass(
         std::make_unique<passes::MemorySequenceCombinationPass>());
-    if (validate)
+    if (validate) {
       compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+    }
   }
   compiler_->AddPass(std::make_unique<passes::SimplificationPass>());
-  if (validate) compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  if (validate) {
+    compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  }
   // compiler_->AddPass(std::make_unique<passes::DeadStoreEliminationPass>());
   // if (validate)
   // compiler_->AddPass(std::make_unique<passes::ValidationPass>());
   compiler_->AddPass(std::make_unique<passes::DeadCodeEliminationPass>());
-  if (validate) compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  if (validate) {
+    compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  }
 
   //// Removes all unneeded variables. Try not to add new ones after this.
   // compiler_->AddPass(new passes::ValueReductionPass());
@@ -105,7 +114,9 @@ PPCTranslator::PPCTranslator(PPCFrontend* frontend) : frontend_(frontend) {
   // registers are assigned and ready to be emitted.
   compiler_->AddPass(std::make_unique<passes::RegisterAllocationPass>(
       backend->machine_info()));
-  if (validate) compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  if (validate) {
+    compiler_->AddPass(std::make_unique<passes::ValidationPass>());
+  }
 
   // Must come last. The HIR is not really HIR after this.
   compiler_->AddPass(std::make_unique<passes::FinalizationPass>());

@@ -88,6 +88,33 @@ object_ref<T> LookupNamedObject(KernelState* kernel_state,
   return nullptr;
 }
 
+enum CreateThreadFlags : uint32_t {
+  ThreadInitiallySuspended = 0x00000001,
+  SystemThread = 0x00000002,
+  PriorityClass1 = 0x00000020,
+  PriorityClass2 = 0x00000040,
+  ReturnKThreadPtr = 0x00000080,
+  AffinityCpu0 = 0x01000000,
+  AffinityCpu1 = 0x02000000,
+  AffinityCpu2 = 0x04000000,
+  AffinityCpu3 = 0x08000000,
+  AffinityCpu4 = 0x10000000,
+  AffinityCpu5 = 0x20000000,
+};
+
+inline const std::map<uint32_t, std::string> ex_thread_flag_map = {
+    {ThreadInitiallySuspended, "Thread Initially Suspended"},
+    {SystemThread, "Guest Created System Thread"},
+    {PriorityClass1, "Thread Priority Class 1"},
+    {PriorityClass2, "Thread Priority Class 2"},
+    {ReturnKThreadPtr, "Return Kthread Ptr"},
+    {AffinityCpu0, "Thread Starts At Cpu 1"},
+    {AffinityCpu1, "Thread Starts At Cpu 2"},
+    {AffinityCpu2, "Thread Starts At Cpu 3"},
+    {AffinityCpu3, "Thread Starts At Cpu 4"},
+    {AffinityCpu4, "Thread Starts At Cpu 5"},
+    {AffinityCpu5, "Thread Starts At Cpu 6"}};
+
 uint32_t ExCreateThread(xe::be<uint32_t>* handle_ptr, uint32_t stack_size,
                         xe::be<uint32_t>* thread_id_ptr,
                         uint32_t xapi_thread_startup, uint32_t start_address,
@@ -103,17 +130,25 @@ uint32_t ExCreateThread(xe::be<uint32_t>* handle_ptr, uint32_t stack_size,
   // LPVOID   StartContext,
   // DWORD    CreationFlags // 0x80?
 
-  auto kernel_state_var = kernel_state();
-  // xenia_assert((creation_flags & 2) == 0);  // creating system thread?
-  if (creation_flags & 2) {
-    XELOGE("Guest is creating a system thread!");
-  }
+  std::string summary = "ExCreateThread Active:";
+  uint32_t unused_flag = creation_flags;
 
-  uint32_t thread_process = (creation_flags & 2)
-                                ? kernel_state_var->GetSystemProcess()
-                                : kernel_state_var->GetTitleProcess();
+  for (const auto& entry : ex_thread_flag_map) {
+    if (creation_flags & entry.first) {
+      summary += fmt::format(" {},", entry.second);
+      unused_flag &= ~entry.first;
+    }
+  }
+  if (unused_flag) {
+    summary += fmt::format(" Unk flag: {:08X}", unused_flag);
+  }
+  XELOGD("{}", summary);
+
+  uint32_t thread_process = (creation_flags & SystemThread)
+                                ? kernel_state()->GetSystemProcess()
+                                : kernel_state()->GetTitleProcess();
   X_KPROCESS* target_process =
-      kernel_state_var->memory()->TranslateVirtual<X_KPROCESS*>(thread_process);
+      kernel_state()->memory()->TranslateVirtual<X_KPROCESS*>(thread_process);
   // Inherit default stack size
   uint32_t actual_stack_size = stack_size;
 
@@ -138,7 +173,7 @@ uint32_t ExCreateThread(xe::be<uint32_t>* handle_ptr, uint32_t stack_size,
 
   if (XSUCCEEDED(result)) {
     if (handle_ptr) {
-      if (creation_flags & 0x80) {
+      if (creation_flags & ReturnKThreadPtr) {
         *handle_ptr = thread->guest_object();
       } else {
         *handle_ptr = thread->handle();
@@ -331,12 +366,17 @@ dword_result_t KeSetAffinityThread_entry(lpvoid_t thread_ptr, dword_t affinity,
     return X_STATUS_INVALID_PARAMETER;
   }
   auto thread = XObject::GetNativeObject<XThread>(kernel_state(), thread_ptr);
-  if (thread) {
-    if (previous_affinity_ptr) {
-      *previous_affinity_ptr = uint32_t(1) << thread->active_cpu();
-    }
-    thread->SetAffinity(affinity);
+  if (!thread) {
+    XELOGW(
+        "KeSetAffinityThread: guest thread pointer {:08X} did not resolve to "
+        "an XThread; returning STATUS_INVALID_HANDLE",
+        thread_ptr.guest_address());
+    return X_STATUS_INVALID_HANDLE;
   }
+  if (previous_affinity_ptr) {
+    *previous_affinity_ptr = uint32_t(1) << thread->active_cpu();
+  }
+  thread->SetAffinity(affinity);
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeSetAffinityThread, kThreading, kImplemented);
@@ -383,9 +423,10 @@ DECLARE_XBOXKRNL_EXPORT1(KeSetDisableBoostThread, kThreading, kImplemented);
 uint32_t xeKeGetCurrentProcessType(cpu::ppc::PPCContext* context) {
   auto pcr = context->TranslateVirtualGPR<X_KPCR*>(context->r[13]);
 
-  if (!pcr->prcb_data.dpc_active)
+  if (!pcr->prcb_data.dpc_active) {
     return context->TranslateVirtual(pcr->prcb_data.current_thread)
         ->process_type;
+  }
   return pcr->processtype_value_in_dpc;
 }
 void xeKeSetCurrentProcessType(uint32_t type, cpu::ppc::PPCContext* context) {
@@ -469,8 +510,8 @@ void KeQuerySystemTime_entry(lpqword_t time_ptr, const ppc_context_t& ctx) {
 DECLARE_XBOXKRNL_EXPORT1(KeQuerySystemTime, kThreading, kImplemented);
 
 // https://msdn.microsoft.com/en-us/library/ms686801
-dword_result_t KeTlsAlloc_entry() {
-  uint32_t slot = kernel_state()->AllocateTLS();
+dword_result_t KeTlsAlloc_entry(const ppc_context_t& context) {
+  uint32_t slot = kernel_state()->AllocateTLS(context);
   XThread::GetCurrentThread()->SetTLSValue(slot, 0);
 
   return slot;
@@ -478,12 +519,13 @@ dword_result_t KeTlsAlloc_entry() {
 DECLARE_XBOXKRNL_EXPORT1(KeTlsAlloc, kThreading, kImplemented);
 
 // https://msdn.microsoft.com/en-us/library/ms686804
-dword_result_t KeTlsFree_entry(dword_t tls_index) {
+dword_result_t KeTlsFree_entry(dword_t tls_index,
+                               const ppc_context_t& context) {
   if (tls_index == X_TLS_OUT_OF_INDEXES) {
     return 0;
   }
 
-  kernel_state()->FreeTLS(tls_index);
+  kernel_state()->FreeTLS(context, tls_index);
   return 1;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeTlsFree, kThreading, kImplemented);
@@ -685,12 +727,12 @@ DECLARE_XBOXKRNL_EXPORT2(NtClearEvent, kThreading, kImplemented,
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff552150(v=vs.85).aspx
 void KeInitializeSemaphore_entry(pointer_t<X_KSEMAPHORE> semaphore_ptr,
                                  dword_t count, dword_t limit) {
-  semaphore_ptr->header.type = 5;  // SemaphoreObject
+  semaphore_ptr->header.type = X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE;
   semaphore_ptr->header.signal_state = (uint32_t)count;
   semaphore_ptr->limit = (uint32_t)limit;
 
-  auto sem = XObject::GetNativeObject<XSemaphore>(kernel_state(), semaphore_ptr,
-                                                  5 /* SemaphoreObject */);
+  auto sem = XObject::GetNativeObject<XSemaphore>(
+      kernel_state(), semaphore_ptr, X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE);
   if (!sem) {
     assert_always();
     return;
@@ -707,8 +749,7 @@ uint32_t xeKeReleaseSemaphore(X_KSEMAPHORE* semaphore_ptr, uint32_t increment,
     return 0;
   }
 
-  // TODO(benvanik): increment thread priority?
-  // TODO(benvanik): wait?
+  sem->set_priority_increment(increment);
 
   int32_t previous_count = 0;
   [[maybe_unused]] bool success =
@@ -775,13 +816,11 @@ dword_result_t NtReleaseSemaphore_entry(dword_t sem_handle,
     bool success =
         sem->ReleaseSemaphore((int32_t)release_count, &previous_count);
     if (!success) {
-      // Releasing would exceed the semaphore's maximum count
-      // Windows returns STATUS_SEMAPHORE_LIMIT_EXCEEDED (0x0000012B)
       XELOGW(
           "NtReleaseSemaphore: release_count={} would exceed maximum (current "
           "count={})",
           uint32_t(release_count), previous_count);
-      result = 0x0000012B;
+      result = X_STATUS_SEMAPHORE_LIMIT_EXCEEDED;
     }
   } else {
     result = X_STATUS_INVALID_HANDLE;
@@ -1010,7 +1049,7 @@ dword_result_t KeWaitForMultipleObjects_entry(
     dword_t count, lpdword_t objects_ptr, dword_t wait_type,
     dword_t wait_reason, dword_t processor_mode, dword_t alertable,
     lpqword_t timeout_ptr, lpvoid_t wait_block_array_ptr) {
-  assert_true(wait_type <= 1);
+  assert_true(wait_type <= X_KWAIT_REASON::WaitAny);
 
   assert_true(count <= 64);
   object_ref<XObject> objects[64];
@@ -1045,7 +1084,7 @@ uint32_t xeNtWaitForMultipleObjectsEx(uint32_t count, xe::be<uint32_t>* handles,
                                       uint32_t wait_type, uint32_t wait_mode,
                                       uint32_t alertable,
                                       uint64_t* timeout_ptr) {
-  assert_true(wait_type <= 1);
+  assert_true(wait_type <= X_KWAIT_REASON::WaitAny);
 
   assert_true(count <= 64);
   object_ref<XObject> objects[64];
@@ -1087,7 +1126,8 @@ dword_result_t NtWaitForMultipleObjectsEx_entry(
     dword_t count, lpdword_t handles, dword_t wait_type, dword_t wait_mode,
     dword_t alertable, lpqword_t timeout_ptr) {
   uint64_t timeout = timeout_ptr ? static_cast<uint64_t>(*timeout_ptr) : 0u;
-  if (!count || count > 64 || (wait_type != 1 && wait_type)) {
+  if (!count || count > 64 ||
+      (wait_type != X_KWAIT_REASON::WaitAny && wait_type)) {
     return X_STATUS_INVALID_PARAMETER;
   }
   return xeNtWaitForMultipleObjectsEx(count, handles, wait_type, wait_mode,
@@ -1099,8 +1139,8 @@ DECLARE_XBOXKRNL_EXPORT3(NtWaitForMultipleObjectsEx, kThreading, kImplemented,
 
 dword_result_t NtSignalAndWaitForSingleObjectEx_entry(dword_t signal_handle,
                                                       dword_t wait_handle,
+                                                      dword_t wait_mode,
                                                       dword_t alertable,
-                                                      dword_t r6,
                                                       lpqword_t timeout_ptr) {
   X_STATUS result = X_STATUS_SUCCESS;
   // pre-lock for these two handle lookups
@@ -1113,9 +1153,9 @@ dword_result_t NtSignalAndWaitForSingleObjectEx_entry(dword_t signal_handle,
   global_critical_region::mutex().unlock();
   if (signal_object && wait_object) {
     uint64_t timeout = timeout_ptr ? static_cast<uint64_t>(*timeout_ptr) : 0u;
-    result =
-        XObject::SignalAndWait(signal_object.get(), wait_object.get(), 3, 1,
-                               alertable, timeout_ptr ? &timeout : nullptr);
+    result = XObject::SignalAndWait(signal_object.get(), wait_object.get(), 3,
+                                    wait_mode, alertable,
+                                    timeout_ptr ? &timeout : nullptr);
   } else {
     result = X_STATUS_INVALID_HANDLE;
   }
@@ -1138,11 +1178,34 @@ uint32_t xeKeKfAcquireSpinLock(PPCContext* ctx, X_KSPINLOCK* lock,
 
   PrefetchForCAS(lock);
   assert_true(lock->prcb_of_owner != static_cast<uint32_t>(ctx->r[13]));
+
+  uint32_t our_pcr = static_cast<uint32_t>(ctx->r[13]);
+  uint8_t our_cpu =
+      ctx->TranslateVirtualGPR<X_KPCR*>(our_pcr)->prcb_data.current_cpu;
+
   // Lock.
-  while (!xe::atomic_cas(0, xe::byte_swap(static_cast<uint32_t>(ctx->r[13])),
-                         &lock->prcb_of_owner.value)) {
-    // Spin!
-    // TODO(benvanik): error on deadlock?
+  while (
+      !xe::atomic_cas(0, xe::byte_swap(our_pcr), &lock->prcb_of_owner.value)) {
+    // On real hardware, threads sharing a Xenon HW thread are serialized by
+    // the kernel scheduler — the spinner would be preempted within one
+    // timeslice (~1ms) so the holder can make progress.  In the naive
+    // host-thread model both threads run truly in parallel, so the spinner
+    // can burn its entire host quantum without giving the holder a chance.
+    //
+    // Check whether the lock holder is assigned to the same guest CPU as us.
+    // If so, yield the host thread aggressively (Sleep(0)) to force a host
+    // context switch and give the holder a chance to run and release.
+    // The relationship is stable — affinity doesn't change while a thread
+    // holds a spinlock — so one check per contention episode is sufficient.
+    uint32_t owner_pcr_be = lock->prcb_of_owner.value;
+    if (owner_pcr_be) {
+      uint32_t owner_pcr = xe::byte_swap(owner_pcr_be);
+      auto* owner_kpcr = ctx->TranslateVirtual<X_KPCR*>(owner_pcr);
+      if (owner_kpcr->prcb_data.current_cpu == our_cpu) {
+        xe::threading::Sleep(std::chrono::milliseconds(0));
+        continue;
+      }
+    }
     xe::threading::MaybeYield();
   }
 
@@ -1560,18 +1623,11 @@ DECLARE_XBOXKRNL_EXPORT2(KeInitializeDpc, kThreading, kImplemented, kSketchy);
 
 dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
                                       dword_t arg2) {
-  assert_always("DPC does not dispatch yet; going to hang!");
-
   uint32_t list_entry_ptr = dpc.guest_address() + 4;
 
   // Lock dispatcher.
   auto global_lock = xe::global_critical_region::AcquireDirect();
   auto dpc_list = kernel_state()->dpc_list();
-
-  // If already in a queue, abort.
-  if (dpc_list->IsQueued(list_entry_ptr)) {
-    return 0;
-  }
 
   // Prep DPC.
   dpc->arg1 = (uint32_t)arg1;
@@ -1579,9 +1635,43 @@ dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
 
   dpc_list->Insert(list_entry_ptr);
 
+  // Dispatch the DPC inline on the calling thread.  On real hardware DPCs
+  // are deferred to DISPATCH_IRQL on the target processor, but DPC routines
+  // access per-CPU state via r13 (KPCR) so they must run on a thread whose
+  // KPCR is valid for the target CPU.  The calling thread's KPCR satisfies
+  // this for the common case (desired_cpu_number == 0, meaning current CPU).
+  // Inline dispatch also avoids latency issues with shared work queues.
+  uint32_t routine = dpc->routine;
+  if (routine) {
+    auto thread = XThread::GetCurrentThread();
+    if (thread) {
+      auto thread_state = thread->thread_state();
+      auto ppc_context = thread_state->context();
+      auto kpcr = ppc_context->TranslateVirtualGPR<X_KPCR*>(ppc_context->r[13]);
+
+      // If we're already inside a DPC (reentrant KeInsertQueueDpc from a DPC
+      // routine), skip the impersonation — we're already at DISPATCH_IRQL.
+      bool already_in_dpc = kpcr->prcb_data.dpc_active != 0;
+
+      DPCImpersonationScope dpc_scope{};
+      if (!already_in_dpc) {
+        kernel_state()->BeginDPCImpersonation(ppc_context, dpc_scope);
+      }
+
+      uint64_t args[] = {dpc.guest_address(), (uint64_t)dpc->context,
+                         (uint64_t)arg1, (uint64_t)arg2};
+      kernel_state()->processor()->Execute(thread_state, routine, args,
+                                           xe::countof(args));
+
+      if (!already_in_dpc) {
+        kernel_state()->EndDPCImpersonation(ppc_context, dpc_scope);
+      }
+    }
+  }
+
   return 1;
 }
-DECLARE_XBOXKRNL_EXPORT2(KeInsertQueueDpc, kThreading, kStub, kSketchy);
+DECLARE_XBOXKRNL_EXPORT2(KeInsertQueueDpc, kThreading, kImplemented, kSketchy);
 
 dword_result_t KeRemoveQueueDpc_entry(pointer_t<XDPC> dpc) {
   bool result = false;
@@ -1817,7 +1907,7 @@ dword_result_t KeSetPriorityThread_entry(pointer_t<X_KTHREAD> thread_ptr,
     return 0;
   }
 
-  if (thread_ptr->header.type != 6) {
+  if (thread_ptr->header.type != X_DISPATCHER_FLAGS::DISPATCHER_THREAD) {
     XELOGW("{}: Invalid object type: {}", __func__, thread_ptr->header.type);
   }
 

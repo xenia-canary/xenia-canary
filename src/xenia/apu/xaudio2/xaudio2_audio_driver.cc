@@ -273,7 +273,9 @@ void XAudio2AudioDriver::Resume() {
 }
 
 void XAudio2AudioDriver::SetVolume(float volume) {
-  if (cvars::mute) return;
+  if (cvars::mute) {
+    return;
+  }
 
   if (api_minor_version_ >= 8) {
     objects_.api_2_8.pcm_voice->SetVolume(volume);

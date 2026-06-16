@@ -22,12 +22,14 @@ XNotifyListener::XNotifyListener(KernelState* kernel_state)
 
 XNotifyListener::~XNotifyListener() {}
 
-void XNotifyListener::Initialize(uint64_t mask, uint32_t max_version) {
+void XNotifyListener::Initialize(uint64_t mask, uint32_t is_system,
+                                 uint32_t max_version) {
   assert_false(wait_handle_);
 
   wait_handle_ = xe::threading::Event::CreateManualResetEvent(false);
   assert_not_null(wait_handle_);
   mask_ = mask;
+  is_system_ = is_system;
   max_version_ = max_version;
 
   kernel_state_->RegisterNotifyListener(this);
@@ -109,8 +111,9 @@ object_ref<XNotifyListener> XNotifyListener::Restore(KernelState* kernel_state,
   notify->RestoreObject(stream);
 
   auto mask = stream->Read<uint64_t>();
+  auto is_system = stream->Read<uint32_t>();
   auto max_version = stream->Read<uint32_t>();
-  notify->Initialize(mask, max_version);
+  notify->Initialize(mask, is_system, max_version);
 
   auto notification_count_ = stream->Read<size_t>();
   for (size_t i = 0; i < notification_count_; i++) {

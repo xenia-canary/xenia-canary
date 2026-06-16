@@ -295,68 +295,6 @@ RegExp ComputeMemoryAddressOffset(X64Emitter& e, const T& guest,
   }
 }
 
-// ============================================================================
-// OPCODE_ATOMIC_EXCHANGE
-// ============================================================================
-// Note that the address we use here is a real, host address!
-// This is weird, and should be fixed.
-template <typename SEQ, typename REG, typename ARGS>
-void EmitAtomicExchangeXX(X64Emitter& e, const ARGS& i) {
-  if (i.dest == i.src1) {
-    e.mov(e.rax, i.src1);
-    if (i.dest != i.src2) {
-      if (i.src2.is_constant) {
-        e.mov(i.dest, i.src2.constant());
-      } else {
-        e.mov(i.dest, i.src2);
-      }
-    }
-    e.lock();
-    e.xchg(e.dword[e.rax], i.dest);
-  } else {
-    if (i.dest != i.src2) {
-      if (i.src2.is_constant) {
-        e.mov(i.dest, i.src2.constant());
-      } else {
-        e.mov(i.dest, i.src2);
-      }
-    }
-    e.lock();
-    e.xchg(e.dword[i.src1.reg()], i.dest);
-  }
-}
-struct ATOMIC_EXCHANGE_I8
-    : Sequence<ATOMIC_EXCHANGE_I8,
-               I<OPCODE_ATOMIC_EXCHANGE, I8Op, I64Op, I8Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitAtomicExchangeXX<ATOMIC_EXCHANGE_I8, Reg8>(e, i);
-  }
-};
-struct ATOMIC_EXCHANGE_I16
-    : Sequence<ATOMIC_EXCHANGE_I16,
-               I<OPCODE_ATOMIC_EXCHANGE, I16Op, I64Op, I16Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitAtomicExchangeXX<ATOMIC_EXCHANGE_I16, Reg16>(e, i);
-  }
-};
-struct ATOMIC_EXCHANGE_I32
-    : Sequence<ATOMIC_EXCHANGE_I32,
-               I<OPCODE_ATOMIC_EXCHANGE, I32Op, I64Op, I32Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitAtomicExchangeXX<ATOMIC_EXCHANGE_I32, Reg32>(e, i);
-  }
-};
-struct ATOMIC_EXCHANGE_I64
-    : Sequence<ATOMIC_EXCHANGE_I64,
-               I<OPCODE_ATOMIC_EXCHANGE, I64Op, I64Op, I64Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitAtomicExchangeXX<ATOMIC_EXCHANGE_I64, Reg64>(e, i);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_ATOMIC_EXCHANGE, ATOMIC_EXCHANGE_I8,
-                     ATOMIC_EXCHANGE_I16, ATOMIC_EXCHANGE_I32,
-                     ATOMIC_EXCHANGE_I64);
-
 struct LVL_V128 : Sequence<LVL_V128, I<OPCODE_LVL, V128Op, I64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.mov(e.edx, 0xf);
@@ -418,29 +356,32 @@ EMITTER_OPCODE_TABLE(OPCODE_LVR, LVR_V128);
 
 struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.mov(e.ecx, 15);
-    e.mov(e.edx, e.ecx);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
+    e.StashXmm(0, src2);
+
+    // Store bytes offset..15 from the source vector. Xenia's host vector byte
+    // layout is word-swapped from guest byte order, so convert source byte
+    // indexes with ^ 3 before reading the stashed XMM value.
     e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
+    e.mov(e.ecx, 15);
     e.and_(e.ecx, e.eax);
-    e.vmovd(e.xmm0, e.ecx);
+    e.mov(e.edx, 15);
     e.not_(e.rdx);
     e.and_(e.rax, e.rdx);
-    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMSTVLShuffle));
-    if (e.IsFeatureEnabled(kX64EmitAVX2)) {
-      e.vpbroadcastb(e.xmm3, e.xmm0);
-    } else {
-      e.vpshufb(e.xmm3, e.xmm0, e.GetXmmConstPtr(XMMZero));
-    }
-    e.vpsubb(e.xmm0, e.xmm1, e.xmm3);
-    e.vpxor(e.xmm1, e.xmm0,
-            e.GetXmmConstPtr(XMMSwapWordMask));  // xmm1 from now on will be our
-                                                 // selector for blend/shuffle
 
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
-
-    e.vpshufb(e.xmm2, src2, e.xmm1);
-    e.vpblendvb(e.xmm3, e.xmm2, e.ptr[e.rax], e.xmm1);
-    e.vmovdqa(e.ptr[e.rax], e.xmm3);
+    Xbyak::Label loop, done;
+    e.mov(e.edx, e.ecx);
+    e.L(loop);
+    e.cmp(e.edx, 16);
+    e.jge(done);
+    e.mov(e.r8d, e.edx);
+    e.sub(e.r8d, e.ecx);
+    e.xor_(e.r8d, 3);
+    e.movzx(e.r9d, e.byte[e.rsp + X64Emitter::kStashOffset + e.r8]);
+    e.mov(e.byte[e.rax + e.rdx], e.r9b);
+    e.inc(e.edx);
+    e.jmp(loop);
+    e.L(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVL, STVL_V128);
@@ -453,28 +394,26 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
     e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
     e.and_(e.ecx, e.eax);
     e.jz(skipper);
-    e.vmovd(e.xmm0, e.ecx);
     e.not_(e.rdx);
     e.and_(e.rax, e.rdx);
-    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMSTVLShuffle));
-    // todo: maybe a table lookup might be a better idea for getting the
-    // shuffle/blend
-
-    if (e.IsFeatureEnabled(kX64EmitAVX2)) {
-      e.vpbroadcastb(e.xmm3, e.xmm0);
-    } else {
-      e.vpshufb(e.xmm3, e.xmm0, e.GetXmmConstPtr(XMMZero));
-    }
-    e.vpsubb(e.xmm0, e.xmm1, e.xmm3);
-    e.vpxor(e.xmm1, e.xmm0,
-            e.GetXmmConstPtr(XMMSTVRSwapMask));  // xmm1 from now on will be our
-                                                 // selector for blend/shuffle
 
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
+    e.StashXmm(0, src2);
 
-    e.vpshufb(e.xmm2, src2, e.xmm1);
-    e.vpblendvb(e.xmm3, e.xmm2, e.ptr[e.rax], e.xmm1);
-    e.vmovdqa(e.ptr[e.rax], e.xmm3);
+    // Store bytes 0..offset-1 from the tail of the source vector.
+    Xbyak::Label loop;
+    e.xor_(e.edx, e.edx);
+    e.L(loop);
+    e.cmp(e.edx, e.ecx);
+    e.jge(skipper);
+    e.mov(e.r8d, 16);
+    e.sub(e.r8d, e.ecx);
+    e.add(e.r8d, e.edx);
+    e.xor_(e.r8d, 3);
+    e.movzx(e.r9d, e.byte[e.rsp + X64Emitter::kStashOffset + e.r8]);
+    e.mov(e.byte[e.rax + e.rdx], e.r9b);
+    e.inc(e.edx);
+    e.jmp(loop);
     e.L(skipper);
   }
 };

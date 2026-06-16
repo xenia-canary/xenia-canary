@@ -17,42 +17,38 @@ namespace kernel {
 
 SystemManagementController::SystemManagementController()
     : dvd_tray_state_(X_DVD_TRAY_STATE::OPEN) {
-  smc_commands_[X_SMC_CMD::QUERY_TEMP_SENSOR] =
-      std::bind(&SystemManagementController::QueryTemperatureSensor, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::QUERY_TRAY] =
-      std::bind(&SystemManagementController::QueryDriveTraySensor, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::QUERY_AV_PACK] =
-      std::bind(&SystemManagementController::QueryAvPack, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::QUERY_SMC_VERSION] =
-      std::bind(&SystemManagementController::QuerySmcVersion, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::QUERY_IR_ADDRESS] =
-      std::bind(&SystemManagementController::QueryIRAddress, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::QUERY_TILT_SENSOR] =
-      std::bind(&SystemManagementController::QueryTiltState, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_FAN_SPEED_CPU] =
-      std::bind(&SystemManagementController::SetFanSpeed, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_FAN_SPEED_GPU] =
-      std::bind(&SystemManagementController::SetFanSpeed, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_DVD_TRAY] =
-      std::bind(&SystemManagementController::SetDriveTray, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_IR_ADDRESS] =
-      std::bind(&SystemManagementController::SetIRAddress, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_POWER_LED] =
-      std::bind(&SystemManagementController::SetPowerLed, this,
-                std::placeholders::_1, std::placeholders::_2);
-  smc_commands_[X_SMC_CMD::SET_LEDS] =
-      std::bind(&SystemManagementController::SetLedState, this,
-                std::placeholders::_1, std::placeholders::_2);
+  auto registerQuery =
+      [&](X_SMC_CMD command,
+          void (SystemManagementController::*fn)(X_SMC_DATA*, X_SMC_DATA*)) {
+        smc_commands_[command] = [this, fn](X_SMC_DATA* message,
+                                            X_SMC_DATA* response) {
+          (this->*fn)(message, response);
+        };
+      };
+
+  registerQuery(X_SMC_CMD::QUERY_TEMP_SENSOR,
+                &SystemManagementController::QueryTemperatureSensor);
+  registerQuery(X_SMC_CMD::QUERY_TRAY,
+                &SystemManagementController::QueryDriveTraySensor);
+  registerQuery(X_SMC_CMD::QUERY_AV_PACK,
+                &SystemManagementController::QueryAvPack);
+  registerQuery(X_SMC_CMD::QUERY_SMC_VERSION,
+                &SystemManagementController::QuerySmcVersion);
+  registerQuery(X_SMC_CMD::QUERY_IR_ADDRESS,
+                &SystemManagementController::QueryIRAddress);
+  registerQuery(X_SMC_CMD::QUERY_TILT_SENSOR,
+                &SystemManagementController::QueryTiltState);
+  registerQuery(X_SMC_CMD::SET_FAN_SPEED_CPU,
+                &SystemManagementController::SetFanSpeed);
+  registerQuery(X_SMC_CMD::SET_FAN_SPEED_GPU,
+                &SystemManagementController::SetFanSpeed);
+  registerQuery(X_SMC_CMD::SET_DVD_TRAY,
+                &SystemManagementController::SetDriveTray);
+  registerQuery(X_SMC_CMD::SET_IR_ADDRESS,
+                &SystemManagementController::SetIRAddress);
+  registerQuery(X_SMC_CMD::SET_POWER_LED,
+                &SystemManagementController::SetPowerLed);
+  registerQuery(X_SMC_CMD::SET_LEDS, &SystemManagementController::SetLedState);
 };
 SystemManagementController::~SystemManagementController() {};
 

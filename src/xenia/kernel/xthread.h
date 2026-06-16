@@ -48,17 +48,6 @@ enum IRQL_FLAGS : uint8_t {
   IRQL_HIGHEST = 124
 };
 
-enum X_DISPATCHER_FLAGS {
-  DISPATCHER_MANUAL_RESET_EVENT = 0,
-  DISPATCHER_AUTO_RESET_EVENT = 1,
-  DISPATCHER_MUTANT = 2,
-  DISPATCHER_QUEUE = 4,
-  DISPATCHER_SEMAPHORE = 5,
-  DISPATCHER_THREAD = 6,
-  DISPATCHER_MANUAL_RESET_TIMER = 8,
-  DISPATCHER_AUTO_RESET_TIMER = 9,
-};
-
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/ntos/ke/kthread_state.htm
 enum X_KTHREAD_STATE_FLAGS : uint8_t {
   KTHREAD_STATE_INITIALIZED = 0,
@@ -222,12 +211,22 @@ struct X_KPCR {
   uint8_t unk_2AC[0x2C];            // 0x2AC
 };
 
-#ifdef WAIT_ANY
-#undef WAIT_ANY
-#endif
-enum : uint16_t {
-  WAIT_ALL = 0,
-  WAIT_ANY = 1,
+struct X_KMUTANT {
+  X_DISPATCH_HEADER header;            // 0x0
+  X_LIST_ENTRY unk_list;               // 0x10
+  TypedGuestPointer<X_KTHREAD> owner;  // 0x18
+  bool abandoned;                      // 0x1C
+  // these might just be padding
+  uint8_t unk_1D;  // 0x1D
+  uint8_t unk_1E;  // 0x1E
+  uint8_t unk_1F;  // 0x1F
+};
+static_assert_size(X_KMUTANT, 0x20);
+
+enum X_KWAIT_REASON : uint16_t {
+  WaitAll = 0,
+  WaitAny = 1,
+  WaitUnk3 = 3,
 };
 
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/ntos/ke_x/kwait_block.htm
@@ -243,7 +242,7 @@ struct X_KWAIT_BLOCK {
   // is satisfied
   xe::be<uint16_t> wait_result_xstatus;
   // WAIT_ALL or WAIT_ANY
-  xe::be<uint16_t> wait_type;
+  xe::be<X_KWAIT_REASON> wait_type;
 };
 
 static_assert_size(X_KWAIT_BLOCK, 0x18);
@@ -258,9 +257,9 @@ struct X_KTIMER {
 static_assert_size(X_KTIMER, 0x28);
 
 struct X_KTHREAD {
-  X_DISPATCH_HEADER header;          // 0x0
-  xe::be<uint32_t> unk_10;           // 0x10
-  xe::be<uint32_t> unk_14;           // 0x14
+  X_DISPATCH_HEADER header;  // 0x0
+  util::X_TYPED_LIST<X_KMUTANT, offsetof(X_KMUTANT, unk_list)>
+      mutants_list;                  // 0x10
   X_KTIMER wait_timeout_timer;       // 0x18
   X_KWAIT_BLOCK wait_timeout_block;  // 0x40
   uint8_t unk_58[0x4];               // 0x58
@@ -295,12 +294,16 @@ struct X_KTHREAD {
   xe::be<uint32_t> msr_mask;                      // 0x9C
   xe::be<X_STATUS> wait_result;                   // 0xA0
   uint8_t wait_irql;                              // 0xA4
-  uint8_t unk_A5[0xB];                            // 0xA5
+  uint8_t processor_mode;                         // 0xA5
+  uint8_t wait_next;                              // 0xA6
+  uint8_t wait_reason;                            // 0xA7
+  TypedGuestPointer<X_KWAIT_BLOCK> wait_blocks;   // 0xA8
+  uint8_t unk_AC[4];                              // 0xAC
   int32_t apc_disable_count;                      // 0xB0
   xe::be<int32_t> quantum;                        // 0xB4
-  uint8_t unk_B8;                                 // 0xB8
-  uint8_t unk_B9;                                 // 0xB9
-  uint8_t unk_BA;                                 // 0xBA
+  uint8_t saturation_increment;                   // 0xB8
+  uint8_t base_priority;                          // 0xB9
+  uint8_t priority_decrement;                     // 0xBA
   uint8_t boost_disabled;                         // 0xBB
   uint8_t suspend_count;                          // 0xBC
   uint8_t was_preempted;                          // 0xBD
@@ -310,9 +313,9 @@ struct X_KTHREAD {
   // all
   TypedGuestPointer<X_KPRCB> a_prcb_ptr;        // 0xC0
   TypedGuestPointer<X_KPRCB> another_prcb_ptr;  // 0xC4
-  uint8_t unk_C8;                               // 0xC8
-  uint8_t unk_C9;                               // 0xC9
-  uint8_t unk_CA;                               // 0xCA
+  uint8_t process_priority_class;               // 0xC8
+  uint8_t base_priority_copy;                   // 0xC9
+  uint8_t max_dynamic_priority;                 // 0xCA
   uint8_t unk_CB;                               // 0xCB
   X_KSPINLOCK timer_list_lock;                  // 0xCC
   xe::be<uint32_t> stack_alloc_base;            // 0xD0
@@ -338,11 +341,33 @@ struct X_KTHREAD {
   xe::be<uint32_t> fiber_ptr;       // 0x164
   uint8_t unk_168[0x4];             // 0x168
   xe::be<uint32_t> creation_flags;  // 0x16C
-  uint8_t unk_170[0xC];             // 0x170
-  xe::be<uint32_t> unk_17C;         // 0x17C
-  uint8_t unk_180[0x930];           // 0x180
 
-  // This struct is actually quite long... so uh, not filling this out!
+  // we handle context differently from a native kernel, so we can stash extra
+  // data here! the first 8 bytes of vscr are unused anyway
+  union {
+    vec128_t vscr;  // 0x170
+    struct {
+      void* host_xthread_stash;
+      uintptr_t vscr_remainder;
+    };
+  };
+
+  union {
+    // 2048 bytes
+    vec128_t vmx_context[128];  // 0x180
+    struct {
+      // 1536 bytes
+      X_KWAIT_BLOCK scratch_waitblock_memory[65];
+      // space for some more data!
+      uint32_t kernel_aux_stack_base_;
+      uint32_t kernel_aux_stack_current_;
+      uint32_t kernel_aux_stack_limit_;
+    };
+  };
+  xe::be<double> fpscr;            // 0x980
+  xe::be<double> fpu_context[32];  // 0x988
+
+  XAPC unk_A88;  // 0xA88
 };
 static_assert_size(X_KTHREAD, 0xAB0);
 
@@ -422,6 +447,22 @@ class XThread : public XObject, public cpu::Thread {
   int32_t QueryPriority();
   void SetPriority(int32_t increment);
 
+  // Called periodically (~20ms) by KernelState's timestamp timer to simulate
+  // the Xenon scheduler's quantum-based priority decay for non-real-time
+  // threads (base_priority < 18).  Threads that run for longer than one
+  // quantum (~20ms) have their effective priority decayed toward the base,
+  // which causes them to drop into lower host priority buckets and prevents
+  // starvation.  On the first decay step the accumulated priority boost is
+  // also drained.
+  void CheckQuantumAndDecay();
+  // Called when a thread wakes from a kernel wait.  Applies a priority
+  // boost of |increment| above base_priority (matching the Xenon kernel's
+  // unwait-boost behavior) and restarts the quantum timer.  The boost is
+  // drained on the next quantum expiry via CheckQuantumAndDecay().
+  // If increment is 0 or the thread has boost disabled, the priority is
+  // simply restored to base_priority.
+  void BoostOnWake(int32_t increment);
+
   // Xbox thread IDs:
   // 0 - core 0, thread 0 - user
   // 1 - core 0, thread 1 - user
@@ -491,7 +532,10 @@ class XThread : public XObject, public cpu::Thread {
   bool main_thread_ = false;  // Entry-point thread
   bool running_ = false;
 
-  int32_t priority_ = 0;
+  int32_t priority_ = 0;       // current effective priority (may be decayed)
+  int32_t base_priority_ = 0;  // priority floor — decay never goes below this
+  int32_t boost_amount_ = 0;   // accumulated priority boost above base
+  uint64_t quantum_start_ms_ = 0;  // host uptime (ms) when quantum last reset
 
 #if !XE_PLATFORM_WIN32
   // Condition variable for thread self-suspension.

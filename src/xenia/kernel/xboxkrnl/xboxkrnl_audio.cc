@@ -21,7 +21,9 @@ namespace kernel {
 namespace xboxkrnl {
 
 dword_result_t XAudioGetSpeakerConfig_entry(lpdword_t config_ptr) {
-  *config_ptr = cvars::audio_flag;
+  kernel_state()->xconfig()->ReadSetting(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_AUDIO_FLAGS, config_ptr);
   return X_ERROR_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(XAudioGetSpeakerConfig, kAudio, kImplemented);

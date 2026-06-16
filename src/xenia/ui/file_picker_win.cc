@@ -55,7 +55,9 @@ class CDialogEventHandler : public IFileDialogEvents,
 
   IFACEMETHODIMP_(ULONG) Release() {
     long cRef = InterlockedDecrement(&_cRef);
-    if (!cRef) delete this;
+    if (!cRef) {
+      delete this;
+    }
     return cRef;
   }
 

@@ -276,7 +276,7 @@ void ObjectTable::PurgeAllObjects() {
     auto& entry = table_[slot];
     if (entry.object) {
       entry.handle_ref_count = 0;
-      entry.object->Release();
+      entry.object->ReleaseHandle();
 
       entry.object = nullptr;
     }

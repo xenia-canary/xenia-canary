@@ -743,6 +743,8 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       }
     }
 
+    FSI_AddPassedMSAASamplesToZPD();
+
     if (color_write_depth_stencil_condition != spv::NoResult) {
       // Skip all color operations if the pixel has failed the tests entirely.
       block_fsi_if_after_depth_stencil = &builder_->makeNewBlock();
@@ -1483,6 +1485,10 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
     }
   }
 
+  // Copies the staged depth to the FBO gl_FragDepth output.
+  // No-op for FSI and when no host depth output was declared.
+  CompleteFragmentShader_DSV_DepthTo24Bit();
+
   if (edram_fragment_shader_interlock_) {
     if (block_fsi_if_after_depth_stencil_merge) {
       builder_->createBranch(block_fsi_if_after_depth_stencil_merge);
@@ -1501,6 +1507,37 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
 
     builder_->createNoResultOp(spv::OpEndInvocationInterlockEXT);
   }
+}
+
+void SpirvShaderTranslator::CompleteFragmentShader_DSV_DepthTo24Bit() {
+  // FSI manages its own depth via the EDRAM buffer - this hook is FBO-only.
+  // Likewise, if no Output FragDepth was declared, there is nothing to write.
+  if (edram_fragment_shader_interlock_ ||
+      output_fragment_depth_ == spv::NoResult) {
+    return;
+  }
+  if (!current_shader().writes_depth()) {
+    return;
+  }
+  assert_true(output_or_var_fragment_depth_ != spv::NoResult);
+  // The shader writes depth explicitly, for float24, need to scale it from
+  // guest 0...1 to host 0...0.5 to support reinterpretation round trips as
+  // viewport scaling doesn't apply to oDepth.
+  spv::Id depth_value =
+      builder_->createLoad(output_or_var_fragment_depth_, spv::NoPrecision);
+  spv::Id depth_float24_flag = builder_->createBinOp(
+      spv::OpINotEqual, type_bool_,
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                            main_system_constant_flags_,
+                            builder_->makeUintConstant(kSysFlag_DepthFloat24)),
+      const_uint_0_);
+  spv::Id depth_scaled = builder_->createBinOp(
+      spv::OpFMul, type_float_, depth_value, builder_->makeFloatConstant(0.5f));
+  spv::Id depth_remapped =
+      builder_->createTriOp(spv::OpSelect, type_float_, depth_float24_flag,
+                            depth_scaled, depth_value);
+  // Write the depth from the temporary to the system depth output.
+  builder_->createStore(depth_remapped, output_fragment_depth_);
 }
 
 spv::Id SpirvShaderTranslator::LoadMsaaSamplesFromFlags() {
@@ -1780,6 +1817,61 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
                                sample_offset);
 }
 
+void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
+  assert_true(edram_fragment_shader_interlock_);
+  assert_true(buffer_zpd_fsi_counter_ != spv::NoResult);
+
+  // UINT32_MAX means no ZPD segment is currently open for this draw.
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(
+      builder_->makeIntConstant(kSystemConstantZpdFsiCounterIndex));
+  spv::Id counter_index = builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_system_constants_, id_vector_temp_),
+      spv::NoPrecision);
+  SpirvBuilder::IfBuilder if_counter_open(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, counter_index,
+                            builder_->makeUintConstant(UINT32_MAX)),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
+  // don't contribute to the counter.
+  spv::Id passed_sample_count = builder_->createUnaryOp(
+      spv::OpBitCount, type_uint_,
+      builder_->createBinOp(
+          spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
+          builder_->makeUintConstant((uint32_t(1) << 4) - 1)));
+
+  SpirvBuilder::IfBuilder if_any_samples(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, passed_sample_count,
+                            const_uint_0_),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  spv::StorageClass storage_class = features_.spirv_version >= spv::Spv_1_3
+                                        ? spv::StorageClassStorageBuffer
+                                        : spv::StorageClassUniform;
+  spv::Id const_scope_device =
+      builder_->makeUintConstant(static_cast<unsigned int>(spv::ScopeDevice));
+  spv::Id const_semantics_relaxed = const_uint_0_;
+
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(const_int_0_);
+  id_vector_temp_.push_back(
+      builder_->createUnaryOp(spv::OpBitcast, type_int_, counter_index));
+  spv::Id counter_ptr = builder_->createAccessChain(
+      storage_class, buffer_zpd_fsi_counter_, id_vector_temp_);
+
+  // Add the number of samples that survived final depth/stencil for this
+  // fragment to the active query slot, which is copied to the ZPD readback
+  // buffer when the query segment is closed.
+  builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
+                         const_scope_device, const_semantics_relaxed,
+                         passed_sample_count);
+
+  if_any_samples.makeEndIf();
+  if_counter_open.makeEndIf();
+}
+
 void SpirvShaderTranslator::FSI_DepthStencilTest(
     spv::Id msaa_samples, bool sample_mask_potentially_narrowed_previouly) {
   bool is_early = FSI_IsDepthStencilEarly();
@@ -1798,21 +1890,35 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
   SpirvBuilder::IfBuilder if_depth_stencil_enabled(
       depth_stencil_enabled, spv::SelectionControlDontFlattenMask, *builder_);
 
-  // Load the depth in the center of the pixel and calculate the derivatives of
-  // the depth outside non-uniform control flow.
-  assert_true(input_fragment_coordinates_ != spv::NoResult);
-  id_vector_temp_.clear();
-  id_vector_temp_.push_back(builder_->makeIntConstant(2));
-  spv::Id center_depth32_unbiased = builder_->createLoad(
-      builder_->createAccessChain(spv::StorageClassInput,
-                                  input_fragment_coordinates_, id_vector_temp_),
-      spv::NoPrecision);
-  builder_->addCapability(spv::CapabilityDerivativeControl);
+  spv::Id center_depth32_unbiased;
   std::array<spv::Id, 2> depth_dxy;
-  depth_dxy[0] = builder_->createUnaryOp(spv::OpDPdxCoarse, type_float_,
-                                         center_depth32_unbiased);
-  depth_dxy[1] = builder_->createUnaryOp(spv::OpDPdyCoarse, type_float_,
-                                         center_depth32_unbiased);
+
+  // Guest oDepth replaces the depth value FSI tests. It's not the raster depth
+  // plane, so don't take FragCoord for it.
+  if (current_shader().writes_depth()) {
+    assert_false(is_early);
+    assert_true(output_or_var_fragment_depth_ != spv::NoResult);
+    center_depth32_unbiased =
+        builder_->createLoad(output_or_var_fragment_depth_, spv::NoPrecision);
+    depth_dxy[0] = const_float_0_;
+    depth_dxy[1] = const_float_0_;
+  } else {
+    // Load the depth in the center of the pixel and calculate the derivatives
+    // of the depth outside non-uniform control flow.
+    assert_true(input_fragment_coordinates_ != spv::NoResult);
+    id_vector_temp_.clear();
+    id_vector_temp_.push_back(builder_->makeIntConstant(2));
+    center_depth32_unbiased =
+        builder_->createLoad(builder_->createAccessChain(
+                                 spv::StorageClassInput,
+                                 input_fragment_coordinates_, id_vector_temp_),
+                             spv::NoPrecision);
+    builder_->addCapability(spv::CapabilityDerivativeControl);
+    depth_dxy[0] = builder_->createUnaryOp(spv::OpDPdxCoarse, type_float_,
+                                           center_depth32_unbiased);
+    depth_dxy[1] = builder_->createUnaryOp(spv::OpDPdyCoarse, type_float_,
+                                           center_depth32_unbiased);
+  }
 
   // Skip everything if potentially discarded all the samples previously in the
   // shader.
@@ -1981,27 +2087,36 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
                             builder_->makeUintConstant(uint32_t(1) << 2)),
       const_uint_0_);
 
-  // Get the maximum depth slope for the polygon offset.
-  // https://docs.microsoft.com/en-us/windows/desktop/direct3d9/depth-bias
-  std::array<spv::Id, 2> depth_dxy_abs;
-  for (uint32_t i = 0; i < 2; ++i) {
-    depth_dxy_abs[i] = builder_->createUnaryBuiltinCall(
-        type_float_, ext_inst_glsl_std_450_, GLSLstd450FAbs, depth_dxy[i]);
+  spv::Id center_depth32_biased;
+
+  // When the guest shader replaces depth, don't apply offset from the original
+  // FragCoord.z plane. That would mix two different depth sources.
+  if (current_shader().writes_depth()) {
+    center_depth32_biased = center_depth32_unbiased;
+  } else {
+    // Get the maximum depth slope for the polygon offset.
+    // https://docs.microsoft.com/en-us/windows/desktop/direct3d9/depth-bias
+    std::array<spv::Id, 2> depth_dxy_abs;
+    for (uint32_t i = 0; i < 2; ++i) {
+      depth_dxy_abs[i] = builder_->createUnaryBuiltinCall(
+          type_float_, ext_inst_glsl_std_450_, GLSLstd450FAbs, depth_dxy[i]);
+    }
+    spv::Id depth_max_slope = builder_->createBinBuiltinCall(
+        type_float_, ext_inst_glsl_std_450_, GLSLstd450FMax, depth_dxy_abs[0],
+        depth_dxy_abs[1]);
+    // Calculate the polygon offset.
+    spv::Id slope_scaled_poly_offset = builder_->createNoContractionBinOp(
+        spv::OpFMul, type_float_, poly_offset_scale, depth_max_slope);
+    spv::Id poly_offset = builder_->createNoContractionBinOp(
+        spv::OpFAdd, type_float_, slope_scaled_poly_offset, poly_offset_offset);
+    // Apply the post-clip and post-viewport polygon offset to the fragment's
+    // depth. Not clamping yet as this is at the center, which is not
+    // necessarily covered and not necessarily inside the bounds - derivatives
+    // scaled by sample locations will be added to this value, and it must be
+    // linear.
+    center_depth32_biased = builder_->createNoContractionBinOp(
+        spv::OpFAdd, type_float_, center_depth32_unbiased, poly_offset);
   }
-  spv::Id depth_max_slope = builder_->createBinBuiltinCall(
-      type_float_, ext_inst_glsl_std_450_, GLSLstd450FMax, depth_dxy_abs[0],
-      depth_dxy_abs[1]);
-  // Calculate the polygon offset.
-  spv::Id slope_scaled_poly_offset = builder_->createNoContractionBinOp(
-      spv::OpFMul, type_float_, poly_offset_scale, depth_max_slope);
-  spv::Id poly_offset = builder_->createNoContractionBinOp(
-      spv::OpFAdd, type_float_, slope_scaled_poly_offset, poly_offset_offset);
-  // Apply the post-clip and post-viewport polygon offset to the fragment's
-  // depth. Not clamping yet as this is at the center, which is not necessarily
-  // covered and not necessarily inside the bounds - derivatives scaled by
-  // sample locations will be added to this value, and it must be linear.
-  spv::Id center_depth32_biased = builder_->createNoContractionBinOp(
-      spv::OpFAdd, type_float_, center_depth32_unbiased, poly_offset);
 
   // Perform depth and stencil testing for each covered sample.
   spv::Id new_sample_mask = main_fsi_sample_mask_;

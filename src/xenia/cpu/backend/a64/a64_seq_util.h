@@ -361,8 +361,12 @@ inline void PrepareVmxFpSources(A64Emitter& e, const T1& op1, const T2& op2,
   int s1 = SrcVReg(e, op1, 0);
   int s2 = SrcVReg(e, op2, 1);
   // Copy to scratch v0/v1 so we don't modify live allocated registers.
-  if (s1 != 0) e.mov(VReg(0).b16, VReg(s1).b16);
-  if (s2 != 1) e.mov(VReg(1).b16, VReg(s2).b16);
+  if (s1 != 0) {
+    e.mov(VReg(0).b16, VReg(s1).b16);
+  }
+  if (s2 != 1) {
+    e.mov(VReg(1).b16, VReg(s2).b16);
+  }
   // Flush denormal inputs in software only if FPCR.FZ doesn't handle it.
   if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
     FlushDenormals_V128(e, 0);

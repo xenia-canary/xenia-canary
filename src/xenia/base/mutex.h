@@ -143,7 +143,9 @@ class xe_unlikely_mutex {
 #if XE_ARCH_AMD64 == 1
       _mm_pause();
 #endif
-      if (_tryget()) return;
+      if (_tryget()) {
+        return;
+      }
     }
     // Fall back to yielding
     while (!_tryget()) {

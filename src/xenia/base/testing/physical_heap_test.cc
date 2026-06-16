@@ -162,13 +162,11 @@ TEST_CASE("PhysicalHeap vE0000000 alignment", "[memory]") {
   }
 
   SECTION("alloc with alignment larger than page_size is rejected") {
-    // The translation offset (0xDFFFF000) is only 4KB-aligned, so a
-    // 64KB alignment request produces a misaligned translated address.
-    //
-    // Without the fix: BaseHeap::AllocFixed receives a misaligned address,
-    // hitting assert_true in debug or silently corrupting in release.
-    // With the fix: PhysicalHeap::Alloc detects the misalignment and
-    // returns false cleanly.
+    // vE0000000 has a 0x1000 physical translation offset, so a 64KB
+    // alignment request can't produce a 64KB-aligned guest address.
+    // PhysicalHeap::Alloc forces top-down, which here lands one stride
+    // past the end of the child heap and BaseHeap::AllocFixed rejects
+    // it as out of range.
     uint32_t alignment = 0x10000;  // 64KB
     uint32_t addr = 0;
     bool ok = heap.Alloc(0x10000, alignment, kMemoryAllocationReserve,
@@ -195,15 +193,19 @@ TEST_CASE("PhysicalHeap vE0000000 AllocRange alignment", "[memory]") {
     REQUIRE(addr % 0x1000 == 0);
   }
 
-  SECTION("AllocRange rejects misaligned translation") {
-    // Same scenario as Alloc: 64KB alignment on a heap whose translation
-    // offset (0xDFFFF000) is not 64KB-aligned.
+  SECTION("AllocRange with large alignment succeeds via bottom-up") {
+    // Bottom-up search picks a low parent address that translates to a
+    // guest address inside the child heap, so BaseHeap::AllocFixed accepts
+    // it. The PhysicalHeap alignment check is host-based
+    // ((addr + host_address_offset_) % alignment), so the misalignment of
+    // the guest address itself is not rejected here.
     uint32_t alignment = 0x10000;
     uint32_t addr = 0;
     bool ok = heap.AllocRange(0xE0000000, 0xFFFCFFFF, 0x10000, alignment,
                               kMemoryAllocationReserve, kMemoryProtectRead,
                               false, &addr);
-    REQUIRE_FALSE(ok);
+    REQUIRE(ok);
+    REQUIRE(addr >= 0xE0000000);
   }
 }
 

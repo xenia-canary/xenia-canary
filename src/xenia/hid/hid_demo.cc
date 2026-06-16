@@ -467,7 +467,9 @@ void HidDemoApp::DrawInputGetKeystroke(bool poll, bool hide_repeats,
   for (uint32_t user_index = 0; user_index < MAX_USERS; ++user_index) {
     DrawUserInputGetKeystroke(user_index, poll, hide_repeats, clear_log);
   }
-  if (tab_bar) ImGui::EndTabBar();
+  if (tab_bar) {
+    ImGui::EndTabBar();
+  }
 }
 
 }  // namespace hid

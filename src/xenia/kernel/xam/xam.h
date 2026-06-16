@@ -348,6 +348,11 @@ enum class UserContextDevice : uint32_t {
   Microphone = 4,
 };
 
+enum class WriteTileType {
+  Tile = 1,  // Public
+  Personal = 2,
+};
+
 constexpr uint32_t XMP_MAX_METADATA_STRING = 40;
 constexpr uint32_t XMP_MAX_USER_PLAYLIST_ID = 572;
 constexpr uint32_t XMP_USER_PLAYLIST_RESERVED_FIELD_SIZE = 168;
@@ -367,6 +372,11 @@ struct X_STATS_DETAILS {
   xe::be<uint16_t> stats[kStatsMaxAmount];
 };
 static_assert_size(X_STATS_DETAILS, 8 + kStatsMaxAmount * 2);
+
+enum LoaderLaunchFlags : uint32_t {
+  GetSystemVersion = 0x00000040,  // XamUpdateGetCurrentSystemVersion
+  GetVersionFromExecutionId = 0x00010000,
+};
 
 }  // namespace xam
 }  // namespace kernel

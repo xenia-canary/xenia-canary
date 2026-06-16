@@ -2225,17 +2225,6 @@ Value* HIRBuilder::Unpack(Value* value, uint32_t pack_flags) {
   return i->dest;
 }
 
-Value* HIRBuilder::AtomicExchange(Value* address, Value* new_value) {
-  ASSERT_ADDRESS_TYPE(address);
-  ASSERT_INTEGER_TYPE(new_value);
-  Instr* i =
-      AppendInstr(OPCODE_ATOMIC_EXCHANGE_info, 0, AllocValue(new_value->type));
-  i->set_src1(address);
-  i->set_src2(new_value);
-  i->src3.value = NULL;
-  return i->dest;
-}
-
 Value* HIRBuilder::AtomicCompareExchange(Value* address, Value* old_value,
                                          Value* new_value) {
   ASSERT_ADDRESS_TYPE(address);

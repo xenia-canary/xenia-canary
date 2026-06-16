@@ -271,30 +271,33 @@ struct VECTOR_ADD
     switch (part_type) {
       case INT8_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqadd(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
-          else
+          } else {
             e.sqadd(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
+          }
         } else {
           e.add(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
         }
         break;
       case INT16_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqadd(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
-          else
+          } else {
             e.sqadd(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
+          }
         } else {
           e.add(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
         }
         break;
       case INT32_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqadd(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
-          else
+          } else {
             e.sqadd(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+          }
         } else {
           e.add(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
         }
@@ -328,30 +331,33 @@ struct VECTOR_SUB
     switch (part_type) {
       case INT8_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqsub(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
-          else
+          } else {
             e.sqsub(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
+          }
         } else {
           e.sub(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
         }
         break;
       case INT16_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqsub(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
-          else
+          } else {
             e.sqsub(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
+          }
         } else {
           e.sub(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
         }
         break;
       case INT32_TYPE:
         if (saturate) {
-          if (is_unsigned)
+          if (is_unsigned) {
             e.uqsub(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
-          else
+          } else {
             e.sqsub(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+          }
         } else {
           e.sub(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
         }
@@ -381,22 +387,25 @@ struct VECTOR_MAX
     int d = i.dest.reg().getIdx();
     switch (part_type) {
       case INT8_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umax(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
-        else
+        } else {
           e.smax(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
+        }
         break;
       case INT16_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umax(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
-        else
+        } else {
           e.smax(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
+        }
         break;
       case INT32_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umax(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
-        else
+        } else {
           e.smax(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        }
         break;
       default:
         assert_unhandled_case(part_type);
@@ -441,22 +450,25 @@ struct VECTOR_MIN
     int d = i.dest.reg().getIdx();
     switch (part_type) {
       case INT8_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umin(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
-        else
+        } else {
           e.smin(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
+        }
         break;
       case INT16_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umin(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
-        else
+        } else {
           e.smin(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
+        }
         break;
       case INT32_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.umin(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
-        else
+        } else {
           e.smin(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        }
         break;
       default:
         assert_unhandled_case(part_type);
@@ -815,22 +827,25 @@ struct VECTOR_AVERAGE
     // ARM64 has native rounding halving add: (a + b + 1) >> 1.
     switch (part_type) {
       case INT8_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.urhadd(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
-        else
+        } else {
           e.srhadd(VReg(d).b16, VReg(s1).b16, VReg(s2).b16);
+        }
         break;
       case INT16_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.urhadd(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
-        else
+        } else {
           e.srhadd(VReg(d).h8, VReg(s1).h8, VReg(s2).h8);
+        }
         break;
       case INT32_TYPE:
-        if (is_unsigned)
+        if (is_unsigned) {
           e.urhadd(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
-        else
+        } else {
           e.srhadd(VReg(d).s4, VReg(s1).s4, VReg(s2).s4);
+        }
         break;
       default:
         assert_unhandled_case(part_type);
@@ -1023,7 +1038,9 @@ struct SWIZZLE
       uint8_t w3 = (swizzle_mask >> 6) & 0x3;
       if (w0 == 0 && w1 == 1 && w2 == 2 && w3 == 3) {
         // Identity.
-        if (d != s) e.mov(VReg(d).b16, VReg(s).b16);
+        if (d != s) {
+          e.mov(VReg(d).b16, VReg(s).b16);
+        }
       } else if (w0 == w1 && w1 == w2 && w2 == w3) {
         // Broadcast single lane.
         e.dup(VReg(d).s4, VReg(s).s4[w0]);
@@ -1773,16 +1790,18 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.rev32(VReg(d).h8, VReg(s).h8);
     if (to_hi) {
       // PPC high bytes are in the NEON low half after rev32.
-      if (is_unsigned)
+      if (is_unsigned) {
         e.uxtl(VReg(d).h8, VReg(d).b8);
-      else
+      } else {
         e.sxtl(VReg(d).h8, VReg(d).b8);
+      }
     } else {
       // PPC low bytes are in the NEON high half after rev32.
-      if (is_unsigned)
+      if (is_unsigned) {
         e.uxtl2(VReg(d).h8, VReg(d).b16);
-      else
+      } else {
         e.sxtl2(VReg(d).h8, VReg(d).b16);
+      }
     }
   }
   static void Emit16_IN_32(A64Emitter& e, const EmitArgType& i,
@@ -1797,16 +1816,18 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     // 32-bit pairs to fix the halfword ordering.
     if (to_hi) {
       // PPC high halfwords → NEON low half.
-      if (is_unsigned)
+      if (is_unsigned) {
         e.uxtl(VReg(d).s4, VReg(s).h4);
-      else
+      } else {
         e.sxtl(VReg(d).s4, VReg(s).h4);
+      }
     } else {
       // PPC low halfwords → NEON high half.
-      if (is_unsigned)
+      if (is_unsigned) {
         e.uxtl2(VReg(d).s4, VReg(s).h8);
-      else
+      } else {
         e.sxtl2(VReg(d).s4, VReg(s).h8);
+      }
     }
     e.rev64(VReg(d).s4, VReg(d).s4);
   }

@@ -647,45 +647,6 @@ TEST_CASE("SET_NJM_OFF", "[backend]") {
 }
 
 // =============================================================================
-// Atomic Exchange I32
-// =============================================================================
-// Tests that AtomicExchange correctly swaps a value in memory and returns
-// the old value.
-// NOTE: OPCODE_ATOMIC_EXCHANGE uses a HOST address (not guest), per the
-// x64 backend comment: "the address we use here is a real, host address!"
-TEST_CASE("ATOMIC_EXCHANGE_I32", "[backend]") {
-  TestFunction test([](HIRBuilder& b) {
-    // r[4] holds the host address directly.
-    auto addr = LoadGPR(b, 4);
-    auto new_val = b.Truncate(LoadGPR(b, 5), hir::INT32_TYPE);
-    auto old_val = b.AtomicExchange(addr, new_val);
-    StoreGPR(b, 3, b.ZeroExtend(old_val, hir::INT64_TYPE));
-    b.Return();
-  });
-
-  // Allocate guest memory and compute the host pointer.
-  uint32_t guest_addr = test.memory->SystemHeapAlloc(4);
-  REQUIRE(guest_addr != 0);
-  auto* host_ptr = test.memory->TranslateVirtual(guest_addr);
-
-  test.Run(
-      [&](PPCContext* ctx) {
-        *reinterpret_cast<uint32_t*>(host_ptr) = 0xAABBCCDD;
-        // Pass the HOST address in r[4].
-        ctx->r[4] = reinterpret_cast<uint64_t>(host_ptr);
-        ctx->r[5] = 0x11223344;
-      },
-      [&](PPCContext* ctx) {
-        // r[3] should have the old value.
-        REQUIRE(static_cast<uint32_t>(ctx->r[3]) == 0xAABBCCDD);
-        // Memory should now have the new value.
-        REQUIRE(*reinterpret_cast<uint32_t*>(host_ptr) == 0x11223344);
-      });
-
-  test.memory->SystemHeapFree(guest_addr);
-}
-
-// =============================================================================
 // DOT_PRODUCT_3 — inline NEON dot product of first 3 vector elements
 // =============================================================================
 TEST_CASE("DOT_PRODUCT_3", "[backend]") {

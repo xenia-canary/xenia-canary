@@ -32,14 +32,22 @@ static inline u128 u128_sub(u128 a, uint64_t b) {
 }
 
 static inline u128 u128_shl(u128 v, int s) {
-  if (s == 0) return v;
-  if (s >= 64) return {0, v.lo << (s - 64)};
+  if (s == 0) {
+    return v;
+  }
+  if (s >= 64) {
+    return {0, v.lo << (s - 64)};
+  }
   return {v.lo << s, (v.hi << s) | (v.lo >> (64 - s))};
 }
 
 static inline u128 u128_shr(u128 v, int s) {
-  if (s == 0) return v;
-  if (s >= 64) return {v.hi >> (s - 64), 0};
+  if (s == 0) {
+    return v;
+  }
+  if (s >= 64) {
+    return {v.hi >> (s - 64), 0};
+  }
   return {(v.lo >> s) | (v.hi << (64 - s)), v.hi >> s};
 }
 
@@ -60,8 +68,12 @@ static inline u128 u128_mul64(uint64_t a, uint64_t b) {
   uint64_t mid = p1 + (p0 >> 32);
   uint64_t mid_carry = 0;
   uint64_t mid2 = mid + p2;
-  if (mid < p1) mid_carry++;
-  if (mid2 < mid) mid_carry++;
+  if (mid < p1) {
+    mid_carry++;
+  }
+  if (mid2 < mid) {
+    mid_carry++;
+  }
 
   u128 r;
   r.lo = (mid2 << 32) | (p0 & 0xFFFFFFFF);
@@ -98,7 +110,9 @@ static inline uint64_t u128_div64(u128 num, uint64_t den, uint64_t* rem) {
 
 // Count leading zeros - portable
 static inline int clz64(uint64_t v) {
-  if (v == 0) return 64;
+  if (v == 0) {
+    return 64;
+  }
   int n = 0;
   if ((v & 0xFFFFFFFF00000000ULL) == 0) {
     n += 32;
@@ -127,7 +141,9 @@ static inline int clz64(uint64_t v) {
 }
 
 static inline int clz32(uint32_t v) {
-  if (v == 0) return 32;
+  if (v == 0) {
+    return 32;
+  }
   int n = 0;
   if ((v & 0xFFFF0000U) == 0) {
     n += 16;
@@ -193,8 +209,12 @@ class BigNum {
     for (size_t i = n; i > 0; i--) {
       uint64_t al = (i - 1 < an) ? a.limbs[i - 1] : 0;
       uint64_t bl = (i - 1 < bn) ? b.limbs[i - 1] : 0;
-      if (al < bl) return -1;
-      if (al > bl) return 1;
+      if (al < bl) {
+        return -1;
+      }
+      if (al > bl) {
+        return 1;
+      }
     }
     return 0;
   }
@@ -234,7 +254,9 @@ class BigNum {
   }
 
   static BigNum mod(const BigNum& a, const BigNum& m) {
-    if (compare(a, m) < 0) return a;
+    if (compare(a, m) < 0) {
+      return a;
+    }
 
     size_t n = m.limbs.size();
     size_t total = a.limbs.size();
@@ -273,7 +295,9 @@ class BigNum {
       }
       u.limbs[total] = carry;
     } else {
-      for (size_t i = 0; i < total; i++) u.limbs[i] = a.limbs[i];
+      for (size_t i = 0; i < total; i++) {
+        u.limbs[i] = a.limbs[i];
+      }
       u.limbs[total] = 0;
     }
 
@@ -302,11 +326,15 @@ class BigNum {
         u128 qv2 = u128_mul64(qhat_val, vn_2);
         u128 rhs = u128_or64(u128_shl(u128_from(rhat_val), 64), u.limbs[j - 2]);
         bool gt = (qv2.hi > rhs.hi) || (qv2.hi == rhs.hi && qv2.lo > rhs.lo);
-        if (!gt) break;
+        if (!gt) {
+          break;
+        }
         qhat_val--;
         uint64_t old_rhat = rhat_val;
         rhat_val += vn_1;
-        if (rhat_val < old_rhat) break;
+        if (rhat_val < old_rhat) {
+          break;
+        }
       }
 
       uint64_t carry = 0;
@@ -317,7 +345,9 @@ class BigNum {
         carry = prod.hi;
         uint64_t u_val = u.limbs[j - n + i];
         u.limbs[j - n + i] = u_val - prod_lo;
-        if (u_val < prod_lo) carry++;
+        if (u_val < prod_lo) {
+          carry++;
+        }
       }
       int64_t final_diff =
           static_cast<int64_t>(u.limbs[j]) - static_cast<int64_t>(carry);
@@ -345,7 +375,9 @@ class BigNum {
         carry = u.limbs[i - 1] & ((1ULL << shift) - 1);
       }
     } else {
-      for (size_t i = 0; i < n; i++) r.limbs[i] = u.limbs[i];
+      for (size_t i = 0; i < n; i++) {
+        r.limbs[i] = u.limbs[i];
+      }
     }
 
     r.trim();

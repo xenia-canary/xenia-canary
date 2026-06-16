@@ -58,11 +58,13 @@ void XEvent::InitializeNative(void* native_ptr, X_DISPATCH_HEADER* header) {
 }
 
 int32_t XEvent::Set(uint32_t priority_increment, bool wait) {
+  set_priority_increment(priority_increment);
   event_->Set();
   return 1;
 }
 
 int32_t XEvent::Pulse(uint32_t priority_increment, bool wait) {
+  set_priority_increment(priority_increment);
   event_->Pulse();
   return 1;
 }

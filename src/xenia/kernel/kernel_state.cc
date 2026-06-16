@@ -64,12 +64,11 @@ KernelState::KernelState(Emulator* emulator)
   file_system_ = emulator->file_system();
   xam_state_ = std::make_unique<xam::XamState>(emulator, this);
   smc_ = std::make_unique<SystemManagementController>();
+  xconfig_ =
+      std::make_unique<XConfig>(emulator->storage_root() / "xconfig.settings");
 
   InitializeKernelGuestGlobals();
   kernel_version_ = KernelVersion(cvars::kernel_build_version);
-
-  // Hardcoded maximum of 2048 TLS slots.
-  tls_bitmap_.Resize(2048);
 
   auto hc_loc_heap = memory_->LookupHeap(strange_hardcoded_page_);
   bool fixed_alloc_worked = hc_loc_heap->AllocFixed(
@@ -121,6 +120,8 @@ uint32_t KernelState::title_id() const {
   return 0;
 }
 
+bool KernelState::is_title_open() const { return emulator_->is_title_open(); }
+
 const std::unique_ptr<xam::SpaInfo> KernelState::title_xdbf() const {
   return module_xdbf(executable_module_);
 }
@@ -141,18 +142,132 @@ const std::unique_ptr<xam::SpaInfo> KernelState::module_xdbf(
   return nullptr;
 }
 
-uint32_t KernelState::AllocateTLS() { return uint32_t(tls_bitmap_.Acquire()); }
+uint32_t KernelState::AllocateTLS(cpu::ppc::PPCContext* context) {
+  auto globals =
+      memory()->TranslateVirtual<KernelGuestGlobals*>(GetKernelGuestGlobals());
+  auto tls_lock = &globals->tls_lock;
+  auto old_irql = xboxkrnl::xeKeKfAcquireSpinLock(context, tls_lock);
 
-void KernelState::FreeTLS(uint32_t slot) {
+  int result = -1;
+
+  auto current_thread = XThread::GetCurrentThread();
+  if (!current_thread) {
+    XELOGE("AllocateTLS: No current thread");
+    xboxkrnl::xeKeKfReleaseSpinLock(context, tls_lock, old_irql);
+    return X_TLS_OUT_OF_INDEXES;
+  }
+
+  auto process_ptr = memory()->TranslateVirtual(
+      current_thread->guest_object<X_KTHREAD>()->process);
+  if (!process_ptr) {
+    XELOGE("AllocateTLS: Failed to translate process pointer");
+    xboxkrnl::xeKeKfReleaseSpinLock(context, tls_lock, old_irql);
+    return X_TLS_OUT_OF_INDEXES;
+  }
+
+  // Search for a free TLS slot in the process bitmap
+  // Bitmap format: 1 = free, 0 = allocated
+  // 8 x 32-bit words = 256 total TLS slots
+  for (xe::be<uint32_t>* i = &process_ptr->tls_slot_bitmap[0];
+       i < &process_ptr->tls_slot_bitmap[8]; ++i) {
+    // Read bitmap value (handles big-endian conversion)
+    uint32_t bitmap_value = static_cast<uint32_t>(*i);
+
+    // Find highest free slot using lzcnt (leading zero count)
+    // Returns 0-31 if a bit is set, 32 if no bits are set
+    uint32_t leading_zeros = xe::lzcnt(bitmap_value);
+
+    if (leading_zeros != 32) {
+      // Calculate absolute slot index from bitmap position and bit offset
+      // Each bitmap word represents 32 slots
+      size_t bitmap_index = i - &process_ptr->tls_slot_bitmap[0];
+      uint32_t base_slot = static_cast<uint32_t>(bitmap_index) * 32;
+      int calculated_slot = base_slot + leading_zeros;
+
+      // Validate slot is within Xbox 360 TLS range
+      if (calculated_slot >= 0 && calculated_slot < 256) {
+        result = calculated_slot;
+
+        // Clear the bit to mark as allocated
+        // lzcnt returns 0 for bit 31, 31 for bit 0
+        uint32_t bit_index = 31 - leading_zeros;
+        *i = bitmap_value & ~(1U << bit_index);
+        break;
+      } else {
+        XELOGE("AllocateTLS: Invalid slot calculation: {}", calculated_slot);
+      }
+    }
+  }
+
+  if (result == -1) {
+    XELOGW("AllocateTLS: All TLS slots exhausted for current process");
+  }
+
+  xboxkrnl::xeKeKfReleaseSpinLock(context, tls_lock, old_irql);
+  return static_cast<uint32_t>(result);
+}
+
+void KernelState::FreeTLS(cpu::ppc::PPCContext* context, uint32_t slot) {
+  if (slot >= 256) {
+    XELOGE("FreeTLS: Invalid slot index {}", slot);
+    return;
+  }
+
+  auto current_thread = XThread::GetCurrentThread();
+  if (!current_thread) {
+    XELOGE("FreeTLS: No current thread");
+    return;
+  }
+
+  auto current_kthread = current_thread->guest_object<X_KTHREAD>();
+  if (!current_kthread) {
+    XELOGE("FreeTLS: Failed to get guest thread object");
+    return;
+  }
+
+  auto process_ptr = memory()->TranslateVirtual(current_kthread->process);
+  if (!process_ptr) {
+    XELOGE("FreeTLS: Failed to translate process pointer");
+    return;
+  }
+
+  auto globals =
+      memory()->TranslateVirtual<KernelGuestGlobals*>(GetKernelGuestGlobals());
+  auto tls_lock = &globals->tls_lock;
+  auto old_irql = xboxkrnl::xeKeKfAcquireSpinLock(context, tls_lock);
+
+  uint32_t bitmap_index = slot / 32;
+  uint32_t bit_mask = 1U << (31 - (slot % 32));
+  uint32_t bitmap_value =
+      static_cast<uint32_t>(process_ptr->tls_slot_bitmap[bitmap_index]);
+
+  if (bitmap_value & bit_mask) {
+    XELOGW("FreeTLS: Slot {} is already free", slot);
+    xboxkrnl::xeKeKfReleaseSpinLock(context, tls_lock, old_irql);
+    return;
+  }
+
+  // Clear TLS values in all threads of this process
   const std::vector<object_ref<XThread>> threads =
       object_table()->GetObjectsByType<XThread>();
 
+  uint32_t current_process_ptr = current_kthread->process.m_ptr;
   for (const object_ref<XThread>& thread : threads) {
-    if (thread->is_guest_thread()) {
+    if (!thread || !thread->is_guest_thread()) {
+      continue;
+    }
+
+    auto thread_kthread = thread->guest_object<X_KTHREAD>();
+    if (thread_kthread &&
+        thread_kthread->process.m_ptr == current_process_ptr) {
       thread->SetTLSValue(slot, 0);
     }
   }
-  tls_bitmap_.Release(slot);
+
+  // Mark slot as free in bitmap
+  process_ptr->tls_slot_bitmap[bitmap_index] = bitmap_value | bit_mask;
+
+  xboxkrnl::xeKeKfReleaseSpinLock(context, tls_lock, old_irql);
 }
 
 void KernelState::RegisterTitleTerminateNotification(uint32_t routine,
@@ -314,11 +429,6 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
 
   // Waits for a debugger client, if desired.
   emulator()->processor()->PreLaunch();
-
-  // Resume the thread now.
-  // If the debugger has requested a suspend this will just decrement the
-  // suspend count without resuming it until the debugger wants.
-  thread->Resume();
 
   return thread;
 }
@@ -792,10 +902,7 @@ void KernelState::TerminateTitle() {
 
   // Third: Unload all user modules (including the executable).
   for (size_t i = 0; i < user_modules_.size(); i++) {
-    X_STATUS status = user_modules_[i]->Unload();
-    assert_true(XSUCCEEDED(status));
-
-    object_table_.RemoveHandle(user_modules_[i]->handle());
+    user_modules_[i]->ReleaseHandle();
   }
   user_modules_.clear();
 
@@ -804,9 +911,6 @@ void KernelState::TerminateTitle() {
 
   // Unregister all notify listeners.
   notify_listeners_.clear();
-
-  // Clear the TLS map.
-  tls_bitmap_.Reset();
 
   // Unset the executable module.
   executable_module_ = nullptr;
@@ -1077,12 +1181,6 @@ bool KernelState::Save(ByteStream* stream) {
   object_table_.Save(stream);
 
   // Write the TLS allocation bitmap
-  auto tls_bitmap = tls_bitmap_.data();
-  stream->Write(uint32_t(tls_bitmap.size()));
-  for (size_t i = 0; i < tls_bitmap.size(); i++) {
-    stream->Write<uint64_t>(tls_bitmap[i]);
-  }
-
   // We save XThreads absolutely first, as they will execute code upon save
   // (which could modify the kernel state)
   auto threads = object_table_.GetObjectsByType<XThread>();
@@ -1151,6 +1249,18 @@ void KernelState::UpdateKeTimestampBundle() {
   xe::store_and_swap<uint64_t>(&lpKeTimeStampBundle->system_time,
                                Clock::QueryGuestSystemTime());
   xe::store_and_swap<uint32_t>(&lpKeTimeStampBundle->tick_count, uptime_ms);
+
+  // Every 20 ticks (~20ms), decay priority on running guest threads.
+  // This simulates the Xenon decrementer-driven quantum expiration.
+  if (++quantum_timer_counter_ >= 20) {
+    quantum_timer_counter_ = 0;
+    auto global_lock = global_critical_region_.Acquire();
+    for (auto& [id, thread] : threads_by_id_) {
+      if (thread->is_running()) {
+        thread->CheckQuantumAndDecay();
+      }
+    }
+  }
 }
 
 uint32_t KernelState::GetKeTimestampBundle() {
@@ -1198,12 +1308,11 @@ bool KernelState::Restore(ByteStream* stream) {
   // Restore the object table
   object_table_.Restore(stream);
 
-  // Read the TLS allocation bitmap
+  // TLS bitmap is now stored per-process in X_KPROCESS structures (in guest
+  // memory) Skip reading old global TLS bitmap if present in old save files
   auto num_bitmap_entries = stream->Read<uint32_t>();
-  auto& tls_bitmap = tls_bitmap_.data();
-  tls_bitmap.resize(num_bitmap_entries);
   for (uint32_t i = 0; i < num_bitmap_entries; i++) {
-    tls_bitmap[i] = stream->Read<uint64_t>();
+    stream->Read<uint64_t>();  // Discard old data
   }
 
   uint32_t num_threads = stream->Read<uint32_t>();
@@ -1300,15 +1409,16 @@ void KernelState::EmulateCPInterruptDPC(uint32_t interrupt_callback,
 }
 
 void KernelState::InitializeProcess(X_KPROCESS* process, uint32_t type,
-                                    char unk_18, char unk_19, char unk_1A) {
+                                    char priority_class, char default_priority,
+                                    char max_dynamic_priority) {
   uint32_t guest_kprocess = memory()->HostToGuestVirtual(process);
 
   uint32_t thread_list_guest_ptr =
       guest_kprocess + offsetof(X_KPROCESS, thread_list);
 
-  process->unk_18 = unk_18;
-  process->unk_19 = unk_19;
-  process->unk_1A = unk_1A;
+  process->process_priority_class = priority_class;
+  process->default_thread_priority = default_priority;
+  process->max_dynamic_priority = max_dynamic_priority;
   util::XeInitializeListHead(&process->thread_list, thread_list_guest_ptr);
   process->quantum = 60;
   // doubt any guest code uses this ptr, which i think probably has something to
@@ -1316,7 +1426,7 @@ void KernelState::InitializeProcess(X_KPROCESS* process, uint32_t type,
   process->clrdataa_masked_ptr = 0;
   // clrdataa_ & ~(1U << 31);
   process->thread_count = 0;
-  process->unk_1B = 0x06;
+  process->disable_quantum_decay = 0x06;
   process->kernel_stack_size = 16 * 1024;
   process->tls_slot_size = 0x80;
 
@@ -1336,18 +1446,22 @@ void KernelState::SetProcessTLSVars(X_KPROCESS* process, int num_slots,
   process->tls_slot_size = 4 * slots_padded;
   uint32_t count_div32 = slots_padded / 32;
   for (unsigned word_index = 0; word_index < count_div32; ++word_index) {
-    process->bitmap[word_index] = -1;
+    process->tls_slot_bitmap[word_index] = -1;
   }
 
   // set remainder of bitset
-  if (((num_slots + 3) & 0x1C) != 0)
-    process->bitmap[count_div32] = -1 << (32 - ((num_slots + 3) & 0x1C));
+  if (((num_slots + 3) & 0x1C) != 0) {
+    process->tls_slot_bitmap[count_div32] = -1
+                                            << (32 - ((num_slots + 3) & 0x1C));
+  }
 }
 void AllocateThread(PPCContext* context) {
   uint32_t thread_mem_size = static_cast<uint32_t>(context->r[3]);
   uint32_t a2 = static_cast<uint32_t>(context->r[4]);
   uint32_t a3 = static_cast<uint32_t>(context->r[5]);
-  if (thread_mem_size <= 0xFD8) thread_mem_size += 8;
+  if (thread_mem_size <= 0xFD8) {
+    thread_mem_size += 8;
+  }
   uint32_t result =
       xboxkrnl::xeAllocatePoolTypeWithTag(context, thread_mem_size, a2, a3);
   if (((unsigned short)result & 0xFFF) != 0) {
@@ -1417,15 +1531,17 @@ void KernelState::InitializeKernelGuestGlobals() {
   SetProcessTLSVars(system_process, 32, 0, 0);
 
   uint32_t oddobject_offset =
-      kernel_guest_globals_ + offsetof(KernelGuestGlobals, OddObj);
+      kernel_guest_globals_ +
+      offsetof(KernelGuestGlobals, XboxKernelDefaultObject);
 
   // init unknown object
 
-  block->OddObj.field0 = 0x1000000;
-  block->OddObj.field4 = 1;
-  block->OddObj.points_to_self =
-      oddobject_offset + offsetof(X_UNKNOWN_TYPE_REFED, points_to_self);
-  block->OddObj.points_to_prior = block->OddObj.points_to_self;
+  block->XboxKernelDefaultObject.type = DISPATCHER_AUTO_RESET_EVENT;
+  block->XboxKernelDefaultObject.signal_state = 1;
+  block->XboxKernelDefaultObject.wait_list.flink_ptr =
+      oddobject_offset + offsetof(X_DISPATCH_HEADER, wait_list.flink_ptr);
+  block->XboxKernelDefaultObject.wait_list.blink_ptr =
+      block->XboxKernelDefaultObject.wait_list.flink_ptr;
 
   // init thread object
   block->ExThreadObjectType.pool_tag = 0x65726854;

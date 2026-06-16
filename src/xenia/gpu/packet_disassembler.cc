@@ -304,7 +304,7 @@ bool PacketDisassembler::DisasmPacketType3(const uint8_t* base_ptr,
       auto prim_type = static_cast<xenos::PrimitiveType>(dword1 & 0x3F);
       uint32_t src_sel = (dword1 >> 6) & 0x3;
 
-      PacketAction di_action;
+      PacketAction di_action{};
       di_action.type = Type::kDrawIndx;
 
       auto& di = di_action.draw_indx;

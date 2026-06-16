@@ -152,6 +152,12 @@ class Window {
     kHidden,
   };
 
+  enum class WindowResizeAction {
+    kManual,
+    kAutoMaximize,
+    kAutoMinimize,
+  };
+
   static std::unique_ptr<Window> Create(WindowedAppContext& app_context,
                                         const std::string_view title,
                                         uint32_t desired_logical_width,
@@ -572,6 +578,7 @@ class Window {
   // explicitly.
   bool OnActualSizeUpdate(uint32_t new_physical_width,
                           uint32_t new_physical_height,
+                          WindowResizeAction cause_action,
                           WindowDestructionReceiver& destruction_receiver);
   void OnDesiredFullscreenUpdate(bool new_fullscreen) {
     fullscreen_ = new_fullscreen;

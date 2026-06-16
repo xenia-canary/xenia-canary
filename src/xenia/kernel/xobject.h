@@ -34,10 +34,21 @@ class KernelState;
 template <typename T>
 class object_ref;
 
+enum X_DISPATCHER_FLAGS : uint8_t {
+  DISPATCHER_MANUAL_RESET_EVENT = 0,
+  DISPATCHER_AUTO_RESET_EVENT = 1,  // EventSynchronizationObject
+  DISPATCHER_MUTANT = 2,
+  DISPATCHER_QUEUE = 4,
+  DISPATCHER_SEMAPHORE = 5,  // SemaphoreObject
+  DISPATCHER_THREAD = 6,
+  DISPATCHER_MANUAL_RESET_TIMER = 8,
+  DISPATCHER_AUTO_RESET_TIMER = 9,
+};
+
 // https://www.nirsoft.net/kernel_struct/vista/DISPATCHER_HEADER.html
 typedef struct {
   struct {
-    uint8_t type;
+    uint8_t type;  // X_DISPATCHER_FLAGS
 
     union {
       uint8_t abandoned;
@@ -226,6 +237,12 @@ class XObject {
                                        void* native_ptr, int32_t as_type = -1,
                                        bool already_locked = false);
 
+  // Priority increment stored by the most recent signal operation
+  // (KeSetEvent, KeReleaseSemaphore, etc.).  Read by the waiter on wake
+  // to apply a priority boost matching real Xenon scheduler behavior.
+  uint32_t priority_increment() const { return priority_increment_; }
+  void set_priority_increment(uint32_t inc) { priority_increment_ = inc; }
+
  protected:
   bool SaveObject(ByteStream* stream);
   bool RestoreObject(ByteStream* stream);
@@ -252,6 +269,8 @@ class XObject {
   static uint32_t TimeoutTicksToMs(int64_t timeout_ticks);
 
   KernelState* kernel_state_;
+
+  uint32_t priority_increment_ = 0;
 
   // Host objects are persisted through resets/etc.
   bool host_object_ = false;
@@ -285,13 +304,17 @@ class object_ref {
   }
   explicit object_ref(const object_ref& right) noexcept {
     reset(right.get());
-    if (value_) value_->Retain();
+    if (value_) {
+      value_->Retain();
+    }
   }
   template <class V>
     requires std::is_convertible_v<V*, T*>
   object_ref(const object_ref<V>& right) noexcept {
     reset(right.get());
-    if (value_) value_->Retain();
+    if (value_) {
+      value_->Retain();
+    }
   }
 
   object_ref(object_ref&& right) noexcept : value_(right.release()) {}
@@ -387,7 +410,9 @@ object_ref<T> make_object(Args&&... args) {
 
 template <typename T>
 object_ref<T> retain_object(T* ptr) {
-  if (ptr) ptr->Retain();
+  if (ptr) {
+    ptr->Retain();
+  }
   return object_ref<T>(ptr);
 }
 

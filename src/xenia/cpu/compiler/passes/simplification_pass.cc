@@ -67,7 +67,9 @@ static bool IsScalarBasicCmp(Opcode op) {
 }
 
 static bool SameValueOrEqualConstant(hir::Value* x, hir::Value* y) {
-  if (x == y) return true;
+  if (x == y) {
+    return true;
+  }
 
   if (x->IsConstant() && y->IsConstant()) {
     return x->AsUint64() == y->AsUint64();
@@ -82,12 +84,18 @@ static bool CompareDefsHaveSameOpnds(hir::Value* cmp1, hir::Value* cmp2,
                                      Opcode* out_r_op) {
   auto df1 = cmp1->def;
   auto df2 = cmp2->def;
-  if (!df1 || !df2) return false;
-  if (df1->src1.value != df2->src1.value) return false;
+  if (!df1 || !df2) {
+    return false;
+  }
+  if (df1->src1.value != df2->src1.value) {
+    return false;
+  }
 
   Opcode lop = df1->opcode->num, rop = df2->opcode->num;
 
-  if (!IsScalarBasicCmp(lop) || !IsScalarBasicCmp(rop)) return false;
+  if (!IsScalarBasicCmp(lop) || !IsScalarBasicCmp(rop)) {
+    return false;
+  }
 
   if (!SameValueOrEqualConstant(df1->src2.value, df2->src2.value)) {
     return false;
@@ -101,7 +109,9 @@ static bool CompareDefsHaveSameOpnds(hir::Value* cmp1, hir::Value* cmp2,
 }
 
 bool SimplificationPass::CheckOr(hir::Instr* i, hir::HIRBuilder* builder) {
-  if (CheckOrXorZero(i)) return true;
+  if (CheckOrXorZero(i)) {
+    return true;
+  }
 
   if (i->src1.value == i->src2.value) {
     auto old1 = i->src1.value;
@@ -228,7 +238,9 @@ bool SimplificationPass::CheckXor(hir::Instr* i, hir::HIRBuilder* builder) {
 
     uint64_t type_mask = GetScalarTypeMask(i->dest->type);
 
-    if (!constant_value) return false;
+    if (!constant_value) {
+      return false;
+    }
 
     if (constant_value->AsUint64() == type_mask) {
       i->Replace(&OPCODE_NOT_info, 0);
@@ -729,7 +741,9 @@ bool SimplificationPass::CheckSelect(hir::Instr* i, hir::HIRBuilder* builder) {
 
 bool SimplificationPass::CheckScalarConstCmp(hir::Instr* i,
                                              hir::HIRBuilder* builder) {
-  if (!IsScalarIntegralType(i->src1.value->type)) return false;
+  if (!IsScalarIntegralType(i->src1.value->type)) {
+    return false;
+  }
   auto [constant_value, variable] = i->BinaryValueArrangeAsConstAndVar();
 
   if (!constant_value) {
@@ -969,7 +983,9 @@ bool SimplificationPass::CheckSHRByConst(hir::Instr* i,
 bool SimplificationPass::CheckSHR(hir::Instr* i, hir::HIRBuilder* builder) {
   Value* shr_lhs = i->src1.value;
   Value* shr_rhs = i->src2.value;
-  if (!shr_lhs || !shr_rhs) return false;
+  if (!shr_lhs || !shr_rhs) {
+    return false;
+  }
   if (shr_rhs->IsConstant()) {
     return CheckSHRByConst(i, builder, shr_lhs, shr_rhs->AsUint32());
   }
@@ -1260,7 +1276,9 @@ bool SimplificationPass::SimplifyAndNot(hir::Instr* i,
 
   Instr* def1 = src1->def;
   Instr* def2 = src2->def;
-  if (!def1 || !def2) return false;
+  if (!def1 || !def2) {
+    return false;
+  }
 
   // Bypass the NOT from an incoming operand and combine it into AND_NOT.
   // If the original NOT does not have any further uses, then the

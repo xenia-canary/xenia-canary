@@ -349,7 +349,8 @@ void UserTracker::UpdateTitleGpdFile() {
     }
 
     auto user_language = spa_data_->GetExistingLanguage(
-        static_cast<XLanguage>(cvars::user_language));
+        static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+            kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE)));
 
     // First add achievements because of lowest ID
     for (const auto& entry : spa_data_->GetAchievements()) {

@@ -659,8 +659,11 @@ def get_clang_format_binary():
     # Add Windows-specific paths
     if sys.platform == "win32":
         if "VCINSTALLDIR" in os.environ:
-            all_binaries.append(os.path.join(os.environ["VCINSTALLDIR"], "Tools", "Llvm", "x64", "bin", "clang-format.exe"))
-            all_binaries.append(os.path.join(os.environ["VCINSTALLDIR"], "Tools", "Llvm", "arm64", "bin", "clang-format.exe"))
+            if is_amd64():
+                all_binaries.append(os.path.join(os.environ["VCINSTALLDIR"], "Tools", "Llvm", "x64", "bin", "clang-format.exe"))
+            elif is_arm():
+                all_binaries.append(os.path.join(os.environ["VCINSTALLDIR"], "Tools", "Llvm", "arm64", "bin", "clang-format.exe"))
+
         all_binaries.append(os.path.join(os.environ["ProgramFiles"], "LLVM", "bin", "clang-format.exe"))
 
     # Find the highest version available
@@ -697,6 +700,11 @@ def normalize_target_arch(value):
     raise ArgumentTypeError(
         f"unknown architecture '{value}' (expected: arm64, aarch64, a64, x64, amd64, x86_64, x86)")
 
+def is_amd64():
+    return normalize_target_arch(platform.machine()) in ("x64", "x86_64", "amd64", "x86")
+
+def is_arm():
+    return normalize_target_arch(platform.machine()) in ("x64", "x86_64", "amd64", "x86")
 
 def get_build_dir(target_arch=None):
     """Returns the Ninja build directory for the given target architecture.

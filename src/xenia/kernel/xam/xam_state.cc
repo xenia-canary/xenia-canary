@@ -30,7 +30,46 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
       std::make_unique<ProfileManager>(kernel_state, user_tracker_.get());
   achievement_manager_ = std::make_unique<AchievementManager>();
 
+  LoadLanguageLocaleFallback();
+  LoadIptvServiceName();
+
   AppManager::RegisterApps(kernel_state, app_manager_.get());
+}
+
+void XamState::LoadLanguageLocaleFallback() {
+  const std::array<std::u16string, 18> locale_data = {
+      u"",      u"",      u"ja-JP", u"de-DE", u"fr-FR",  u"es-ES",
+      u"it-IT", u"ko-KR", u"zh-TW", u"pt-BR", u"zh-CHS", u"pl-PL",
+      u"ru-RU", u"sv-SE", u"tr-TR", u"nb-NO", u"nl-NL",  u"zh-CHS"};
+
+  constexpr uint32_t array_start = 0x80D00000;
+
+  if (kernel_state_->memory()
+          ->LookupHeap(0x80000000)
+          ->AllocFixed(array_start, 0xC8, 0x1000, kMemoryAllocationCommit,
+                       kMemoryProtectRead | kMemoryProtectWrite)) {
+    char16_t* ptr =
+        kernel_state_->memory()->TranslateVirtual<char16_t*>(array_start);
+
+    for (size_t i = 1; i < locale_data.size(); i++) {
+      language_fallback_address_[i] =
+          kernel_state_->memory()->HostToGuestVirtual(ptr);
+      ptr += xe::string_util::copy_and_swap_truncating(
+                 ptr, locale_data.at(i), locale_data.at(i).size() + 1) +
+             1;
+    }
+  }
+}
+
+void XamState::LoadIptvServiceName() {
+  constexpr uint32_t address = 0x80D10000;
+
+  if (kernel_state_->memory()
+          ->LookupHeap(0x80000000)
+          ->AllocFixed(address, 0x78, 0x1000, kMemoryAllocationCommit,
+                       kMemoryProtectRead | kMemoryProtectWrite)) {
+    iptv_name_address_ = address;
+  }
 }
 
 UserProfile* XamState::GetUserProfile(uint32_t user_index) const {

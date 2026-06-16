@@ -282,7 +282,6 @@ enum Opcode {
   OPCODE_PACK,  // break up into smaller operations and add a float16 convert
                 // opcode
   OPCODE_UNPACK,
-  OPCODE_ATOMIC_EXCHANGE,
   OPCODE_ATOMIC_COMPARE_EXCHANGE,
   OPCODE_SET_ROUNDING_MODE,
   OPCODE_VECTOR_DENORMFLUSH,  // converts denormals to signed zeros in a vector

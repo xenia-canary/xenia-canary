@@ -76,7 +76,8 @@ class Win32Window : public Window {
 
   void ApplyFullscreenEntry(WindowDestructionReceiver& destruction_receiver);
 
-  void HandleSizeUpdate(WindowDestructionReceiver& destruction_receiver);
+  void HandleSizeUpdate(WindowDestructionReceiver& destruction_receiver,
+                        DWORD cause_action);
   // For updating multiple factors that may influence the window size at once,
   // without handling WM_SIZE multiple times (that may not only result in wasted
   // handling, but also in the state potentially changed to an inconsistent one

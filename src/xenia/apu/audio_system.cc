@@ -50,9 +50,9 @@ AudioSystem::AudioSystem(cpu::Processor* processor)
       processor_(processor),
       worker_running_(false) {
   std::memset(clients_, 0, sizeof(clients_));
-  queued_frames_ = std::min(
-      static_cast<uint32_t>(kMaximumQueuedFrames),
-      std::max(cvars::apu_max_queued_frames, static_cast<uint32_t>(4)));
+  queued_frames_ = std::clamp(cvars::apu_max_queued_frames,
+                              static_cast<uint32_t>(kMinimumQueuedFrames),
+                              static_cast<uint32_t>(kMaximumQueuedFrames));
 
   for (size_t i = 0; i < kMaximumClientCount; ++i) {
     client_semaphores_[i] = xe::threading::Semaphore::Create(0, queued_frames_);
@@ -248,6 +248,14 @@ void AudioSystem::SubmitFrame(size_t index, float* samples) {
         "(in_use={}, driver={:p})",
         index, index < kMaximumClientCount ? clients_[index].in_use : false,
         index < kMaximumClientCount ? (void*)clients_[index].driver : nullptr);
+
+    // Submit silence instead of dropping the frame to maintain the callback
+    // chain.  If we don't submit anything, the audio driver's OnBufferEnd
+    // callback will never fire, causing the semaphore to leak.
+    if (index < kMaximumClientCount && clients_[index].driver) {
+      static float silence[apu::AudioDriver::kFrameSamplesMax] = {0};
+      (clients_[index].driver)->SubmitFrame(silence);
+    }
     return;
   }
   (clients_[index].driver)->SubmitFrame(samples);

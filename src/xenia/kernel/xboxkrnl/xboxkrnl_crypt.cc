@@ -48,6 +48,11 @@ struct XECRYPT_SHA_STATE {
 };
 static_assert_size(XECRYPT_SHA_STATE, 0x58);
 
+struct XECRYPT_HMACSHA_STATE {
+  XECRYPT_SHA_STATE sha_state[2];
+};
+static_assert_size(XECRYPT_HMACSHA_STATE, 0xB0);
+
 // TODO: Size of this struct hasn't been confirmed yet.
 struct XECRYPT_SHA256_STATE {
   xe::be<uint32_t> count;     // 0x0
@@ -488,6 +493,48 @@ void XeCryptSha_entry(lpvoid_t input_1, dword_t input_1_size, lpvoid_t input_2,
               output.as<uint8_t*>());
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha, kNone, kImplemented);
+
+void XeCryptHmacShaInit_entry(pointer_t<XECRYPT_HMACSHA_STATE> sha_state_ptr,
+                              lpvoid_t key_ptr, dword_t key_size) {
+  sha_state_ptr.Zero();
+
+  const uint8_t* key_data_ptr = key_ptr.as<uint8_t*>();
+  const uint32_t key_size_ = key_size > 64 ? 64 : key_size.value();
+
+  XeCryptShaInit_entry(sha_state_ptr->sha_state);
+  XeCryptShaInit_entry(&sha_state_ptr->sha_state[1]);
+
+  std::array<uint8_t, 64> key_1 = {};
+  std::array<uint8_t, 64> key_2 = {};
+
+  std::copy_n(key_data_ptr, key_size_, key_1.begin());
+  std::copy_n(key_data_ptr, key_size_, key_2.begin());
+
+  for (uint8_t i = 0; i < key_size_; i += 1) {
+    key_1[i] ^= 0x5C5C5C5Cu;
+    key_2[i] ^= 0x36363636u;
+  }
+
+  XeCryptShaUpdate_entry(sha_state_ptr->sha_state, key_2.data(), key_size_);
+  XeCryptShaUpdate_entry(&sha_state_ptr->sha_state[1], key_1.data(), key_size_);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaInit, kNone, kImplemented);
+
+void XeCryptHmacShaUpdate_entry(pointer_t<XECRYPT_HMACSHA_STATE> sha_state_ptr,
+                                lpvoid_t input, dword_t input_size) {
+  XeCryptShaUpdate_entry(sha_state_ptr->sha_state, input, input_size);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaUpdate, kNone, kImplemented);
+
+void XeCryptHmacShaFinal_entry(pointer_t<XECRYPT_HMACSHA_STATE> sha_state_ptr,
+                               pointer_t<uint8_t> out, dword_t out_size) {
+  XeCryptShaFinal_entry(sha_state_ptr->sha_state, 0, 0);
+  XeCryptShaUpdate_entry(&sha_state_ptr->sha_state[1],
+                         sha_state_ptr->sha_state->state,
+                         sizeof(XECRYPT_SHA_STATE::state));
+  XeCryptShaFinal_entry(&sha_state_ptr->sha_state[1], out, out_size);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaFinal, kNone, kImplemented);
 
 void XeCryptMd5_entry(lpvoid_t input_1, dword_t input_1_size, lpvoid_t input_2,
                       dword_t input_2_size, lpvoid_t input_3,

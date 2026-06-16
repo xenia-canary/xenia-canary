@@ -255,7 +255,6 @@ class XexModule : public xe::cpu::Module {
                            const xex2_import_library* library);
   bool FindSaveRest();
 
-  Processor* processor_ = nullptr;
   kernel::KernelState* kernel_state_ = nullptr;
   std::string name_;
   std::string path_;

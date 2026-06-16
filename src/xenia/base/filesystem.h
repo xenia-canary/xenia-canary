@@ -133,6 +133,9 @@ std::vector<FileInfo> ListFiles(const std::filesystem::path& path);
 std::vector<FileInfo> ListDirectories(const std::filesystem::path& path);
 std::vector<FileInfo> FilterByName(const std::vector<FileInfo>& files,
                                    const std::regex pattern);
+std::vector<FileInfo> FindFileWithName(const std::filesystem::path& path,
+                                       std::string_view name,
+                                       bool recursive = false);
 
 bool SetAttributes(const std::filesystem::path& path, uint64_t attributes);
 

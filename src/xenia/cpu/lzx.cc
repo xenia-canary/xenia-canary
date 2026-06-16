@@ -154,8 +154,9 @@ int lzxdelta_apply_patch(xe::xex2_delta_patch* patch, size_t patch_len,
     int patch_sz = -4;  // 0 byte patches need us to remove 4 byte from next
                         // patch addr because of patch_data field
     if (cur_patch->compressed_len == 0 && cur_patch->uncompressed_len == 0 &&
-        cur_patch->new_addr == 0 && cur_patch->old_addr == 0)
+        cur_patch->new_addr == 0 && cur_patch->old_addr == 0) {
       break;
+    }
     switch (cur_patch->compressed_len) {
       case 0:  // fill with 0
         std::memset((char*)dest + cur_patch->new_addr, 0,

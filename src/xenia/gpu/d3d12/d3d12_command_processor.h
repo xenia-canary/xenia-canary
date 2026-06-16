@@ -27,6 +27,7 @@
 #include "xenia/gpu/d3d12/d3d12_render_target_cache.h"
 #include "xenia/gpu/d3d12/d3d12_shared_memory.h"
 #include "xenia/gpu/d3d12/d3d12_texture_cache.h"
+#include "xenia/gpu/d3d12/d3d12_zpd_query_pool.h"
 #include "xenia/gpu/d3d12/deferred_command_list.h"
 #include "xenia/gpu/d3d12/pipeline_cache.h"
 #include "xenia/gpu/draw_util.h"
@@ -78,6 +79,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void RestoreEdramSnapshot(const void* snapshot) override;
 
+  void PollCompletedSubmission() override;
+
   ui::d3d12::D3D12Provider& GetD3D12Provider() const {
     return *static_cast<ui::d3d12::D3D12Provider*>(
         graphics_system_->provider());
@@ -93,7 +96,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
   uint64_t GetCurrentSubmission() const {
     return completion_timeline_->GetUpcomingSubmission();
   }
-  uint64_t GetCompletedSubmission() const {
+  uint64_t GetCompletedSubmission() const override {
     return completion_timeline_->GetCompletedSubmissionFromLastUpdate();
   }
 
@@ -169,6 +172,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
     kEdramR32UintUAV,
     kEdramR32G32UintUAV,
     kEdramR32G32B32A32UintUAV,
+    kZpdROVCounterRawUAV,
 
     kGammaRampTableSRV,
     kGammaRampPWLSRV,
@@ -490,10 +494,62 @@ class D3D12CommandProcessor final : public CommandProcessor {
   ID3D12Resource* RequestReadbackBuffer(uint32_t size);
 
   void WriteGammaRampSRV(bool is_pwl, D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
+  void WriteZPDROVCounterRawUAVDescriptor(
+      D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
+
+  // ZPD occlusion queries backend.
+  // BeginQuery/EndQuery must be in the same command list, segments split at
+  // EndSubmission, resume at BeginSubmission. Discarded queries still need
+  // EndQuery or the heap slot breaks on some drivers. RecordZPDResolveBatch
+  // emits coalesced ResolveQueryData and ROV counter copies at submit.
+  void EnsureZPDQueryResources() override;
+  void ShutdownZPDQueryResources() override {
+    zpd_resolves_in_flight_.clear();
+    zpd_active_query_index_ = UINT32_MAX;
+    zpd_active_query_generation_ = 0;
+    zpd_active_query_is_rov_ = false;
+    zpd_query_pool_needs_rov_counter_ = false;
+    bindful_zpd_rov_counter_buffer_ = nullptr;
+    bindful_zpd_rov_counter_capacity_ = 0;
+    if (!bindless_resources_used_) {
+      draw_view_bindful_heap_index_ =
+          ui::d3d12::D3D12DescriptorHeapPool::kHeapIndexInvalid;
+    }
+    if (zpd_host_query_pool_) {
+      zpd_host_query_pool_->Shutdown();
+    }
+  }
+
+  bool IsZPDQueryPoolReady() const override;
+  bool CanOpenZPDQuery() const override;
+
+  QueryOpenResult OpenZPDQuery(ReportHandle report_handle,
+                               bool can_close_submission) override;
+  bool CloseZPDQuery(ReportHandle report_handle,
+                     uint64_t& out_submission) override;
+  bool DiscardZPDQuery() override;
+  void PumpQueryResolves() override;
+  bool AwaitQueryResolve(ReportHandle report_handle,
+                         uint64_t wait_for_submission) override;
+
+  void RecordZPDResolveBatch();
 
   bool device_removed_ = false;
 
   bool cache_clear_requested_ = false;
+
+  struct PendingQueryResolve {
+    uint64_t submission = 0;
+    uint32_t query_index = UINT32_MAX;
+    uint32_t query_generation = 0;
+    bool uses_rov_counter = false;
+    ReportHandle report_handle = kInvalidReportHandle;
+  };
+  uint32_t zpd_active_query_index_ = UINT32_MAX;
+  uint32_t zpd_active_query_generation_ = 0;
+  bool zpd_active_query_is_rov_ = false;
+  bool zpd_query_pool_needs_rov_counter_ = false;
+  std::deque<PendingQueryResolve> zpd_resolves_in_flight_;
 
   std::unique_ptr<ui::d3d12::D3D12GPUCompletionTimeline> completion_timeline_;
   bool submission_open_ = false;
@@ -525,6 +581,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
   CommandAllocator* command_allocator_submitted_last_ = nullptr;
   ID3D12GraphicsCommandList* command_list_ = nullptr;
   ID3D12GraphicsCommandList1* command_list_1_ = nullptr;
+  ID3D12GraphicsCommandList2* command_list_2_ = nullptr;
   DeferredCommandList deferred_command_list_;
 
   // Should bindless textures and samplers be used - many times faster
@@ -536,6 +593,10 @@ class D3D12CommandProcessor final : public CommandProcessor {
   std::unique_ptr<D3D12SharedMemory> shared_memory_;
 
   std::unique_ptr<D3D12RenderTargetCache> render_target_cache_;
+
+  std::unique_ptr<D3D12ZPDQueryPool> zpd_host_query_pool_;
+  ID3D12Resource* bindful_zpd_rov_counter_buffer_ = nullptr;
+  uint32_t bindful_zpd_rov_counter_capacity_ = 0;
 
   std::unique_ptr<ui::d3d12::D3D12UploadBufferPool> constant_buffer_pool_;
 

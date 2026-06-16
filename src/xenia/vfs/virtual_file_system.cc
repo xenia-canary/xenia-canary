@@ -230,7 +230,7 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
                                : root_entry->ResolvePath(base_path);
     if (!parent_entry) {
       *out_action = FileAction::kDoesNotExist;
-      return X_STATUS_NO_SUCH_FILE;
+      return X_STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
     auto file_name = xe::utf8::find_name_from_guest_path(path);
@@ -246,11 +246,11 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
 
     // If the entry does not exist on the host then remove the cached entry
     if (parent_entry) {
-      const xe::vfs::HostPathEntry* host_Path =
+      const xe::vfs::HostPathEntry* host_path =
           dynamic_cast<const xe::vfs::HostPathEntry*>(parent_entry);
 
-      if (host_Path) {
-        auto const file_path = host_Path->host_path() / entry->name();
+      if (host_path) {
+        auto const file_path = host_path->host_path() / entry->name();
 
         if (!std::filesystem::exists(file_path)) {
           // Remove cached entry
@@ -268,7 +268,7 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
       // Must exist.
       if (!entry) {
         *out_action = FileAction::kDoesNotExist;
-        return X_STATUS_NO_SUCH_FILE;
+        return X_STATUS_OBJECT_NAME_NOT_FOUND;
       }
       break;
     case FileDisposition::kCreate:

@@ -38,12 +38,13 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
   }
 
   ImGui::TextUnformatted("Gamertag:");
-  if (ImGui::InputText("##Gamertag", gamertag_, sizeof(gamertag_))) {
-    valid_gamertag_ = profile_manager->IsGamertagValid(std::string(gamertag_));
-  }
+  const bool enter_pressed =
+      ImGui::InputText("##Gamertag", gamertag_, sizeof(gamertag_),
+                       ImGuiInputTextFlags_EnterReturnsTrue);
+  valid_gamertag_ = profile_manager->IsGamertagValid(std::string(gamertag_));
 
   ImGui::BeginDisabled(!valid_gamertag_);
-  if (ImGui::Button("Create")) {
+  if (ImGui::Button("Create") || (enter_pressed && valid_gamertag_)) {
     bool autologin = (profile_manager->GetAccountCount() == 0);
     if (profile_manager->CreateProfile(std::string(gamertag_), autologin,
                                        migration_) &&

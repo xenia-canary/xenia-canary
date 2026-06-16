@@ -332,7 +332,14 @@ static dword_result_t XamShowMessageBoxUi(
     uint32_t button_ptr = button_ptrs[i];
     auto button = xe::load_and_swap<std::u16string>(
         kernel_state()->memory()->TranslateVirtual(button_ptr));
-    buttons.push_back(xe::to_utf8(button));
+
+    if (!button.empty()) {
+      buttons.push_back(xe::to_utf8(button));
+    }
+  }
+
+  if (buttons.empty()) {
+    buttons.push_back("OK");
   }
 
   X_RESULT result;
@@ -524,7 +531,9 @@ dword_result_t XamShowDeviceSelectorUI_entry(
     // Default to the first storage device (HDD) if headless.
     return xeXamDispatchHeadless(
         [device_id_ptr, devices]() -> X_RESULT {
-          if (devices.empty()) return X_ERROR_CANCELLED;
+          if (devices.empty()) {
+            return X_ERROR_CANCELLED;
+          }
 
           const DummyDeviceInfo* device_info = devices.front();
           *device_id_ptr = static_cast<uint32_t>(device_info->device_id);
@@ -535,7 +544,9 @@ dword_result_t XamShowDeviceSelectorUI_entry(
 
   auto close = [device_id_ptr, devices](MessageBoxDialog* dialog) -> X_RESULT {
     uint32_t button = dialog->chosen_button();
-    if (button >= devices.size()) return X_ERROR_CANCELLED;
+    if (button >= devices.size()) {
+      return X_ERROR_CANCELLED;
+    }
 
     const DummyDeviceInfo* device_info = devices.at(button);
     *device_id_ptr = static_cast<uint32_t>(device_info->device_id);
@@ -911,7 +922,9 @@ X_RESULT xeXamShowSigninUI(uint32_t user_index, uint32_t users_needed,
         UserProfile* profile = kernel_state()->xam_state()->GetUserProfile(i);
         if (profile) {
           xuids[i] = profile->xuid();
-          if (xuids.size() >= users_needed) break;
+          if (xuids.size() >= users_needed) {
+            break;
+          }
         }
       }
 

@@ -224,6 +224,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // If alpha to mask is enabled, bits 0:7 are sample offsets, and bit 8 must
     // be 1.
     uint32_t alpha_to_mask;
+    // UINT32_MAX when the draw is outside an active ZPD segment, which is used
+    // as a skip writing sentinel to the FSI counter buffer.
+    uint32_t zpd_fsi_counter_index;
+    // Align for std140.
+    uint32_t color_exp_bias_padding[2];
 
     float color_exp_bias[4];
 
@@ -563,6 +568,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
   void StartFragmentShaderInMain();
   void CompleteFragmentShaderInMain();
 
+  // Writes gl_FragDepth at the end of an FBO pixel shader, remapping the
+  // guest 0...1 oDepth value to host 0...0.5 when the bound depth buffer is
+  // float24. No-op for FSI and for shaders that don't write oDepth.
+  void CompleteFragmentShader_DSV_DepthTo24Bit();
+
   // Updates the current flow control condition (to be called in the beginning
   // of exec and in jumps), closing the previous conditionals if needed.
   // However, if the condition is not different, the instruction-level predicate
@@ -721,6 +731,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // flow because of taking derivatives of the fragment depth.
   void FSI_DepthStencilTest(spv::Id msaa_samples,
                             bool sample_mask_potentially_narrowed_previouly);
+  // Adds the surviving coverage MSAA counts from FSI to the active ZPD counter
+  // slot after final PS depth/stencil.
+  void FSI_AddPassedMSAASamplesToZPD();
 
   // Alpha to coverage helper - tests one sample.
   // coverage_out is modified to include this sample if it passes.
@@ -873,9 +886,10 @@ class SpirvShaderTranslator : public ShaderTranslator {
     kSystemConstantTextureSwizzles,
     kSystemConstantTexturesResolved,
     kSystemConstantAlphaTestReference,
-    kSystemConstantAlphaToMask,
     kSystemConstantEdram32bppTilePitchDwordsScaled,
     kSystemConstantEdramDepthBaseDwordsScaled,
+    kSystemConstantAlphaToMask,
+    kSystemConstantZpdFsiCounterIndex,
     kSystemConstantColorExpBias,
     kSystemConstantEdramPolyOffsetFrontScale,
     kSystemConstantEdramPolyOffsetBackScale,
@@ -900,6 +914,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
   spv::Id buffers_shared_memory_;
   spv::Id buffer_edram_;
+  spv::Id buffer_zpd_fsi_counter_;
 
   // Not using combined images and samplers because
   // maxPerStageDescriptorSamplers is often lower than
@@ -960,10 +975,15 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // output_or_var_fragment_data_.
   std::array<spv::Id, xenos::kMaxColorRenderTargets> output_fragment_data_;
 
-  // Fragment shader depth output (gl_FragDepth).
-  // With fragment shader interlock, a variable in the main function.
-  // Otherwise, the depth output (only created if shader writes depth).
+  // Function-scoped staging variable for guest oDepth writes. Used by both
+  // FSI (which writes the value to the EDRAM buffer inside the interlock)
+  // and FBO (copied to output_fragment_depth_ at the end of the shader,
+  // remapping guest 0...1 to host 0...0.5 when the depth format is float24).
   spv::Id output_or_var_fragment_depth_;
+
+  // FBO only: actual gl_FragDepth Output.
+  // Written at the end of the pixel shader from output_or_var_fragment_depth_.
+  spv::Id output_fragment_depth_;
 
   // Fragment shader sample mask output (gl_SampleMask).
   // Only used for alpha-to-coverage in non-FSI mode.

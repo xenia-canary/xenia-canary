@@ -62,6 +62,12 @@ class XamState {
     return xam_dialogs_shown_ > 0 || xam_nui_dialogs_shown_ > 0;
   }
 
+  uint32_t GetLanguageFallbackAddress(uint32_t index) const {
+    return language_fallback_address_[index];
+  }
+
+  uint32_t GetIptvNameAddress() const { return iptv_name_address_; }
+
   X_DASH_APP_INFO dash_app_info_ = {};
   uint32_t dash_backstack_nodes_count_ = 0;
   X_DASH_BACKSTACK_DATA dash_backstack_data_[2] = {};
@@ -71,6 +77,9 @@ class XamState {
   std::atomic<int32_t> xam_nui_dialogs_shown_ = {0};
 
  private:
+  void LoadLanguageLocaleFallback();
+  void LoadIptvServiceName();
+
   KernelState* kernel_state_;
 
   std::unique_ptr<AppManager> app_manager_;
@@ -80,6 +89,10 @@ class XamState {
   std::unique_ptr<ProfileManager> profile_manager_;
 
   std::unique_ptr<SpaInfo> spa_info_;
+
+  // Custom XAM stuff
+  std::array<uint32_t, 0x12> language_fallback_address_{};
+  uint32_t iptv_name_address_{};
 };
 
 }  // namespace xam

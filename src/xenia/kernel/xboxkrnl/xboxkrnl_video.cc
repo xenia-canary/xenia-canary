@@ -16,21 +16,10 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/xbox.h"
 
-DEFINE_int32(
-    video_standard, 1,
-    "Enables switching between different video signals.\n   1=NTSC\n   "
-    "2=NTSC-J\n   3=PAL\n",
-    "Video");
-
-DEFINE_bool(use_50Hz_mode, false, "Enables usage of PAL-50 mode.", "Video");
 DEFINE_bool(interlaced, false, "Toggles interlaced mode.", "Video");
-
-// TODO: This is stored in XConfig somewhere, probably in video flags.
-DEFINE_bool(widescreen, true, "Toggles between 16:9 and 4:3 aspect ratio.",
-            "Video");
-
 // BT.709 on modern monitors and TVs looks the closest to the Xbox 360 connected
 // to an HDTV.
 DEFINE_uint32(kernel_display_gamma_type, 2,
@@ -42,37 +31,22 @@ DEFINE_double(kernel_display_gamma_power, 2.22222233,
               "Display gamma to use with kernel_display_gamma_type 3.",
               "Kernel");
 
-inline const static uint32_t GetVideoStandard() {
-  if (cvars::video_standard < 1 || cvars::video_standard > 3) {
-    return 1;
-  }
-
-  return cvars::video_standard;
-}
-
-inline const static float GetVideoRefreshRate() {
-  return cvars::use_50Hz_mode ? 50.0f : 60.0f;
-}
-
-inline const static std::pair<uint16_t, uint16_t> GetDisplayAspectRatio() {
-  if (cvars::widescreen) {
-    return {16, 9};
-  }
-
-  return {4, 3};
-}
-
-static std::pair<uint32_t, uint32_t> CalculateScaledAspectRatio(uint32_t fb_x,
-                                                                uint32_t fb_y) {
+static std::pair<uint32_t, uint32_t> CalculateScaledAspectRatio(
+    uint32_t fb_x, uint32_t fb_y, bool forced_widescreen) {
   // Calculate the game's final aspect ratio as it would appear on a physical
   // TV.
-  auto dar = GetDisplayAspectRatio();
-  uint32_t display_x = dar.first;
-  uint32_t display_y = dar.second;
+  const auto res = xe::kernel::Resolution(fb_x, fb_y);
 
-  auto res = xe::gpu::GraphicsSystem::GetInternalDisplayResolution();
-  uint32_t res_x = res.first;
-  uint32_t res_y = res.second;
+  uint32_t display_x = res.aspect_ratio().first;
+  uint32_t display_y = res.aspect_ratio().second;
+
+  if (forced_widescreen) {
+    display_x = 16;
+    display_y = 9;
+  }
+
+  uint32_t res_x = res.width_.get();
+  uint32_t res_y = res.height_.get();
 
   uint32_t x_factor = std::gcd(fb_x, res_x);
   res_x /= x_factor;
@@ -102,6 +76,47 @@ static std::pair<uint32_t, uint32_t> CalculateScaledAspectRatio(uint32_t fb_x,
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+
+bool IsWidescreen(KernelState* kernel_state, Resolution res) {
+  if (res.is_widescreen()) {
+    return true;
+  }
+
+  return kernel_state->xconfig()->ReadSetting<uint32_t>(
+             XCONFIG_USER_CATEGORY, XCONFIG_USER_VIDEO_FLAGS) &
+         X_VIDEO_FLAGS::Widescreen;
+}
+
+// Video standard only supports value from 1 to 3. PAL50 is not included here
+// and PAL50 is converted to PAL with 50Hz in GetVideoRefreshRate.
+X_AV_VIDEO_STANDARD GetVideoStandard(KernelState* kernel_state) {
+  auto av_region = static_cast<X_AV_VIDEO_STANDARD>(
+      (kernel_state->xconfig()->ReadSetting<uint32_t>(
+           XCONFIG_SECURED_CATEGORY, XCONFIG_SECURED_AV_REGION) &
+       0xFF00) >>
+      8);
+
+  if (av_region == X_AV_VIDEO_STANDARD::PAL_50) {
+    av_region = X_AV_VIDEO_STANDARD::PAL;
+  }
+
+  if (av_region < X_AV_VIDEO_STANDARD::NTSCM ||
+      av_region > X_AV_VIDEO_STANDARD::PAL_50) {
+    return X_AV_VIDEO_STANDARD::NTSCM;
+  }
+
+  return av_region;
+}
+
+float GetVideoRefreshRate(KernelState* kernel_state) {
+  const bool is_50Hz =
+      (kernel_state->xconfig()->ReadSetting<uint32_t>(
+           XCONFIG_SECURED_CATEGORY, XCONFIG_SECURED_AV_REGION) >>
+       23) &
+      0x1;
+
+  return !is_50Hz ? 60.0f : 50.0f;
+}
 
 // https://web.archive.org/web/20150805074003/https://www.tweakoz.com/orkid/
 // http://www.tweakoz.com/orkid/dox/d3/d52/xb360init_8cpp_source.html
@@ -205,17 +220,25 @@ void VdQueryVideoMode(X_VIDEO_MODE* video_mode,
   // TODO(benvanik): get info from actual display.
   std::memset(video_mode, 0, sizeof(X_VIDEO_MODE));
 
-  auto display_res = gpu::GraphicsSystem::GetInternalDisplayResolution();
+  // Later calculate if resolution is widescreen or not and apply flag
+  // accordingly. Technically possible resolutions should depend on av_pack, but
+  // we can ignore it.
+  const auto resolution =
+      Resolution(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          XCONFIG_USER_CATEGORY, XCONFIG_USER_AV_COMPOSITE_SCREENSZ));
 
-  video_mode->display_width = display_res.first;
-  video_mode->display_height = display_res.second;
+  const auto is_widescreen = IsWidescreen(kernel_state(), resolution);
+
+  video_mode->display_width = resolution.width_.get();
+  video_mode->display_height = resolution.height_.get();
   video_mode->is_interlaced = cvars::interlaced;
-  video_mode->is_widescreen = cvars::widescreen;
+  video_mode->is_widescreen = is_widescreen;
   video_mode->is_hi_def = video_mode->display_width >= 0x500;
-  video_mode->refresh_rate = GetVideoRefreshRate();
-  video_mode->video_standard = GetVideoStandard();
+  video_mode->refresh_rate = GetVideoRefreshRate(kernel_state());
+  video_mode->video_standard =
+      static_cast<uint32_t>(GetVideoStandard(kernel_state()));
   video_mode->pixel_rate = 0x8A;
-  video_mode->widescreen_flag = cvars::widescreen ? 0x01 : 0x03;
+  video_mode->widescreen_flag = is_widescreen ? 0x01 : 0x03;
 }
 
 void VdQueryRealVideoMode_entry(pointer_t<X_VIDEO_MODE> video_mode) {
@@ -370,7 +393,12 @@ dword_result_t VdInitializeScalerCommandBuffer_entry(
 
   uint32_t fb_x = (scaled_output_wh >> 16) & 0xFFFF;
   uint32_t fb_y = scaled_output_wh & 0xFFFF;
-  auto aspect = CalculateScaledAspectRatio(fb_x, fb_y);
+  const bool forced_widescreen =
+      kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          XCONFIG_USER_CATEGORY, XCONFIG_USER_VIDEO_FLAGS) &
+      X_VIDEO_FLAGS::Widescreen;
+
+  auto aspect = CalculateScaledAspectRatio(fb_x, fb_y, forced_widescreen);
 
   auto graphics_system = kernel_state()->emulator()->graphics_system();
   graphics_system->SetScaledAspectRatio(aspect.first, aspect.second);

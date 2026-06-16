@@ -37,6 +37,10 @@ message(STATUS "Target architecture: XE_TARGET_AARCH64=${XE_TARGET_AARCH64} XE_T
 option(XENIA_BUILD_TESTS "Build test suites" OFF)
 option(XENIA_BUILD_MISC "Build misc subprojects (trace viewers, shader compiler, vfs-dump, demos)" OFF)
 
+# Toggle profiler
+add_compile_definitions(XE_OPTION_PROFILING=0)
+add_compile_definitions(XE_OPTION_PROFILING_UI=0)
+
 if(XENIA_BUILD_TESTS)
   enable_testing()
   include(${PROJECT_SOURCE_DIR}/third_party/catch/contrib/Catch.cmake)
@@ -96,9 +100,11 @@ include_directories(SYSTEM
 add_compile_definitions(
   VULKAN_HPP_NO_TO_STRING
   IMGUI_DISABLE_DEFAULT_FONT
-  IMGUI_USE_STB_SPRINTF
   USE_CPP17  # Tabulate
 )
+
+# Prevent ASan error from ImGUI
+add_compile_definitions($<$<NOT:$<CONFIG:Checked>>:IMGUI_USE_STB_SPRINTF>)
 
 # Static library define
 add_compile_definitions(_LIB)
@@ -222,6 +228,7 @@ else()
   # C-specific warnings
   add_compile_options(
     $<$<COMPILE_LANGUAGE:C>:-Wno-implicit-function-declaration>
+    $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types>
   )
 
   if(APPLE)

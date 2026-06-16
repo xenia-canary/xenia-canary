@@ -676,7 +676,7 @@ struct X_POOL_ALLOC_HEADER {
 };
 
 uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
-                                   uint32_t tag, uint32_t zero) {
+                                   uint32_t tag, uint32_t pool_selector) {
   if (size <= 0xFD8) {
     uint32_t adjusted_size = size + sizeof(X_POOL_ALLOC_HEADER);
 
@@ -694,9 +694,9 @@ uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
 }
 
 dword_result_t ExAllocatePoolTypeWithTag_entry(dword_t size, dword_t tag,
-                                               dword_t zero,
+                                               dword_t pool_selector,
                                                const ppc_context_t& context) {
-  return xeAllocatePoolTypeWithTag(context, size, tag, zero);
+  return xeAllocatePoolTypeWithTag(context, size, tag, pool_selector);
 }
 DECLARE_XBOXKRNL_EXPORT1(ExAllocatePoolTypeWithTag, kMemory, kImplemented);
 
@@ -747,6 +747,11 @@ dword_result_t KeGetImagePageTableEntry_entry(dword_t address,
 
   if (image_heap->page_size() < 65536) {
     returned_value |= 0x40000000;
+
+    // TODO(Gliniak): Verify if 1 is set when page is marked as read-only. For
+    // now there is not enough data, but dashboard 14xxx and above requires that
+    // return from this call will have bit 0 set.
+    returned_value |= 1;
   }
 
   return returned_value & 0x400FFFFF;  // this is actually the mask it applies

@@ -22,7 +22,9 @@ namespace ppc {
 
 void PadStringBuffer(StringBuffer* str, size_t base, size_t pad) {
   size_t added_len = str->length() - base;
-  if (added_len < pad) str->AppendBytes(kSpaces, kNamePad - added_len);
+  if (added_len < pad) {
+    str->AppendBytes(kSpaces, kNamePad - added_len);
+  }
 }
 
 void PrintDisasm_bcx(const PPCDecodeData& d, StringBuffer* str) {
@@ -145,15 +147,23 @@ void PrintDisasm_bcx(const PPCDecodeData& d, StringBuffer* str) {
   if (str_start == str->length()) {
     // Default
     str->Append("bc");
-    if (d.B.LK()) str->Append('l');
-    if (d.B.AA()) str->Append('a');
+    if (d.B.LK()) {
+      str->Append('l');
+    }
+    if (d.B.AA()) {
+      str->Append('a');
+    }
     PadStringBuffer(str, str_start, kNamePad);
     str->AppendFormat("{}", bo);
     str->Append(", ");
     str->AppendFormat("{}", bi);
   } else {
-    if (d.B.LK()) str->Append('l');
-    if (d.B.AA()) str->Append('a');
+    if (d.B.LK()) {
+      str->Append('l');
+    }
+    if (d.B.AA()) {
+      str->Append('a');
+    }
 
     if (sign_char > 0) {
       str->Append('+');

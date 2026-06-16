@@ -26,53 +26,31 @@ HardwarePortal::~HardwarePortal() {
   libusb_exit(context_);
 }
 
+bool HardwarePortal::IsConnected() { return handle_ != nullptr; }
+
 void HardwarePortal::OpenDevice() {
-  if (!context_ || connected_) {
+  if (!context_ || handle_) {
     return;
   }
 
-  libusb_device** devs;
-  const ssize_t cnt = libusb_get_device_list(context_, &devs);
-  if (cnt < 0) {
-    // No device available... It might appear later.
-    return;
-  }
-
-  for (ssize_t i = 0; i < cnt; ++i) {
-    libusb_device* dev = devs[i];
-
-    libusb_device_descriptor desc;
-    if (libusb_get_device_descriptor(dev, &desc) == 0) {
-      // Check if this device matches the target Vendor ID and Product ID.
-      // Small limitation. We're only supporting one device being connected at
-      // the time.
-      for (const auto& entry : kPortalVendorProductIdList) {
-        if (desc.idVendor == entry.first && desc.idProduct == entry.second) {
-          if (libusb_open(dev, &handle_) == 0) {
-            libusb_claim_interface(handle_, 0);
-            connected_ = true;
-            // We found device. No need to go thorugh remaining IDs.
-            break;
-          }
-        }
-      }
-    }
-    // We found device. No need to go thorugh remaining devices.
-    if (connected_) {
+  // Allow only one portal device at the time.
+  for (const auto& entry : kPortalVendorProductIdList) {
+    handle_ =
+        libusb_open_device_with_vid_pid(context_, entry.first, entry.second);
+    if (handle_) {
+      libusb_claim_interface(handle_, 0);
       break;
     }
   }
-  libusb_free_device_list(devs, 0);
 }
 
 void HardwarePortal::CloseDevice() {
-  if (!connected_) {
+  if (!handle_) {
     return;
   }
 
   libusb_release_interface(handle_, 0);
   libusb_close(handle_);
-  connected_ = false;
   handle_ = nullptr;
 }
 

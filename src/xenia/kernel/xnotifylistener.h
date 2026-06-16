@@ -48,9 +48,10 @@ class XNotifyListener : public XObject {
   ~XNotifyListener() override;
 
   uint64_t mask() const { return mask_; }
+  uint32_t is_system() const { return is_system_; }
   uint32_t max_version() const { return max_version_; }
 
-  void Initialize(uint64_t mask, uint32_t max_version);
+  void Initialize(uint64_t mask, uint32_t is_system, uint32_t max_version);
 
   void EnqueueNotification(XNotificationID id, uint32_t data);
   bool DequeueNotification(XNotificationID* out_id, uint32_t* out_data);
@@ -70,6 +71,7 @@ class XNotifyListener : public XObject {
   xe::global_critical_region global_critical_region_;
   std::vector<std::pair<XNotificationID, uint32_t>> notifications_;
   uint64_t mask_ = 0;
+  uint32_t is_system_ = 0;
   uint32_t max_version_ = 0;
 };
 

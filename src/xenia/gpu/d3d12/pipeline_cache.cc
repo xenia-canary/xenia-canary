@@ -556,6 +556,37 @@ bool PipelineCache::IsCreatingPipelines() {
   return !creation_queue_.empty() || creation_threads_busy_ != 0;
 }
 
+void PipelineCache::AwaitPipelineCompletion() {
+  if (creation_threads_.empty()) {
+    return;
+  }
+
+  bool await_creation_completion_event;
+  {
+    std::lock_guard<xe_mutex> lock(creation_request_lock_);
+    await_creation_completion_event =
+        !creation_queue_.empty() || creation_threads_busy_ != 0;
+    if (await_creation_completion_event) {
+      creation_completion_event_->Reset();
+      creation_completion_set_event_ = true;
+    }
+  }
+
+  if (await_creation_completion_event) {
+    creation_request_cond_.notify_one();
+    xe::threading::Wait(creation_completion_event_.get(), false);
+  }
+}
+
+ID3D12PipelineState* PipelineCache::AwaitD3D12PipelineByHandle(void* handle) {
+  ID3D12PipelineState* pipeline = GetD3D12PipelineByHandle(handle);
+  if (pipeline != nullptr) {
+    return pipeline;
+  }
+  AwaitPipelineCompletion();
+  return GetD3D12PipelineByHandle(handle);
+}
+
 D3D12Shader* PipelineCache::LoadShader(xenos::ShaderType shader_type,
                                        const uint32_t* host_address,
                                        uint32_t dword_count) {
@@ -1141,9 +1172,15 @@ void PipelineCache::TranslateShadersForStorage(
       }
     }
 
-    if (dxc_compiler) dxc_compiler->Release();
-    if (dxc_utils) dxc_utils->Release();
-    if (dxbc_converter) dxbc_converter->Release();
+    if (dxc_compiler) {
+      dxc_compiler->Release();
+    }
+    if (dxc_utils) {
+      dxc_utils->Release();
+    }
+    if (dxbc_converter) {
+      dxbc_converter->Release();
+    }
   };
 
   size_t logical_processor_count = xe::threading::logical_processor_count();
@@ -3260,9 +3297,15 @@ void PipelineCache::CreationThread(size_t thread_index) {
         }
         if (thread_index >= creation_threads_shutdown_from_) {
           // Cleanup thread-local resources.
-          if (dxc_compiler) dxc_compiler->Release();
-          if (dxc_utils) dxc_utils->Release();
-          if (dxbc_converter) dxbc_converter->Release();
+          if (dxc_compiler) {
+            dxc_compiler->Release();
+          }
+          if (dxc_utils) {
+            dxc_utils->Release();
+          }
+          if (dxbc_converter) {
+            dxbc_converter->Release();
+          }
           return;
         }
         creation_request_cond_.wait(lock);

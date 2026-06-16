@@ -14,6 +14,7 @@
 #endif
 
 #include "xenia/base/byte_stream.h"
+#include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
@@ -24,8 +25,9 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 
-DEFINE_bool(ignore_thread_priorities, true,
+DEFINE_bool(ignore_thread_priorities, false,
             "Ignores game-specified thread priorities.", "Kernel");
+UPDATE_from_bool(ignore_thread_priorities, 2026, 4, 9, 12, true);
 DEFINE_bool(ignore_thread_affinities, true,
             "Ignores game-specified thread affinities.", "Kernel");
 
@@ -155,13 +157,17 @@ static uint8_t next_cpu = 0;
 static uint8_t GetFakeCpuNumber(uint8_t proc_mask) {
   // NOTE: proc_mask is logical processors, not physical processors or cores.
   if (!proc_mask) {
-    next_cpu = (next_cpu + 1) % 6;
-    return next_cpu;  // is this reasonable?
-    // TODO(Triang3l): Does the following apply here?
+    // On Xbox 360, threads without an explicit processor assignment stay on
+    // the same hardware thread as the parent.  Preserve this so that the
+    // guest CPU assignment reflects the game's intent — parent-child thread
+    // pairs that share a HW thread may rely on implicit serialization.
     // https://docs.microsoft.com/en-us/windows/win32/dxtecharts/coding-for-multiple-cores
-    // "On Xbox 360, you must explicitly assign software threads to a particular
-    //  hardware thread by using XSetThreadProcessor. Otherwise, all child
-    //  threads will stay on the same hardware thread as the parent."
+    XThread* parent = current_xthread_tls_;
+    if (parent) {
+      return parent->active_cpu();
+    }
+    next_cpu = (next_cpu + 1) % 6;
+    return next_cpu;
   }
   assert_false(proc_mask & 0xC0);
 
@@ -174,26 +180,30 @@ static uint8_t GetFakeCpuNumber(uint8_t proc_mask) {
 void XThread::InitializeGuestObject() {
   auto guest_thread = guest_object<X_KTHREAD>();
   auto thread_guest_ptr = guest_object();
-  guest_thread->header.type = 6;
+  guest_thread->header.type = X_DISPATCHER_FLAGS::DISPATCHER_THREAD;
   guest_thread->suspend_count =
       (creation_params_.creation_flags & X_CREATE_SUSPENDED) ? 1 : 0;
 
-  guest_thread->unk_10 = (thread_guest_ptr + 0x10);
-  guest_thread->unk_14 = (thread_guest_ptr + 0x10);
+  guest_thread->mutants_list.flink_ptr = (thread_guest_ptr + 0x10);
+  guest_thread->mutants_list.blink_ptr = (thread_guest_ptr + 0x10);
+
+  auto timer_wait_header_list_entry = memory()->HostToGuestVirtual(
+      &guest_thread->wait_timeout_timer.header.wait_list);
   guest_thread->wait_timeout_block.wait_list_entry.flink_ptr =
-      thread_guest_ptr + 0x20;
+      timer_wait_header_list_entry;
   guest_thread->wait_timeout_block.wait_list_entry.blink_ptr =
-      thread_guest_ptr + 0x20;
+      timer_wait_header_list_entry;
   guest_thread->wait_timeout_block.thread = thread_guest_ptr;
-  uint32_t v6 = thread_guest_ptr + 0x18;
-  guest_thread->wait_timeout_block.wait_result_xstatus = 0x0100;
-  guest_thread->wait_timeout_block.wait_type = 0x0201;
-  guest_thread->wait_timeout_block.object = v6;
+  guest_thread->wait_timeout_block.object =
+      memory()->HostToGuestVirtual(&guest_thread->wait_timeout_timer);
+  guest_thread->wait_timeout_block.wait_result_xstatus = X_STATUS_TIMEOUT;
+  guest_thread->wait_timeout_block.wait_type = X_KWAIT_REASON::WaitAny;
+
   guest_thread->stack_base = (this->stack_base_);
   guest_thread->stack_limit = (this->stack_limit_);
   guest_thread->stack_kernel = (this->stack_base_ - 240);
   guest_thread->tls_address = (this->tls_dynamic_address_);
-  guest_thread->thread_state = 0;
+  guest_thread->thread_state = KTHREAD_STATE_INITIALIZED;
   uint32_t process_info_block_address =
       creation_params_.guest_process ? creation_params_.guest_process
                                      : this->kernel_state_->GetTitleProcess();
@@ -207,6 +217,19 @@ void XThread::InitializeGuestObject() {
   guest_thread->process_type = process_type;
   guest_thread->apc_lists[0].Initialize(memory());
   guest_thread->apc_lists[1].Initialize(memory());
+
+  guest_thread->process_priority_class = process->process_priority_class;
+  auto base_prio = process->default_thread_priority;
+  guest_thread->base_priority_copy = base_prio;
+  guest_thread->base_priority = base_prio;
+  guest_thread->priority = base_prio;
+  guest_thread->max_dynamic_priority = process->max_dynamic_priority;
+  guest_thread->quantum = process->quantum;
+
+  // Sync the host-side priority tracking to match the guest defaults.
+  // Games may later override these via KeSetPriorityThread.
+  priority_ = base_prio;
+  base_priority_ = base_prio;
 
   guest_thread->a_prcb_ptr = kpcrb;
   guest_thread->another_prcb_ptr = kpcrb;
@@ -225,7 +248,8 @@ void XThread::InitializeGuestObject() {
   guest_thread->last_error = 0;
   guest_thread->unk_154.blink_ptr = v9 + 340;
   guest_thread->creation_flags = this->creation_params_.creation_flags;
-  guest_thread->unk_17C = 1;
+  // According to nukernel.
+  // guest_thread->host_xthread_stash = reinterpret_cast<void*>(this);
 
   /*
    * not doing this right at all! we're not using our threads context, because
@@ -666,26 +690,135 @@ void XThread::RundownAPCs() {
 
 int32_t XThread::QueryPriority() { return thread_->priority(); }
 
-void XThread::SetPriority(int32_t increment) {
-  if (is_guest_thread()) {
-    guest_object<X_KTHREAD>()->priority = static_cast<uint8_t>(increment);
-  }
-  priority_ = increment;
-  int32_t target_priority = 0;
-  if (increment > 0x22) {
-    target_priority = xe::threading::ThreadPriority::kHighest;
-  } else if (increment > 0x11) {
-    target_priority = xe::threading::ThreadPriority::kAboveNormal;
-  } else if (increment < -0x22) {
-    target_priority = xe::threading::ThreadPriority::kLowest;
-  } else if (increment < -0x11) {
-    target_priority = xe::threading::ThreadPriority::kBelowNormal;
+// Map Xenon's 0-31 priority range across the available host priority levels.
+// Priority 18 (0x12) is the Xenon real-time threshold — threads at or above
+// it don't get quantum decay on real hardware.
+static int32_t GuestPriorityToHost(int32_t guest_priority) {
+  if (guest_priority >= 24) {
+    return xe::threading::ThreadPriority::kHighest;
+  } else if (guest_priority >= 17) {
+    return xe::threading::ThreadPriority::kAboveNormal;
+  } else if (guest_priority >= 10) {
+    return xe::threading::ThreadPriority::kNormal;
+  } else if (guest_priority >= 5) {
+    return xe::threading::ThreadPriority::kBelowNormal;
   } else {
-    target_priority = xe::threading::ThreadPriority::kNormal;
+    return xe::threading::ThreadPriority::kLowest;
   }
+}
+
+void XThread::SetPriority(int32_t increment) {
+  // Clamp to valid Xenon priority range.  Negative values can arrive via
+  // KeSetBasePriorityThread (signed offset from process base).
+  int32_t clamped = std::max(increment, 0);
+  if (is_guest_thread()) {
+    guest_object<X_KTHREAD>()->priority = static_cast<uint8_t>(clamped);
+  }
+  priority_ = clamped;
+  base_priority_ = clamped;
+  quantum_start_ms_ = Clock::QueryHostUptimeMillis();
   if (!cvars::ignore_thread_priorities) {
-    thread_->set_priority(target_priority);
+    thread_->set_priority(GuestPriorityToHost(clamped));
   }
+}
+
+void XThread::CheckQuantumAndDecay() {
+  if (cvars::ignore_thread_priorities) {
+    return;
+  }
+  // Real-time threads (current priority >= 0x12) don't decay on Xenon.
+  if (priority_ >= 18) {
+    return;
+  }
+
+  uint64_t now = Clock::QueryHostUptimeMillis();
+  uint64_t elapsed = now - quantum_start_ms_;
+  // On Xenon, the clock interrupt fires every ~1ms and decrements the
+  // thread's quantum by 3.  The process quantum is 60, so it takes ~20ms
+  // for quantum to expire.  When it does, the scheduler decays the
+  // effective priority by exactly 1 and resets quantum.  We approximate
+  // this by decaying 1 priority level per 20ms of elapsed wall-clock time.
+  constexpr uint64_t kQuantumPeriodMs = 20;
+  if (elapsed < kQuantumPeriodMs) {
+    return;
+  }
+
+  int32_t decay_steps = static_cast<int32_t>(elapsed / kQuantumPeriodMs);
+  // On the first decay step, drain the accumulated priority boost as well.
+  // The real kernel computes: new_prio = priority - boost_accumulator - 1
+  // then zeroes the accumulator.  Additional decay steps (if the timer
+  // callback was late) each subtract 1 more.
+  int32_t total_decay = boost_amount_ + decay_steps;
+  boost_amount_ = 0;
+
+  int32_t new_priority = priority_ - total_decay;
+  if (new_priority < base_priority_) {
+    new_priority = base_priority_;
+  }
+  if (new_priority != priority_) {
+    priority_ = new_priority;
+    if (is_guest_thread()) {
+      guest_object<X_KTHREAD>()->priority = static_cast<uint8_t>(new_priority);
+    }
+    thread_->set_priority(GuestPriorityToHost(new_priority));
+  }
+  quantum_start_ms_ = now;
+}
+
+void XThread::BoostOnWake(int32_t increment) {
+  if (cvars::ignore_thread_priorities) {
+    return;
+  }
+
+  // Real-time threads (priority >= 0x12) just get their quantum reset.
+  if (priority_ >= 18) {
+    boost_amount_ = 0;
+    quantum_start_ms_ = Clock::QueryHostUptimeMillis();
+    return;
+  }
+
+  // Match the real kernel (xeEnqueueThreadPostWait):
+  //   - Only apply boost if there is no pending decay (priority_decrement == 0)
+  //     AND boost is not disabled on this thread.
+  //   - Boosted priority = base + increment, clamped to max_priority_cap.
+  //   - Only boost UP — never lower priority below its current value.
+  bool apply_boost = false;
+  if (increment > 0 && is_guest_thread()) {
+    auto* kthread = guest_object<X_KTHREAD>();
+    if (kthread->priority_decrement == 0 && !kthread->boost_disabled) {
+      apply_boost = true;
+    }
+  } else if (increment > 0) {
+    // Host threads (non-guest): apply boost unconditionally.
+    apply_boost = true;
+  }
+
+  if (apply_boost) {
+    int32_t boosted = base_priority_ + increment;
+    // Clamp to the per-thread max dynamic priority cap.
+    // For title threads this is 17 (just below real-time threshold).
+    int32_t max_cap = 17;
+    if (is_guest_thread()) {
+      uint8_t guest_cap = guest_object<X_KTHREAD>()->max_dynamic_priority;
+      if (guest_cap > 0) {
+        max_cap = guest_cap;
+      }
+    }
+    if (boosted > max_cap) {
+      boosted = max_cap;
+    }
+    // Only boost UP, never lower.
+    if (boosted > priority_) {
+      priority_ = boosted;
+      boost_amount_ = priority_ - base_priority_;
+      if (is_guest_thread()) {
+        guest_object<X_KTHREAD>()->priority = static_cast<uint8_t>(priority_);
+      }
+      thread_->set_priority(GuestPriorityToHost(priority_));
+    }
+  }
+
+  quantum_start_ms_ = Clock::QueryHostUptimeMillis();
 }
 
 void XThread::SetAffinity(uint32_t affinity) {

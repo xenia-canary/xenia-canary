@@ -19,8 +19,12 @@ using xe::cpu::ppc::PPCContext;
 
 // Helper for floating-point comparison with epsilon
 static bool ApproxEqual(double a, double b, double epsilon = 1e-6) {
-  if (std::isnan(a) && std::isnan(b)) return true;
-  if (std::isinf(a) && std::isinf(b)) return (a > 0) == (b > 0);
+  if (std::isnan(a) && std::isnan(b)) {
+    return true;
+  }
+  if (std::isinf(a) && std::isinf(b)) {
+    return (a > 0) == (b > 0);
+  }
   return std::abs(a - b) <= epsilon * std::max(std::abs(a), std::abs(b));
 }
 

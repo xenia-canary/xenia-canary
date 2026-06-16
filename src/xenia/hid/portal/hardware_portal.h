@@ -28,6 +28,8 @@ class HardwarePortal final : public Portal {
   HardwarePortal();
   ~HardwarePortal() override;
 
+  virtual bool IsConnected() override;
+
   virtual void OnDeviceArrival() override;
   virtual void OnDeviceRemoval() override;
 

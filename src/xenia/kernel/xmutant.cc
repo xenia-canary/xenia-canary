@@ -45,6 +45,8 @@ X_STATUS XMutant::ReleaseMutant(uint32_t priority_increment, bool abandon,
     owning_thread_ = nullptr;
   }
 
+  set_priority_increment(priority_increment);
+
   // TODO(benvanik): abandoning.
   assert_false(abandon);
   if (mutant_->Release()) {

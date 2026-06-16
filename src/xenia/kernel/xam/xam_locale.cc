@@ -12,12 +12,14 @@
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/util/xfiletime.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
-DECLARE_int32(user_country);
+#include "third_party/fmt/include/fmt/format.h"
+#include "third_party/fmt/include/fmt/xchar.h"
 
 // TODO(gibbed): put these forward decls in a header somewhere.
 
@@ -201,17 +203,14 @@ uint8_t xeXamGetLocaleFromCountry(uint8_t id) {
 // Helpers.
 
 uint8_t xeXamGetLocaleEx(uint8_t max_country_id, uint8_t max_locale_id) {
-  // TODO(gibbed): rework when XConfig is cleanly implemented.
-  uint8_t country_id = static_cast<uint8_t>(cvars::user_country);
-  /*if (XSUCCEEDED(xboxkrnl::xeExGetXConfigSetting(
-          3, 14, &country_id, sizeof(country_id), nullptr))) {*/
+  uint8_t country_id = kernel_state()->xconfig()->ReadSetting<uint8_t>(
+      XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
   if (country_id <= max_country_id) {
     uint8_t locale_id = xeXamGetLocaleFromCountry(country_id);
     if (locale_id <= max_locale_id) {
       return locale_id;
     }
   }
-  /*}*/
 
   // couldn't find locale, fallback from game region.
   auto game_region = xeXGetGameRegion();
@@ -333,6 +332,37 @@ dword_result_t XamGetLanguageLocaleString_entry(dword_t language_id,
 }
 DECLARE_XAM_EXPORT1(XamGetLanguageLocaleString, kLocale, kImplemented);
 
+void XamGetOnlineLanguageAndCountry_entry(qword_t xuid,
+                                          dword_t language_result_buffer,
+                                          dword_t country_result_buffer) {
+  const auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  if (country_result_buffer) {
+    uint8_t* country_buffer =
+        kernel_memory()->TranslateVirtual<uint8_t*>(country_result_buffer);
+
+    const uint8_t country_id =
+        user ? user->GetCountry()
+             : kernel_state()->xconfig()->ReadSetting<uint8_t>(
+                   XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
+
+    *country_buffer = country_id;
+  }
+
+  if (language_result_buffer) {
+    uint8_t* language_buffer =
+        kernel_memory()->TranslateVirtual<uint8_t*>(language_result_buffer);
+
+    const uint32_t desired_language =
+        user ? user->GetLanguage()
+             : kernel_state()->xconfig()->ReadSetting<uint32_t>(
+                   XCONFIG_USER_CATEGORY,
+                   XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE);
+
+    *language_buffer = static_cast<uint8_t>(desired_language);
+  }
+}
+DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountry, kLocale, kImplemented);
+
 dword_result_t XamGetOnlineLanguageAndCountryString_entry(
     dword_t language_id, dword_t country_id, dword_t buffer_length,
     lpu16string_t buffer) {
@@ -452,6 +482,173 @@ dword_result_t XamGetLocaleDateFormat_entry(dword_t locale) {
 }
 
 DECLARE_XAM_EXPORT1(XamGetLocaleDateFormat, kLocale, kImplemented);
+
+void XFormatDateString(uint64_t filetime, uint32_t buffer_address,
+                       uint32_t buffer_size) {
+  auto buffer = kernel_memory()->TranslateVirtual<char16_t*>(buffer_address);
+
+  auto tp = xe::chrono::WinSystemClock::to_sys(
+      xe::chrono::WinSystemClock::from_file_time(filetime));
+  auto dp = date::floor<date::days>(tp);
+  auto year_month_day = date::year_month_day{dp};
+
+  auto str = fmt::format(u"{:02d}/{:02d}/{}",
+                         static_cast<unsigned>(year_month_day.month()),
+                         static_cast<unsigned>(year_month_day.day()),
+                         static_cast<int>(year_month_day.year()));
+  xe::string_util::copy_and_swap_truncating(buffer, str, buffer_size);
+}
+
+void XamFormatDateString_entry(dword_t locale_format, qword_t filetime,
+                               lpvoid_t output_buffer, dword_t output_count,
+                               const ppc_context_t& ctx) {
+  // There is a different definition between dashboards.
+  // New dashboards do not have first param and everyting is shifted.
+  if (X_FILETIME(filetime).is_valid()) {
+    XFormatDateString(filetime, output_buffer.guest_address(), output_count);
+  } else {
+    XFormatDateString(ctx->r[3], ctx->r[4], ctx->r[5]);
+  }
+}
+DECLARE_XAM_EXPORT1(XamFormatDateString, kNone, kImplemented);
+
+void XFormatTimeString(uint64_t filetime, uint32_t buffer_address,
+                       uint32_t buffer_size) {
+  auto buffer = kernel_memory()->TranslateVirtual<char16_t*>(buffer_address);
+
+  auto tp = xe::chrono::WinSystemClock::to_sys(
+      xe::chrono::WinSystemClock::from_file_time(filetime));
+  auto dp = date::floor<date::days>(tp);
+  auto time = date::hh_mm_ss{date::floor<std::chrono::milliseconds>(tp - dp)};
+
+  auto str = fmt::format(u"{:02d}:{:02d}", time.hours().count(),
+                         time.minutes().count());
+  xe::string_util::copy_and_swap_truncating(buffer, str, buffer_size);
+}
+
+void XamFormatTimeString_entry(dword_t user_index, qword_t filetime,
+                               lpvoid_t output_buffer, dword_t output_count,
+                               const ppc_context_t& ctx) {
+  // There is a different definition between dashboards.
+  // New dashboards do not have first param and everyting is shifted.
+  if (X_FILETIME(filetime).is_valid()) {
+    XFormatTimeString(filetime, output_buffer.guest_address(), output_count);
+  } else {
+    XFormatTimeString(ctx->r[3], ctx->r[4], ctx->r[5]);
+  }
+}
+DECLARE_XAM_EXPORT1(XamFormatTimeString, kNone, kImplemented);
+
+uint32_t xeXGetGameRegion() {
+  static uint32_t constexpr table[] = {
+      0xFFFFu, 0x03FFu, 0x02FEu, 0x02FEu, 0x03FFu, 0x02FEu, 0x0201u, 0x03FFu,
+      0x02FEu, 0x02FEu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x02FEu, 0x03FFu,
+      0x00FFu, 0xFFFFu, 0x02FEu, 0x03FFu, 0x0102u, 0x03FFu, 0x03FFu, 0x02FEu,
+      0x02FEu, 0x02FEu, 0x03FFu, 0x03FFu, 0x03FFu, 0x02FEu, 0x03FFu, 0x02FEu,
+      0x02FEu, 0x02FEu, 0x02FEu, 0x02FEu, 0x02FEu, 0x02FEu, 0x03FFu, 0x03FFu,
+      0x03FFu, 0x02FEu, 0x02FEu, 0x03FFu, 0x02FEu, 0x02FEu, 0x03FFu, 0x03FFu,
+      0x03FFu, 0x02FEu, 0x02FEu, 0x03FFu, 0x03FFu, 0x0101u, 0x03FFu, 0x03FFu,
+      0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x02FEu, 0x02FEu, 0x02FEu, 0x02FEu,
+      0x03FFu, 0x03FFu, 0x02FEu, 0x02FEu, 0x03FFu, 0x0102u, 0x03FFu, 0x00FFu,
+      0x03FFu, 0x03FFu, 0x02FEu, 0x02FEu, 0x0201u, 0x03FFu, 0x03FFu, 0x03FFu,
+      0x03FFu, 0x03FFu, 0x02FEu, 0x03FFu, 0x02FEu, 0x03FFu, 0x03FFu, 0x02FEu,
+      0x02FEu, 0x03FFu, 0x02FEu, 0x03FFu, 0x02FEu, 0x02FEu, 0xFFFFu, 0x03FFu,
+      0x03FFu, 0x03FFu, 0x03FFu, 0x02FEu, 0x03FFu, 0x03FFu, 0x02FEu, 0x00FFu,
+      0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu, 0x03FFu};
+  auto country = kernel_state()->xconfig()->ReadSetting<uint8_t>(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY);
+  return country < xe::countof(table) ? table[country] : 0xFFFFu;
+}
+
+dword_result_t XGetGameRegion_entry() { return xeXGetGameRegion(); }
+DECLARE_XAM_EXPORT1(XGetGameRegion, kNone, kStub);
+
+XLanguage xeGetLanguage(bool extended_languages_support) {
+  auto desired_language =
+      static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          XCONFIG_USER_CATEGORY,
+          XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE));
+
+  uint32_t region = xeXGetGameRegion();
+  auto max_languages = extended_languages_support
+                           ? XLanguage::kMaxLanguages
+                           : XLanguage::kMaxBaseLanguages;
+  if (desired_language < max_languages) {
+    return desired_language;
+  }
+  if ((region & 0xff00) != 0x100) {
+    return XLanguage::kEnglish;
+  }
+  switch (region) {
+    case 0x101:  // NTSC-J (Japan)
+      return XLanguage::kJapanese;
+    case 0x102:  // NTSC-J (China)
+      return extended_languages_support ? XLanguage::kSChinese
+                                        : XLanguage::kEnglish;
+    default:
+      return XLanguage::kKorean;
+  }
+}
+
+dword_result_t XGetLanguage_entry() {
+  return static_cast<uint32_t>(xeGetLanguage(false));
+}
+DECLARE_XAM_EXPORT1(XGetLanguage, kNone, kImplemented);
+
+dword_result_t XamGetLanguage_entry() {
+  return static_cast<uint32_t>(xeGetLanguage(true));
+}
+DECLARE_XAM_EXPORT1(XamGetLanguage, kNone, kImplemented);
+
+pointer_result_t XamGetLanguageLocaleFallbackString_entry(dword_t language) {
+  assert_false(language >= static_cast<uint32_t>(XLanguage::kMaxLanguages));
+  return kernel_state()->xam_state()->GetLanguageFallbackAddress(language);
+}
+DECLARE_XAM_EXPORT1(XamGetLanguageLocaleFallbackString, kNone, kImplemented);
+
+dword_result_t XamGetLanguageTypeface_entry(dword_t language,
+                                            dword_t buffer_size,
+                                            dword_t buffer) {
+  std::u16string path{};
+
+  if (language == static_cast<uint32_t>(XLanguage::kSChinese)) {
+    path = u"file://media:/XenonSCLatin.xtt";
+  } else if (language == static_cast<uint32_t>(XLanguage::kTChinese)) {
+    path = u"file://media:/XenonCLatin.xtt";
+  } else {
+    path = u"file://media:/XenonJKLatin.xtt";
+  }
+  xe::string_util::copy_and_swap_truncating(
+      kernel_state()->memory()->TranslateVirtual<char16_t*>(buffer), path,
+      path.size() + 1);
+
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetLanguageTypeface, kNone, kImplemented);
+
+pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kStub);
+
+dword_result_t XamGetCountry_entry() {
+  return kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY);
+}
+DECLARE_XAM_EXPORT1(XamGetCountry, kNone, kSketchy);
+
+dword_result_t XamSetCountry_entry(dword_t country) {
+  const uint8_t country_real = country;
+
+  kernel_state()->xconfig()->WriteSetting(
+      XCONFIG_USER_CATEGORY,
+      XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY, &country_real);
+
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamSetCountry, kNone, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

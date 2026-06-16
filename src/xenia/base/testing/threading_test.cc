@@ -100,7 +100,9 @@ TEST_CASE("Fence") {
 
   pFence->Signal();
 
-  for (auto& t : threads) t.join();
+  for (auto& t : threads) {
+    t.join();
+  }
   REQUIRE(finished.load() == threads.size());
 }  // namespace test
 

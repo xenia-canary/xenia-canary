@@ -124,7 +124,7 @@ bool GTKWindow::OpenImpl() {
     gtk_widget_get_allocation(drawing_area_, &drawing_area_allocation);
     OnActualSizeUpdate(uint32_t(drawing_area_allocation.width),
                        uint32_t(drawing_area_allocation.height),
-                       destruction_receiver);
+                       WindowResizeAction::kManual, destruction_receiver);
     if (destruction_receiver.IsWindowDestroyedOrClosed()) {
       return true;
     }
@@ -311,7 +311,7 @@ void GTKWindow::HandleSizeUpdate(
   gtk_widget_get_allocation(drawing_area_, &drawing_area_allocation);
   OnActualSizeUpdate(uint32_t(drawing_area_allocation.width),
                      uint32_t(drawing_area_allocation.height),
-                     destruction_receiver);
+                     WindowResizeAction::kManual, destruction_receiver);
   if (destruction_receiver.IsWindowDestroyedOrClosed()) {
     return;
   }

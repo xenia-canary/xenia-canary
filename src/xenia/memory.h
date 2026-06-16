@@ -11,6 +11,7 @@
 #define XENIA_MEMORY_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -210,6 +211,15 @@ class BaseHeap {
                   uint32_t heap_base, uint32_t heap_size, uint32_t page_size,
                   uint32_t host_address_offset = 0);
 
+  // Rebuilds free_blocks_ by scanning page_table_. Used after Restore.
+  void RebuildFreeBlocks();
+
+  // Removes (or splits) the free block covering the given page range.
+  void RemoveFreeBlock(uint32_t start_page, uint32_t page_count);
+
+  // Inserts a free block and coalesces with adjacent free blocks.
+  void InsertFreeBlock(uint32_t start_page, uint32_t page_count);
+
   Memory* memory_;
   uint8_t* membase_;
   HeapType heap_type_;
@@ -221,6 +231,10 @@ class BaseHeap {
   uint32_t unreserved_page_count_;
   xe::global_critical_region global_critical_region_;
   std::vector<PageEntry> page_table_;
+
+  // Auxiliary free block tracker: maps start_page -> count of contiguous free
+  // pages. Kept in sync with page_table_ mutations. Not serialized.
+  std::map<uint32_t, uint32_t> free_blocks_;
 };
 
 // Normal heap allowing allocations from guest virtual address ranges.

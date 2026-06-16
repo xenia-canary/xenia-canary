@@ -20,12 +20,13 @@
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window_listener.h"
 
-#if XE_PLATFORM_WIN32 && 0
-#define XE_OPTION_PROFILING 1
-#define XE_OPTION_PROFILING_UI 1
-#else
+#ifndef XE_OPTION_PROFILING
 #define XE_OPTION_PROFILING 0
-#endif  // XE_PLATFORM_WIN32
+#endif
+
+#ifndef XE_OPTION_PROFILING_UI
+#define XE_OPTION_PROFILING_UI 0
+#endif
 
 #if XE_OPTION_PROFILING
 // Pollutes the global namespace. Yuck.

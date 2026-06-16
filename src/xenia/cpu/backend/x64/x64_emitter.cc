@@ -865,12 +865,13 @@ void X64Emitter::SetReturnAddress(uint64_t value) {
 }
 
 Xbyak::Reg64 X64Emitter::GetNativeParam(uint32_t param) {
-  if (param == 0)
+  if (param == 0) {
     return rdx;
-  else if (param == 1)
+  } else if (param == 1) {
     return r8;
-  else if (param == 2)
+  } else if (param == 2) {
     return r9;
+  }
 
   assert_always();
   return r9;

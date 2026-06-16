@@ -1156,18 +1156,6 @@ int InstrEmit_dcbtst(PPCHIRBuilder& f, const InstrData& i) {
   return 0;
 }
 
-int InstrEmit_dcbz(PPCHIRBuilder& f, const InstrData& i) {
-  // EA <- (RA) + (RB)
-  // memset(EA & ~31, 0, 32)
-  Value* ea = CalculateEA_0(f, i.X.RA, i.X.RB);
-  // dcbz - 32 byte set
-  int block_size = 32;
-  int address_mask = ~31;
-  f.Memset(f.And(ea, f.LoadConstantInt64(address_mask)), f.LoadZeroInt8(),
-           f.LoadConstantInt64(block_size));
-  return 0;
-}
-
 int InstrEmit_dcbz128(PPCHIRBuilder& f, const InstrData& i) {
   // EA <- (RA) + (RB)
   // memset(EA & ~31, 0, 32)
@@ -1178,6 +1166,14 @@ int InstrEmit_dcbz128(PPCHIRBuilder& f, const InstrData& i) {
   f.Memset(f.And(ea, f.LoadConstantInt64(address_mask)), f.LoadZeroInt8(),
            f.LoadConstantInt64(block_size));
   return 0;
+}
+
+int InstrEmit_dcbz(PPCHIRBuilder& f, const InstrData& i) {
+  // EA <- (RA) + (RB)
+  // memset(EA & ~31, 0, 32)
+  // On Xbox360 there is no short cache line. Normal dcbz always clears 128
+  // bytes.
+  return InstrEmit_dcbz128(f, i);
 }
 
 int InstrEmit_icbi(PPCHIRBuilder& f, const InstrData& i) {
