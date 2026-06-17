@@ -554,35 +554,36 @@ void RegisterVideoExports(xe::cpu::ExportResolver* export_resolver,
                           KernelState* kernel_state) {
   auto memory = kernel_state->memory();
 
+  // Allocate single page that stores all pointers instead of separate pages.
+  const uint32_t baseAllocation =
+      memory->SystemHeapAlloc(40, 32, kSystemHeapPhysical);  // 40 bytes
+
   // VdGlobalDevice (4b)
   // Pointer to a global D3D device. Games only seem to set this, so we don't
   // have to do anything. We may want to read it back later, though.
-  uint32_t pVdGlobalDevice =
-      memory->SystemHeapAlloc(4, 32, kSystemHeapPhysical);
+  const uint32_t pVdGlobalDevice = 0x801E6FC4;
   export_resolver->SetVariableMapping("xboxkrnl.exe", ordinals::VdGlobalDevice,
                                       pVdGlobalDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice), 0);
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice),
+                               baseAllocation);
 
   // VdGlobalXamDevice (4b)
   // Pointer to the XAM D3D device, which we don't have.
-  uint32_t pVdGlobalXamDevice =
-      memory->SystemHeapAlloc(4, 32, kSystemHeapPhysical);
+  const uint32_t pVdGlobalXamDevice = 0x801E6FC8;
   export_resolver->SetVariableMapping(
       "xboxkrnl.exe", ordinals::VdGlobalXamDevice, pVdGlobalXamDevice);
   xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalXamDevice), 0);
 
   // VdGpuClockInMHz (4b)
   // GPU clock. Xenos is 500MHz. Hope nothing is relying on this timing...
-  uint32_t pVdGpuClockInMHz =
-      memory->SystemHeapAlloc(4, 32, kSystemHeapPhysical);
+  const uint32_t pVdGpuClockInMHz = 0x801D0E94;
   export_resolver->SetVariableMapping("xboxkrnl.exe", ordinals::VdGpuClockInMHz,
                                       pVdGpuClockInMHz);
   xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGpuClockInMHz), 500);
 
   // VdHSIOCalibrationLock (28b)
   // CriticalSection.
-  uint32_t pVdHSIOCalibrationLock =
-      memory->SystemHeapAlloc(28, 32, kSystemHeapPhysical);
+  const uint32_t pVdHSIOCalibrationLock = 0x801D1210;
   export_resolver->SetVariableMapping(
       "xboxkrnl.exe", ordinals::VdHSIOCalibrationLock, pVdHSIOCalibrationLock);
   auto hsio_lock =
