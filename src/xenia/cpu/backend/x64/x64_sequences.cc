@@ -386,7 +386,25 @@ struct CONVERT_F32_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     // TODO(benvanik): saturation check? cvtt* (trunc?)
-    e.vcvtsd2ss(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+
+    Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vmovq(e.rax, src);
+    e.vcvtsd2ss(i.dest, src);
+    Xbyak::Label done;
+    e.mov(e.rcx, e.rax);
+    e.btr(e.rcx, 63);
+    e.mov(e.rdx, e.GetXmmConstPtr(XMMDoubleInf));
+    e.cmp(e.rcx, e.rdx);
+    e.jbe(done);  // finite or +/-inf
+
+    // NaN: float quiet bit (22) -> double quiet bit (51)
+    e.vmovd(e.ecx, i.dest);
+    e.and_(e.ecx, ~(1u << 22));
+    e.shr(e.rax, 51 - 22);
+    e.and_(e.eax, 1u << 22);
+    e.or_(e.ecx, e.eax);
+    e.vmovd(i.dest, e.ecx);
+    e.L(done);
   }
 };
 struct CONVERT_F64_I64
@@ -407,7 +425,26 @@ struct CONVERT_F64_F32
     : Sequence<CONVERT_F64_F32, I<OPCODE_CONVERT, F64Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    e.vcvtss2sd(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
+
+    e.vmovd(e.eax, src);
+    e.vcvtss2sd(i.dest, src);
+
+    Xbyak::Label done;
+    e.mov(e.ecx, e.eax);
+    e.and_(e.ecx, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.cmp(e.ecx, e.GetXmmConstPtr(XMMFloatInf));
+    e.jbe(done);
+
+    // NaN: double quiet bit (51) -> float quiet bit (22)
+    e.vmovq(e.rcx, i.dest);
+    e.btr(e.rcx, 51);  // clear the bit the convert forced to 1
+    e.shr(e.eax, 22);
+    e.and_(e.eax, 1);
+    e.shl(e.rax, 51);
+    e.or_(e.rcx, e.rax);
+    e.vmovq(i.dest, e.rcx);
+    e.L(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_CONVERT, CONVERT_I32_F32, CONVERT_I32_F64,

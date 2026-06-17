@@ -1113,6 +1113,8 @@ static const vec128_t xmm_consts[] = {
     /* XMMInt127              */ vec128i(0x7Fu),
     /* XMM2To32               */ vec128f(0x1.0p32f),
     /* XMMFloatInf */ vec128i(0x7f800000),
+    /* XMMDoubleInf */
+    vec128i(0x00000000u, 0x7FF00000u, 0x00000000u, 0x7FF00000u),
 
     /* XMMIntsToBytes*/
     v128_setr_bytes(0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,

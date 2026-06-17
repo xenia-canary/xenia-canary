@@ -151,6 +151,7 @@ enum XmmConst {
   XMMInt127,
   XMM2To32,
   XMMFloatInf,
+  XMMDoubleInf,
   XMMIntsToBytes,
   XMMShortsToBytes,
   XMMLVSLTableBase,
