@@ -22,12 +22,15 @@ jobs:
   # ===========================================================================
   commit-message:
     name: Commit Message Validation
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/Check_commit_message.yml
 
   lint:
     name: Lint
     uses: ./.github/workflows/Lint.yml
+    with:
+      runs-on: ubuntu-24.04
+      llvm_version: 20
 
   # Add optional steps here
 
@@ -45,6 +48,10 @@ jobs:
     needs: [lint, commit-message]
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/Linux_x86.yml
+    with:
+      runs-on: ${{ needs.lint.outputs.runs-on }}
+      llvm_version: ${{ needs.lint.outputs.llvm_version }}
+      ubuntu_base: ${{ needs.lint.outputs.ubuntu_base }}
 
   # Uncomment when platform support is ready:
   # build-windows-arm64:
@@ -73,7 +80,7 @@ jobs:
   release:
     name: Create Release
     needs: [build-windows, build-linux]
-    if: |
+    if: |-
       always() &&
       github.repository == 'xenia-canary/xenia-canary' &&
       github.event_name == 'push' &&

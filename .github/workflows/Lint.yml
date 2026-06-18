@@ -2,28 +2,39 @@ name: Lint
 
 on:
   workflow_call:
+    inputs:
+      runs-on:
+        description: 'Image'
+        required: true
+        type: string
+      llvm_version:
+        description: 'LLVM Version'
+        required: true
+        type: string
+    outputs:
+      runs-on:
+        value: ${{ inputs.runs-on }}
+      llvm_version:
+        value: ${{ inputs.llvm_version }}
+      ubuntu_base:
+        value: ${{ jobs.lint.outputs.ubuntu_base }}
 
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runs-on }}
     outputs:
-      #LLVM_VERSION: ${{ steps.setup.outputs.LLVM_VERSION }}
-      UBUNTU_BASE: ${{ steps.setup.outputs.UBUNTU_BASE }}
+      ubuntu_base: ${{ steps.setup.outputs.ubuntu_base }}
     steps:
       - uses: actions/checkout@v6
       - name: Setup
         id: setup
-        env:
-          LLVM_VERSION: 20
-        run: |
+        run: |-
           UBUNTU_BASE=$(lsb_release -cs)
-          #echo "LLVM_VERSION=$LLVM_VERSION" >> "$GITHUB_OUTPUT"
-          echo "UBUNTU_BASE=$UBUNTU_BASE" >> "$GITHUB_OUTPUT"
+          echo "ubuntu_base=$UBUNTU_BASE" >> $GITHUB_OUTPUT
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-$LLVM_VERSION main"
+          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-${{ inputs.llvm_version }} main"
           sudo apt-get -y update
-          sudo apt-get -y install clang-format-$LLVM_VERSION
+          sudo apt-get -y install clang-format-${{ inputs.llvm_version }}
       - name: Lint
         run: ./xenia-build.py lint --all
-

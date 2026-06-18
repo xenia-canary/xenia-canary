@@ -2,16 +2,11 @@ name: Windows (x86-64)
 
 on:
   workflow_call:
-    inputs:
-      config:
-        description: 'Build configuration (Release)'
-        required: false
-        default: 'release'
-        type: string
 
 jobs:
   build:
-    runs-on: windows-2025
+    name: Build
+    runs-on: windows-2025-vs2026
 
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
@@ -28,27 +23,25 @@ jobs:
         with:
           path: C:\VulkanSDK
           key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
-          restore-keys: |
-            ${{ runner.os }}-vulkan-sdk-
+          restore-keys: ${{ runner.os }}-vulkan-sdk-
 
-      - name: Install Vulkan SDK
-        run: |
-          # Install Vulkan SDK with spirv-tools
-          if (Test-Path -Path "C:\VulkanSDK") {
+      - name: Install Vulkan SDK with spirv-tools
+        run: |-
+          if (Test-Path "C:\VulkanSDK") {
             echo "Vulkan SDK found in cache."
           } else {
             Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "vulkan-sdk.exe"
-            Start-Process -FilePath "vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
+            Start-Process -FilePath "vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -NoNewWindow -Wait
           }
           $env:VULKAN_SDK = "C:\VulkanSDK\$(Get-ChildItem -Path 'C:\VulkanSDK' -Directory | Select-Object -First 1 -ExpandProperty Name)"
-          $env:PATH = "$env:VULKAN_SDK\Bin;$env:PATH"
-          echo "VULKAN_SDK=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "$env:VULKAN_SDK\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH += "${env:VULKAN_SDK}\Bin"
+          echo "VULKAN_SDK=$env:VULKAN_SDK" >> $env:GITHUB_ENV
+          echo "${env:VULKAN_SDK}\Bin" >> $env:GITHUB_PATH
 
           # Verify shader tools are available
           foreach ($tool in @("glslangValidator", "spirv-opt", "spirv-dis")) {
-            $toolPath = "$env:VULKAN_SDK\Bin\$tool.exe"
-            if (Test-Path $toolPath) {
+            $toolPath = "${env:VULKAN_SDK}\Bin\$tool.exe"
+            if (Test-Path "$toolPath") {
               echo "$tool found at: $toolPath"
               & $toolPath --version 2>$null
             } else {
@@ -73,20 +66,24 @@ jobs:
 
       - name: Prepare artifacts
         id: prepare_artifacts
-        run: |
-          if ((Get-Item 'build\bin\Windows\Release\xenia_canary.exe').Length -le 100000) {
+        run: |-
+          if ((Get-Item "build\bin\Windows\Release\xenia_canary.exe").Length -le 100000) {
             echo "::error:: Executable is too small."
             exit 1
           }
-          robocopy . build\bin\Windows\Release                                             LICENSE /r:0 /w:0
-          robocopy   build\bin\Windows\Release artifacts\xenia_canary   xenia_canary.exe   LICENSE /r:0 /w:0
-          If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
+          $path="xenia_canary_windows.7z"
+          7z a $path .\build\bin\Windows\Release\xenia_canary.exe LICENSE -mx9 -bb3
+          if ((Get-Item "$path").Length -le 100000) {
+            echo "::error:: Archive is too small."
+            exit 1
+          }
+          echo "path=$path" >> $env:GITHUB_OUTPUT
 
       - name: Upload Xenia Canary artifact
-        if: steps.prepare_artifacts.outcome == 'success'
+        if: ${{ steps.prepare_artifacts.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_windows
-          path: artifacts\xenia_canary
+          path: ${{ steps.prepare_artifacts.outputs.path }}
           if-no-files-found: error
           retention-days: 7
+          archive: false

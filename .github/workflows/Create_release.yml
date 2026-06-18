@@ -9,9 +9,8 @@ on:
         type: string
       branch:
         description: 'Branch name used as release tag suffix (e.g. canary_experimental)'
-        required: false
-        type: string
         default: 'canary_experimental'
+        type: string
 
 jobs:
   release:
@@ -21,8 +20,7 @@ jobs:
       contents: write
 
     steps:
-      # Checkout for git log access — no submodules needed
-      - name: Checkout repository
+      - name: Checkout repository for git log access
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -32,112 +30,57 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-        run: |
+        run: |-
           FULL_SHA="${{ inputs.tag }}"
           SHORT_SHA="${FULL_SHA::7}"
           BRANCH="${{ inputs.branch }}"
-          TAG_NAME="${SHORT_SHA}"
-          TITLE="${SHORT_SHA}_${BRANCH}"
+          TAG_NAME="$SHORT_SHA"
+          TITLE="${SHORT_SHA}_$BRANCH"
 
-          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
 
           PREV_TAG=$(gh release list \
-            --repo "${REPO}" \
+            --repo "$REPO" \
             --limit 1 \
             --json tagName \
-            --jq '.[0].tagName' 2>/dev/null || echo "")
+            --jq '.[0].tagName' 2>/dev/null || echo)
 
-          if [ -n "${PREV_TAG}" ]; then
+          if [ -n "$PREV_TAG" ]; then
             PREV_SHA=$(git rev-parse "${PREV_TAG}^{}" 2>/dev/null || \
-                       git rev-parse "${PREV_TAG}" 2>/dev/null || echo "")
+                       git rev-parse "${PREV_TAG}" 2>/dev/null || echo)
           fi
 
-          if [ -n "${PREV_SHA}" ]; then
-            COMMITS=$(git log --format="- %s (\`%h\`)" --abbrev=7 "${PREV_SHA}..${FULL_SHA}" --)
-            COMPARE_URL="https://github.com/${REPO}/compare/${PREV_TAG}...${TAG_NAME}"
+          if [ -n "$PREV_SHA" ]; then
+            COMMITS=$(git log --format='- %s (`%h`)' --abbrev=7 "${PREV_SHA}..$FULL_SHA" --)
+            COMPARE_URL="https://github.com/${REPO}/compare/${PREV_TAG}...$TAG_NAME"
           else
-            COMMITS=$(git log --format="- %s (\`%h\`)" --abbrev=7 -1 "${FULL_SHA}" --)
-            COMPARE_URL=""
+            COMMITS=$(git log --format='- %s (`%h`)' --abbrev=7 -1 "$FULL_SHA" --)
           fi
 
           # Assemble body
           {
             echo "body<<RELEASE_BODY_EOF"
 
-            if [ -n "${COMMITS}" ]; then
+            if [ -n "$COMMITS" ]; then
               echo "### Changes"
-              echo ""
-              echo "${COMMITS}"
+              echo
+              echo "$COMMITS"
             fi
 
-            if [ -n "${COMPARE_URL}" ]; then
-              echo ""
-              echo "**Full changelog**: ${COMPARE_URL}"
+            if [ -n "$COMPARE_URL" ]; then
+              echo
+              echo "**Full changelog**: $COMPARE_URL"
             fi
 
             echo "RELEASE_BODY_EOF"
-          } >> "$GITHUB_OUTPUT"
+          } >> $GITHUB_OUTPUT
 
-      # --- Download artifacts only for platforms that succeeded ---
-
-      - name: Download Windows artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_windows
-          path: artifacts/windows/xenia_canary
-
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: xenia_canary_linux
-          path: artifacts/linux
-
-      # Uncomment when platforms are enabled:
-      # - name: Download macOS artifacts
-      #   uses: actions/download-artifact@v8
-      #   with:
-      #     name: xenia_canary_macos
-      #     path: artifacts/macos
-
-      # - name: Download Android artifacts
-      #   uses: actions/download-artifact@v8
-      #   with:
-      #     name: xenia_canary_android
-      #     path: artifacts/android
-
-      # --- Package everything into release assets ---
-
-      - name: Package release assets
-        run: |
-          mkdir -p release_assets
-
-          # Windows
-          if [ -d "artifacts/windows/xenia_canary" ]; then
-            cd artifacts/windows/xenia_canary
-            zip -r ../../../release_assets/xenia_canary_windows.zip . -x "*.pdb"
-            cd ../../..
-          fi
-
-          # Linux AppImage
-          if [ -f "artifacts/linux/xenia_canary_linux.AppImage" ]; then
-            cp artifacts/linux/xenia_canary_linux.AppImage release_assets/
-          fi
-
-          # macOS (uncomment when enabled)
-          # if [ -f "artifacts/macos/xenia_canary_macos.tar.gz" ]; then
-          #   cp artifacts/macos/xenia_canary_macos.tar.gz release_assets/
-          # fi
-
-          # Android (uncomment when enabled)
-          # if [ -f "artifacts/android/xenia_canary_android.zip" ]; then
-          #   cp artifacts/android/xenia_canary_android.zip release_assets/
-          # fi
-
-          echo "=== Release assets ==="
-          ls -lh release_assets/
-
-      # --- Create the release ---
+          path: release_assets
+          merge-multiple: true
 
       - name: Create GitHub Release
         env:
@@ -147,25 +90,25 @@ jobs:
           TITLE: ${{ steps.notes.outputs.title }}
           BODY: ${{ steps.notes.outputs.body }}
           TARGET: ${{ inputs.tag }}
-        run: |
-          echo "${BODY}" > release_notes.md
-          echo "Creating release: ${TAG}"
+        run: |-
+          echo "$BODY" > release_notes.md
+          echo "Creating release: $TAG"
 
           # Check if tag/release already exists (re-run safety)
-          if gh release view "${TAG}" --repo "${REPO}" --json tagName 2>/dev/null; then
-            echo "Release ${TAG} exists, uploading new assets..."
-            gh release upload "${TAG}" \
-              --repo "${REPO}" \
+          if gh release view "$TAG" --repo "$REPO" --json tagName 2>/dev/null; then
+            echo "Release $TAG exists, uploading new assets..."
+            gh release upload "$TAG" \
+              --repo "$REPO" \
               --clobber \
               release_assets/*
           else
-            gh release create "${TAG}" \
-              --repo "${REPO}" \
+            gh release create "$TAG" \
+              --repo "$REPO" \
               --target "${{ inputs.tag }}" \
-              --title "${TITLE}" \
+              --title "$TITLE" \
               --notes-file release_notes.md \
               --latest \
               release_assets/*
           fi
 
-          echo "✅ Release ${TAG} published"
+          echo "✅ Release $TAG published"
