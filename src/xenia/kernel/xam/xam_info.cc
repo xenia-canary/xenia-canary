@@ -275,7 +275,7 @@ dword_result_t XamLoaderGetLaunchData_entry(lpvoid_t buffer_ptr,
                                             dword_t buffer_size) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
   auto& loader_data = xam->loader_data();
-  if (!loader_data.launch_data_present) {
+  if (!buffer_size) {
     return X_ERROR_NOT_FOUND;
   }
 
