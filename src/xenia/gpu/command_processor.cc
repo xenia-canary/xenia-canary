@@ -1014,7 +1014,11 @@ bool CommandProcessor::BeginZPDReport(uint32_t report_address) {
   // something from a prior lifetime. The alternate fast path keeps it around
   // long enough for an async zero to help the next unresolved write.
   if (GetZPDMode() != ZPDMode::kFastAlt) {
-    fast_zpd_report_cached_values_.erase(end_record);
+    auto cache_it = fast_zpd_report_cached_values_.find(end_record);
+    if (cache_it != fast_zpd_report_cached_values_.end() &&
+        cache_it->second == 0) {
+      fast_zpd_report_cached_values_.erase(cache_it);
+    }
   }
 
   ReportHandle report_handle = zpd_next_report_handle_++;
