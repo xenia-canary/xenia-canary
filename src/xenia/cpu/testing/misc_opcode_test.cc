@@ -659,7 +659,7 @@ TEST_CASE("STORE_VECTOR_LEFT", "[memory]") {
     }
 
     for (uint32_t i = offset; i < 16; ++i) {
-      expected[i] = kStoreVectorSource[(i - offset) ^ 3];
+      expected[i] = kStoreVectorSource[(i - offset)];
     }
 
     test.Run(
@@ -696,7 +696,7 @@ TEST_CASE("STORE_VECTOR_RIGHT", "[memory]") {
     }
 
     for (uint32_t i = 0; i < offset; ++i) {
-      expected[i] = kStoreVectorSource[(16 - offset + i) ^ 3];
+      expected[i] = kStoreVectorSource[(16 - offset + i)];
     }
 
     test.Run(
