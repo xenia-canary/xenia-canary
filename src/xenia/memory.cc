@@ -290,11 +290,6 @@ bool Memory::Initialize() {
                          kMemoryProtectRead | kMemoryProtectWrite, false,
                          &hypervisor_range);
 
-  uint32_t kernel_range;
-  heaps_.v80000000.Alloc(0x1C0000, 4 * 1024, kMemoryAllocationCommit,
-                         kMemoryProtectRead | kMemoryProtectWrite, false,
-                         &kernel_range);
-
   // Value taken from 544307D5. Title explicitly access this address and this is
   // a value underneath it (It's constant between multiple runs)
   uint32_t value_to_write = xe::byte_swap(0x2a6e3f38);
