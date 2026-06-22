@@ -22,11 +22,7 @@
 #include "xenia/gpu/trace_player.h"
 #include "xenia/gpu/trace_protocol.h"
 #include "xenia/gpu/xenos.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"

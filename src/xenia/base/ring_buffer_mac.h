@@ -16,9 +16,9 @@
 #include <vector>
 
 #include "xenia/base/assert.h"
-#include "xenia/base/byte_order_mac.h"
-#include "xenia/base/math_mac.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/byte_order.h"
+#include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 
 namespace xe {
 /*

@@ -15,11 +15,7 @@
 
 #include "xenia/base/mapped_memory.h"
 #include "xenia/gpu/trace_protocol.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 
 namespace xe {
 namespace gpu {

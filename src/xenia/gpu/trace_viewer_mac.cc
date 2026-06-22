@@ -17,8 +17,8 @@
 #include "xenia/base/clock.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
-#include "xenia/base/math_mac.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string.h"
 #include "xenia/base/system.h"
@@ -30,7 +30,7 @@
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/sampler_info.h"
 #include "xenia/gpu/texture_info.h"
-#include "xenia/memory_mac.h"
+#include "xenia/memory.h"
 #include "xenia/ui/file_picker.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"
@@ -38,7 +38,7 @@
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window_mac.h"
-#include "xenia/ui/windowed_app_context_mac.h"
+#include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
 namespace xe {

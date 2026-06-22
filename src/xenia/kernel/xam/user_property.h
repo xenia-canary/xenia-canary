@@ -17,11 +17,7 @@
 #else
 #include "xenia/kernel/xam/user_data.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

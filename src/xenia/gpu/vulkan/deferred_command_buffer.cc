@@ -12,11 +12,7 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/profiling.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/gpu/gpu_flags_mac.h"

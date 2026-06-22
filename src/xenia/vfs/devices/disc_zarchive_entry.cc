@@ -9,11 +9,7 @@
 
 #include "xenia/vfs/devices/disc_zarchive_entry.h"
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/vfs/devices/disc_zarchive_file.h"
 
 #include "third_party/zarchive/include/zarchive/zarchivereader.h"

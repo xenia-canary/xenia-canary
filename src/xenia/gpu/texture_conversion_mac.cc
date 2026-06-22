@@ -13,8 +13,8 @@
 #include <cstring>
 
 #include "xenia/base/logging.h"
-#include "xenia/base/math_mac.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/xxhash.h"
 

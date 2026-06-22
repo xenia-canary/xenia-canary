@@ -12,11 +12,7 @@
 
 #include <cstdint>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/string_buffer.h"
 #include "xenia/cpu/ppc/ppc_instr.h"
 #if XE_PLATFORM_MACOS

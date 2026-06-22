@@ -13,7 +13,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
-#include "xenia/base/math_mac.h"
+#include "xenia/base/math.h"
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/texture_cache.h"

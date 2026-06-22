@@ -15,7 +15,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
-#include "xenia/base/math_mac.h"
+#include "xenia/base/math.h"
 #include "xenia/gpu/dxbc_shader.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/graphics_provider.h"

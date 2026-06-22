@@ -24,7 +24,7 @@
 #include "xenia/kernel/kernel_state_mac.h"
 #include "xenia/kernel/util/game_info_database.h"
 #include "xenia/kernel/util/xlast.h"
-#include "xenia/memory_mac.h"
+#include "xenia/memory.h"
 #include "xenia/patcher/patcher.h"
 #include "xenia/patcher/plugin_loader.h"
 #include "xenia/ui/immediate_drawer.h"

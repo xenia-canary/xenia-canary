@@ -13,7 +13,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/ucode.h"

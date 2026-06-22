@@ -10,17 +10,9 @@
 #include "xenia/cpu/ppc/ppc_translator.h"
 
 #include "xenia/base/assert.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/byte_order_mac.h"
-#else
 #include "xenia/base/byte_order.h"
-#endif
 #include "xenia/base/cvar.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/memory_mac.h"
-#else
 #include "xenia/base/memory.h"
-#endif
 #include "xenia/base/profiling.h"
 #include "xenia/base/reset_scope.h"
 #include "xenia/base/string.h"

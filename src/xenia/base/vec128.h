@@ -13,11 +13,7 @@
 #include <cstddef>
 #include <string>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/platform.h"
 
 namespace xe {

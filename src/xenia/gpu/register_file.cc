@@ -10,11 +10,7 @@
 #include "xenia/gpu/register_file.h"
 #include <array>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 
 namespace xe {
 namespace gpu {

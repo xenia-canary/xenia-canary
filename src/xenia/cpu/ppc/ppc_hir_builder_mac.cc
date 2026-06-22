@@ -14,10 +14,10 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 
-#include "xenia/base/byte_order_mac.h"
+#include "xenia/base/byte_order.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
 #include "xenia/cpu/cpu_flags_mac.h"

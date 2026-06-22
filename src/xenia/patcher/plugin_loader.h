@@ -16,11 +16,7 @@
 #else
 #include "xenia/kernel/kernel_state.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 
 namespace xe {
 namespace patcher {

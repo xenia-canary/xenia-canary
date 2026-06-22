@@ -19,7 +19,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/platform.h"
-#include "xenia/ui/windowed_app_context_mac.h"
+#include "xenia/ui/windowed_app_context.h"
 
 #if XE_PLATFORM_ANDROID
 // Multiple apps in a single library instead of separate executables.

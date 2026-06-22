@@ -10,7 +10,7 @@
 #include "xenia/cpu/ppc/ppc_scanner.h"
 
 #include "xenia/base/logging.h"
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/cpu/ppc/ppc_decode_data.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"

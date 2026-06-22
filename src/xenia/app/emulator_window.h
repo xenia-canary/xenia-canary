@@ -39,11 +39,7 @@
 #include "xenia/ui/window.h"
 #endif
 #include "xenia/ui/window_listener.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/ui/windowed_app_context_mac.h"
-#else
 #include "xenia/ui/windowed_app_context.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

@@ -25,7 +25,7 @@
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/window_mac.h"
-#include "xenia/ui/windowed_app_context_mac.h"
+#include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
 #include "third_party/fmt/include/fmt/format.h"

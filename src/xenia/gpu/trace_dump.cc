@@ -29,11 +29,7 @@
 #else
 #include "xenia/gpu/graphics_system.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 #include "xenia/ui/file_picker.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/ui/presenter_mac.h"

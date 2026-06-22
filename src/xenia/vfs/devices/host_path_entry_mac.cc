@@ -12,7 +12,7 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/mapped_memory.h"
-#include "xenia/base/math_mac.h"
+#include "xenia/base/math.h"
 #include "xenia/base/string.h"
 #include "xenia/vfs/device.h"
 #include "xenia/vfs/devices/host_path_device.h"

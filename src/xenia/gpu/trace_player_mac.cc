@@ -13,7 +13,7 @@
 #include "xenia/gpu/graphics_system_mac.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
-#include "xenia/memory_mac.h"
+#include "xenia/memory.h"
 
 namespace xe {
 namespace gpu {

@@ -12,11 +12,7 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/platform.h"
 #include "xenia/base/string_buffer.h"
 #if XE_PLATFORM_MACOS

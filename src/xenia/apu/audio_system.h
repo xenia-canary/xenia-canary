@@ -25,11 +25,7 @@
 #else
 #include "xenia/kernel/xthread.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

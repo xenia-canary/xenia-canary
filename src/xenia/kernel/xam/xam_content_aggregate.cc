@@ -8,11 +8,7 @@
  */
 
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/string_util.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/kernel/kernel_state_mac.h"

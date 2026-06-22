@@ -16,11 +16,7 @@
 #include <vector>
 
 #include "xenia/base/assert.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/string_buffer.h"
 #include "xenia/gpu/dxbc.h"
 #include "xenia/gpu/shader_translator.h"

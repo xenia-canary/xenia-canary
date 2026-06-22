@@ -13,11 +13,7 @@
 #include <string>
 #include <vector>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/cpu/ppc/ppc_context_mac.h"
 #else
@@ -77,7 +73,6 @@ struct ExportTag {
 typedef void (*xe_kernel_export_shim_fn)(void*, void*);
 
 typedef void (*ExportTrampoline)(ppc::PPCContext* ppc_context);
-#pragma pack(push, 1)
 class Export {
  public:
   enum class Type {
@@ -121,7 +116,6 @@ class Export {
                                                  : Type::kFunction;
   }
 };
-#pragma pack(pop)
 class ExportResolver {
  public:
   class Table {

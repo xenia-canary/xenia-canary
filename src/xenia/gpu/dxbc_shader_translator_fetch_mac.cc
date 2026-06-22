@@ -11,7 +11,7 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/math_mac.h"
+#include "xenia/base/math.h"
 #include "xenia/base/string.h"
 #include "xenia/gpu/dxbc_shader_translator.h"
 #include "xenia/gpu/render_target_cache.h"

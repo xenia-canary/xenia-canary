@@ -15,20 +15,12 @@
 #include "third_party/dxbc/DXBCChecksum.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/byte_order_mac.h"
-#else
 #include "xenia/base/byte_order.h"
-#endif
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
 #include "xenia/base/string_buffer.h"

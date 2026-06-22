@@ -11,16 +11,8 @@
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
-#if XE_PLATFORM_MACOS
-#include "xenia/base/memory_mac.h"
-#else
 #include "xenia/base/memory.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/gpu/gpu_flags_mac.h"
 #else

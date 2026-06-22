@@ -15,11 +15,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/base/profiling.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/base/ring_buffer_mac.h"

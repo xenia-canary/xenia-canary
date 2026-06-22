@@ -18,11 +18,7 @@
 #include "xenia/cpu/ppc/ppc_context.h"
 #endif
 #include "xenia/cpu/thread_state.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/memory_mac.h"
-#else
 #include "xenia/memory.h"
-#endif
 
 namespace xe {
 namespace cpu {

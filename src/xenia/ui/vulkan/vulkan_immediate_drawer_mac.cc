@@ -13,7 +13,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
-#include "xenia/base/math_mac.h"
+#include "xenia/base/math.h"
 #include "xenia/ui/vulkan/vulkan_presenter_mac.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 

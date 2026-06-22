@@ -10,11 +10,7 @@
 #include "xenia/ui/immediate_drawer.h"
 
 #include "xenia/base/assert.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/math_mac.h"
-#else
 #include "xenia/base/math.h"
-#endif
 #include "xenia/ui/graphics_util.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/ui/presenter_mac.h"

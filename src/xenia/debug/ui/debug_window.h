@@ -36,11 +36,7 @@
 #else
 #include "xenia/ui/window.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/ui/windowed_app_context_mac.h"
-#else
 #include "xenia/ui/windowed_app_context.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

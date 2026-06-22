@@ -12,7 +12,7 @@
 
 #include <string_view>
 
-#include "xenia/base/byte_order_mac.h"
+#include "xenia/base/byte_order.h"
 #include "xenia/base/string.h"
 #include "xenia/xbox.h"
 
