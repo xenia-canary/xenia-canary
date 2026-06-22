@@ -104,7 +104,7 @@ void UserProfile::WriteProfileIcon(XTileType tile_type,
 
   const X_STATUS result = kernel_state()->file_system()->OpenFile(
       nullptr, path, vfs::FileDisposition::kOverwriteIf,
-      vfs::FileAccess::kGenericAll, false, true, &file, &action);
+      vfs::FileAccess::kGenericWrite, false, true, &file, &action);
 
   if (result != X_STATUS_SUCCESS) {
     return;

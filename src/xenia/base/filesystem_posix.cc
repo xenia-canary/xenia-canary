@@ -191,16 +191,24 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
     open_access |= O_WRONLY;
   }
   if (desired_access & FileAccess::kGenericExecute) {
-    open_access |= O_RDONLY;
-  }
-  if (desired_access & FileAccess::kGenericAll) {
-    open_access |= O_RDWR;
+    // Unsupported
   }
   if (desired_access & FileAccess::kFileReadData) {
     open_access |= O_RDONLY;
   }
   if (desired_access & FileAccess::kFileWriteData) {
     open_access |= O_WRONLY;
+  }
+  if (desired_access & FileAccess::kGenericRead &&
+      desired_access & FileAccess::kGenericWrite) {
+    open_access = O_RDWR;
+  }
+  if (desired_access & FileAccess::kFileReadData &&
+      desired_access & FileAccess::kFileWriteData) {
+    open_access = O_RDWR;
+  }
+  if (desired_access & FileAccess::kGenericAll) {
+    open_access = O_RDWR;
   }
   if (desired_access & FileAccess::kFileAppendData) {
     open_access |= O_APPEND;
