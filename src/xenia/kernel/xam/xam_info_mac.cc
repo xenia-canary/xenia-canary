@@ -11,7 +11,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/string_util.h"
 #include "xenia/kernel/kernel_state_mac.h"
-#include "xenia/kernel/title_id_utils_mac.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module_mac.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_module.h"
