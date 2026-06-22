@@ -169,6 +169,8 @@ void Sleep(std::chrono::microseconds duration) {
   }
 }
 
+void NanoSleepPrecise(int64_t ns) { NanoSleep(ns); }
+
 SleepResult AlertableSleep(std::chrono::microseconds duration) {
   if (SleepEx(static_cast<DWORD>(duration.count() / 1000), true) ==
       WAIT_IO_COMPLETION) {

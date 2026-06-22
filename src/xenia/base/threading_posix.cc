@@ -166,6 +166,36 @@ void Sleep(std::chrono::microseconds duration) {
 
 void NanoSleep(int64_t duration) { Sleep(std::chrono::nanoseconds(duration)); }
 
+void NanoSleepPrecise(int64_t ns) {
+#if XE_PLATFORM_MAC
+  // Darwin's nanosleep can oversleep by 100-500us under load. Land precisely
+  // on the deadline by using mach_wait_until for the bulk of the wait and
+  // busy-waiting the last ~200us.
+  if (ns <= 0) {
+    return;
+  }
+  static const mach_timebase_info_data_t tb = [] {
+    mach_timebase_info_data_t i;
+    mach_timebase_info(&i);
+    return i;
+  }();
+  constexpr uint64_t kSpinTailNs = 200'000;
+  const uint64_t deadline =
+      mach_absolute_time() +
+      static_cast<uint64_t>((static_cast<__uint128_t>(ns) * tb.denom) /
+                            tb.numer);
+  const uint64_t spin_tail = static_cast<uint64_t>(
+      (static_cast<__uint128_t>(kSpinTailNs) * tb.denom) / tb.numer);
+  if (deadline > mach_absolute_time() + spin_tail) {
+    mach_wait_until(deadline - spin_tail);
+  }
+  while (mach_absolute_time() < deadline) {
+  }
+#else
+  NanoSleep(ns);
+#endif
+}
+
 // TODO(bwrsandman) Implement by allowing alert interrupts from IO operations
 thread_local bool alertable_state_ = false;
 SleepResult AlertableSleep(std::chrono::microseconds duration) {
