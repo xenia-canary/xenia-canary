@@ -15,7 +15,7 @@
 
 #include "xenia/base/mutex.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/base/split_map_mac.h"
+#include "xenia/base/split_map.h"
 #else
 #include "xenia/base/split_map.h"
 #endif

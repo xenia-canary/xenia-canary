@@ -14,7 +14,7 @@
 #include "xenia/cpu/compiler/passes/conditional_group_subpass.h"
 #include "xenia/cpu/compiler/passes/constant_propagation_pass.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/cpu/compiler/passes/context_promotion_pass_mac.h"
+#include "xenia/cpu/compiler/passes/context_promotion_pass.h"
 #else
 #include "xenia/cpu/compiler/passes/context_promotion_pass.h"
 #endif

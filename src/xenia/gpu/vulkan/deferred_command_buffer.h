@@ -18,7 +18,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/vulkan/vulkan_api_mac.h"
+#include "xenia/ui/vulkan/vulkan_api.h"
 #else
 #include "xenia/ui/vulkan/vulkan_api.h"
 #endif
