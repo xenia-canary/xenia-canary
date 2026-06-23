@@ -64,6 +64,9 @@ bool PPCScanner::Scan(GuestFunction* function, FunctionDebugInfo* debug_info) {
   while (true) {
     uint32_t code =
         xe::load_and_swap<uint32_t>(memory->TranslateVirtual(address));
+#if XE_PLATFORM_MACOS
+    SetLastPPCDecodeAddress(address);
+#endif
 
     // If we fetched 0 assume that we somehow hit one of the awesome
     // 'no really we meant to end after that bl' functions.
@@ -304,6 +307,9 @@ std::vector<BlockInfo> PPCScanner::FindBlocks(GuestFunction* function) {
     if (!code) {
       continue;
     }
+#if XE_PLATFORM_MACOS
+    SetLastPPCDecodeAddress(address);
+#endif
     auto opcode = xe::cpu::ppc::LookupOpcode(code);
 
     if (!in_block) {
