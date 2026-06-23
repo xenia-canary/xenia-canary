@@ -1,4 +1,4 @@
-name: Windows (x86-64)
+name: Windows (ARM64)
 
 on:
   workflow_call:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2025
+    runs-on: windows-11-arm
 
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
@@ -27,9 +27,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: C:\VulkanSDK
-          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
           restore-keys: |
-            ${{ runner.os }}-vulkan-sdk-
+            ${{ runner.os }}-${{ runner.arch }}-vulkan-sdk-
 
       - name: Install Vulkan SDK
         run: |
@@ -57,7 +57,7 @@ jobs:
           }
 
           # Verify FXC is available (from Windows SDK)
-          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\arm64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
           if ($fxcPaths) {
             $fxcPath = $fxcPaths[-1].FullName
             echo "FXC found at: $fxcPath"
@@ -86,7 +86,7 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_windows_x86_64
+          name: xenia_canary_windows_arm64
           path: artifacts\xenia_canary
           if-no-files-found: error
           retention-days: 7

@@ -84,13 +84,20 @@ jobs:
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_windows
+          name: xenia_canary_windows_x86_64
           path: artifacts/windows/xenia_canary
+
+      - name: Download Windows ARM64 artifacts
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: xenia_canary_windows_arm64
+          path: artifacts/windows_arm64/xenia_canary
 
       - name: Download Linux artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_canary_linux
+          name: xenia_canary_linux_x86_64
           path: artifacts/linux
 
       # Uncomment when platforms are enabled:
@@ -115,13 +122,20 @@ jobs:
           # Windows
           if [ -d "artifacts/windows/xenia_canary" ]; then
             cd artifacts/windows/xenia_canary
-            zip -r ../../../release_assets/xenia_canary_windows.zip . -x "*.pdb"
+            zip -r ../../../release_assets/xenia_canary_windows_x86_64.zip . -x "*.pdb"
+            cd ../../..
+          fi
+
+          # Windows ARM64
+          if [ -d "artifacts/windows_arm64/xenia_canary" ]; then
+            cd artifacts/windows_arm64/xenia_canary
+            zip -r ../../../release_assets/xenia_canary_windows_arm64.zip . -x "*.pdb"
             cd ../../..
           fi
 
           # Linux AppImage
-          if [ -f "artifacts/linux/xenia_canary_linux.AppImage" ]; then
-            cp artifacts/linux/xenia_canary_linux.AppImage release_assets/
+          if [ -f "artifacts/linux/xenia_canary_linux_x86_64.AppImage" ]; then
+            cp artifacts/linux/xenia_canary_linux_x86_64.AppImage release_assets/
           fi
 
           # macOS (uncomment when enabled)

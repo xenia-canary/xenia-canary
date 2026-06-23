@@ -40,6 +40,12 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/Windows_x86.yml
 
+  build-windows-arm64:
+    name: Windows (ARM64)
+    needs: [lint, commit-message]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/Windows_arm64.yml
+
   build-linux:
     name: Linux (x86-64)
     needs: [lint, commit-message]
@@ -47,11 +53,6 @@ jobs:
     uses: ./.github/workflows/Linux_x86.yml
 
   # Uncomment when platform support is ready:
-  # build-windows-arm64:
-  #   name: Windows-ARM64
-  #   needs: [lint]
-  #   uses: ./.github/workflows/build-win_arm64.yml
-
   # build-linux-arm64:
   #   name: Linux-ARM64
   #   needs: [lint]
@@ -72,7 +73,7 @@ jobs:
   # ===========================================================================
   release:
     name: Create Release
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-windows-arm64, build-linux]
     if: |
       always() &&
       github.repository == 'xenia-canary/xenia-canary' &&

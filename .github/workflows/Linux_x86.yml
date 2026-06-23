@@ -143,14 +143,14 @@ jobs:
           fi
 
           mkdir -p artifacts/release
-          mv "$appimage_file" artifacts/release/xenia_canary_linux.AppImage
-          chmod +x artifacts/release/xenia_canary_linux.AppImage
+          mv "$appimage_file" artifacts/release/xenia_canary_linux_x86_64.AppImage
+          chmod +x artifacts/release/xenia_canary_linux_x86_64.AppImage
 
       - name: Upload Xenia Canary artifact
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_canary_linux
+          name: xenia_canary_linux_x86_64
           path: artifacts/release
           if-no-files-found: error
           retention-days: 7
