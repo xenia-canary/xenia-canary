@@ -14,11 +14,7 @@
 #include <mutex>
 #include <vector>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/ui/vulkan/vulkan_instance_mac.h"
-#else
 #include "xenia/ui/vulkan/vulkan_instance.h"
-#endif
 
 namespace xe {
 namespace ui {
