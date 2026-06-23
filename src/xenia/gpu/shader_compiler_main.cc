@@ -25,7 +25,7 @@
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/xenos.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/vulkan/spirv_tools_context_mac.h"
+#include "xenia/ui/vulkan/spirv_tools_context.h"
 #else
 #include "xenia/ui/vulkan/spirv_tools_context.h"
 #endif
