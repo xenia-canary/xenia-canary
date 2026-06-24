@@ -10,11 +10,7 @@
 #ifndef XENIA_KERNEL_XAM_XAM_AVATAR_H_
 #define XENIA_KERNEL_XAM_XAM_AVATAR_H_
 
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

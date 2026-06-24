@@ -38,11 +38,7 @@
 #include "xenia/gpu/dxbc_shader_translator.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/kernel/user_module_mac.h"
 #else

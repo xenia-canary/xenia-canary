@@ -14,11 +14,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/threading_mac.h"
-#else
 #include "xenia/base/threading.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/gpu/command_processor_mac.h"
 #else

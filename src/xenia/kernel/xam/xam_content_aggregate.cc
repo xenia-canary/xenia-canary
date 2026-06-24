@@ -10,11 +10,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_util.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/kernel/user_module_mac.h"
 #else

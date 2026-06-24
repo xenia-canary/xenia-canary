@@ -12,11 +12,7 @@
 
 #include <memory>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/threading_mac.h"
-#else
 #include "xenia/base/threading.h"
-#endif
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/window_listener.h"
 

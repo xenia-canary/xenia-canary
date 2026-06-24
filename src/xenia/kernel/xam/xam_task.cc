@@ -8,11 +8,7 @@
  */
 
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/kernel/user_module_mac.h"
 #else
@@ -26,11 +22,7 @@
 #else
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xthread_mac.h"
-#else
 #include "xenia/kernel/xthread.h"
-#endif
 #include "xenia/xbox.h"
 
 #include "third_party/fmt/include/fmt/format.h"

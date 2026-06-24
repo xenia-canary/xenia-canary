@@ -28,19 +28,10 @@
 #else
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
-#else
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
-#endif
 #include "xenia/cpu/ppc/ppc_scanner.h"
 #include "xenia/cpu/processor.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/xex_module_mac.h"
-#else
 #include "xenia/cpu/xex_module.h"
-#endif
-
 DEFINE_bool(dump_translated_hir_functions, false, "dumps translated hir",
             "CPU");
 

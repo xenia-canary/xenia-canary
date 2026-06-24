@@ -17,12 +17,7 @@
 #endif
 #include "xenia/gpu/null/null_graphics_system.h"
 #include "xenia/gpu/xenos.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
-
 namespace xe {
 namespace gpu {
 namespace null {

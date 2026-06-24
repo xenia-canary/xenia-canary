@@ -10,11 +10,7 @@
 #include "xenia/kernel/xam/apps/xam_app.h"
 
 #include "xenia/base/logging.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xenumerator.h"
 

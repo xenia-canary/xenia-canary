@@ -11,11 +11,7 @@
 #define XENIA_PLUGIN_LOADER_H_
 
 #include "third_party/tomlplusplus/toml.hpp"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #include "xenia/memory.h"
 
 namespace xe {

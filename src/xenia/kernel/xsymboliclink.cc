@@ -10,12 +10,7 @@
 #include "xenia/kernel/xsymboliclink.h"
 
 #include "xenia/base/byte_stream.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
-
 namespace xe {
 namespace kernel {
 

@@ -12,11 +12,7 @@
 
 #include <map>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
 #include "xenia/kernel/xmodule.h"
 
 namespace xe {

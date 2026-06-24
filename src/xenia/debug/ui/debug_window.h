@@ -17,11 +17,7 @@
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/debug_listener.h"
 #include "xenia/cpu/processor.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"

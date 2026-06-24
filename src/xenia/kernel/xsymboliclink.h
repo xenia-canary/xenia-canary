@@ -10,11 +10,7 @@
 #ifndef XENIA_KERNEL_XSYMBOLICLINK_H_
 #define XENIA_KERNEL_XSYMBOLICLINK_H_
 
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xobject_mac.h"
-#else
 #include "xenia/kernel/xobject.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

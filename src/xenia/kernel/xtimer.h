@@ -10,16 +10,8 @@
 #ifndef XENIA_KERNEL_XTIMER_H_
 #define XENIA_KERNEL_XTIMER_H_
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/threading_mac.h"
-#else
 #include "xenia/base/threading.h"
-#endif
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xobject_mac.h"
-#else
 #include "xenia/kernel/xobject.h"
-#endif
 #include "xenia/xbox.h"
 
 namespace xe {

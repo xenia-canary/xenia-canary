@@ -14,11 +14,7 @@
 #include <string>
 
 #include "xenia/app/profile_dialogs.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/gpu/command_processor_mac.h"
 #else

@@ -13,11 +13,7 @@
 #include <string_view>
 
 #include "xenia/base/cvar.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/trace_player.h"
 #include "xenia/gpu/trace_protocol.h"

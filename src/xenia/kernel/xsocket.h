@@ -14,12 +14,7 @@
 #include <queue>
 
 #include "xenia/base/byte_order.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xobject_mac.h"
-#else
 #include "xenia/kernel/xobject.h"
-#endif
-
 namespace xe {
 namespace kernel {
 enum class X_WSAError : uint32_t {

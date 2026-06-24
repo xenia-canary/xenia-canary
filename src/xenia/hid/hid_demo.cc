@@ -22,11 +22,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/threading_mac.h"
-#else
 #include "xenia/base/threading.h"
-#endif
 #include "xenia/hid/hid_flags.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/ui/imgui_dialog.h"

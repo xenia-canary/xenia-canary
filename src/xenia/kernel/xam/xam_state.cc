@@ -8,12 +8,7 @@
  */
 
 #include "xenia/kernel/xam/xam_state.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
-
 namespace xe {
 namespace kernel {
 namespace xam {

@@ -26,11 +26,7 @@
 #include "xenia/base/hash.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string_buffer.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/threading_mac.h"
-#else
 #include "xenia/base/threading.h"
-#endif
 #include "xenia/gpu/d3d12/d3d12_render_target_cache.h"
 #include "xenia/gpu/d3d12/d3d12_shader.h"
 #include "xenia/gpu/dxbc_shader_translator.h"

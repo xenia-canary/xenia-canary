@@ -7,20 +7,12 @@
  ******************************************************************************
  */
 
-#if XE_PLATFORM_MACOS
-#include "xenia/emulator_mac.h"
-#else
 #include "xenia/emulator.h"
-#endif
 #include "xenia/kernel/xam/user_profile.h"
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/stb/stb_image.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/kernel_state_mac.h"
-#else
 #include "xenia/kernel/kernel_state.h"
-#endif
 #include "xenia/kernel/util/shim_utils.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/kernel/xam/user_data_mac.h"

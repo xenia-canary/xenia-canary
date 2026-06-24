@@ -19,12 +19,7 @@
 #else
 #include "xenia/kernel/xam/xam.h"
 #endif
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xobject_mac.h"
-#else
 #include "xenia/kernel/xobject.h"
-#endif
-
 namespace xe {
 namespace kernel {
 

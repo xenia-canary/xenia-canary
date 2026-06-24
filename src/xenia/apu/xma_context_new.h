@@ -17,11 +17,7 @@
 
 #include "xenia/apu/xma_context.h"
 #include "xenia/base/bit_stream.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/base/ring_buffer_mac.h"
-#else
 #include "xenia/base/ring_buffer.h"
-#endif
 #include "xenia/memory.h"
 #include "xenia/xbox.h"
 
