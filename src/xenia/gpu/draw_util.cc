@@ -13,11 +13,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/gpu/gpu_flags_mac.h"
-#else
 #include "xenia/gpu/gpu_flags.h"
-#endif
 #include "xenia/gpu/texture_cache.h"
 #include "xenia/ui/graphics_util.h"
 

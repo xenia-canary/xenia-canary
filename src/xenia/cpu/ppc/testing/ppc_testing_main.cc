@@ -15,11 +15,7 @@
 #include "xenia/base/math.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string_buffer.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/cpu_flags_mac.h"
-#else
 #include "xenia/cpu/cpu_flags.h"
-#endif
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/processor.h"

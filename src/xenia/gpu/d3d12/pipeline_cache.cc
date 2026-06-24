@@ -30,11 +30,7 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/dxbc.h"
 #include "xenia/gpu/dxbc_shader_translator.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/gpu/gpu_flags_mac.h"
-#else
 #include "xenia/gpu/gpu_flags.h"
-#endif
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/ui/d3d12/d3d12_util.h"

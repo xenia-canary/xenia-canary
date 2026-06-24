@@ -18,11 +18,7 @@
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #include "xenia/gpu/d3d12/d3d12_shader.h"
 #include "xenia/gpu/draw_util.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/gpu/gpu_flags_mac.h"
-#else
 #include "xenia/gpu/gpu_flags.h"
-#endif
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"

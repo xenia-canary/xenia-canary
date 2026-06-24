@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "xenia/base/memory_mac.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/mutex.h"
 #include "xenia/cpu/backend/code_cache.h"
 
@@ -46,7 +46,7 @@ class X64CodeCache : public CodeCache {
   static std::unique_ptr<X64CodeCache> Create();
 
   virtual bool Initialize();
-  
+
   // Set backend reference for performance monitoring access
   void SetBackend(void* backend) { backend_ = backend; }
 
@@ -78,7 +78,7 @@ class X64CodeCache : public CodeCache {
   uint32_t PlaceData(const void* data, size_t length);
 
   GuestFunction* LookupFunction(uint64_t host_pc) override;
-  
+
   // Enhanced cache management for self-modifying code
   void InvalidateCodeRange(uint32_t guest_start, uint32_t guest_end);
   void InvalidateFunction(uint32_t guest_address);
@@ -151,7 +151,7 @@ class X64CodeCache : public CodeCache {
   // This can be used to bsearch on host PC to find the guest function.
   // The key is [start address | end address].
   std::vector<std::pair<uint64_t, GuestFunction*>> generated_code_map_;
-  
+
   // Backend reference for performance monitoring
   void* backend_ = nullptr;
 };

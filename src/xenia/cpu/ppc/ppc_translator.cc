@@ -17,11 +17,7 @@
 #include "xenia/base/reset_scope.h"
 #include "xenia/base/string.h"
 #include "xenia/cpu/compiler/compiler_passes.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/cpu_flags_mac.h"
-#else
 #include "xenia/cpu/cpu_flags.h"
-#endif
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #if XE_PLATFORM_MACOS
 #include "xenia/cpu/ppc/ppc_hir_builder_mac.h"

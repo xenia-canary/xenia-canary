@@ -12,11 +12,7 @@
 
 #include <cstdint>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/base/byte_order_mac.h"
-#else
 #include "xenia/base/byte_order.h"
-#endif
 #include "xenia/base/platform.h"
 
 namespace xe {
@@ -39,7 +35,7 @@ static void _generic_sequential_6_BE_to_interleaved_6_LE(
     }
   }
 }
-#if XE_COMPILER_CLANG_CL != 1 && !XE_PLATFORM_LINUX
+#if XE_COMPILER_CLANG_CL != 1 && !XE_PLATFORM_LINUX && !XE_PLATFORM_MACOS
 // load_be_u32 unavailable on clang-cl
 XE_NOINLINE
 static void _movbe_sequential_6_BE_to_interleaved_6_LE(

@@ -20,7 +20,7 @@
 #include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
-#include "xenia/cpu/cpu_flags_mac.h"
+#include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/hir/label.h"
 #include "xenia/cpu/ppc/ppc_context_mac.h"
 #include "xenia/cpu/ppc/ppc_decode_data.h"
@@ -60,7 +60,6 @@ void DumpAllOpcodeCounts() {
     auto opcode = static_cast<PPCOpcode>(i);
 #ifdef __APPLE__
     auto& opcode_info = GetOpcodeInfo(opcode);
-    (void)opcode_info;
 #else
     auto& opcode_info = GetOpcodeInfo(opcode);
 #endif
