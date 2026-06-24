@@ -15,6 +15,8 @@
 #include "xenia/apu/xma_context_new.h"
 #include "xenia/apu/xma_context_old.h"
 
+#include <cstdlib>
+
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -186,6 +188,12 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
               ->GetIdleProcess()));  // this one doesnt need any process
                                      // actually. never calls any guest code
   worker_thread_->set_name("XMA Decoder");
+#if XE_PLATFORM_MACOS
+  if (worker_thread_->is_guest_thread()) {
+    XELOGE("FATAL ERROR: XMA Decoder misclassified as GUEST thread!");
+    std::abort();
+  }
+#endif
   worker_thread_->set_can_debugger_suspend(true);
   worker_thread_->Create();
 
