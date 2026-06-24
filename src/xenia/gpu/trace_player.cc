@@ -9,8 +9,13 @@
 
 #include "xenia/gpu/trace_player.h"
 
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#include "xenia/gpu/graphics_system_mac.h"
+#else
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/graphics_system.h"
+#endif
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/memory.h"
@@ -87,9 +92,17 @@ void TracePlayer::PlayTrace(const uint8_t* trace_data, size_t trace_size,
                             TracePlaybackMode playback_mode,
                             bool clear_caches) {
   playing_trace_ = true;
+#if XE_PLATFORM_MACOS
+  graphics_system_->command_processor()->CallInThread(
+      [=, this]() {
+        PlayTraceOnThread(trace_data, trace_size, playback_mode, clear_caches);
+      },
+      "trace-playback");
+#else
   graphics_system_->command_processor()->CallInThread([=, this]() {
     PlayTraceOnThread(trace_data, trace_size, playback_mode, clear_caches);
   });
+#endif
 }
 
 void TracePlayer::PlayTraceOnThread(const uint8_t* trace_data,

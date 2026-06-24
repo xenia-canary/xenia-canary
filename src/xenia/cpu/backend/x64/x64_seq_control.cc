@@ -8,7 +8,7 @@
  */
 
 #if XE_PLATFORM_MACOS
-#include "xenia/cpu/backend/x64/x64_sequences_mac.h"
+#include "xenia/cpu/backend/x64/x64_sequences.h"
 #else
 #include "xenia/cpu/backend/x64/x64_sequences.h"
 #endif

@@ -332,6 +332,10 @@ template <typename T>
 IConfigVar* define_configvar(const char* name, T* default_value,
                              const char* description, const char* category,
                              bool is_transient) {
+#if XE_PLATFORM_MAC
+  volatile char _xe_prefault = *reinterpret_cast<volatile const char*>(
+      static_cast<const void*>(default_value));
+#endif
   IConfigVar* cfgvar = new ConfigVar<T>(name, default_value, description,
                                         category, is_transient);
   AddConfigVar(cfgvar);
@@ -341,6 +345,10 @@ IConfigVar* define_configvar(const char* name, T* default_value,
 template <typename T>
 ICommandVar* define_cmdvar(const char* name, T* default_value,
                            const char* description) {
+#if XE_PLATFORM_MAC
+  volatile char _xe_prefault = *reinterpret_cast<volatile const char*>(
+      static_cast<const void*>(default_value));
+#endif
   ICommandVar* cmdvar = new CommandVar<T>(name, default_value, description);
   AddCommandVar(cmdvar);
   return cmdvar;

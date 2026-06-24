@@ -33,9 +33,22 @@ void X64Function::Setup(uint8_t* machine_code, size_t machine_code_length) {
 bool X64Function::CallImpl(ThreadState* thread_state, uint32_t return_address) {
   auto backend =
       reinterpret_cast<X64Backend*>(thread_state->processor()->backend());
+#if XE_PLATFORM_MACOS
+  auto perf_monitor = backend->GetPerformanceMonitor();
+  if (perf_monitor) {
+    perf_monitor->BeginFunctionExecution(address());
+  }
+#endif
+
   auto thunk = backend->host_to_guest_thunk();
   thunk(machine_code_, thread_state->context(),
         reinterpret_cast<void*>(uintptr_t(return_address)));
+
+#if XE_PLATFORM_MACOS
+  if (perf_monitor) {
+    perf_monitor->EndFunctionExecution(address());
+  }
+#endif
   return true;
 }
 

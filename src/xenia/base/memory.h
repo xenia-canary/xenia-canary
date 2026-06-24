@@ -698,7 +698,7 @@ XE_MAYBE_UNUSED void Prefetch<PrefetchTag::Level1>(const void* addr) {
 // barrier
 #define XE_MSVC_REORDER_BARRIER() static_cast<void>(0)
 #endif
-#if XE_ARCH_AMD64 == 1
+#if XE_ARCH_AMD64 == 1 && (!defined(__APPLE__) || defined(__AVX__))
 union alignas(XE_HOST_CACHE_LINE_SIZE) CacheLine {
   struct {
     __m256 low32;
