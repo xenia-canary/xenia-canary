@@ -19,6 +19,9 @@ struct X_KEVENT;
 
 namespace xboxkrnl {
 
+// Returns the guest pointer of the object to watch for GPU bootstrap waits.
+uint32_t GetWaitWatchObjectPtr();
+
 uint32_t xeNtSetEvent(uint32_t handle, xe::be<uint32_t>* previous_state_ptr);
 
 uint32_t xeNtClearEvent(uint32_t handle);

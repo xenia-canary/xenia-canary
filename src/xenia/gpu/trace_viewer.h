@@ -28,11 +28,7 @@
 #include "xenia/ui/window.h"
 #endif
 #include "xenia/ui/window_listener.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/ui/windowed_app_mac.h"
-#else
 #include "xenia/ui/windowed_app.h"
-#endif
 DECLARE_path(target_trace_file);
 namespace xe {
 namespace gpu {

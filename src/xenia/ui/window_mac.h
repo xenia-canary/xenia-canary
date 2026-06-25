@@ -21,10 +21,13 @@
 #include "xenia/ui/menu_item.h"
 #include "xenia/ui/presenter_mac.h"
 #include "xenia/ui/surface_mac.h"
+// Shared Mac window declaration guard
+#ifndef XENIA_UI_WINDOW_SHARED_DECLS_
+#define XENIA_UI_WINDOW_SHARED_DECLS_
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window_listener.h"
-#include "xenia/ui/windowed_app_context_mac.h"
+#include "xenia/ui/windowed_app_context.h"
 
 namespace xe {
 namespace ui {
@@ -727,5 +730,7 @@ class Window {
 
 }  // namespace ui
 }  // namespace xe
+
+#endif  // XENIA_UI_WINDOW_SHARED_DECLS_
 
 #endif  // XENIA_UI_WINDOW_MAC_H_

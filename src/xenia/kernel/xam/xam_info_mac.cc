@@ -19,7 +19,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules_mac.h"
-#include "xenia/kernel/xboxkrnl/xboxkrnl_threading_mac.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xthread_mac.h"
 #include "xenia/ui/imgui_dialog.h"

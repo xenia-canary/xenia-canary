@@ -16,6 +16,12 @@
 namespace xe {
 namespace ui {
 
+GTKWindowedAppContext::GTKWindowedAppContext(bool early_activation_completed) {
+#ifdef __APPLE__
+  macos_activation_completed_ = early_activation_completed;
+#endif
+}
+
 GTKWindowedAppContext::~GTKWindowedAppContext() {
   // Remove the idle sources as their data pointer (to this context) is now
   // outdated.

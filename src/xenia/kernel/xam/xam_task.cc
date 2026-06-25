@@ -17,11 +17,7 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xboxkrnl/xboxkrnl_threading_mac.h"
-#else
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
-#endif
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 

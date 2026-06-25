@@ -14,11 +14,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
 #include "xenia/base/profiling.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/gpu/gpu_flags_mac.h"
-#else
 #include "xenia/gpu/gpu_flags.h"
-#endif
 #if XE_PLATFORM_MACOS
 #include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
 #else

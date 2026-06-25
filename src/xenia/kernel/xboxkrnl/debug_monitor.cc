@@ -37,7 +37,11 @@ void KeDebugMonitorCallback(cpu::ppc::PPCContext* ppc_context,
   XELOGI("KeDebugMonitorCallback({}, {:08X})", static_cast<uint32_t>(id), arg);
 
   if (!cvars::kernel_pix) {
+#if XE_PLATFORM_MACOS
+    SHIM_SET_RETURN_32(0);
+#else
     SHIM_SET_RETURN_32(-1);
+#endif
     return;
   }
 

@@ -16,13 +16,36 @@
 #endif
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_gtk.h"
 
+void RunStartupCpuFeatureCheck();
+
+#ifdef __APPLE__
+namespace {
+
+void WriteMacStartupBreadcrumb(const char* message) {
+  FILE* file = std::fopen("/tmp/xenia-mac-startup.log", "a");
+  if (!file) {
+    return;
+  }
+  std::time_t now = std::time(nullptr);
+  std::fprintf(file, "%lld %s\n", static_cast<long long>(now), message);
+  std::fclose(file);
+}
+
+}  // namespace
+#endif
+
 int main(int argc_pre_gtk, char** argv_pre_gtk) {
+#ifdef __APPLE__
+  WriteMacStartupBreadcrumb("main entered");
+  std::fprintf(stderr, "[windowed_app_main_posix] main entered\n");
+#endif
   // Before touching anything GTK+, make sure that when running on Wayland,
   // we'll still get an X11 (Xwayland) window
   // also allow users to override this
@@ -40,11 +63,22 @@ int main(int argc_pre_gtk, char** argv_pre_gtk) {
   // (the config).
   int argc_post_gtk = argc_pre_gtk;
   char** argv_post_gtk = argv_pre_gtk;
+#ifdef __APPLE__
+  WriteMacStartupBreadcrumb("before gtk_init_check");
+  std::fprintf(stderr, "[windowed_app_main_posix] before gtk_init_check\n");
+#endif
   if (!gtk_init_check(&argc_post_gtk, &argv_post_gtk)) {
     // Logging has not been initialized yet.
     std::fputs("Failed to initialize GTK+\n", stderr);
     return EXIT_FAILURE;
   }
+#ifdef __APPLE__
+  WriteMacStartupBreadcrumb("after gtk_init_check");
+  std::fprintf(stderr, "[windowed_app_main_posix] after gtk_init_check\n");
+  WriteMacStartupBreadcrumb("before RunStartupCpuFeatureCheck");
+  RunStartupCpuFeatureCheck();
+  WriteMacStartupBreadcrumb("after RunStartupCpuFeatureCheck");
+#endif
 
 #ifdef __APPLE__
   {
@@ -76,28 +110,46 @@ int main(int argc_pre_gtk, char** argv_pre_gtk) {
   int result;
 
   {
+#ifdef __APPLE__
+    WriteMacStartupBreadcrumb("before GTKWindowedAppContext");
+#endif
     xe::ui::GTKWindowedAppContext app_context;
 #ifdef __APPLE__
+    WriteMacStartupBreadcrumb("after GTKWindowedAppContext");
     fprintf(stderr,
             "[windowed_app_main_posix] GTKWindowedAppContext created\n");
     fprintf(stderr,
             "[windowed_app_main_posix] Creating WindowedApp under "
             "GTKWindowedAppContext...\n");
 #endif
+#ifdef __APPLE__
+    WriteMacStartupBreadcrumb("before WindowedApp create");
+#endif
     std::unique_ptr<xe::ui::WindowedApp> app =
         xe::ui::GetWindowedAppCreator()(app_context);
 #ifdef __APPLE__
+    WriteMacStartupBreadcrumb("after WindowedApp create");
     fprintf(stderr, "[windowed_app_main_posix] WindowedApp created: %s\n",
             app->GetName().c_str());
 #endif
 
+#ifdef __APPLE__
+    WriteMacStartupBreadcrumb("before ParseLaunchArguments");
+#endif
     cvar::ParseLaunchArguments(argc_post_gtk, argv_post_gtk,
                                app->GetPositionalOptionsUsage(),
                                app->GetPositionalOptions());
+#ifdef __APPLE__
+    WriteMacStartupBreadcrumb("after ParseLaunchArguments");
+#endif
 
     // Initialize logging. Needs parsed cvars.
+#ifdef __APPLE__
+    WriteMacStartupBreadcrumb("before InitializeLogging");
+#endif
     xe::InitializeLogging(app->GetName());
 #ifdef __APPLE__
+    WriteMacStartupBreadcrumb("after InitializeLogging");
     fprintf(stderr, "[windowed_app_main_posix] Logging initialized\n");
 #endif
 

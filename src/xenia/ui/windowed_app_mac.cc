@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/ui/windowed_app_mac.h"
+#include "xenia/ui/windowed_app.h"
 
 namespace xe {
 namespace ui {

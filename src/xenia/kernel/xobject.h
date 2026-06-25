@@ -10,6 +10,12 @@
 #ifndef XENIA_KERNEL_XOBJECT_H_
 #define XENIA_KERNEL_XOBJECT_H_
 
+#include "xenia/base/platform.h"
+
+#if XE_PLATFORM_MACOS
+#include "xenia/kernel/xobject_mac.h"
+#else
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -401,5 +407,7 @@ object_ref<T> XObject::GetNativeObject(KernelState* kernel_state,
 
 }  // namespace kernel
 }  // namespace xe
+
+#endif  // XE_PLATFORM_MACOS
 
 #endif  // XENIA_KERNEL_XOBJECT_H_
