@@ -23,8 +23,12 @@
 #include "xenia/base/threading.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
-#include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/graphics_system.h"
+#if XE_PLATFORM_MACOS
+#include "xenia/gpu/command_processor_mac.h"
+#else
+#include "xenia/gpu/command_processor.h"
+#endif
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_module.h"

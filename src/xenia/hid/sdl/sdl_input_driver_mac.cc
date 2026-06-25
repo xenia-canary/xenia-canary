@@ -13,16 +13,16 @@
 #include "xenia/base/platform_win.h"
 #endif  // XE_PLATFORM_WIN32
 
+#include <chrono>
+#include <thread>
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
-#include <chrono>
-#include <thread>
 #include "xenia/helper/sdl/sdl_helper.h"
 #include "xenia/hid/hid_flags.h"
 #include "xenia/ui/virtual_key.h"
-#include "xenia/ui/window_mac.h"
-#include "xenia/ui/windowed_app_context_mac.h"
+#include "xenia/ui/window.h"
+#include "xenia/ui/windowed_app_context.h"
 
 // TODO(joellinn) make this path relative to the config folder.
 DEFINE_path(mappings_file, "gamecontrollerdb.txt",

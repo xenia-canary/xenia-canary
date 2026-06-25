@@ -29,23 +29,19 @@
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/immediate_drawer.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #else
 #include "xenia/ui/presenter.h"
 #endif
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/vulkan/vulkan_provider.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/window_mac.h"
+#include "xenia/ui/window.h"
 #else
 #include "xenia/ui/window.h"
 #endif
 #include "xenia/ui/window_listener.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/ui/windowed_app_mac.h"
-#else
 #include "xenia/ui/windowed_app.h"
-#endif
 
 // Available input drivers:
 #include "xenia/hid/nop/nop_hid.h"
