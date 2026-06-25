@@ -7,7 +7,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/cpu/ppc/ppc_opcode.h"
-#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#include "xenia/cpu/ppc/ppc_opcode_info.h"
 
 namespace xe {
 namespace cpu {

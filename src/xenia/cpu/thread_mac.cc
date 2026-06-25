@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/cpu/thread_mac.h"
+#include "xenia/cpu/thread.h"
 #include "xenia/cpu/thread_state.h"
 
 namespace xe {

@@ -14,11 +14,7 @@
 #include "third_party/stb/stb_image.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xam/user_data_mac.h"
-#else
 #include "xenia/kernel/xam/user_data.h"
-#endif
 #include "xenia/kernel/xam/user_property.h"
 #include "xenia/kernel/xam/user_settings.h"
 #include "xenia/kernel/xam/user_tracker.h"

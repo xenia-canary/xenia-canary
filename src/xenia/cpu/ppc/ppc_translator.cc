@@ -19,11 +19,7 @@
 #include "xenia/cpu/compiler/compiler_passes.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/ppc/ppc_hir_builder_mac.h"
-#else
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
-#endif
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/ppc/ppc_scanner.h"
 #include "xenia/cpu/processor.h"

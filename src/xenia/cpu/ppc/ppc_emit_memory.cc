@@ -13,11 +13,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/cpu/ppc/ppc_context.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/cpu/ppc/ppc_hir_builder_mac.h"
-#else
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
-#endif
 
 DEFINE_bool(
     disable_prefetch_and_cachecontrol, true,

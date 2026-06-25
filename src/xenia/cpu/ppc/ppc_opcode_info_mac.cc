@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#include "xenia/cpu/ppc/ppc_opcode_info.h"
 
 #include <atomic>
 

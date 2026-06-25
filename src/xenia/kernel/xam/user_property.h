@@ -12,11 +12,7 @@
 
 #include <variant>
 
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xam/user_data_mac.h"
-#else
 #include "xenia/kernel/xam/user_data.h"
-#endif
 #include "xenia/memory.h"
 #include "xenia/xbox.h"
 

@@ -16,11 +16,7 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/kernel/util/xfiletime.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/xam/user_data_mac.h"
-#else
 #include "xenia/kernel/xam/user_data.h"
-#endif
 #include "xenia/kernel/xam/xdbf/xdbf_io.h"
 
 namespace xe {

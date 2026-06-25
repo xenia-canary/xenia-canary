@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/cpu/ppc/ppc_hir_builder_mac.h"
+#include "xenia/cpu/ppc/ppc_hir_builder.h"
 
 #include <stddef.h>
 #include <cstring>
@@ -25,7 +25,7 @@
 #include "xenia/cpu/ppc/ppc_context_mac.h"
 #include "xenia/cpu/ppc/ppc_decode_data.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"
-#include "xenia/cpu/ppc/ppc_opcode_info_mac.h"
+#include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/xex_module_mac.h"
 DEFINE_bool(
