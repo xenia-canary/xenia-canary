@@ -13,7 +13,7 @@
 #include "xenia/base/math.h"
 #include "xenia/ui/graphics_util.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #else
 #include "xenia/ui/presenter.h"
 #endif

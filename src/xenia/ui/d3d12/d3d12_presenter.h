@@ -18,7 +18,7 @@
 #include "xenia/ui/d3d12/d3d12_provider.h"
 #include "xenia/ui/d3d12/d3d12_submission_tracker.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #else
 #include "xenia/ui/presenter.h"
 #endif

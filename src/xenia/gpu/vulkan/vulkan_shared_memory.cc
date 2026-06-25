@@ -17,7 +17,7 @@
 #include "xenia/base/math.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
+#include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #else
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #endif

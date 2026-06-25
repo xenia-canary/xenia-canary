@@ -18,7 +18,7 @@
 #include "xenia/base/string.h"
 #include "xenia/cpu/backend/x64/x64_backend.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/cpu/backend/x64/x64_code_cache_mac.h"
+#include "xenia/cpu/backend/x64/x64_code_cache.h"
 #else
 #include "xenia/cpu/backend/x64/x64_code_cache.h"
 #endif

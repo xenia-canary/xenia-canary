@@ -18,14 +18,14 @@
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #else
 #include "xenia/ui/presenter.h"
 #endif
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/window_mac.h"
+#include "xenia/ui/window.h"
 #else
 #include "xenia/ui/window.h"
 #endif

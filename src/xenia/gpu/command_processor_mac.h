@@ -23,9 +23,9 @@
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/trace_writer.h"
 #include "xenia/gpu/xenos.h"
-#include "xenia/kernel/xthread_mac.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 
 namespace xe {
 

@@ -13,7 +13,7 @@
 #include <memory>
 
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #else
 #include "xenia/ui/presenter.h"
 #endif

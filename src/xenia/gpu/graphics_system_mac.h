@@ -20,10 +20,10 @@
 
 #include "xenia/cpu/processor.h"
 #include "xenia/gpu/register_file.h"
-#include "xenia/kernel/xthread_mac.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
 #include "xenia/ui/graphics_provider.h"
-#include "xenia/ui/presenter_mac.h"
+#include "xenia/ui/presenter.h"
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 

@@ -16,7 +16,7 @@
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/gpu_flags.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/gpu/vulkan/vulkan_command_processor_mac.h"
+#include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #else
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 #endif

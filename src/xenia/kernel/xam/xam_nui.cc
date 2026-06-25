@@ -16,7 +16,7 @@
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/window_mac.h"
+#include "xenia/ui/window.h"
 #else
 #include "xenia/ui/window.h"
 #endif

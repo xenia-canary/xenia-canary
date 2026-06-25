@@ -9,7 +9,7 @@
 
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
-#include "xenia/kernel/xthread_mac.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
 namespace xe {

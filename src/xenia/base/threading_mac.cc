@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/base/threading_mac.h"
+#include "xenia/base/threading.h"
 
 #include <mach/mach.h>
 #include <mach/mach_time.h>
