@@ -23,7 +23,7 @@
 #include "xenia/ui/presenter.h"
 #endif
 #if XE_PLATFORM_MACOS
-#include "xenia/ui/surface_mac.h"
+#include "xenia/ui/surface.h"
 #else
 #include "xenia/ui/surface.h"
 #endif

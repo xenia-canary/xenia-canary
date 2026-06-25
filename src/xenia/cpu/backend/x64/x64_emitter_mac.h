@@ -18,7 +18,7 @@
 #include "xenia/cpu/hir/hir_builder.h"
 #include "xenia/cpu/hir/instr.h"
 #include "xenia/cpu/hir/value.h"
-#include "xenia/cpu/xex_module_mac.h"
+#include "xenia/cpu/xex_module.h"
 #include "xenia/memory.h"
 // NOTE: must be included last as it expects windows.h to already be included.
 #include "third_party/xbyak/xbyak/xbyak.h"

@@ -12,7 +12,7 @@
 
 #include "xenia/kernel/util/shim_utils.h"
 #if XE_PLATFORM_MACOS
-#include "xenia/kernel/xam/xam_mac.h"
+#include "xenia/kernel/xam/xam.h"
 #else
 #include "xenia/kernel/xam/xam.h"
 #endif

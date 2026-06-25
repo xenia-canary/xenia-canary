@@ -27,7 +27,7 @@
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/processor.h"
-#include "xenia/cpu/xex_module_mac.h"
+#include "xenia/cpu/xex_module.h"
 DEFINE_bool(
     break_on_unimplemented_instructions, true,
     "Break to the host debugger (or crash if no debugger attached) if an "
