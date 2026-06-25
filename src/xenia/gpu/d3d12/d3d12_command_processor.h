@@ -39,11 +39,7 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/user_module_mac.h"
-#else
 #include "xenia/kernel/user_module.h"
-#endif
 #include "xenia/ui/d3d12/d3d12_descriptor_heap_pool.h"
 #include "xenia/ui/d3d12/d3d12_provider.h"
 #include "xenia/ui/d3d12/d3d12_upload_buffer_pool.h"

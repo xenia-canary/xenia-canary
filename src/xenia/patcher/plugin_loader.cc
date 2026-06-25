@@ -9,11 +9,7 @@
 #include "xenia/patcher/plugin_loader.h"
 #include "xenia/base/logging.h"
 #include "xenia/config.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/user_module_mac.h"
-#else
 #include "xenia/kernel/user_module.h"
-#endif
 #include "xenia/kernel/xthread.h"
 #include "xenia/vfs/devices/host_path_device.h"
 

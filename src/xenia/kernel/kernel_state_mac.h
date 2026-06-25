@@ -26,7 +26,7 @@
 #include "xenia/kernel/smc.h"
 #include "xenia/kernel/util/kernel_fwd.h"
 #include "xenia/kernel/util/native_list.h"
-#include "xenia/kernel/util/object_table_mac.h"
+#include "xenia/kernel/util/object_table.h"
 #include "xenia/kernel/xam/achievement_manager.h"
 #include "xenia/kernel/xam/app_manager.h"
 #include "xenia/kernel/xam/content_manager.h"

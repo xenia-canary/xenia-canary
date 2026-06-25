@@ -22,7 +22,7 @@
 #include "xenia/base/string.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/hir/label.h"
-#include "xenia/cpu/ppc/ppc_context_mac.h"
+#include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/ppc/ppc_decode_data.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/ppc/ppc_opcode_info.h"

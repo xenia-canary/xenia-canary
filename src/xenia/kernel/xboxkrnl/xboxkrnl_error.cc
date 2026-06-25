@@ -10,11 +10,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
-#if XE_PLATFORM_MACOS
-#include "xenia/kernel/user_module_mac.h"
-#else
 #include "xenia/kernel/user_module.h"
-#endif
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 
