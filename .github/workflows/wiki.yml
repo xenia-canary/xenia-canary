@@ -6,13 +6,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@main
         with:
           repository: ${{ github.repository }}.wiki
       - name: Update wiki
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
+        run: |-
           git remote add remote https://github.com/${{ github.repository }}.git
           git fetch remote wiki
           git reset --hard remote/wiki
