@@ -456,6 +456,18 @@ DECLARE_XAM_EXPORT1(RtlSetLastNTError, kNone, kImplemented);
 dword_result_t RtlGetLastError_entry() { return XThread::GetLastError(); }
 DECLARE_XAM_EXPORT1(RtlGetLastError, kNone, kImplemented);
 
+dword_result_t XGetOverlappedExtendedError_entry(
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!overlapped_ptr) {
+    return XThread::GetLastError();
+  }
+  if (overlapped_ptr->result == X_ERROR_IO_PENDING) {
+    return X_ERROR_IO_INCOMPLETE;
+  }
+  return static_cast<uint32_t>(overlapped_ptr->extended_error);
+}
+DECLARE_XAM_EXPORT1(XGetOverlappedExtendedError, kNone, kImplemented);
+
 dword_result_t GetLastError_entry() { return RtlGetLastError_entry(); }
 DECLARE_XAM_EXPORT1(GetLastError, kNone, kImplemented);
 
