@@ -517,23 +517,38 @@ TextureCache::Texture::~Texture() {
   texture_cache_.UpdateTexturesTotalHostMemoryUsage(0, host_memory_usage_);
 }
 
-void TextureCache::Texture::MakeUpToDateAndWatch(
+bool TextureCache::Texture::MakeUpToDateAndWatch(
     const global_unique_lock_type& global_lock) {
   SharedMemory& shared_memory = texture_cache().shared_memory();
-  if (base_outdated_) {
+  const bool watch_base = base_outdated_;
+  const bool watch_mips = mips_outdated_;
+  assert_true(global_lock.owns_lock());
+  if (watch_base &&
+      !shared_memory.IsRangeValid(
+          key().base_page << 12, xe::align(GetGuestBaseSize(), UINT32_C(16)))) {
+    return false;
+  }
+  if (watch_mips &&
+      !shared_memory.IsRangeValid(
+          key().mip_page << 12, xe::align(GetGuestMipsSize(), UINT32_C(16)))) {
+    return false;
+  }
+
+  if (watch_base) {
     assert_not_zero(GetGuestBaseSize());
     base_outdated_ = false;
     base_watch_handle_ = shared_memory.WatchMemoryRange(
         key().base_page << 12, GetGuestBaseSize(), TextureCache::WatchCallback,
         this, nullptr, 0);
   }
-  if (mips_outdated_) {
+  if (watch_mips) {
     assert_not_zero(GetGuestMipsSize());
     mips_outdated_ = false;
     mips_watch_handle_ = shared_memory.WatchMemoryRange(
         key().mip_page << 12, GetGuestMipsSize(), TextureCache::WatchCallback,
         this, nullptr, 1);
   }
+  return true;
 }
 
 void TextureCache::Texture::MarkAsUsed() {
@@ -781,7 +796,9 @@ void TextureCache::LoadTexturesData(Texture** textures, uint32_t n_textures) {
       // resolves as well to detect when the CPU wants to reuse the memory for a
       // regular texture or a vertex buffer, and thus the scaled resolve version
       // is not up to date anymore.
-      texture->MakeUpToDateAndWatch(crit);
+      if (!texture->MakeUpToDateAndWatch(crit)) {
+        continue;
+      }
 
       texture->LogAction("Loaded");
     }
@@ -861,7 +878,9 @@ bool TextureCache::LoadTextureData(Texture& texture) {
   // resolves as well to detect when the CPU wants to reuse the memory for a
   // regular texture or a vertex buffer, and thus the scaled resolve version is
   // not up to date anymore.
-  texture.MakeUpToDateAndWatch(global_critical_region_.Acquire());
+  if (!texture.MakeUpToDateAndWatch(global_critical_region_.Acquire())) {
+    return false;
+  }
 
   texture.LogAction("Loaded");
 

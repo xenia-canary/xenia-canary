@@ -416,6 +416,34 @@ bool SharedMemory::RequestRange(uint32_t start, uint32_t length) {
   return UploadRanges(uploads, current_upload_range);
 }
 
+bool SharedMemory::IsRangeValid(uint32_t start, uint32_t length) const {
+  if (!length) {
+    return true;
+  }
+  if (start > kBufferSize || (kBufferSize - start) < length) {
+    return false;
+  }
+
+  const uint32_t page_first = start >> page_size_log2_;
+  const uint32_t page_last = (start + length - 1) >> page_size_log2_;
+  const uint32_t block_first = page_first >> 6;
+  const uint32_t block_last = page_last >> 6;
+
+  for (uint32_t i = block_first; i <= block_last; ++i) {
+    uint64_t valid_mask = UINT64_MAX;
+    if (i == block_first) {
+      valid_mask &= ~((uint64_t(1) << (page_first & 63)) - 1);
+    }
+    if (i == block_last && (page_last & 63) != 63) {
+      valid_mask &= (uint64_t(1) << ((page_last & 63) + 1)) - 1;
+    }
+    if ((system_page_flags_valid_[i] & valid_mask) != valid_mask) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename T>
 XE_FORCEINLINE XE_NOALIAS static T mod_shift_left(T value, uint32_t by) {
 #if XE_ARCH_AMD64 == 1
