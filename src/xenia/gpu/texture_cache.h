@@ -137,6 +137,11 @@ class TextureCache {
         GetValidTextureBinding(fetch_constant_index);
     return binding ? binding->swizzled_signs : kSwizzledSignsUnsigned;
   }
+  uint32_t GetActiveIntegerScaleBits(uint32_t fetch_constant_index) const {
+    const TextureBinding* binding =
+        GetValidTextureBinding(fetch_constant_index);
+    return binding ? binding->integer_scale_bits : 0;
+  }
   bool IsActiveTextureResolutionScaled(uint32_t fetch_constant_index) const {
     const TextureBinding* binding =
         GetValidTextureBinding(fetch_constant_index);
@@ -500,6 +505,8 @@ class TextureCache {
 
   struct TextureBinding {
     TextureKey key;
+    // Packed integer scale, 5 bits per component.
+    uint32_t integer_scale_bits;
     // Destination swizzle merged with guest to host format swizzle.
     uint32_t host_swizzle;
     // Packed TextureSign values, 2 bit per each component, with guest-side
@@ -577,6 +584,12 @@ class TextureCache {
     assert_true(load_shader_index < kLoadShaderCount);
     return load_shader_info_[load_shader_index];
   }
+  // Integer num_format on fixed textures. Returns the packed scale used by the
+  // shader to restore guest integer units from normalized host samples.
+  static uint32_t GetIntegerScaleBits(xenos::TextureFormat guest_format,
+                                      uint32_t num_format,
+                                      uint32_t host_swizzle,
+                                      uint8_t swizzled_signs);
   bool LoadTextureData(Texture& texture);
   void LoadTexturesData(Texture** textures, uint32_t n_textures);
   // Writes the texture data (for base, mips or both - but not neither) from the

@@ -4705,6 +4705,12 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
           (texture_signs_uint & texture_signs_mask) != texture_signs_shifted;
       texture_signs_uint =
           (texture_signs_uint & ~texture_signs_mask) | texture_signs_shifted;
+      uint32_t texture_integer_scale_bits =
+          texture_cache_->GetActiveIntegerScaleBits(texture_index);
+      dirty |= system_constants_.texture_integer_scale_bits[texture_index] !=
+               texture_integer_scale_bits;
+      system_constants_.texture_integer_scale_bits[texture_index] =
+          texture_integer_scale_bits;
     }
   }
 

@@ -16,8 +16,8 @@ namespace gpu {
 
 using namespace xe::gpu::xenos;
 
-#define FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel) \
-    {xenos::TextureFormat::texture_format,  FormatType::format, block_width, block_height, bits_per_pixel}
+#define FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel, component_bits_0, component_bits_1, component_bits_2, component_bits_3, fixed) \
+    {xenos::TextureFormat::texture_format,  FormatType::format, block_width, block_height, bits_per_pixel, {component_bits_0, component_bits_1, component_bits_2, component_bits_3}, fixed}
 const FormatInfo* FormatInfo::Get(uint32_t gpu_format) {
   static constexpr FormatInfo format_infos[64] = {
       #include "texture_info_formats.inl"
@@ -43,7 +43,7 @@ constexpr unsigned char GetShift(unsigned pow) {
 	this means we can use a boolean table that also acts as a sparse indexer ( popcnt preceding bits to get index) and shift and mask a 32 bit word to get the shift
 */
 unsigned char FormatInfo::GetWidthShift(uint32_t gpu_format) {
-	#define		FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel)		GetShift(block_width)
+	#define		FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel, component_bits_0, component_bits_1, component_bits_2, component_bits_3, fixed)		GetShift(block_width)
 	alignas(XE_HOST_CACHE_LINE_SIZE)
 	constexpr unsigned char wshift_table[64] = {
 		#include "texture_info_formats.inl"
@@ -53,7 +53,7 @@ unsigned char FormatInfo::GetWidthShift(uint32_t gpu_format) {
 	return wshift_table[gpu_format];
 }
 unsigned char FormatInfo::GetHeightShift(uint32_t gpu_format) {
-#define		FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel)		GetShift(block_height)
+#define		FORMAT_INFO(texture_format, format, block_width, block_height, bits_per_pixel, component_bits_0, component_bits_1, component_bits_2, component_bits_3, fixed)		GetShift(block_height)
 	alignas(XE_HOST_CACHE_LINE_SIZE)
 	constexpr unsigned char hshift_table[64] = {
 		#include "texture_info_formats.inl"
