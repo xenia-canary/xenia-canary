@@ -11,6 +11,7 @@
 #define XENIA_BASE_MATH_H_
 
 #include <algorithm>
+#include <bit>
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -18,15 +19,6 @@
 #include <limits>
 #include <numeric>
 #include <type_traits>
-
-#if defined __has_include
-#if __has_include(<version>)
-#include <version>
-#endif
-#endif
-#if __cpp_lib_bitops
-#include <bit>
-#endif
 
 #include "xenia/base/platform.h"
 
@@ -141,171 +133,41 @@ constexpr uint32_t select_bits(uint32_t value, uint32_t a, uint32_t b) {
   return (value & make_bitmask(a, b)) >> a;
 }
 
-#if __cpp_lib_bitops
 template <class T>
 constexpr inline uint32_t bit_count(T v) {
   return static_cast<uint32_t>(std::popcount(v));
 }
-#else
-#if XE_COMPILER_MSVC || XE_COMPILER_INTEL
-inline uint32_t bit_count(uint32_t v) { return __popcnt(v); }
-inline uint32_t bit_count(uint64_t v) {
-  return static_cast<uint32_t>(__popcnt64(v));
-}
-#elif XE_COMPILER_GCC || XE_COMPILER_CLANG
-static_assert(sizeof(unsigned int) == sizeof(uint32_t));
-static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
-inline uint32_t bit_count(uint32_t v) { return __builtin_popcount(v); }
-inline uint32_t bit_count(uint64_t v) { return __builtin_popcountll(v); }
-#else
-inline uint32_t bit_count(uint32_t v) {
-  v = v - ((v >> 1) & 0x55555555);
-  v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
-  return ((v + (v >> 4) & 0xF0F0F0F) * 0x1010101) >> 24;
-}
-
-inline uint32_t bit_count(uint64_t v) {
-  v = (v & 0x5555555555555555LU) + (v >> 1 & 0x5555555555555555LU);
-  v = (v & 0x3333333333333333LU) + (v >> 2 & 0x3333333333333333LU);
-  v = v + (v >> 4) & 0x0F0F0F0F0F0F0F0FLU;
-  v = v + (v >> 8);
-  v = v + (v >> 16);
-  v = v + (v >> 32) & 0x0000007F;
-  return static_cast<uint32_t>(v);
-}
-#endif
-#endif
 
 // lzcnt instruction, typed for integers of all sizes.
 // The number of leading zero bits in the value parameter. If value is zero, the
 // return value is the size of the input operand (8, 16, 32, or 64). If the most
 // significant bit of value is one, the return value is zero.
-#if XE_PLATFORM_WIN32
-// TODO(benvanik): runtime magic so these point to an appropriate implementation
-// at runtime based on CPU features
-#if 0
-inline uint8_t lzcnt(uint8_t v) {
-  return static_cast<uint8_t>(__lzcnt16(v) - 8);
+template <typename T>
+inline uint8_t lzcnt(T v) {
+  return static_cast<uint8_t>(
+      std::countl_zero(static_cast<std::make_unsigned_t<T>>(v)));
 }
-inline uint8_t lzcnt(uint16_t v) { return static_cast<uint8_t>(__lzcnt16(v)); }
-inline uint8_t lzcnt(uint32_t v) { return static_cast<uint8_t>(__lzcnt(v)); }
-inline uint8_t lzcnt(uint64_t v) { return static_cast<uint8_t>(__lzcnt64(v)); }
-#else
-inline uint8_t lzcnt(uint8_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanReverse(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) ^ 0x7 : 8);
+// tzcnt instruction, typed for integers of all sizes.
+// The number of trailing zero bits in the value parameter. If value is zero,
+// the return value is the size of the input operand (8, 16, 32, or 64).
+template <typename T>
+inline uint8_t tzcnt(T v) {
+  return static_cast<uint8_t>(
+      std::countr_zero(static_cast<std::make_unsigned_t<T>>(v)));
 }
-inline uint8_t lzcnt(uint16_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanReverse(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) ^ 0xF : 16);
-}
-inline uint8_t lzcnt(uint32_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanReverse(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) ^ 0x1F : 32);
-}
-inline uint8_t lzcnt(uint64_t v) {
-  unsigned long index;
-  unsigned long long mask = v;
-  unsigned char is_nonzero = _BitScanReverse64(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) ^ 0x3F : 64);
-}
-#endif  // LZCNT supported
-
-inline uint8_t tzcnt(uint8_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanForward(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) : 8);
-}
-
-inline uint8_t tzcnt(uint16_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanForward(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) : 16);
-}
-
-inline uint8_t tzcnt(uint32_t v) {
-  unsigned long index;
-  unsigned long mask = v;
-  unsigned char is_nonzero = _BitScanForward(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) : 32);
-}
-
-inline uint8_t tzcnt(uint64_t v) {
-  unsigned long index;
-  unsigned long long mask = v;
-  unsigned char is_nonzero = _BitScanForward64(&index, mask);
-  return static_cast<uint8_t>(is_nonzero ? int8_t(index) : 64);
-}
-
-#else  // XE_PLATFORM_WIN32
-inline uint8_t lzcnt(uint8_t v) {
-  return v == 0 ? 8 : static_cast<uint8_t>(__builtin_clz(v) - 24);
-}
-inline uint8_t lzcnt(uint16_t v) {
-  return v == 0 ? 16 : static_cast<uint8_t>(__builtin_clz(v) - 16);
-}
-inline uint8_t lzcnt(uint32_t v) {
-  return v == 0 ? 32 : static_cast<uint8_t>(__builtin_clz(v));
-}
-inline uint8_t lzcnt(uint64_t v) {
-  return v == 0 ? 64 : static_cast<uint8_t>(__builtin_clzll(v));
-}
-
-inline uint8_t tzcnt(uint8_t v) {
-  return v == 0 ? 8 : static_cast<uint8_t>(__builtin_ctz(v));
-}
-inline uint8_t tzcnt(uint16_t v) {
-  return v == 0 ? 16 : static_cast<uint8_t>(__builtin_ctz(v));
-}
-inline uint8_t tzcnt(uint32_t v) {
-  return v == 0 ? 32 : static_cast<uint8_t>(__builtin_ctz(v));
-}
-inline uint8_t tzcnt(uint64_t v) {
-  return v == 0 ? 64 : static_cast<uint8_t>(__builtin_ctzll(v));
-}
-#endif
-inline uint8_t lzcnt(int8_t v) { return lzcnt(static_cast<uint8_t>(v)); }
-inline uint8_t lzcnt(int16_t v) { return lzcnt(static_cast<uint16_t>(v)); }
-inline uint8_t lzcnt(int32_t v) { return lzcnt(static_cast<uint32_t>(v)); }
-inline uint8_t lzcnt(int64_t v) { return lzcnt(static_cast<uint64_t>(v)); }
-inline uint8_t tzcnt(int8_t v) { return tzcnt(static_cast<uint8_t>(v)); }
-inline uint8_t tzcnt(int16_t v) { return tzcnt(static_cast<uint16_t>(v)); }
-inline uint8_t tzcnt(int32_t v) { return tzcnt(static_cast<uint32_t>(v)); }
-inline uint8_t tzcnt(int64_t v) { return tzcnt(static_cast<uint64_t>(v)); }
 
 // BitScanForward (bsf).
 // Search the value from least significant bit (LSB) to the most significant bit
 // (MSB) for a set bit (1).
 // Returns false if no bits are set and the output index is invalid.
-#if XE_PLATFORM_WIN32
 inline bool bit_scan_forward(uint32_t v, uint32_t* out_first_set_index) {
-  return _BitScanForward(reinterpret_cast<unsigned long*>(out_first_set_index),
-                         v) != 0;
+  *out_first_set_index = static_cast<uint32_t>(std::countr_zero(v));
+  return v != 0;
 }
 inline bool bit_scan_forward(uint64_t v, uint32_t* out_first_set_index) {
-  return _BitScanForward64(
-             reinterpret_cast<unsigned long*>(out_first_set_index), v) != 0;
+  *out_first_set_index = static_cast<uint32_t>(std::countr_zero(v));
+  return v != 0;
 }
-#else
-inline bool bit_scan_forward(uint32_t v, uint32_t* out_first_set_index) {
-  int i = __builtin_ffs(v);
-  *out_first_set_index = i - 1;
-  return i != 0;
-}
-inline bool bit_scan_forward(uint64_t v, uint32_t* out_first_set_index) {
-  int i = __builtin_ffsll(v);
-  *out_first_set_index = i - 1;
-  return i != 0;
-}
-#endif  // XE_PLATFORM_WIN32
 inline bool bit_scan_forward(int32_t v, uint32_t* out_first_set_index) {
   return bit_scan_forward(static_cast<uint32_t>(v), out_first_set_index);
 }
@@ -332,49 +194,12 @@ inline T log2_ceil(T v) {
 
 template <typename T>
 inline T rotate_left(T v, uint8_t sh) {
-  return (T(v) << sh) | (T(v) >> ((sizeof(T) * CHAR_BIT) - sh));
+  return std::rotl(v, sh);
 }
 template <typename T>
 inline T rotate_right(T v, uint8_t sh) {
-  constexpr unsigned char SHIFT_MASK = (CHAR_BIT * sizeof(T)) - 1;
-  uint8_t rshr = sh & SHIFT_MASK;
-  uint8_t lshl = static_cast<uint8_t>(-static_cast<int8_t>(sh)) & SHIFT_MASK;
-  return (v >> rshr) | (v << lshl);
+  return std::rotr(v, sh);
 }
-#if XE_PLATFORM_WIN32
-template <>
-inline uint8_t rotate_left(uint8_t v, uint8_t sh) {
-  return _rotl8(v, sh);
-}
-template <>
-inline uint16_t rotate_left(uint16_t v, uint8_t sh) {
-  return _rotl16(v, sh);
-}
-template <>
-inline uint32_t rotate_left(uint32_t v, uint8_t sh) {
-  return _rotl(v, sh);
-}
-template <>
-inline uint64_t rotate_left(uint64_t v, uint8_t sh) {
-  return _rotl64(v, sh);
-}
-template <>
-inline uint8_t rotate_right(uint8_t v, uint8_t sh) {
-  return _rotr8(v, sh);
-}
-template <>
-inline uint16_t rotate_right(uint16_t v, uint8_t sh) {
-  return _rotr16(v, sh);
-}
-template <>
-inline uint32_t rotate_right(uint32_t v, uint8_t sh) {
-  return _rotr(v, sh);
-}
-template <>
-inline uint64_t rotate_right(uint64_t v, uint8_t sh) {
-  return _rotr64(v, sh);
-}
-#endif  // XE_PLATFORM_WIN32
 
 #if XE_ARCH_AMD64
 // Utilities for SSE values.
