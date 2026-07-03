@@ -305,6 +305,12 @@ struct TextureInfo {
   void SetupMemoryInfo(uint32_t base_address, uint32_t mip_address);
 };
 
+// Dumps an untiled guest texture to texture_dumps/*.dds when the texture_dump
+// cvar is enabled (texture_dump.cc). Currently has no callers - the old
+// Vulkan texture cache used it; kept for reuse when a texture cache wants
+// dumping again.
+void TextureDump(const TextureInfo& src, void* buffer, size_t length);
+
 }  // namespace gpu
 }  // namespace xe
 
