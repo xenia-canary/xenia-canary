@@ -84,34 +84,17 @@ T saturate(T value) {
 }
 
 // Gets the next power of two value that is greater than or equal to the given
-// value.
+// value. Note: returns 1 for 0 (the old bit-smearing version returned 0).
 template <typename T>
-T next_pow2(T value) {
-  value--;
-  value |= value >> 1;
-  value |= value >> 2;
-  value |= value >> 4;
-  value |= value >> 8;
-  value |= value >> 16;
-  value++;
-  return value;
+constexpr T next_pow2(T value) {
+  return static_cast<T>(
+      std::bit_ceil(static_cast<std::make_unsigned_t<T>>(value)));
 }
 
-#if __cpp_lib_gcd_lcm
 template <typename T>
 constexpr T greatest_common_divisor(T a, T b) {
   return std::gcd(a, b);
 }
-#else
-template <typename T>
-constexpr T greatest_common_divisor(T a, T b) {
-  // Use the Euclid algorithm to calculate the greatest common divisor
-  while (b) {
-    a = std::exchange(b, a % b);
-  }
-  return a;
-}
-#endif
 
 template <typename T>
 constexpr void reduce_fraction(T& numerator, T& denominator) {
@@ -211,12 +194,7 @@ float m128_f32(const __m128& v) {
 }
 template <int N>
 int32_t m128_i32(const __m128& v) {
-  union {
-    float f;
-    int32_t i;
-  } ret;
-  _mm_store_ss(&ret.f, _mm_shuffle_ps(v, v, _MM_SHUFFLE(N, N, N, N)));
-  return ret.i;
+  return std::bit_cast<int32_t>(m128_f32<N>(v));
 }
 template <int N>
 double m128_f64(const __m128d& v) {
@@ -230,12 +208,7 @@ double m128_f64(const __m128& v) {
 }
 template <int N>
 int64_t m128_i64(const __m128d& v) {
-  union {
-    double f;
-    int64_t i;
-  } ret;
-  _mm_store_sd(&ret.f, _mm_shuffle_pd(v, v, _MM_SHUFFLE2(N, N)));
-  return ret.i;
+  return std::bit_cast<int64_t>(m128_f64<N>(v));
 }
 template <int N>
 int64_t m128_i64(const __m128& v) {
@@ -343,7 +316,7 @@ static float ArchReciprocalRefined(float den) {
 
 inline uint16_t float_to_xenos_half(float value, bool preserve_denormal = false,
                                     bool round_to_nearest_even = false) {
-  uint32_t integer_value = *reinterpret_cast<const uint32_t*>(&value);
+  uint32_t integer_value = std::bit_cast<uint32_t>(value);
   uint32_t abs_value = integer_value & 0x7FFFFFFFu;
   uint32_t result;
   if (abs_value >= 0x47FFE000u) {
@@ -391,7 +364,7 @@ inline float xenos_half_to_float(uint16_t value,
   }
   uint32_t result = (uint32_t(value & 0x8000u) << 16u) |
                     ((exponent + 112u) << 23u) | (mantissa << 13u);
-  return *reinterpret_cast<const float*>(&result);
+  return std::bit_cast<float>(result);
 }
 
 // https://locklessinc.com/articles/sat_arithmetic/
@@ -544,7 +517,7 @@ struct MagicDiv {
     IDivExtraInfo extra{};
 
     extra.value_ = extradata_;
-    return extra.info.shift_;
+    return extra.info.add_;
   }
 
   constexpr uint32_t GetMultiplier() const { return multiplier_; }
