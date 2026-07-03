@@ -64,8 +64,7 @@ uint32_t LookupHandleUnlocked(X_HANDLE_TABLE* table, guest_handle_t handle,
                               cpu::ppc::PPCContext* context);
 // LookupHandleUnlocked under the table spinlock.
 uint32_t LookupHandle(uint32_t table, guest_handle_t handle,
-                      uint32_t reference_object,
-                      cpu::ppc::PPCContext* context);
+                      uint32_t reference_object, cpu::ppc::PPCContext* context);
 }  // namespace util
 }  // namespace kernel
 }  // namespace xe
