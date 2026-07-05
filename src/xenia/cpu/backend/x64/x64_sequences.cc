@@ -601,11 +601,18 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
     // if 0 and -0, return 0! opposite of minfp
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    const Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    const Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+
     e.vmaxps(e.xmm2, src1, src2);
     e.vmaxps(e.xmm3, src2, src1);
-    e.vorps(i.dest, e.xmm2, e.xmm3);
+    e.vandps(e.xmm2, e.xmm2, e.xmm3);
+
+    e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
+    e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+
+    e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
+    e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
@@ -660,11 +667,18 @@ struct MIN_F64 : Sequence<MIN_F64, I<OPCODE_MIN, F64Op, F64Op, F64Op>> {
 struct MIN_V128 : Sequence<MIN_V128, I<OPCODE_MIN, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    const Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    const Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+
     e.vminps(e.xmm2, src1, src2);
     e.vminps(e.xmm3, src2, src1);
-    e.vorps(i.dest, e.xmm2, e.xmm3);
+    e.vorps(e.xmm2, e.xmm2, e.xmm3);
+
+    e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
+    e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+
+    e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
+    e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MIN, MIN_I8, MIN_I16, MIN_I32, MIN_I64, MIN_F32,
