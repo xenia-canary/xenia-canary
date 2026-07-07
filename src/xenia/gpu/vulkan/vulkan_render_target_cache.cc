@@ -1025,11 +1025,10 @@ void VulkanRenderTargetCache::EndSubmission() {
   }
 }
 
-bool VulkanRenderTargetCache::Resolve(const Memory& memory,
-                                      VulkanSharedMemory& shared_memory,
-                                      VulkanTextureCache& texture_cache,
-                                      uint32_t& written_address_out,
-                                      uint32_t& written_length_out) {
+bool VulkanRenderTargetCache::Resolve(
+    const Memory& memory, VulkanSharedMemory& shared_memory,
+    VulkanTextureCache& texture_cache, uint32_t& written_address_out,
+    uint32_t& written_length_out, reg::RB_COPY_DEST_INFO* copy_dest_info_out) {
   written_address_out = 0;
   written_length_out = 0;
 
@@ -1041,6 +1040,14 @@ bool VulkanRenderTargetCache::Resolve(const Memory& memory,
           draw_resolution_scale_y(), IsFixedRG16TruncatedToMinus1To1(),
           IsFixedRGBA16TruncatedToMinus1To1(), resolve_info)) {
     return false;
+  }
+
+  if (copy_dest_info_out) {
+    // The destination format in it is normalized by GetResolveInfo to the
+    // xenos::TextureFormat actually used for the copy (in particular, the
+    // depth format instead of the raw guest-specified one for depth copies) -
+    // the same value the destination extent was calculated for.
+    *copy_dest_info_out = resolve_info.copy_dest_info;
   }
 
   // Nothing to copy/clear.

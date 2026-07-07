@@ -181,6 +181,15 @@ class VulkanTextureCache final : public TextureCache {
     return scaled_resolve_current_buffer_index_;
   }
 
+  // The range specified in the last successful MakeScaledResolveRangeCurrent
+  // call, in the scaled physical memory address space.
+  uint64_t GetCurrentScaledResolveRangeStartScaled() const {
+    return scaled_resolve_current_range_start_scaled_;
+  }
+  uint64_t GetCurrentScaledResolveRangeLengthScaled() const {
+    return scaled_resolve_current_range_length_scaled_;
+  }
+
   const ScaledResolveBuffer* GetScaledResolveBufferInfo(size_t index) const {
     if (index < scaled_resolve_buffers_.size()) {
       return &scaled_resolve_buffers_[index];

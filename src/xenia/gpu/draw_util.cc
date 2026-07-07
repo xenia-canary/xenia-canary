@@ -1442,6 +1442,16 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
   return shader;
 }
 
+uint32_t GetResolveDownscalePixelSizeLog2(
+    reg::RB_COPY_DEST_INFO copy_dest_info) {
+  // copy_dest_format holds a xenos::TextureFormat normalized by
+  // GetResolveInfo, and this is the same size derivation that was used for
+  // the destination extent calculation there.
+  const FormatInfo& dest_format_info = *FormatInfo::Get(
+      xenos::TextureFormat(uint32_t(copy_dest_info.copy_dest_format)));
+  return xe::log2_floor(dest_format_info.bits_per_pixel >> 3);
+}
+
 }  // namespace draw_util
 }  // namespace gpu
 }  // namespace xe

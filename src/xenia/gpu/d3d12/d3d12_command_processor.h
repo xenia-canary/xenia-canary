@@ -755,6 +755,34 @@ class D3D12CommandProcessor final : public CommandProcessor {
   ID3D12Resource* memexport_readback_buffer_ = nullptr;
   uint32_t memexport_readback_buffer_size_ = 0;
 
+  // Resolve downscale compute shader for scaled resolution readback,
+  // reversing the scaled resolve buffer packing back to 1x on the GPU.
+  struct ResolveDownscaleConstants {
+    uint32_t scale_x;          // 1 to kMaxDrawResolutionScaleAlongAxis
+    uint32_t scale_y;          // 1 to kMaxDrawResolutionScaleAlongAxis
+    uint32_t pixel_size_log2;  // 0=8bit, 1=16bit, 2=32bit, 3=64bit
+    uint32_t tile_count;       // Number of 32x32 tiles to process
+    // Byte offset into the source buffer. Always 0 on D3D12 (the offset is
+    // baked into the source SRV). Kept for a shader shared with Vulkan.
+    uint32_t source_offset_bytes;
+    // When non-zero, sample from (scale/2, scale/2) within each scaled block
+    // instead of (0, 0).
+    uint32_t half_pixel_offset;
+  };
+  enum class ResolveDownscaleRootParameter : UINT {
+    kConstants,
+    kSource,
+    kDestination,
+
+    kCount,
+  };
+  Microsoft::WRL::ComPtr<ID3D12RootSignature> resolve_downscale_root_signature_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> resolve_downscale_pipeline_;
+  // Intermediate buffer for downscaled output (DEFAULT heap, UAV-capable),
+  // kept in UNORDERED_ACCESS state between resolves.
+  Microsoft::WRL::ComPtr<ID3D12Resource> resolve_downscale_buffer_;
+  uint32_t resolve_downscale_buffer_size_ = 0;
+
   // The current fixed-function drawing state.
   D3D12_VIEWPORT ff_viewport_;
   D3D12_RECT ff_scissor_;

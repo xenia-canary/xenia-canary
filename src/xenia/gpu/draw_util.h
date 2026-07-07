@@ -754,6 +754,13 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                     bool fixed_rgba16_truncated_to_minus_1_to_1,
                     ResolveInfo& info_out);
 
+// Returns log2 of the resolve copy destination texel size in bytes for the
+// destination info previously returned by a render target cache Resolve (with
+// the format already normalized to the actual xenos::TextureFormat) - the same
+// derivation the destination extent was calculated with in GetResolveInfo.
+uint32_t GetResolveDownscalePixelSizeLog2(
+    reg::RB_COPY_DEST_INFO copy_dest_info);
+
 }  // namespace draw_util
 }  // namespace gpu
 }  // namespace xe

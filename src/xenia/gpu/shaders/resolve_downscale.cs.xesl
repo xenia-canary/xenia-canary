@@ -1,0 +1,176 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+// Downscales scaled resolve buffer data back to 1x resolution for CPU readback.
+// One thread group processes one 32x32 tile; each thread produces output dwords.
+// Keeps the top-left texel of each scale_x * scale_y block, or its (scale/2,
+// scale/2) center when xe_downscale_half_pixel_offset is set, a pure relocation
+// so the result contains actual render target values, regardless of the
+// destination format, number format or endian.
+//
+// The source is group-packed (XeniaTextureGetResolutionScaledAddressing in
+// texture_address.xesli), not a flat scale_x*scale_y expansion, so this shader
+// reverses that layout per output block. xesl byte buffers are dword-granular
+// with no shared memory, hence the per-output-dword organization.
+
+#include "../../ui/shaders/xesl.xesli"
+
+// Scaled-buffer byte of the chosen supersample of the 1x block at tiled,
+// tile-relative offset tile_rel_bytes. Callers add the intra-block offset.
+uint XeDownscaleScaledBlockByte(uint tile_src_base, uint tile_rel_bytes,
+                                uint pixel_size_log2, uint scale_x,
+                                uint scale_y, uint sample_x, uint sample_y) {
+  // A guest group spans the low 7 tiled-address bits (6 for 64bpp).
+  uint group_size_log2 = (pixel_size_log2 <= 2u) ? 7u : 6u;
+  uint group_index = tile_rel_bytes >> group_size_log2;
+  uint in_group = tile_rel_bytes & ((1u << group_size_log2) - 1u);
+  uint block_index = in_group >> pixel_size_log2;
+
+  uint px;
+  uint py;
+  if (pixel_size_log2 == 0u) {
+    // 1bpp, group 16x8: bits X0 X1 X2 Y1 Y0 Y2 X3.
+    px = (block_index & 7u) | (((block_index >> 6u) & 1u) << 3u);
+    py = ((block_index >> 4u) & 1u) | (((block_index >> 3u) & 1u) << 1u) |
+         (((block_index >> 5u) & 1u) << 2u);
+  } else if (pixel_size_log2 == 1u) {
+    // 2bpp, group 16x4: bits X0 X1 X2 Y0 Y1 X3.
+    px = (block_index & 7u) | (((block_index >> 5u) & 1u) << 3u);
+    py = (block_index >> 3u) & 3u;
+  } else if (pixel_size_log2 == 2u) {
+    // 4bpp, group 16x2: bits X0 X1 Y0 X2 X3.
+    px = (block_index & 3u) | (((block_index >> 3u) & 3u) << 2u);
+    py = (block_index >> 2u) & 1u;
+  } else {
+    // 8bpp, group 4x2: bits X0 Y0 X1.
+    px = (block_index & 1u) | (((block_index >> 2u) & 1u) << 1u);
+    py = (block_index >> 1u) & 1u;
+  }
+
+  // Group dimensions in blocks (XeniaTextureResolutionScaledGroupBlocksLog2).
+  uint group_blocks_x_log2 =
+      (pixel_size_log2 >= 3u) ? (5u - pixel_size_log2) : 4u;
+  uint group_blocks_y_log2 = 3u - min(pixel_size_log2, 2u);
+
+  uint host_x = px * scale_x + sample_x;
+  uint host_y = py * scale_y + sample_y;
+  uint host_group_x = host_x >> group_blocks_x_log2;
+  uint host_group_y = host_y >> group_blocks_y_log2;
+  uint host_group_index = host_group_x * scale_y + host_group_y;
+  uint pos_x = host_x & ((1u << group_blocks_x_log2) - 1u);
+  uint pos_y = host_y & ((1u << group_blocks_y_log2) - 1u);
+  uint group_width_bytes_log2 = group_blocks_x_log2 + pixel_size_log2;
+
+  uint scaled_in_group =
+      (host_group_index << (group_width_bytes_log2 + group_blocks_y_log2)) |
+      (pos_y << group_width_bytes_log2) | (pos_x << pixel_size_log2);
+
+  uint group_size_scaled = (1u << group_size_log2) * (scale_x * scale_y);
+  return tile_src_base + group_index * group_size_scaled + scaled_in_group;
+}
+
+push_const_begin_xe(b0, space0)
+  uint xe_downscale_scale_x;          // 1 to kMaxDrawResolutionScaleAlongAxis
+  uint xe_downscale_scale_y;          // 1 to kMaxDrawResolutionScaleAlongAxis
+  uint xe_downscale_pixel_size_log2;  // 0=8bit, 1=16bit, 2=32bit, 3=64bit
+  uint xe_downscale_tile_count;       // Number of 32x32 tiles to process.
+  uint xe_downscale_source_offset_bytes;  // Byte offset into the source buffer.
+  // When non-zero, sample from (scale/2, scale/2) within each scaled block
+  // instead of (0, 0).
+  uint xe_downscale_half_pixel_offset;
+push_const_end_xe
+
+byte_buffer_align4_declare_xe(xe_downscale_source, set=0, binding=0, t0, space0)
+byte_buffer_align4_wo_declare_xe(xe_downscale_dest, set=1, binding=0, u0, space0)
+
+// 128 threads per group - the recommended size and the Vulkan minimum for
+// maxComputeWorkGroupInvocations. A tile has 256..2048 output dwords depending
+// on the pixel size, so each thread strides over several of them.
+#define LOCAL_SIZE_X_XE 128
+#define LOCAL_SIZE_Y_XE 1
+#define LOCAL_SIZE_Z_XE 1
+entry_bindings_begin_compute_xe
+  push_const_binding_xe(buffer(0))
+  entry_binding_next_xe
+  byte_buffer_binding_xe(xe_downscale_source, buffer(1))
+  entry_binding_next_xe
+  byte_buffer_wo_binding_xe(xe_downscale_dest, buffer(2))
+entry_bindings_end_inputs_begin_compute_xe
+  entry_in_group_id_xe
+  entry_input_next_xe
+  entry_in_local_thread_index_xe
+entry_inputs_end_code_begin_compute_xe
+{
+  uint tile_index = in_group_id_xe.x;
+  if (tile_index >= push_const_xe(xe_downscale_tile_count)) {
+    return;
+  }
+
+  uint pixel_size_log2 = push_const_xe(xe_downscale_pixel_size_log2);
+  uint scale_x = push_const_xe(xe_downscale_scale_x);
+  uint scale_y = push_const_xe(xe_downscale_scale_y);
+  uint scale_xy = scale_x * scale_y;
+  uint tile_size_1x = (32u * 32u) << pixel_size_log2;
+  uint tile_size_scaled = tile_size_1x * scale_xy;
+  // Number of output dwords in a 1x tile (256, 512, 1024 or 2048).
+  uint tile_dwords = tile_size_1x >> 2u;
+
+  // Supersample kept within each block: top-left, or center when requested.
+  uint sample_x = 0u;
+  uint sample_y = 0u;
+  if (push_const_xe(xe_downscale_half_pixel_offset) != 0u && scale_xy > 1u) {
+    sample_x = scale_x >> 1u;
+    sample_y = scale_y >> 1u;
+  }
+
+  uint tile_src_base = push_const_xe(xe_downscale_source_offset_bytes) +
+                       tile_index * tile_size_scaled;
+  uint tile_dst_base = tile_index * tile_size_1x;
+
+  // Stride over the tile's output dwords, 128 per pass.
+  for (uint dword_index = in_local_thread_index_xe; dword_index < tile_dwords;
+       dword_index += 128u) {
+    uint dst_dword_bytes = tile_dst_base + (dword_index << 2u);
+    // Tile-relative 1x byte offset this output dword maps to.
+    uint dword_rel_bytes = dword_index << 2u;
+
+    if (pixel_size_log2 >= 2u) {
+      // 32bpp: one source texel per output dword.
+      // 64bpp: one texel spans two contiguous output dwords.
+      uint dword_offset_bytes =
+          (pixel_size_log2 == 3u) ? (dword_rel_bytes & 4u) : 0u;
+      uint src_bytes = XeDownscaleScaledBlockByte(
+                           tile_src_base, dword_rel_bytes, pixel_size_log2,
+                           scale_x, scale_y, sample_x, sample_y) +
+                       dword_offset_bytes;
+      byte_buffer_align4_store4_xe(
+          xe_downscale_dest, dst_dword_bytes,
+          byte_buffer_align4_load4_xe(xe_downscale_source, src_bytes));
+    } else {
+      // 8bpp/16bpp: consecutive-X texels packed into one output dword.
+      uint texels_per_dword = 4u >> pixel_size_log2;
+      uint bytes_per_block = 1u << pixel_size_log2;
+      uint component_bits = 8u << pixel_size_log2;
+      uint component_mask = (1u << component_bits) - 1u;
+      uint packed = 0u;
+      for (uint texel_index = 0u; texel_index < texels_per_dword;
+           ++texel_index) {
+        uint src_bytes = XeDownscaleScaledBlockByte(
+            tile_src_base, dword_rel_bytes + texel_index * bytes_per_block,
+            pixel_size_log2, scale_x, scale_y, sample_x, sample_y);
+        uint src_word =
+            byte_buffer_align4_load4_xe(xe_downscale_source, src_bytes & ~3u);
+        packed |= ((src_word >> ((src_bytes & 3u) << 3u)) & component_mask)
+                  << (texel_index * component_bits);
+      }
+      byte_buffer_align4_store4_xe(xe_downscale_dest, dst_dword_bytes, packed);
+    }
+  }
+}
+entry_code_end_compute_xe

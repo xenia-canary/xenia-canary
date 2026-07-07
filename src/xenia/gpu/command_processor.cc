@@ -78,6 +78,20 @@ DEFINE_string(
 UPDATE_from_string(readback_resolve, 2025, 12, 4, 21, "fast");
 
 DEFINE_bool(
+    readback_resolve_half_pixel_offset, false,
+    "When resolution scaling and readback resolve are enabled, resolve "
+    "downscaling keeps one supersample out of each scaled pixel block.\n"
+    "This selects the center of the block instead of the top-left corner, "
+    "which can be closer to where the GPU would have sampled the original "
+    "pixel, and can help with thin features and edge coverage.\n"
+    "Both choices give a real rendered value, but they can disagree where "
+    "geometry edges fall inside a pixel block.\n"
+    "This matters when the CPU reads the resolve as data instead of an image, "
+    "such as for gamma correction readbacks, occlusion checks, and GPU buffers "
+    "reused later in the frame.",
+    "GPU");
+
+DEFINE_bool(
     readback_memexport, false,
     "Read data written by memory export in shaders on the CPU. "
     "This may be needed in some games (but many only access exported data on "

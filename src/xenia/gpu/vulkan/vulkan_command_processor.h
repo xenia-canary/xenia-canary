@@ -835,6 +835,29 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkBuffer memexport_readback_buffer_ = VK_NULL_HANDLE;
   VkDeviceMemory memexport_readback_buffer_memory_ = VK_NULL_HANDLE;
   uint32_t memexport_readback_buffer_size_ = 0;
+
+  // Resolve downscale compute pipeline for scaled resolution readback,
+  // reversing the scaled resolve buffer packing back to 1x on the GPU.
+  // Set 0 - source storage buffer, set 1 - destination storage buffer, both
+  // with the kStorageBufferCompute transient layout.
+  struct ResolveDownscaleConstants {
+    uint32_t scale_x;          // 1 to kMaxDrawResolutionScaleAlongAxis
+    uint32_t scale_y;          // 1 to kMaxDrawResolutionScaleAlongAxis
+    uint32_t pixel_size_log2;  // 0=8bit, 1=16bit, 2=32bit, 3=64bit
+    uint32_t tile_count;       // Number of 32x32 tiles to process
+    // Byte offset of the first tile within the bound source range (the
+    // storage buffer offset alignment remainder).
+    uint32_t source_offset_bytes;
+    // When non-zero, sample from (scale/2, scale/2) within each scaled block
+    // instead of (0, 0).
+    uint32_t half_pixel_offset;
+  };
+  VkPipelineLayout resolve_downscale_pipeline_layout_ = VK_NULL_HANDLE;
+  VkPipeline resolve_downscale_pipeline_ = VK_NULL_HANDLE;
+  // Intermediate device-local buffer for the downscaled output.
+  VkBuffer resolve_downscale_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory resolve_downscale_buffer_memory_ = VK_NULL_HANDLE;
+  uint32_t resolve_downscale_buffer_size_ = 0;
 };
 
 }  // namespace vulkan
