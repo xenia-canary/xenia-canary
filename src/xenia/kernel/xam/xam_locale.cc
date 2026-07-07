@@ -649,9 +649,10 @@ dword_result_t XamGetLanguageTypeface_entry(dword_t language,
 DECLARE_XAM_EXPORT1(XamGetLanguageTypeface, kNone, kImplemented);
 
 pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
-  return 0;
+  assert_false(language >= static_cast<uint32_t>(XLanguage::kMaxLanguages));
+  return kernel_state()->xam_state()->GetLanguageTypefacePatch(language);
 }
-DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kSketchy);
 
 dword_result_t XamGetCountry_entry() {
   return kernel_state()->xconfig()->ReadSetting<uint32_t>(
