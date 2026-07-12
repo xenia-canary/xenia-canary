@@ -89,6 +89,7 @@ class AudioSystem {
     uint32_t callback_arg;
     uint32_t wrapped_callback_arg;
     bool in_use;
+    std::mutex lock;
   } clients_[kMaximumClientCount];
 
   int FindFreeClient();

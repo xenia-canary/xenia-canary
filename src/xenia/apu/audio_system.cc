@@ -176,6 +176,12 @@ void AudioSystem::WorkerThreadMain() {
         xe::threading::Wait(client_semaphores_[client_index].get(), false,
                             std::chrono::milliseconds(0)) ==
             xe::threading::WaitResult::kSuccess) {
+      std::lock_guard<std::mutex> guard(clients_[client_index].lock);
+
+      if (clients_[client_index].driver == nullptr) {
+        continue;
+      }
+
       SCOPE_profile_cpu_i("apu", "xe::apu::AudioSystem->client_callback");
       uint64_t args[] = {client_callback_arg};
       processor_->Execute(worker_thread_->thread_state(), client_callback, args,
@@ -254,7 +260,6 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   uint32_t ptr = memory()->SystemHeapAlloc(0x4);
   xe::store_and_swap<uint32_t>(memory()->TranslateVirtual(ptr), callback_arg);
 
-  clients_[index] = {};
   clients_[index].driver = driver;
   clients_[index].callback = callback;
   clients_[index].callback_arg = callback_arg;
@@ -304,9 +309,16 @@ void AudioSystem::UnregisterClient(size_t index) {
 
   auto global_lock = global_critical_region_.Acquire();
   assert_true(index < kMaximumClientCount);
+
+  std::lock_guard<std::mutex> guard(clients_[index].lock);
+
   DestroyDriver(clients_[index].driver);
   memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
-  clients_[index] = {0};
+  clients_[index].driver = nullptr;
+  clients_[index].callback = 0;
+  clients_[index].callback_arg = 0;
+  clients_[index].wrapped_callback_arg = 0;
+  clients_[index].in_use = false;
 
   // Drain the semaphore of its count.
   auto client_semaphore = client_semaphores_[index].get();
