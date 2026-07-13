@@ -184,10 +184,10 @@ To run games in full/activated mode you need to change [this option](Options#use
 ## Redump method (rare/specific drives)
 
 See:
-- http://wiki.redump.org/index.php?title=Disc_Dumping_Guide_(MPF)
+- https://wiki.redump.info/index.php?title=Disc_Dumping_Guide_(MPF)
 
 Compatible drives list:
-- http://wiki.redump.org/index.php?title=Optical_Disc_Drive_Compatibility:_Xbox_(original)_%26_Xbox_360
+- https://wiki.redump.info/index.php?title=Optical_Disc_Drive_Compatibility:_Xbox_(original)_%26_Xbox_360
 
 <!--## Modded console method
 
