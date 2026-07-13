@@ -59,7 +59,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/llvm-nm    llvm-nm    /usr/bin/llvm-nm-${{ inputs.llvm_version }}    200
 
           # Download linuxdeploy tools if not cached
-          if [ ${{ steps.cache-linuxdeploy.outputs.cache-hit }} != true ]; then
+          if [ "${{ steps.cache-linuxdeploy.outputs.cache-hit }}" != "true" ]; then
             mkdir -p ~/linuxdeploy
             wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy
             chmod +x ~/linuxdeploy/linuxdeploy
@@ -68,7 +68,7 @@ jobs:
 
       - name: Install Vulkan SDK
         run: |-
-          if [ ${{ steps.cache-vulkan-sdk-linux.outputs.cache-hit }} != true ]; then
+          if [ "${{ steps.cache-vulkan-sdk-linux.outputs.cache-hit }}" != "true" ]; then
             wget -qO vulkan-sdk.tar.xz https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz
             mkdir -p ~/vulkan-sdk
             tar -xf vulkan-sdk.tar.xz -C ~/vulkan-sdk
