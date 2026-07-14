@@ -599,19 +599,21 @@ def git_submodule_update():
     if sys.platform == "linux":
         submodules_ignore = ["DirectX-Headers", "DirectXShaderCompiler"]
     else:
-        submodules_ignore = None
+        submodules_ignore = []
+    if is_amd64():
+        submodules_ignore.append("xbyak_aarch64")
     if submodules_ignore:
         with open(".gitmodules") as f:
             gitmodules = f.read()
         submodules = re_findall(r"(?<=path = )(?!third_party\/(?:" + "|".join(submodules_ignore) + r")).+", gitmodules)
     else:
-        submodules = None
+        submodules = []
     # Sync submodule URLs from .gitmodules to local config
     shell_call([
         "git",
         "submodule",
         "sync",
-        *(submodules or []),
+        *submodules,
         ])
     # Then update all submodules to their recorded commits
     shell_call([
@@ -623,7 +625,7 @@ def git_submodule_update():
         "--init",
         "--depth=1",
         "-j", f"{os.cpu_count()}",
-        *(submodules or []),
+        *submodules,
         ])
 
 
