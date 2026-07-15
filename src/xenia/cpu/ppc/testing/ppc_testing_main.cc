@@ -108,8 +108,10 @@ class TestSuite {
     name = name.replace_extension();
 
     name_ = xe::path_to_utf8(name);
-    map_file_path_ = cvars::test_bin_path / name.replace_extension(".map");
-    bin_file_path_ = cvars::test_bin_path / name.replace_extension(".bin");
+    map_file_path_ = std::filesystem::path(XE_SOURCE_ROOT) /
+                     cvars::test_bin_path / name.replace_extension(".map");
+    bin_file_path_ = std::filesystem::path(XE_SOURCE_ROOT) /
+                     cvars::test_bin_path / name.replace_extension(".bin");
   }
 
   bool Load() {
@@ -470,7 +472,8 @@ class TestRunner {
 
 bool DiscoverTests(const std::filesystem::path& test_path,
                    std::vector<std::filesystem::path>& test_files) {
-  auto file_infos = xe::filesystem::ListFiles(test_path);
+  auto file_infos = xe::filesystem::ListFiles(
+      std::filesystem::path(XE_SOURCE_ROOT) / test_path);
   for (auto& file_info : file_infos) {
     if (file_info.name.extension() == ".s") {
       // Only include test files (instr_*.s), not helper files
@@ -669,7 +672,7 @@ bool RunTests(const std::vector<std::string>& test_names) {
   std::vector<TestSuite> test_suites;
   bool load_failed = false;
   for (auto& test_path : test_files) {
-    TestSuite test_suite(test_path);
+    TestSuite test_suite(std::filesystem::path(XE_SOURCE_ROOT) / test_path);
     if (!test_name_filter.empty() &&
         test_name_filter.find(test_suite.name()) == test_name_filter.end()) {
       continue;
