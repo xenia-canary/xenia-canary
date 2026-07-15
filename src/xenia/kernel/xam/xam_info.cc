@@ -57,8 +57,14 @@ namespace xam {
 // https://github.com/tpn/winsdk-10/blob/master/Include/10.0.14393.0/km/wdm.h#L15539
 typedef enum _MODE { KernelMode, UserMode, MaximumMode } MODE;
 
-dword_result_t XamFeatureEnabled_entry(dword_t app_id) { return 0; }
-DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kStub);
+dword_result_t XamFeatureEnabled_entry(qword_t feature_bit) {
+  const std::bitset<36> feature(0x40ffffffff);
+  if (feature.test(feature_bit)) {
+    return 1;
+  }
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kImplemented);
 
 dword_result_t XamGetStagingMode_entry() { return cvars::staging_mode; }
 DECLARE_XAM_EXPORT1(XamGetStagingMode, kNone, kStub);
