@@ -395,6 +395,26 @@ dword_result_t XamGetOnlineLanguageAndCountryString_entry(
 DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountryString, kLocale,
                     kImplemented);
 
+dword_result_t XamProfileGetLiveLegalLocale_entry(qword_t xuid,
+                                                  dword_t buffer_length,
+                                                  lpu16string_t buffer) {
+  const auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+
+  const uint8_t country_id =
+      user ? user->GetCountry()
+           : kernel_state()->xconfig()->ReadSetting<uint8_t>(
+                 XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
+  const uint32_t language_id =
+      user ? user->GetLanguage()
+           : kernel_state()->xconfig()->ReadSetting<uint32_t>(
+                 XCONFIG_USER_CATEGORY,
+                 XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE);
+
+  return XamGetOnlineLanguageAndCountryString_entry(
+      language_id, country_id, buffer_length, buffer);
+}
+DECLARE_XAM_EXPORT1(XamProfileGetLiveLegalLocale, kLocale, kImplemented);
+
 dword_result_t XamGetLocaleString_entry(dword_t id, dword_t buffer_length,
                                         lpu16string_t buffer) {
   if (buffer_length >= 0x80000000u) {
@@ -635,10 +655,11 @@ dword_result_t XamGetLanguageTypeface_entry(dword_t language,
 
   if (language == static_cast<uint32_t>(XLanguage::kSChinese)) {
     path = u"file://media:/XenonSCLatin.xtt";
-  } else if (language == static_cast<uint32_t>(XLanguage::kTChinese)) {
-    path = u"file://media:/XenonCLatin.xtt";
   } else {
-    path = u"file://media:/XenonJKLatin.xtt";
+    // Metro dashboard updates ship SegoeXbox-Light as their complete base
+    // typeface. XenonJKLatin is supplied only as an .xttp patch in those
+    // updates, so returning the legacy .xtt name leaves Latin text invisible.
+    path = u"file://media:/SegoeXbox-Light.xtt";
   }
   xe::string_util::copy_and_swap_truncating(
       kernel_state()->memory()->TranslateVirtual<char16_t*>(buffer), path,
@@ -653,6 +674,12 @@ pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
   return kernel_state()->xam_state()->GetLanguageTypefacePatch(language);
 }
 DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kSketchy);
+
+// Dashboard localization sends ETX telemetry for every string lookup. Logging
+// is optional and must not make the lookup appear to have failed when no ETX
+// backend is present.
+dword_result_t XamLogLocalizationEtx_entry() { return X_ERROR_SUCCESS; }
+DECLARE_XAM_EXPORT1(XamLogLocalizationEtx, kLocale, kStub);
 
 dword_result_t XamGetCountry_entry() {
   return kernel_state()->xconfig()->ReadSetting<uint32_t>(
