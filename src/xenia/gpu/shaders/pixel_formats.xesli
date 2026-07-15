@@ -93,57 +93,103 @@
 #define kXenosDepthRenderTargetFormat_D24S8 0u
 #define kXenosDepthRenderTargetFormat_D24FS8 1u
 
+#define kXenosSurfaceNumberFormat_UnsignedRepeatingFraction 0u
+#define kXenosSurfaceNumberFormat_SignedRepeatingFraction 1u
+#define kXenosSurfaceNumberFormat_UnsignedInteger 2u
+#define kXenosSurfaceNumberFormat_SignedInteger 3u
+#define kXenosSurfaceNumberFormat_Float 7u
+
 // ColorFormat packing, according to the Direct3D 11.3 functional specification.
 
-uint XePackR5G5B5A1UNorm(float4_xe f) {
-  uint4_xe n = uint4_xe(saturate_xe(f) * float2_xe(31.0f, 1.0f).xxxy + 0.5f);
+uint XePackFixed(float value, uint bits, uint num_format) {
+  uint unsigned_max = (1u << bits) - 1u;
+  uint packed = 0u;
+  if (num_format == kXenosSurfaceNumberFormat_SignedRepeatingFraction) {
+    // Signed fraction uses the positive endpoint, then keeps the destination
+    // bit width.
+    float positive_max = float((1u << (bits - 1u)) - 1u);
+    packed = uint(int(min(max(value, -1.0f), 1.0f) * positive_max +
+                      (value >= 0.0f ? 0.5f : -0.5f)));
+  } else if (num_format == kXenosSurfaceNumberFormat_UnsignedInteger) {
+    packed = uint(min(max(value, 0.0f), float(unsigned_max)) + 0.5f);
+  } else if (num_format == kXenosSurfaceNumberFormat_SignedInteger) {
+    int signed_min = -int(1u << (bits - 1u));
+    int signed_max = int((1u << (bits - 1u)) - 1u);
+    packed = uint(int(min(max(value, float(signed_min)), float(signed_max)) +
+                      (value >= 0.0f ? 0.5f : -0.5f)));
+  } else {
+    // Unsigned fraction, float-on-fixed, or anything unexpected: keep the
+    // usual unsigned-fraction pack.
+    packed = uint(saturate_xe(value) * float(unsigned_max) + 0.5f);
+  }
+  return packed & unsigned_max;
+}
+
+uint4_xe XePackFixed4(float4_xe f, uint4_xe bits, uint num_format) {
+  return uint4_xe(XePackFixed(f.x, bits.x, num_format),
+                  XePackFixed(f.y, bits.y, num_format),
+                  XePackFixed(f.z, bits.z, num_format),
+                  XePackFixed(f.w, bits.w, num_format));
+}
+
+uint3_xe XePackFixed3(float3_xe f, uint3_xe bits, uint num_format) {
+  return uint3_xe(XePackFixed(f.x, bits.x, num_format),
+                  XePackFixed(f.y, bits.y, num_format),
+                  XePackFixed(f.z, bits.z, num_format));
+}
+
+uint2_xe XePackFixed2(float2_xe f, uint2_xe bits, uint num_format) {
+  return uint2_xe(XePackFixed(f.x, bits.x, num_format),
+                  XePackFixed(f.y, bits.y, num_format));
+}
+
+uint XePackR5G5B5A1(float4_xe f, uint num_format) {
+  uint4_xe n = XePackFixed4(f, uint2_xe(5u, 1u).xxxy, num_format);
   return n.r | (n.g << 5) | (n.b << 10) | (n.a << 15);
 }
 
-uint XePackR5G6B5UNorm(float3_xe f) {
-  uint3_xe n = uint3_xe(saturate_xe(f) * float3_xe(31.0f, 63.0f, 31.0f) + 0.5f);
+uint XePackR5G6B5(float3_xe f, uint num_format) {
+  uint3_xe n = XePackFixed3(f, uint3_xe(5u, 6u, 5u), num_format);
   return n.r | (n.g << 5) | (n.b << 11);
 }
 
-uint XePackR5G5B6UNorm(float3_xe f) {
-  uint3_xe n = uint3_xe(saturate_xe(f) * float3_xe(31.0f, 31.0f, 63.0f) + 0.5f);
+uint XePackR5G5B6(float3_xe f, uint num_format) {
+  uint3_xe n = XePackFixed3(f, uint3_xe(5u, 5u, 6u), num_format);
   return n.r | (n.g << 5) | (n.b << 10);
 }
 
-uint XePackR8G8B8A8UNorm(float4_xe f) {
-  uint4_xe n = uint4_xe(saturate_xe(f) * 255.0f + 0.5f);
+uint XePackR8G8B8A8(float4_xe f, uint num_format) {
+  uint4_xe n = XePackFixed4(f, uint_x4_xe(8u), num_format);
   return n.r | (n.g << 8) | (n.b << 16) | (n.a << 24);
 }
 
-uint XePackR10G10B10A2UNorm(float4_xe f) {
-  uint4_xe n = uint4_xe(saturate_xe(f) * float2_xe(1023.0f, 3.0f).xxxy + 0.5f);
+uint XePackR10G10B10A2(float4_xe f, uint num_format) {
+  uint4_xe n = XePackFixed4(f, uint2_xe(10u, 2u).xxxy, num_format);
   return n.r | (n.g << 10) | (n.b << 20) | (n.a << 30);
 }
 
-uint XePackR4G4B4A4UNorm(float4_xe f) {
-  uint4_xe n = uint4_xe(saturate_xe(f) * 15.0f + 0.5f);
+uint XePackR4G4B4A4(float4_xe f, uint num_format) {
+  uint4_xe n = XePackFixed4(f, uint_x4_xe(4u), num_format);
   return n.r | (n.g << 4) | (n.b << 8) | (n.a << 12);
 }
 
-uint XePackR11G11B10UNorm(float3_xe f) {
-  uint3_xe n =
-      uint3_xe(saturate_xe(f) * float3_xe(2047.0f, 2047.0f, 1023.0f) + 0.5);
+uint XePackR11G11B10(float3_xe f, uint num_format) {
+  uint3_xe n = XePackFixed3(f, uint3_xe(11u, 11u, 10u), num_format);
   return n.r | (n.g << 11) | (n.b << 22);
 }
 
-uint XePackR10G11B11UNorm(float3_xe f) {
-  uint3_xe n =
-      uint3_xe(saturate_xe(f) * float3_xe(1023.0f, 2047.0f, 2047.0f) + 0.5f);
+uint XePackR10G11B11(float3_xe f, uint num_format) {
+  uint3_xe n = XePackFixed3(f, uint3_xe(10u, 11u, 11u), num_format);
   return n.r | (n.g << 10) | (n.b << 21);
 }
 
-uint XePackR16G16UNorm(float2_xe f) {
-  uint2_xe n = uint2_xe(saturate_xe(f) * 65535.0f + 0.5f);
+uint XePackR16G16(float2_xe f, uint num_format) {
+  uint2_xe n = XePackFixed2(f, uint_x2_xe(16u), num_format);
   return n.r | (n.g << 16);
 }
 
-uint2_xe XePackR16G16B16A16UNorm(float4_xe f) {
-  uint4_xe n = uint4_xe(saturate_xe(f) * 65535.0f + 0.5f);
+uint2_xe XePackR16G16B16A16(float4_xe f, uint num_format) {
+  uint4_xe n = XePackFixed4(f, uint_x4_xe(16u), num_format);
   return n.rb | (n.ga << 16);
 }
 
@@ -162,40 +208,43 @@ uint2_xe XePackR16G16B16A16Edram(float4_xe f) {
 
 uint2_xe XePack16bpp4PixelsInUInt2(float4_xe pixel_0, float4_xe pixel_1,
                                    float4_xe pixel_2, float4_xe pixel_3,
-                                   uint format) {
+                                   uint format, uint num_format) {
   uint2_xe packed;
   switch (format) {
     case kXenosFormat_1_5_5_5:
-      packed.x = XePackR5G5B5A1UNorm(pixel_0) |
-                 (XePackR5G5B5A1UNorm(pixel_1) << 16u);
-      packed.y = XePackR5G5B5A1UNorm(pixel_2) |
-                 (XePackR5G5B5A1UNorm(pixel_3) << 16u);
+      packed.x = XePackR5G5B5A1(pixel_0, num_format) |
+                 (XePackR5G5B5A1(pixel_1, num_format) << 16u);
+      packed.y = XePackR5G5B5A1(pixel_2, num_format) |
+                 (XePackR5G5B5A1(pixel_3, num_format) << 16u);
       break;
     case kXenosFormat_5_6_5:
-      packed.x = XePackR5G6B5UNorm(pixel_0.rgb) |
-                 (XePackR5G6B5UNorm(pixel_1.rgb) << 16u);
-      packed.y = XePackR5G6B5UNorm(pixel_2.rgb) |
-                 (XePackR5G6B5UNorm(pixel_3.rgb) << 16u);
+      packed.x = XePackR5G6B5(pixel_0.rgb, num_format) |
+                 (XePackR5G6B5(pixel_1.rgb, num_format) << 16u);
+      packed.y = XePackR5G6B5(pixel_2.rgb, num_format) |
+                 (XePackR5G6B5(pixel_3.rgb, num_format) << 16u);
       break;
     case kXenosFormat_6_5_5:
-      packed.x = XePackR5G5B6UNorm(pixel_0.rgb) |
-                 (XePackR5G5B6UNorm(pixel_1.rgb) << 16u);
-      packed.y = XePackR5G5B6UNorm(pixel_2.rgb) |
-                 (XePackR5G5B6UNorm(pixel_3.rgb) << 16u);
+      packed.x = XePackR5G5B6(pixel_0.rgb, num_format) |
+                 (XePackR5G5B6(pixel_1.rgb, num_format) << 16u);
+      packed.y = XePackR5G5B6(pixel_2.rgb, num_format) |
+                 (XePackR5G5B6(pixel_3.rgb, num_format) << 16u);
       break;
     case kXenosFormat_8_8:
-      packed.x = XePackR8G8B8A8UNorm(float4_xe(pixel_0.rg, pixel_1.rg));
-      packed.y = XePackR8G8B8A8UNorm(float4_xe(pixel_2.rg, pixel_3.rg));
+      packed.x =
+          XePackR8G8B8A8(float4_xe(pixel_0.rg, pixel_1.rg), num_format);
+      packed.y =
+          XePackR8G8B8A8(float4_xe(pixel_2.rg, pixel_3.rg), num_format);
       break;
     case kXenosFormat_4_4_4_4:
-      packed.x = XePackR4G4B4A4UNorm(pixel_0) |
-                 (XePackR4G4B4A4UNorm(pixel_1) << 16u);
-      packed.y = XePackR4G4B4A4UNorm(pixel_2) |
-                 (XePackR4G4B4A4UNorm(pixel_3) << 16u);
+      packed.x = XePackR4G4B4A4(pixel_0, num_format) |
+                 (XePackR4G4B4A4(pixel_1, num_format) << 16u);
+      packed.y = XePackR4G4B4A4(pixel_2, num_format) |
+                 (XePackR4G4B4A4(pixel_3, num_format) << 16u);
       break;
     case kXenosFormat_16:
-      packed = XePackR16G16B16A16UNorm(float4_xe(pixel_0.r, pixel_1.r,
-                                                 pixel_2.r, pixel_3.r));
+      packed = XePackR16G16B16A16(float4_xe(pixel_0.r, pixel_1.r, pixel_2.r,
+                                            pixel_3.r),
+                                  num_format);
       break;
     default:
       // Treat as something (16_FLOAT).
@@ -208,45 +257,45 @@ uint2_xe XePack16bpp4PixelsInUInt2(float4_xe pixel_0, float4_xe pixel_1,
 
 uint4_xe XePack32bpp4Pixels(float4_xe pixel_0, float4_xe pixel_1,
                             float4_xe pixel_2, float4_xe pixel_3,
-                            uint format) {
+                            uint format, uint num_format) {
   uint4_xe packed;
   switch (format) {
     case kXenosFormat_8_8_8_8:
     // TODO(Triang3l): Investigate 8_8_8_8_A.
     case kXenosFormat_8_8_8_8_A:
     case kXenosFormat_8_8_8_8_AS_16_16_16_16:
-      packed.x = XePackR8G8B8A8UNorm(pixel_0);
-      packed.y = XePackR8G8B8A8UNorm(pixel_1);
-      packed.z = XePackR8G8B8A8UNorm(pixel_2);
-      packed.w = XePackR8G8B8A8UNorm(pixel_3);
+      packed.x = XePackR8G8B8A8(pixel_0, num_format);
+      packed.y = XePackR8G8B8A8(pixel_1, num_format);
+      packed.z = XePackR8G8B8A8(pixel_2, num_format);
+      packed.w = XePackR8G8B8A8(pixel_3, num_format);
       break;
     case kXenosFormat_2_10_10_10:
     case kXenosFormat_2_10_10_10_AS_16_16_16_16:
-      packed.x = XePackR10G10B10A2UNorm(pixel_0);
-      packed.y = XePackR10G10B10A2UNorm(pixel_1);
-      packed.z = XePackR10G10B10A2UNorm(pixel_2);
-      packed.w = XePackR10G10B10A2UNorm(pixel_3);
+      packed.x = XePackR10G10B10A2(pixel_0, num_format);
+      packed.y = XePackR10G10B10A2(pixel_1, num_format);
+      packed.z = XePackR10G10B10A2(pixel_2, num_format);
+      packed.w = XePackR10G10B10A2(pixel_3, num_format);
       break;
     case kXenosFormat_10_11_11:
     case kXenosFormat_10_11_11_AS_16_16_16_16:
-      packed.x = XePackR11G11B10UNorm(pixel_0.rgb);
-      packed.y = XePackR11G11B10UNorm(pixel_1.rgb);
-      packed.z = XePackR11G11B10UNorm(pixel_2.rgb);
-      packed.w = XePackR11G11B10UNorm(pixel_3.rgb);
+      packed.x = XePackR11G11B10(pixel_0.rgb, num_format);
+      packed.y = XePackR11G11B10(pixel_1.rgb, num_format);
+      packed.z = XePackR11G11B10(pixel_2.rgb, num_format);
+      packed.w = XePackR11G11B10(pixel_3.rgb, num_format);
       break;
     case kXenosFormat_11_11_10:
     case kXenosFormat_11_11_10_AS_16_16_16_16:
-      packed.x = XePackR10G11B11UNorm(pixel_0.rgb);
-      packed.y = XePackR10G11B11UNorm(pixel_1.rgb);
-      packed.z = XePackR10G11B11UNorm(pixel_2.rgb);
-      packed.w = XePackR10G11B11UNorm(pixel_3.rgb);
+      packed.x = XePackR10G11B11(pixel_0.rgb, num_format);
+      packed.y = XePackR10G11B11(pixel_1.rgb, num_format);
+      packed.z = XePackR10G11B11(pixel_2.rgb, num_format);
+      packed.w = XePackR10G11B11(pixel_3.rgb, num_format);
       break;
     case kXenosFormat_16_16_EDRAM:
     case kXenosFormat_16_16:
-      packed.x = XePackR16G16UNorm(pixel_0.rg);
-      packed.y = XePackR16G16UNorm(pixel_1.rg);
-      packed.z = XePackR16G16UNorm(pixel_2.rg);
-      packed.w = XePackR16G16UNorm(pixel_3.rg);
+      packed.x = XePackR16G16(pixel_0.rg, num_format);
+      packed.y = XePackR16G16(pixel_1.rg, num_format);
+      packed.z = XePackR16G16(pixel_2.rg, num_format);
+      packed.w = XePackR16G16(pixel_3.rg, num_format);
       break;
     case kXenosFormat_16_16_FLOAT:
       packed.x = pack_half_2x16_xe(float2_xe(pixel_0.r, pixel_0.g));
@@ -267,15 +316,16 @@ uint4_xe XePack32bpp4Pixels(float4_xe pixel_0, float4_xe pixel_1,
 
 void XePack64bpp4Pixels(float4_xe pixel_0, float4_xe pixel_1,
                         float4_xe pixel_2, float4_xe pixel_3, uint format,
+                        uint num_format,
                         out_param_xe(uint4_xe, packed_01),
                         out_param_xe(uint4_xe, packed_23)) {
   switch (format) {
     case kXenosFormat_16_16_16_16_EDRAM:
     case kXenosFormat_16_16_16_16:
-      packed_01.xy = XePackR16G16B16A16UNorm(pixel_0);
-      packed_01.zw = XePackR16G16B16A16UNorm(pixel_1);
-      packed_23.xy = XePackR16G16B16A16UNorm(pixel_2);
-      packed_23.zw = XePackR16G16B16A16UNorm(pixel_3);
+      packed_01.xy = XePackR16G16B16A16(pixel_0, num_format);
+      packed_01.zw = XePackR16G16B16A16(pixel_1, num_format);
+      packed_23.xy = XePackR16G16B16A16(pixel_2, num_format);
+      packed_23.zw = XePackR16G16B16A16(pixel_3, num_format);
       break;
     case kXenosFormat_16_16_16_16_FLOAT:
       packed_01.x = pack_half_2x16_xe(float2_xe(pixel_0.r, pixel_0.g));

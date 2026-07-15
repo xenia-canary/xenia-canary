@@ -85,7 +85,7 @@ jobs:
 
       - name: Download submodules
         run: |- # Exclude unneeded submodules
-          SUBMODULES=$(grep -oP '(?<=path = )(?!third_party\/DirectX(?:-Headers|ShaderCompiler)).+' .gitmodules)
+          SUBMODULES=$(grep -oP '(?<=path = )(?!third_party\/(?:DirectX(?:-Headers|ShaderCompiler)|xbyak_aarch64)).+' .gitmodules)
           git submodule update --init --depth=1 -j$(getconf _NPROCESSORS_ONLN) $SUBMODULES
 
       - name: Build Xenia

@@ -194,6 +194,13 @@ struct XMP_DASH_INIT {
 };
 static_assert_size(XMP_DASH_INIT, 0x18);
 
+struct XMP_GET_NUM_SONGS_IN_TITLE_PLAYLIST {
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<uint32_t> playlist_ptr;
+  xe::be<uint32_t> song_count_ptr;
+};
+static_assert_size(XMP_GET_NUM_SONGS_IN_TITLE_PLAYLIST, 0xC);
+
 struct XMP_CAPTURE_OUTPUT {
   xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> callback;

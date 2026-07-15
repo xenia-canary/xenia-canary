@@ -2648,7 +2648,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
   if (cvars::async_shader_compilation) {
     if (pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
-      XELOGI(
+      XELOGGPU(
           "Skipping draw - pipeline not ready: VS {:016X} mod {:016X}, PS "
           "{:016X} mod {:016X}",
           vertex_shader->ucode_data_hash(), vertex_shader_modification.value,
@@ -3992,6 +3992,13 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     texture_signs_uint =
         (texture_signs_uint & ~texture_signs_mask) | texture_signs_shifted;
     // cache misses here, we're accessing the texture bindings out of order
+    uint32_t texture_integer_scale_bits =
+        texture_cache_->GetActiveIntegerScaleBits(texture_index);
+    update_dirty_uint32_cmp(
+        system_constants_.texture_integer_scale_bits[texture_index],
+        texture_integer_scale_bits);
+    system_constants_.texture_integer_scale_bits[texture_index] =
+        texture_integer_scale_bits;
     textures_resolution_scaled |=
         uint32_t(texture_cache_->IsActiveTextureResolutionScaled(texture_index))
         << texture_index;

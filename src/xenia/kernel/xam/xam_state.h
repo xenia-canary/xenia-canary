@@ -66,6 +66,8 @@ class XamState {
     return language_fallback_address_[index];
   }
 
+  uint32_t GetLanguageTypefacePatch(uint32_t language) const;
+
   uint32_t GetIptvNameAddress() const { return iptv_name_address_; }
 
   X_DASH_APP_INFO dash_app_info_ = {};
@@ -78,6 +80,7 @@ class XamState {
 
  private:
   void LoadLanguageLocaleFallback();
+  void LoadLanguageTypefacePatch();
   void LoadIptvServiceName();
 
   KernelState* kernel_state_;
@@ -92,6 +95,7 @@ class XamState {
 
   // Custom XAM stuff
   std::array<uint32_t, 0x12> language_fallback_address_{};
+  std::array<uint32_t, 0x7> language_type_face_patch_{};
   uint32_t iptv_name_address_{};
 };
 

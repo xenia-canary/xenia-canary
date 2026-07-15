@@ -43,7 +43,8 @@ entry_inputs_end_code_begin_compute_xe
       pixel_0, pixel_1, pixel_2, pixel_3);
   uint4_xe packed_01, packed_23;
   XePack64bpp4Pixels(pixel_0, pixel_1, pixel_2, pixel_3,
-                     resolve_info.dest_format, packed_01, packed_23);
+                     resolve_info.dest_format,
+                     resolve_info.dest_num_format, packed_01, packed_23);
   dont_flatten_xe
   if (pixel_index.x == 0u &&
       resolve_info.half_pixel_offset_fill_source.x != 0u) {

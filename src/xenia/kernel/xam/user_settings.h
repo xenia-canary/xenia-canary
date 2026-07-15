@@ -27,6 +27,8 @@ namespace xam {
 enum class X_USER_PROFILE_SETTING_SOURCE : uint32_t;
 struct X_USER_PROFILE_SETTING;
 
+constexpr uint32_t kMaxUserSettingId = 0x58;
+
 constexpr uint32_t SettingKey(X_USER_DATA_TYPE type, uint16_t size,
                               uint16_t id) {
   return static_cast<uint32_t>(type) << 28 | size << 16 | id;
@@ -530,6 +532,12 @@ class UserSetting : public UserData {
   }
 
   static bool is_setting_valid(uint32_t setting_id) {
+    const auto setting = static_cast<AttributeKey>(setting_id);
+
+    if (setting.id < kMaxUserSettingId) {
+      return true;
+    }
+
     return std::find(known_settings.cbegin(), known_settings.cend(),
                      static_cast<UserSettingId>(setting_id)) !=
            known_settings.cend();

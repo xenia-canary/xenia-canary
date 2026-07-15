@@ -563,6 +563,28 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       kernel_state_->BroadcastNotification(kXNotificationXmpDashInitChanged, 1);
       return X_E_SUCCESS;
     }
+    case 0x00070031: {
+      // XMPGetNumSongsInTitlePlaylist
+      // Song count exist at playlist_ptr->0x78, if playlist_ptr->0xc == 0 or 1
+      // return song count, else return zero
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XMP_GET_NUM_SONGS_IN_TITLE_PLAYLIST));
+      XMP_GET_NUM_SONGS_IN_TITLE_PLAYLIST* args =
+          reinterpret_cast<XMP_GET_NUM_SONGS_IN_TITLE_PLAYLIST*>(buffer);
+
+      XELOGD(
+          "XMPGetNumSongsInTitlePlaylist({:08X}, {:08X}, {:08X}), "
+          "unimplemented",
+          uint32_t(args->xmp_client.get()), args->playlist_ptr.get(),
+          args->song_count_ptr.get());
+
+      if (!args->playlist_ptr || !args->song_count_ptr) {
+        return X_E_INVALIDARG;
+      }
+      xe::store_and_swap<uint32_t>(
+          memory_->TranslateVirtual(args->song_count_ptr), 0);
+      return X_E_SUCCESS;
+    }
     case 0x0007003D: {
       // XMPCaptureOutput
       assert_true(!buffer_length ||

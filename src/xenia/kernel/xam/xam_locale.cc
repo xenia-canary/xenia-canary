@@ -601,6 +601,27 @@ dword_result_t XamGetLanguage_entry() {
 }
 DECLARE_XAM_EXPORT1(XamGetLanguage, kNone, kImplemented);
 
+dword_result_t XTLGetLanguageV2_entry() {
+  auto desired_language =
+      static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+          XCONFIG_USER_CATEGORY,
+          XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE));
+
+  uint32_t region = xeXGetGameRegion();
+  if (desired_language < XLanguage::kSwedish) {
+    return static_cast<uint32_t>(desired_language);
+  }
+  if ((region & 0xff00) != 0x100) {
+    return static_cast<uint32_t>(XLanguage::kEnglish);
+  }
+  if (region == 0x101) {
+    return static_cast<uint32_t>(XLanguage::kJapanese);
+  } else {
+    return static_cast<uint32_t>(XLanguage::kKorean);
+  }
+}
+DECLARE_XAM_EXPORT1(XTLGetLanguageV2, kNone, kImplemented);
+
 pointer_result_t XamGetLanguageLocaleFallbackString_entry(dword_t language) {
   assert_false(language >= static_cast<uint32_t>(XLanguage::kMaxLanguages));
   return kernel_state()->xam_state()->GetLanguageFallbackAddress(language);
@@ -628,9 +649,10 @@ dword_result_t XamGetLanguageTypeface_entry(dword_t language,
 DECLARE_XAM_EXPORT1(XamGetLanguageTypeface, kNone, kImplemented);
 
 pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
-  return 0;
+  assert_false(language >= static_cast<uint32_t>(XLanguage::kMaxLanguages));
+  return kernel_state()->xam_state()->GetLanguageTypefacePatch(language);
 }
-DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kSketchy);
 
 dword_result_t XamGetCountry_entry() {
   return kernel_state()->xconfig()->ReadSetting<uint32_t>(

@@ -514,6 +514,11 @@ union ResolveEdramInfo {
     // of the resolve region with the contents of the first surely covered
     // column / row with resolution scaling.
     uint32_t fill_half_pixel_offset : 1;
+    // Flag from gamma_decode_pwl_resolve in resolve shader. Some games appear
+    // overexposed unless full 8_8_8_8_GAMMA resolves decode PWL gamma to
+    // linear before MSAA averaging / conversion, then write gamma bytes again
+    // for gamma dests. Off keeps the old byte averaging.
+    uint32_t decode_pwl_gamma : 1;
   };
   ResolveEdramInfo() : packed(0) { static_assert_size(*this, sizeof(packed)); }
 };
