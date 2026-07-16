@@ -2540,10 +2540,11 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
                                             id_vector_temp_),
                 spv::NoPrecision)));
     // Apply resolution scale inversion after truncating.
-    if (draw_resolution_scale_x_ > 1) {
+    if (GetCurrentDrawResolutionScaleX() > 1) {
       param_gen_x = builder_->createBinOp(
           spv::OpFMul, type_float_, param_gen_x,
-          builder_->makeFloatConstant(1.0f / float(draw_resolution_scale_x_)));
+          builder_->makeFloatConstant(1.0f /
+                                      float(GetCurrentDrawResolutionScaleX())));
     }
     if (!modification.pixel.param_gen_point) {
       assert_true(input_front_facing_ != spv::NoResult);
@@ -2581,10 +2582,11 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
                                             id_vector_temp_),
                 spv::NoPrecision)));
     // Apply resolution scale inversion after truncating.
-    if (draw_resolution_scale_y_ > 1) {
+    if (GetCurrentDrawResolutionScaleY() > 1) {
       param_gen_y = builder_->createBinOp(
           spv::OpFMul, type_float_, param_gen_y,
-          builder_->makeFloatConstant(1.0f / float(draw_resolution_scale_y_)));
+          builder_->makeFloatConstant(1.0f /
+                                      float(GetCurrentDrawResolutionScaleY())));
     }
     if (modification.pixel.param_gen_point) {
       param_gen_y = builder_->createUnaryOp(

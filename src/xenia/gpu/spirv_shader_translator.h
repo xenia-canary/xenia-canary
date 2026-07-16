@@ -34,7 +34,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // TODO(Triang3l): Change to 0xYYYYMMDD once it's out of the rapid
     // prototyping stage (easier to do small granular updates with an
     // incremental counter).
-    static constexpr uint32_t kVersion = 9;
+    static constexpr uint32_t kVersion = 10;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -89,6 +89,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // pre-multiply. Only RT0 is supported for now.
       xenos::BlendFactor rt0_blend_rgb_factor_for_premult : 5;
       xenos::BlendFactor rt0_blend_a_factor_for_premult : 5;
+      // PsParamGen and the memexport dedup must act like there's no resolution
+      // scaling. Doesn't affect fetch offsets, those follow texture scale, not
+      // from the draw. This is only set when the draw is native because of a
+      // set scale threshold (FBO only).
+      uint32_t resolution_scale_native : 1;
     } pixel;
     uint64_t value = 0;
 
@@ -787,6 +792,21 @@ class SpirvShaderTranslator : public ShaderTranslator {
   bool native_2x_msaa_no_attachments_;
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
+
+  // Scale of the draw being translated. All position-dependent paths use
+  // these. Only fetch offset scaling uses draw_resolution_scale_x_/y_ directly.
+  uint32_t GetCurrentDrawResolutionScaleX() const {
+    return is_pixel_shader() &&
+                   GetSpirvShaderModification().pixel.resolution_scale_native
+               ? 1
+               : draw_resolution_scale_x_;
+  }
+  uint32_t GetCurrentDrawResolutionScaleY() const {
+    return is_pixel_shader() &&
+                   GetSpirvShaderModification().pixel.resolution_scale_native
+               ? 1
+               : draw_resolution_scale_y_;
+  }
 
   // For safety with different drivers (even though fragment shader interlock in
   // SPIR-V only has one control flow requirement - that both begin and end must

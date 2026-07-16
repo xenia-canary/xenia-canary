@@ -428,6 +428,10 @@ VulkanPipelineCache::GetCurrentPixelShaderModification(
 
   if (render_target_cache_.GetPath() ==
       RenderTargetCache::Path::kHostRenderTargets) {
+    // Whether this draw is native res due to a scale threshold. (FBO only)
+    modification.pixel.resolution_scale_native =
+        uint32_t(render_target_cache_.IsDrawScaleNative());
+
     using DepthStencilMode =
         SpirvShaderTranslator::Modification::DepthStencilMode;
     if (shader.implicit_early_z_write_allowed() &&

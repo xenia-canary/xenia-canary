@@ -114,7 +114,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // If anything in this is structure is changed in a way not compatible with
     // the previous layout, invalidate the pipeline storages by increasing this
     // version number (0xYYYYMMDD)!
-    static constexpr uint32_t kVersion = 0x20260703;
+    static constexpr uint32_t kVersion = 0x20260716;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -185,6 +185,11 @@ class DxbcShaderTranslator : public ShaderTranslator {
       // Only RT0 is supported for now.
       xenos::BlendFactor rt0_blend_rgb_factor_for_premult : 5;
       xenos::BlendFactor rt0_blend_a_factor_for_premult : 5;
+      // PsParamGen and the memexport dedup must act like there's no resolution
+      // scaling. Doesn't affect fetch offsets, those follow texture scale, not
+      // from the draw. This is only set when the draw is native because of a
+      // set scale threshold (RTV only).
+      uint32_t resolution_scale_native : 1;
     } pixel;
 
     explicit Modification(uint64_t modification_value = 0)
@@ -1005,6 +1010,21 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Guest pixel host width / height.
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
+
+  // Scale of the draw being translated. All position-dependent paths use
+  // these. Only fetch offset scaling uses draw_resolution_scale_x_/y_ directly.
+  uint32_t GetCurrentDrawResolutionScaleX() const {
+    return is_pixel_shader() &&
+                   GetDxbcShaderModification().pixel.resolution_scale_native
+               ? 1
+               : draw_resolution_scale_x_;
+  }
+  uint32_t GetCurrentDrawResolutionScaleY() const {
+    return is_pixel_shader() &&
+                   GetDxbcShaderModification().pixel.resolution_scale_native
+               ? 1
+               : draw_resolution_scale_y_;
+  }
 
   // Is currently writing the empty depth-only pixel shader, for
   // CompleteTranslation.

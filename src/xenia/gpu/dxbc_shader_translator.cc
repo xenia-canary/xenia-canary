@@ -721,16 +721,17 @@ void DxbcShaderTranslator::StartPixelShader() {
     a_.OpRoundNI(dxbc::Dest::R(param_gen_temp, 0b0011),
                  dxbc::Src::V1D(in_reg_ps_position_));
     uint32_t resolution_scaled_axes =
-        uint32_t(draw_resolution_scale_x_ > 1) |
-        (uint32_t(draw_resolution_scale_y_ > 1) << 1);
+        uint32_t(GetCurrentDrawResolutionScaleX() > 1) |
+        (uint32_t(GetCurrentDrawResolutionScaleY() > 1) << 1);
     if (resolution_scaled_axes) {
       // Revert resolution scale - after truncating, so if the pixel position
       // is passed to tfetch (assuming the game doesn't round it by itself),
       // it will be sampled with higher resolution too.
-      a_.OpMul(dxbc::Dest::R(param_gen_temp, resolution_scaled_axes),
-               dxbc::Src::R(param_gen_temp),
-               dxbc::Src::LF(1.0f / draw_resolution_scale_x_,
-                             1.0f / draw_resolution_scale_y_, 1.0f, 1.0f));
+      a_.OpMul(
+          dxbc::Dest::R(param_gen_temp, resolution_scaled_axes),
+          dxbc::Src::R(param_gen_temp),
+          dxbc::Src::LF(1.0f / GetCurrentDrawResolutionScaleX(),
+                        1.0f / GetCurrentDrawResolutionScaleY(), 1.0f, 1.0f));
     }
     if (shader_modification.pixel.param_gen_point) {
       // A point - always front-facing (the upper bit of X is 0), not a line
@@ -794,8 +795,8 @@ void DxbcShaderTranslator::StartPixelShader() {
     dxbc::Src memexport_enabled_src(dxbc::Src::R(
         system_temp_memexport_enabled_and_eM_written_, dxbc::Src::kXXXX));
     uint32_t resolution_scaled_axes =
-        uint32_t(draw_resolution_scale_x_ > 1) |
-        (uint32_t(draw_resolution_scale_y_ > 1) << 1);
+        uint32_t(GetCurrentDrawResolutionScaleX() > 1) |
+        (uint32_t(GetCurrentDrawResolutionScaleY() > 1) << 1);
     if (resolution_scaled_axes) {
       uint32_t memexport_condition_temp = PushSystemTemp();
       // Only do memexport for one host pixel in a guest pixel - prefer the
@@ -809,12 +810,12 @@ void DxbcShaderTranslator::StartPixelShader() {
       a_.OpUDiv(dxbc::Dest::Null(),
                 dxbc::Dest::R(memexport_condition_temp, resolution_scaled_axes),
                 dxbc::Src::R(memexport_condition_temp),
-                dxbc::Src::LU(draw_resolution_scale_x_,
-                              draw_resolution_scale_y_, 0, 0));
+                dxbc::Src::LU(GetCurrentDrawResolutionScaleX(),
+                              GetCurrentDrawResolutionScaleY(), 0, 0));
       a_.OpIEq(dxbc::Dest::R(memexport_condition_temp, resolution_scaled_axes),
                dxbc::Src::R(memexport_condition_temp),
-               dxbc::Src::LU(draw_resolution_scale_x_ >> 1,
-                             draw_resolution_scale_y_ >> 1, 0, 0));
+               dxbc::Src::LU(GetCurrentDrawResolutionScaleX() >> 1,
+                             GetCurrentDrawResolutionScaleY() >> 1, 0, 0));
       for (uint32_t i = 0; i < 2; ++i) {
         if (!(resolution_scaled_axes & (1 << i))) {
           continue;
