@@ -522,6 +522,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
     uint64_t submission = 0;
     uint32_t query_index = UINT32_MAX;
     uint32_t query_generation = 0;
+    uint32_t scale_area = 1;
     bool uses_fsi_counter = false;
     ReportHandle report_handle = kInvalidReportHandle;
   };

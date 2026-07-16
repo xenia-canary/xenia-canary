@@ -542,6 +542,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
     uint64_t submission = 0;
     uint32_t query_index = UINT32_MAX;
     uint32_t query_generation = 0;
+    uint32_t scale_area = 1;
     bool uses_rov_counter = false;
     ReportHandle report_handle = kInvalidReportHandle;
   };

@@ -682,6 +682,10 @@ PipelineCache::GetCurrentPixelShaderModification(
 
   if (render_target_cache_.GetPath() ==
       RenderTargetCache::Path::kHostRenderTargets) {
+    // Whether this draw is native res due to a scale threshold. (RTV only)
+    modification.pixel.resolution_scale_native =
+        uint32_t(render_target_cache_.IsDrawScaleNative());
+
     using DepthStencilMode =
         DxbcShaderTranslator::Modification::DepthStencilMode;
     if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
@@ -1428,6 +1432,10 @@ bool PipelineCache::GetCurrentStateDescription(
         regs.Get<reg::RB_DEPTH_INFO>().depth_format, polygon_offset);
     description_out.depth_bias_slope_scaled =
         polygon_offset_scale * xenos::kPolygonOffsetScaleSubpixelUnit;
+    // The slope-scaled depth bias multiplier depends on this at pipeline
+    // creation.
+    description_out.resolution_scale_native =
+        uint32_t(render_target_cache_.IsDrawScaleNative());
   }
   if (tessellated && cvars::d3d12_tessellation_wireframe) {
     description_out.fill_mode_wireframe = 1;
@@ -3032,11 +3040,13 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
   // With non-square resolution scaling, make sure the worst-case impact is
   // reverted (slope only along the scaled axis), thus max. More bias is better
   // than less bias, because less bias means Z fighting with the background is
-  // more likely.
+  // more likely. Native draws get the guest bias as is.
   state_desc.RasterizerState.SlopeScaledDepthBias =
       description.depth_bias_slope_scaled *
-      float(std::max(render_target_cache_.draw_resolution_scale_x(),
-                     render_target_cache_.draw_resolution_scale_y()));
+      (description.resolution_scale_native
+           ? 1.0f
+           : float(std::max(render_target_cache_.draw_resolution_scale_x(),
+                            render_target_cache_.draw_resolution_scale_y())));
   state_desc.RasterizerState.DepthClipEnable =
       description.depth_clip ? true : false;
   uint32_t msaa_sample_count = uint32_t(1)

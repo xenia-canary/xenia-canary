@@ -304,6 +304,10 @@ struct GetViewportInfoArgs {
           uint32_t full_float24_in_0_to_1 : 1;
           uint32_t pixel_shader_writes_depth : 1;
           xenos::DepthRenderTargetFormat depth_format : 1;
+          // Compared since with a scale threshold the scale can differ per draw
+          // and a cached viewport has to match it. 3 bits fit max 7 scale.
+          uint32_t draw_resolution_scale_x : 3;
+          uint32_t draw_resolution_scale_y : 3;
         };
         uint32_t packed_portions;
       };
@@ -338,9 +342,7 @@ struct GetViewportInfoArgs {
 #endif
   };
 
-  // everything that follows here does not need to be compared
-  uint32_t draw_resolution_scale_x;
-  uint32_t draw_resolution_scale_y;
+  // everything that follows here does not need to be compared.
   divisors::MagicDiv draw_resolution_scale_x_divisor;
   divisors::MagicDiv draw_resolution_scale_y_divisor;
   void Setup(uint32_t _draw_resolution_scale_x,

@@ -220,6 +220,8 @@ class PipelineCache {
     uint32_t depth_write : 1;                         // 18
     uint32_t stencil_enable : 1;                      // 19
     uint32_t stencil_read_mask : 8;                   // 27
+    // Native draw (scale threshold), keeps slope-scale unscaled.
+    uint32_t resolution_scale_native : 1;  // 28
 
     uint32_t stencil_write_mask : 8;                   // 8
     xenos::StencilOp stencil_front_fail_op : 3;        // 11
@@ -234,7 +236,7 @@ class PipelineCache {
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
 
     inline bool operator==(const PipelineDescription& other) const;
-    static constexpr uint32_t kVersion = 0x20210425;
+    static constexpr uint32_t kVersion = 0x20260716;
   });
 
   XEPACKEDSTRUCT(PipelineStoredDescription, {
