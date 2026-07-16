@@ -174,8 +174,8 @@ bool PPCContext::CompareRegWithString(const char* name, const char* value,
     vec128_t expected = string_util::from_string<vec128_t>(value);
     if (this->v[n] != expected) {
       result =
-          fmt::format("[{:08X}, {:08X}, {:08X}, {:08X}]", this->v[n].i32[0],
-                      this->v[n].i32[1], this->v[n].i32[2], this->v[n].i32[3]);
+          fmt::format("[{:08X}, {:08X}, {:08X}, {:08X}]", this->v[n].u32[0],
+                      this->v[n].u32[1], this->v[n].u32[2], this->v[n].u32[3]);
       return false;
     }
     return true;
