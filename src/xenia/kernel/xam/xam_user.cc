@@ -592,9 +592,7 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     entry_size += X_ACHIEVEMENT_DETAILS::kStringBufferSize;
   }
 
-  if (buffer_size_ptr) {
-    *buffer_size_ptr = static_cast<uint32_t>(entry_size * count);
-  }
+  *buffer_size_ptr = static_cast<uint32_t>(entry_size * count);
 
   auto e = object_ref<XAchievementEnumerator>(
       new XAchievementEnumerator(kernel_state(), count, offset, flags));
@@ -619,10 +617,6 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
   const auto user_title_achievements =
       kernel_state()->achievement_manager()->GetTitleAchievements(
           requester_xuid, title_id_);
-
-  if (user_title_achievements.empty()) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
 
   for (const auto& entry : user_title_achievements) {
     auto unlock_time = X_FILETIME();
