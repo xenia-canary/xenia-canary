@@ -174,6 +174,7 @@ class KernelState {
   cpu::Processor* processor() const { return processor_; }
   vfs::VirtualFileSystem* file_system() const { return file_system_; }
 
+  xex2_opt_execution_info* GetExecutionInfo() const;
   uint32_t title_id() const;
   bool is_title_open() const;
   const std::unique_ptr<xam::SpaInfo> title_xdbf() const;
@@ -336,10 +337,10 @@ class KernelState {
                          int tls_static_data_address);
   void InitializeKernelGuestGlobals();
 
-  std::vector<xam::XCONTENT_AGGREGATE_DATA> FindTitleUpdate(
+  std::vector<xam::XCONTENT_DATA_INTERNAL> FindTitleUpdate(
       const uint32_t title_id) const;
   const object_ref<UserModule> LoadTitleUpdate(
-      const xam::XCONTENT_AGGREGATE_DATA* title_update,
+      const xam::XCONTENT_DATA_INTERNAL* title_update,
       const object_ref<UserModule> module);
   bool IsPatchSignatureProper(const object_ref<UserModule> title_module,
                               const object_ref<UserModule> patch_module) const;

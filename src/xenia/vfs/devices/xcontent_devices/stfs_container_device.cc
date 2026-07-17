@@ -16,37 +16,28 @@ namespace xe {
 namespace vfs {
 
 StfsContainerDevice::StfsContainerDevice(const std::string_view mount_path,
-                                         const std::filesystem::path& host_path)
-    : XContentContainerDevice(mount_path, host_path),
+                                         StfsVolumeDescriptor* descriptor,
+                                         std::unique_ptr<MappedMemory> data)
+    : XContentContainerDevice(mount_path),
       blocks_per_hash_table_(1),
-      block_step_{0, 0} {
+      block_step_{0, 0},
+      data_(std::move(data)),
+      descriptor_(descriptor) {
   SetName("STFS");
-}
 
-StfsContainerDevice::~StfsContainerDevice() {}
-
-void StfsContainerDevice::SetupContainer() {
-  // Additional part specific to STFS container.
-  const XContentContainerHeader* header = GetContainerHeader();
-  blocks_per_hash_table_ = header->is_package_readonly() ? 1 : 2;
+  blocks_per_hash_table_ = descriptor_->flags.bits.read_only_format ? 1 : 2;
 
   block_step_[0] = kBlocksPerHashLevel[0] + blocks_per_hash_table_;
   block_step_[1] = kBlocksPerHashLevel[1] +
                    ((kBlocksPerHashLevel[0] + 1) * blocks_per_hash_table_);
 }
 
-XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles() {
-  const XContentContainerHeader* header = GetContainerHeader();
+StfsContainerDevice::~StfsContainerDevice() {}
 
-  if (header->content_metadata.data_file_count > 0) {
-    XELOGW("STFS container is not a single file. Loading might fail!");
-  }
-
-  data_ = MappedMemory::Open(host_path_, MappedMemory::Mode::kRead);
-  if (!data_) {
-    return Result::kOutOfMemory;
-  }
-
+XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles(
+    [[maybe_unused]] const size_t data_file_count) {
+  // There is no need to load anything in case of STFS. All data is already
+  // provided in ctor.
   return Result::kSuccess;
 }
 
@@ -60,11 +51,9 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
   // Load all listings.
   StfsDirectoryBlock directory;
 
-  auto& descriptor =
-      GetContainerHeader()->content_metadata.volume_descriptor.stfs;
-  uint32_t table_block_index = descriptor.file_table_block_number();
+  uint32_t table_block_index = descriptor_->file_table_block_number();
   size_t n = 0;
-  for (n = 0; n < descriptor.file_table_block_count; n++) {
+  for (n = 0; n < descriptor_->file_table_block_count; n++) {
     const size_t offset = BlockToOffset(table_block_index);
     directory = *reinterpret_cast<StfsDirectoryBlock*>(data_->data() + offset);
 
@@ -94,9 +83,9 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
     }
   }
 
-  if (n + 1 != descriptor.file_table_block_count) {
+  if (n + 1 != descriptor_->file_table_block_count) {
     XELOGW("STFS read {} file table blocks, but STFS headers expected {}!",
-           n + 1, descriptor.file_table_block_count);
+           n + 1, descriptor_->file_table_block_count);
     assert_always();
   }
 
@@ -190,9 +179,7 @@ size_t StfsContainerDevice::BlockToOffset(uint64_t block_index) const {
     }
   }
 
-  return xe::round_up(GetContainerHeader()->content_header.header_size,
-                      kBlockSize) +
-         (block << 12);
+  return block << 12;
 }
 
 uint32_t StfsContainerDevice::BlockToHashBlockNumber(
@@ -222,9 +209,7 @@ uint32_t StfsContainerDevice::BlockToHashBlockNumber(
 
 size_t StfsContainerDevice::BlockToHashBlockOffset(uint32_t block_index,
                                                    uint32_t hash_level) const {
-  const uint64_t block = BlockToHashBlockNumber(block_index, hash_level);
-  return xe::round_up(header_->content_header.header_size, kBlockSize) +
-         (block << 12);
+  return BlockToHashBlockNumber(block_index, hash_level) << 12;
 }
 
 const uint8_t StfsContainerDevice::GetAmountOfHashLevelsToCheck(
@@ -268,17 +253,14 @@ void StfsContainerDevice::UpdateCachedHashTables(
 }
 
 const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
-  const StfsVolumeDescriptor& descriptor =
-      header_->content_metadata.volume_descriptor.stfs;
-
   // Offset for selecting the secondary hash block, in packages that have them
   uint32_t secondary_table_offset =
-      descriptor.flags.bits.root_active_index ? kBlockSize : 0;
+      descriptor_->flags.bits.root_active_index ? kBlockSize : 0;
 
   uint8_t hash_levels_to_process =
-      GetAmountOfHashLevelsToCheck(descriptor.total_block_count);
+      GetAmountOfHashLevelsToCheck(descriptor_->total_block_count);
 
-  if (header_->is_package_readonly()) {
+  if (descriptor_->flags.bits.read_only_format) {
     secondary_table_offset = 0;
     // Because we have read only package we only need to check first hash level.
     hash_levels_to_process = 0;
@@ -290,24 +272,6 @@ const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
   const size_t hash_offset = BlockToHashBlockOffset(block_index, 0);
   const uint32_t record = block_index % kBlocksPerHashLevel[0];
   return &cached_hash_tables_[hash_offset].entries[record];
-}
-
-const uint8_t StfsContainerDevice::GetBlocksPerHashTableFromContainerHeader()
-    const {
-  const XContentContainerHeader* header = GetContainerHeader();
-  if (!header) {
-    XELOGE(
-        "VFS: SetBlocksPerHashTableBasedOnContainerHeader - Missing "
-        "Container "
-        "Header!");
-    return 0;
-  }
-
-  if (header->is_package_readonly()) {
-    return 1;
-  }
-
-  return 2;
 }
 
 }  // namespace vfs

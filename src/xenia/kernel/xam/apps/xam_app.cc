@@ -63,34 +63,18 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       }
 
       assert_true(enum_struct->magic == kXObjSignature);
-
-      XCONTENT_CROSS_TITLE_DATA cross_title_data = {};
-      uint8_t* cross_title_data_ptr =
-          reinterpret_cast<uint8_t*>(&cross_title_data);
-
-      uint32_t item_count = 0;
-      X_RESULT result = e->WriteItems(cross_title_data_ptr,
-                                      data_ptr->buffer_size, &item_count);
+      assert_true(data_ptr->buffer_size == sizeof(XCONTENT_DATA_INTERNAL));
 
       XCONTENT_DATA_INTERNAL* content_data_ptr =
           memory_->TranslateVirtual<XCONTENT_DATA_INTERNAL*>(
               data_ptr->buffer_ptr);
 
-      assert_true(data_ptr->buffer_size == sizeof(XCONTENT_DATA_INTERNAL));
-
+      uint32_t item_count = 0;
       std::memset(content_data_ptr, 0, data_ptr->buffer_size);
 
-      if (!result) {
-        content_data_ptr->device_id = cross_title_data.content_data.device_id;
-        content_data_ptr->content_type =
-            cross_title_data.content_data.content_type;
-        content_data_ptr->set_display_name(
-            cross_title_data.content_data.display_name());
-        content_data_ptr->set_file_name(
-            cross_title_data.content_data.file_name());
-        content_data_ptr->padding[0] = content_data_ptr->padding[1] = 0;
-        content_data_ptr->title_id = cross_title_data.title_id;
-      }
+      X_RESULT result =
+          e->WriteItems(reinterpret_cast<uint8_t*>(content_data_ptr),
+                        data_ptr->buffer_size, &item_count);
 
       result = X_HRESULT_FROM_WIN32(result);
 

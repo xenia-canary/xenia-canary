@@ -436,7 +436,7 @@ enum class XOnlineCountry : uint32_t {
 };
 
 enum class XContentType : uint32_t {
-  kFolder = 0xffffffff,
+  kAll = 0xFFFFFFFF,  // Iterate all types
   kInvalid = 0x00000000,
   kSavedGame = 0x00000001,
   kMarketplaceContent = 0x00000002,
@@ -475,7 +475,7 @@ enum class XContentType : uint32_t {
 };
 
 inline const std::map<XContentType, std::string> XContentTypeMap = {
-    {XContentType::kFolder, "Folder"},
+    {XContentType::kAll, "All"},
     {XContentType::kSavedGame, "Saved Game"},
     {XContentType::kMarketplaceContent, "Marketplace Content"},
     {XContentType::kPublisher, "Publisher"},

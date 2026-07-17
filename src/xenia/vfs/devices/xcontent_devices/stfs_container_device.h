@@ -25,26 +25,23 @@ namespace vfs {
 class StfsContainerDevice : public XContentContainerDevice {
  public:
   StfsContainerDevice(const std::string_view mount_path,
-                      const std::filesystem::path& host_path);
+                      StfsVolumeDescriptor* descriptor,
+                      std::unique_ptr<MappedMemory> data);
   ~StfsContainerDevice() override;
 
   bool is_read_only() const override {
-    return GetContainerHeader()
-        ->content_metadata.volume_descriptor.stfs.flags.bits.read_only_format;
+    return descriptor_->flags.bits.read_only_format;
   }
 
   uint32_t component_name_max_length() const override { return 40; }
 
   uint32_t total_allocation_units() const override {
-    return GetContainerHeader()
-        ->content_metadata.volume_descriptor.stfs.total_block_count;
+    return descriptor_->total_block_count;
   }
   uint32_t available_allocation_units() const override {
     if (!is_read_only()) {
-      auto& descriptor =
-          GetContainerHeader()->content_metadata.volume_descriptor.stfs;
       return kBlocksPerHashLevel[2] -
-             (descriptor.total_block_count - descriptor.free_block_count);
+             (descriptor_->total_block_count - descriptor_->free_block_count);
     }
     return 0;
   }
@@ -57,8 +54,7 @@ class StfsContainerDevice : public XContentContainerDevice {
   const uint32_t kEntriesPerDirectoryBlock =
       kBlockSize / sizeof(StfsDirectoryEntry);
 
-  void SetupContainer() override;
-  Result LoadHostFiles() override;
+  Result LoadHostFiles(const size_t data_file_count) override;
 
   Result Read() override;
   std::unique_ptr<StfsContainerEntry> ReadEntry(
@@ -77,13 +73,14 @@ class StfsContainerDevice : public XContentContainerDevice {
   void UpdateCachedHashTables(uint32_t block_index,
                               uint8_t highest_hash_level_to_update,
                               uint32_t& secondary_table_offset);
-  const uint8_t GetBlocksPerHashTableFromContainerHeader() const;
 
   uint8_t blocks_per_hash_table_;
   uint32_t block_step_[2];
 
   std::unordered_map<size_t, StfsHashTable> cached_hash_tables_;
+
   std::unique_ptr<MappedMemory> data_;
+  StfsVolumeDescriptor* descriptor_;
 };
 
 }  // namespace vfs

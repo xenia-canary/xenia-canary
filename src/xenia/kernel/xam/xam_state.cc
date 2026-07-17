@@ -26,8 +26,8 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
       std::make_unique<ContentManager>(kernel_state, content_root);
 
   user_tracker_ = std::make_unique<UserTracker>();
-  profile_manager_ =
-      std::make_unique<ProfileManager>(kernel_state, user_tracker_.get());
+  profile_manager_ = std::make_unique<ProfileManager>(
+      kernel_state, content_manager_.get(), user_tracker_.get());
   achievement_manager_ = std::make_unique<AchievementManager>();
 
   LoadLanguageLocaleFallback();

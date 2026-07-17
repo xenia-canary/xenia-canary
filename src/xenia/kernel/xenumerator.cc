@@ -257,11 +257,33 @@ uint32_t ContentEnumerator::WriteItems(uint8_t* buffer_data,
     return X_ERROR_NO_MORE_FILES;
   }
 
-  // 4E4D07F0 does not respect buffer_size, possibly bug?
-  xam::XCONTENT_DATA* contents =
-      reinterpret_cast<xam::XCONTENT_DATA*>(buffer_data);
+  // Switch between different item_size.
+  switch (item_size()) {
+    case sizeof(xam::XCONTENT_DATA): {
+      // 4E4D07F0 does not respect buffer_size, possibly bug?
+      xam::XCONTENT_DATA* contents =
+          reinterpret_cast<xam::XCONTENT_DATA*>(buffer_data);
 
-  std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    case sizeof(xam::XCONTENT_DATA_AGGREGATE): {
+      xam::XCONTENT_DATA_AGGREGATE* contents =
+          reinterpret_cast<xam::XCONTENT_DATA_AGGREGATE*>(buffer_data);
+
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    case sizeof(xam::XCONTENT_DATA_INTERNAL): {
+      xam::XCONTENT_DATA_INTERNAL* contents =
+          reinterpret_cast<xam::XCONTENT_DATA_INTERNAL*>(buffer_data);
+
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    default:
+      return X_ERROR_NO_MORE_FILES;
+  }
 
   current_item_ += actual_count;
 

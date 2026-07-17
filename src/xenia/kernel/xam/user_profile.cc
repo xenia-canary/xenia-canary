@@ -115,6 +115,19 @@ void UserProfile::WriteProfileIcon(XTileType tile_type,
   file->WriteSync({icon_data.data(), icon_data.size()}, 0, &written_bytes);
   file->Destroy();
 
+  // Update package thumbnail
+  XCONTENT_DATA_INTERNAL data{};
+  data.device_id = 1;
+  data.title_id = kDashboardID;
+  data.content_type = XContentType::kProfile;
+  data.xuid = xuid_;
+  data.set_file_name(fmt::format("{:016X}", xuid_));
+
+  if (auto package = kernel_state()->content_manager()->FindPackage(data);
+      package) {
+    package->SetThumbnail(icon_data);
+  }
+
   profile_images_.insert_or_assign(
       tile_type, std::vector<uint8_t>(icon_data.begin(), icon_data.end()));
 }
