@@ -3596,64 +3596,54 @@ void SpirvShaderTranslator::StoreUint32ToSharedMemory(
   binding_switch.makeEndSwitch();
 }
 
-spv::Id SpirvShaderTranslator::PWLGammaToLinear(spv::Id gamma,
-                                                bool gamma_pre_saturated) {
+spv::Id SpirvShaderTranslator::PWLGammaToLinear(
+    SpirvBuilder* builder_, spv::Id gamma, bool pre_saturated,
+    spv::Id ext_inst_glsl_std_450_) {
   spv::Id value_type = builder_->getTypeId(gamma);
   assert_true(builder_->isFloatType(builder_->getScalarTypeId(value_type)));
   bool is_vector = builder_->isVectorType(value_type);
   assert_true(is_vector || builder_->isFloatType(value_type));
   int num_components = builder_->getNumTypeComponents(value_type);
   assert_true(num_components < 4);
-  spv::Id bool_type = type_bool_vectors_[num_components - 1];
+  spv::Id bool_type = is_vector ? builder_->makeVectorType(
+                                      builder_->makeBoolType(), num_components)
+                                : builder_->makeBoolType();
 
-  spv::Id const_vector_0 = const_float_vectors_0_[num_components - 1];
-  spv::Id const_vector_1 = SpirvSmearScalarResultOrConstant(
-      builder_->makeFloatConstant(1.0f), value_type);
+  spv::Id const_vector_0 = builder_->smearFloatConstant(0.0f, value_type);
 
-  if (!gamma_pre_saturated) {
+  if (!pre_saturated) {
     // Saturate, flushing NaN to 0.
-    gamma = builder_->createTriBuiltinCall(value_type, ext_inst_glsl_std_450_,
-                                           GLSLstd450NClamp, gamma,
-                                           const_vector_0, const_vector_1);
+    gamma = builder_->createTriBuiltinCall(
+        value_type, ext_inst_glsl_std_450_, GLSLstd450NClamp, gamma,
+        const_vector_0, builder_->smearFloatConstant(1.0f, value_type));
   }
 
   spv::Id is_piece_at_least_3 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, gamma,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(192.0f / 255.0f), value_type));
+      builder_->smearFloatConstant(192.0f / 255.0f, value_type));
   spv::Id scale_3_or_2 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_3,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(8.0f / 1024.0f), value_type),
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(4.0f / 1024.0f), value_type));
-  spv::Id offset_3_or_2 = builder_->createTriOp(
-      spv::OpSelect, value_type, is_piece_at_least_3,
-      SpirvSmearScalarResultOrConstant(builder_->makeFloatConstant(-1024.0f),
-                                       value_type),
-      SpirvSmearScalarResultOrConstant(builder_->makeFloatConstant(-256.0f),
-                                       value_type));
+      builder_->smearFloatConstant(8.0f / 1024.0f, value_type),
+      builder_->smearFloatConstant(4.0f / 1024.0f, value_type));
+  spv::Id offset_3_or_2 =
+      builder_->createTriOp(spv::OpSelect, value_type, is_piece_at_least_3,
+                            builder_->smearFloatConstant(-1024.0f, value_type),
+                            builder_->smearFloatConstant(-256.0f, value_type));
 
   spv::Id is_piece_at_least_1 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, gamma,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(64.0f / 255.0f), value_type));
+      builder_->smearFloatConstant(64.0f / 255.0f, value_type));
   spv::Id scale_1_or_0 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_1,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(2.0f / 1024.0f), value_type),
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(1.0f / 1024.0f), value_type));
+      builder_->smearFloatConstant(2.0f / 1024.0f, value_type),
+      builder_->smearFloatConstant(1.0f / 1024.0f, value_type));
   spv::Id offset_1_or_0 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_1,
-      SpirvSmearScalarResultOrConstant(builder_->makeFloatConstant(-64.0f),
-                                       value_type),
-      const_vector_0);
+      builder_->smearFloatConstant(-64.0f, value_type), const_vector_0);
 
   spv::Id is_piece_at_least_2 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, gamma,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(96.0f / 255.0f), value_type));
+      builder_->smearFloatConstant(96.0f / 255.0f, value_type));
   spv::Id scale =
       builder_->createTriOp(spv::OpSelect, value_type, is_piece_at_least_2,
                             scale_3_or_2, scale_1_or_0);
@@ -3687,64 +3677,54 @@ spv::Id SpirvShaderTranslator::PWLGammaToLinear(spv::Id gamma,
   return linear;
 }
 
-spv::Id SpirvShaderTranslator::LinearToPWLGamma(spv::Id linear,
-                                                bool linear_pre_saturated) {
+spv::Id SpirvShaderTranslator::LinearToPWLGamma(
+    SpirvBuilder* builder_, spv::Id linear, bool pre_saturated,
+    spv::Id ext_inst_glsl_std_450_) {
   spv::Id value_type = builder_->getTypeId(linear);
   assert_true(builder_->isFloatType(builder_->getScalarTypeId(value_type)));
   bool is_vector = builder_->isVectorType(value_type);
   assert_true(is_vector || builder_->isFloatType(value_type));
   int num_components = builder_->getNumTypeComponents(value_type);
   assert_true(num_components < 4);
-  spv::Id bool_type = type_bool_vectors_[num_components - 1];
+  spv::Id bool_type = is_vector ? builder_->makeVectorType(
+                                      builder_->makeBoolType(), num_components)
+                                : builder_->makeBoolType();
 
-  spv::Id const_vector_0 = const_float_vectors_0_[num_components - 1];
-  spv::Id const_vector_1 = SpirvSmearScalarResultOrConstant(
-      builder_->makeFloatConstant(1.0f), value_type);
+  spv::Id const_vector_0 = builder_->smearFloatConstant(0.0f, value_type);
 
-  if (!linear_pre_saturated) {
+  if (!pre_saturated) {
     // Saturate, flushing NaN to 0.
-    linear = builder_->createTriBuiltinCall(value_type, ext_inst_glsl_std_450_,
-                                            GLSLstd450NClamp, linear,
-                                            const_vector_0, const_vector_1);
+    linear = builder_->createTriBuiltinCall(
+        value_type, ext_inst_glsl_std_450_, GLSLstd450NClamp, linear,
+        const_vector_0, builder_->smearFloatConstant(1.0f, value_type));
   }
 
   spv::Id is_piece_at_least_3 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, linear,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(512.0f / 1023.0f), value_type));
+      builder_->smearFloatConstant(512.0f / 1023.0f, value_type));
   spv::Id scale_3_or_2 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_3,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(1023.0f / 8.0f), value_type),
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(1023.0f / 4.0f), value_type));
+      builder_->smearFloatConstant(1023.0f / 8.0f, value_type),
+      builder_->smearFloatConstant(1023.0f / 4.0f, value_type));
   spv::Id offset_3_or_2 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_3,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(128.0f / 255.0f), value_type),
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(64.0f / 255.0f), value_type));
+      builder_->smearFloatConstant(128.0f / 255.0f, value_type),
+      builder_->smearFloatConstant(64.0f / 255.0f, value_type));
 
   spv::Id is_piece_at_least_1 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, linear,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(64.0f / 1023.0f), value_type));
+      builder_->smearFloatConstant(64.0f / 1023.0f, value_type));
   spv::Id scale_1_or_0 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_1,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(1023.0f / 2.0f), value_type),
-      SpirvSmearScalarResultOrConstant(builder_->makeFloatConstant(1023.0f),
-                                       value_type));
+      builder_->smearFloatConstant(1023.0f / 2.0f, value_type),
+      builder_->smearFloatConstant(1023.0f, value_type));
   spv::Id offset_1_or_0 = builder_->createTriOp(
       spv::OpSelect, value_type, is_piece_at_least_1,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(32.0f / 255.0f), value_type),
-      const_vector_0);
+      builder_->smearFloatConstant(32.0f / 255.0f, value_type), const_vector_0);
 
   spv::Id is_piece_at_least_2 = builder_->createBinOp(
       spv::OpFOrdGreaterThanEqual, bool_type, linear,
-      SpirvSmearScalarResultOrConstant(
-          builder_->makeFloatConstant(128.0f / 1023.0f), value_type));
+      builder_->smearFloatConstant(128.0f / 1023.0f, value_type));
   spv::Id scale =
       builder_->createTriOp(spv::OpSelect, value_type, is_piece_at_least_2,
                             scale_3_or_2, scale_1_or_0);

@@ -2280,7 +2280,9 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             // Gamma.
             builder_->setBuildPoint(&block_sign_gamma_start);
             spv::Id sample_result_component_gamma =
-                PWLGammaToLinear(sample_result_component_unsigned, false);
+                SpirvShaderTranslator::PWLGammaToLinear(
+                    builder_.get(), sample_result_component_unsigned, false,
+                    ext_inst_glsl_std_450_);
             // Get the current build point for the phi operation not to assume
             // that it will be the same as before PWLGammaToLinear.
             spv::Block& block_sign_gamma_end = *builder_->getBuildPoint();

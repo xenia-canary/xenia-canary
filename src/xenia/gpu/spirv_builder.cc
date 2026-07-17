@@ -100,6 +100,16 @@ spv::Id SpirvBuilder::createTriBuiltinCall(spv::Id result_type,
   return result;
 }
 
+spv::Id SpirvBuilder::smearFloatConstant(float value, spv::Id value_type) {
+  spv::Id scalar = makeFloatConstant(value);
+  if (!isVectorType(value_type)) {
+    return scalar;
+  }
+  std::vector<spv::Id> components(size_t(getNumTypeComponents(value_type)),
+                                  scalar);
+  return makeCompositeConstant(value_type, components);
+}
+
 SpirvBuilder::IfBuilder::IfBuilder(spv::Id condition,
                                    spv::SelectionControlMask control,
                                    SpirvBuilder& builder,
