@@ -4881,8 +4881,10 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
   flags |= uint32_t(alpha_test_function)
            << SpirvShaderTranslator::kSysFlag_AlphaPassIfLess_Shift;
   // Gamma writing.
-  // TODO(Triang3l): Gamma as unorm8 check.
-  if (!edram_fragment_shader_interlock) {
+  // Gamma targets stored as UNORM16 hold linear values for blending, and
+  // encoding is deferred to the EDRAM store.
+  if (!edram_fragment_shader_interlock &&
+      !cvars::gamma_render_target_as_unorm16) {
     for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
       if (color_infos[i].color_format ==
           xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA) {

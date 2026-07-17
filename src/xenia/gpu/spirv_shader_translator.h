@@ -475,6 +475,16 @@ class SpirvShaderTranslator : public ShaderTranslator {
                                bool result_as_uint,
                                spv::Id ext_inst_glsl_std_450);
 
+  // Piecewise-linear gamma conversions for k_8_8_8_8_GAMMA values stored as
+  // linear UNORM16. Values may be scalars or vectors of up to 3 components.
+  // Unless pre_saturated is true, inputs are clamped to [0, 1] (NaN to 0).
+  static spv::Id PWLGammaToLinear(SpirvBuilder* builder_, spv::Id value,
+                                  bool pre_saturated,
+                                  spv::Id ext_inst_glsl_std_450);
+  static spv::Id LinearToPWLGamma(SpirvBuilder* builder_, spv::Id value,
+                                  bool pre_saturated,
+                                  spv::Id ext_inst_glsl_std_450);
+
  protected:
   void Reset() override;
 
@@ -692,10 +702,6 @@ class SpirvShaderTranslator : public ShaderTranslator {
   }
 
   void ExportToMemory(uint8_t export_eM);
-
-  // The source may be a floating-point scalar or a vector.
-  spv::Id PWLGammaToLinear(spv::Id gamma, bool gamma_pre_saturated);
-  spv::Id LinearToPWLGamma(spv::Id linear, bool linear_pre_saturated);
 
   size_t FindOrAddTextureBinding(uint32_t fetch_constant,
                                  xenos::FetchOpDimension dimension,

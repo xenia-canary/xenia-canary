@@ -1272,7 +1272,8 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
             const_uint_0_);
         SpirvBuilder::IfBuilder if_gamma(
             is_gamma, spv::SelectionControlDontFlattenMask, *builder_);
-        spv::Id color_rgb_gamma = LinearToPWLGamma(color_rgb, false);
+        spv::Id color_rgb_gamma = SpirvShaderTranslator::LinearToPWLGamma(
+            builder_.get(), color_rgb, false, ext_inst_glsl_std_450_);
         if_gamma.makeEndIf();
         color_rgb = if_gamma.createMergePhi(color_rgb_gamma, color_rgb);
         {
@@ -2663,10 +2664,11 @@ std::array<spv::Id, 2> SpirvShaderTranslator::FSI_ClampAndPackColor(
     uint_vector_temp_.push_back(2);
     spv::Id color_rgb = builder_->createRvalueSwizzle(
         spv::NoPrecision, type_float3_, color_float4, uint_vector_temp_);
-    spv::Id rgb_gamma = LinearToPWLGamma(
+    spv::Id rgb_gamma = SpirvShaderTranslator::LinearToPWLGamma(
+        builder_.get(),
         builder_->createRvalueSwizzle(spv::NoPrecision, type_float3_,
                                       color_float4, uint_vector_temp_),
-        false);
+        false, ext_inst_glsl_std_450_);
     spv::Id alpha_clamped = builder_->createTriBuiltinCall(
         type_float_, ext_inst_glsl_std_450_, GLSLstd450NClamp,
         builder_->createCompositeExtract(color_float4, type_float_, 3),
@@ -3035,7 +3037,8 @@ std::array<spv::Id, 4> SpirvShaderTranslator::FSI_UnpackColor(
                     builder_->makeUintConstant(8 * j), component_width)),
             component_scale);
         if (i && j <= 2) {
-          component = PWLGammaToLinear(component, true);
+          component = SpirvShaderTranslator::PWLGammaToLinear(
+              builder_.get(), component, true, ext_inst_glsl_std_450_);
         }
         unpacked_8_8_8_8_and_gamma[i][j] = component;
       }
