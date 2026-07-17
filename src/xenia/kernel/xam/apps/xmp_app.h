@@ -56,6 +56,14 @@ struct XMP_SONGDESCRIPTOR {
 };
 static_assert_size(XMP_SONGDESCRIPTOR, 36);
 
+struct XMP_UNK_SONG_STRUCT {
+  xe::be<uint32_t> unk1;  // 0x0 - 1
+  uint8_t data1[0x2C];    // 0x4
+  xe::be<uint32_t> unk2;  // 0x30 - 3
+  uint8_t unknown[0x460];
+};
+static_assert_size(XMP_UNK_SONG_STRUCT, 0x494);
+
 constexpr uint32_t kMaxXmpMetadataStringLength = 40;
 
 struct XMP_SONGINFO {
@@ -73,6 +81,15 @@ struct XMP_SONGINFO {
   xe::be<uint32_t> unknown_1;
 };
 static_assert_size(XMP_SONGINFO, 0x3E0);
+
+struct MSAL_MEDIASOURCEINFO {
+  uint8_t data1[0x28];     // 0x0
+  xe::be<uint32_t> unkn1;  // 0x28 - 1, 6, 7
+  xe::be<uint32_t> unkn2;  // 0x2C - 2, flag?
+  xe::be<uint32_t> unkn3;  // 0x30 - 1, 5
+  uint8_t unknown[0x80];   // 0x34
+};
+static_assert_size(MSAL_MEDIASOURCEINFO, 0xB4);
 
 struct XMP_PLAY_TITLE_PLAYLIST {
   xe::be<apu::XMP_CLIENT> xmp_client;
@@ -128,8 +145,8 @@ static_assert_size(XMP_CREATE_TITLE_PLAYLIST, 0x24);
 
 struct XMP_GET_CURRENT_SONG {
   xe::be<apu::XMP_CLIENT> xmp_client;
-  xe::be<uint32_t> unk_ptr;
-  xe::be<uint32_t> info_ptr;
+  xe::be<uint32_t> unk_ptr;   // XMP_UNK_SONG_STRUCT
+  xe::be<uint32_t> info_ptr;  // XMP_SONGINFO
 };
 static_assert_size(XMP_GET_CURRENT_SONG, 0xC);
 
@@ -156,7 +173,7 @@ static_assert_size(XMP_GET_PLAYBACK_CONTROLLER, 0xC);
 struct XMP_CREATE_USER_PLAYLIST_ENUMERATOR {
   xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> flags;
-  xe::be<uint32_t> object_ptr;
+  xe::be<uint32_t> private_enum_structure_ptr;
 };
 static_assert_size(XMP_CREATE_USER_PLAYLIST_ENUMERATOR, 0xC);
 
