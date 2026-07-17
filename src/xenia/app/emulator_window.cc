@@ -21,6 +21,7 @@
 #endif
 
 #include "xenia/app/console_settings_dialog.h"
+#include "xenia/app/content_list_dialog.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
@@ -651,8 +652,9 @@ void EmulatorWindow::ContentInstallDialog::OnDraw(ImGuiIO& io) {
       ImGui::ProgressBar(static_cast<float>(entry.currently_installed_size_) /
                          entry.content_size_);
 
-      if (entry.currently_installed_size_ != entry.content_size_ &&
-          entry.installation_result_ == X_ERROR_SUCCESS) {
+      if (entry.installation_state_ == Emulator::InstallState::installing ||
+          entry.installation_state_ == Emulator::InstallState::pending ||
+          entry.installation_state_ == Emulator::InstallState::preparing) {
         is_everything_installed = false;
       }
     } else {
@@ -760,9 +762,6 @@ bool EmulatorWindow::Initialize() {
                          std::bind(&EmulatorWindow::FileOpen, this)));
     file_menu->AddChild(std::move(recent_menu));
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-    file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Install Content...",
-                         std::bind(&EmulatorWindow::InstallContent, this)));
     zar_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "Create",
                          std::bind(&EmulatorWindow::CreateZarchive, this)));
@@ -795,6 +794,21 @@ bool EmulatorWindow::Initialize() {
         std::bind(&EmulatorWindow::ToggleProfilesConfigDialog, this)));
   }
   main_menu->AddChild(std::move(profile_menu));
+
+  // Content Menu
+  auto content_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Content");
+  {
+    content_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "Install Content",
+                         std::bind(&EmulatorWindow::InstallContent, this)));
+    content_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "Extract Content",
+                         std::bind(&EmulatorWindow::ExtractContent, this, "")));
+    content_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, "Show Installed Content",
+        std::bind(&EmulatorWindow::ToggleContentListDialog, this)));
+  }
+  main_menu->AddChild(std::move(content_menu));
 
   // CPU menu.
   auto cpu_menu = MenuItem::Create(MenuItem::Type::kPopup, "&CPU");
@@ -1314,6 +1328,68 @@ void EmulatorWindow::InstallContent() {
                            content_installation_status);
 }
 
+void EmulatorWindow::ExtractContent(const std::filesystem::path file) {
+  std::vector<std::filesystem::path> package_files;
+  std::filesystem::path extract_dir;
+
+  if (!file.empty()) {
+    package_files.push_back(file);
+  } else {
+    auto file_picker = xe::ui::FilePicker::Create();
+    file_picker->set_mode(ui::FilePicker::Mode::kOpen);
+    file_picker->set_type(ui::FilePicker::Type::kFile);
+    file_picker->set_multi_selection(true);
+    file_picker->set_title("Select Content Package");
+    file_picker->set_extensions({
+        {"All Files (*.*)", "*.*"},
+    });
+
+    if (file_picker->Show(window_.get())) {
+      package_files = file_picker->selected_files();
+    }
+
+    if (package_files.empty()) {
+      return;
+    }
+  }
+  auto save_file_picker = xe::ui::FilePicker::Create();
+  save_file_picker->set_mode(ui::FilePicker::Mode::kOpen);
+  save_file_picker->set_type(ui::FilePicker::Type::kDirectory);
+  save_file_picker->set_title("Select Directory to Extract");
+
+  if (save_file_picker->Show(window_.get())) {
+    extract_dir = save_file_picker->selected_files().front();
+  }
+
+  if (extract_dir.empty()) {
+    return;
+  }
+
+  std::shared_ptr<std::vector<Emulator::ContentInstallEntry>>
+      content_installation_status =
+          std::make_shared<std::vector<Emulator::ContentInstallEntry>>();
+
+  for (const auto& path : package_files) {
+    content_installation_status->push_back({path});
+  }
+
+  for (auto& entry : *content_installation_status) {
+    emulator_->ProcessContentPackageHeader(entry.path_, entry);
+    entry.data_installation_path_ = extract_dir;
+    entry.header_installation_path_ = "";
+  }
+
+  auto installationThread = std::thread([this, content_installation_status] {
+    for (auto& entry : *content_installation_status) {
+      emulator_->ExtractContentPackage(entry.path_, entry);
+    }
+  });
+  installationThread.detach();
+
+  new ContentInstallDialog(imgui_drawer_.get(), *this,
+                           content_installation_status);
+}
+
 void EmulatorWindow::ExtractZarchive() {
   std::vector<std::filesystem::path> zarchive_files;
   std::filesystem::path extract_dir;
@@ -1630,6 +1706,20 @@ void EmulatorWindow::ToggleConsoleSettingsDialog() {
       console_settings_dialog_.release();
     } else {
       console_settings_dialog_.reset();
+    }
+  }
+}
+
+void EmulatorWindow::ToggleContentListDialog() {
+  if (!content_list_dialog_) {
+    content_list_dialog_ = std::unique_ptr<ContentListDialog>(
+        new ContentListDialog(imgui_drawer_.get(), *this,
+                              emulator_->kernel_state()->content_manager()));
+  } else {
+    if (content_list_dialog_->IsClosing()) {
+      content_list_dialog_.release();
+    } else {
+      content_list_dialog_.reset();
     }
   }
 }
@@ -2233,15 +2323,6 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
   disable_hotkeys_ = false;
 
-  if (profile_config_dialog_) {
-    profile_config_dialog_.reset();
-    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
-  }
-
-  if (display_config_dialog_) {
-    display_config_dialog_.reset();
-  }
-
   ClearDialogs();
 
   if (result) {
@@ -2381,6 +2462,14 @@ void EmulatorWindow::ClearDialogs() {
 
   if (console_settings_dialog_) {
     console_settings_dialog_.reset();
+  }
+
+  if (content_list_dialog_) {
+    content_list_dialog_.reset();
+  }
+
+  if (xmp_config_dialog_) {
+    xmp_config_dialog_.reset();
   }
 
   imgui_drawer_.get()->ClearDialogs();

@@ -12,6 +12,7 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/kernel/kernel.h"
+#include "xenia/kernel/util/xfiletime.h"
 
 namespace xe {
 namespace kernel {
@@ -125,6 +126,17 @@ struct X_FILE_NETWORK_OPEN_INFORMATION {
   be<uint32_t> pad;
 };
 static_assert_size(X_FILE_NETWORK_OPEN_INFORMATION, 56);
+
+// https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-win32_file_attribute_data
+struct X_FILE_ATTRIBUTE_DATA {
+  xe::be<uint32_t> dwFileAttributes;
+  X_FILETIME ftCreationTime;
+  X_FILETIME ftLastAccessTime;
+  X_FILETIME ftLastWriteTime;
+  xe::be<uint32_t> nFileSizeHigh;
+  xe::be<uint32_t> nFileSizeLow;
+};
+static_assert_size(X_FILE_ATTRIBUTE_DATA, 36);
 
 #pragma pack(pop)
 

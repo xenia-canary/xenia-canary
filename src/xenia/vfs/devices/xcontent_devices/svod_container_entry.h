@@ -17,29 +17,30 @@
 
 namespace xe {
 namespace vfs {
-typedef std::map<size_t, FILE*> MultiFileHandles;
+
+using MultiMemoryMap = std::map<size_t, std::unique_ptr<MappedMemory>>;
 
 class XContentContainerDevice;
 
 class SvodContainerEntry : public XContentContainerEntry {
  public:
   SvodContainerEntry(Device* device, Entry* parent, const std::string_view path,
-                     MultiFileHandles* files);
+                     MultiMemoryMap* files);
   ~SvodContainerEntry() override;
 
   static std::unique_ptr<SvodContainerEntry> Create(Device* device,
                                                     Entry* parent,
                                                     const std::string_view name,
-                                                    MultiFileHandles* files);
+                                                    MultiMemoryMap* files);
 
-  MultiFileHandles* files() const { return files_; }
+  MultiMemoryMap* files() const { return files_; }
 
   X_STATUS Open(uint32_t desired_access, File** out_file) override;
 
  private:
   bool DeleteEntryInternal(Entry* entry) override;
 
-  MultiFileHandles* files_;
+  MultiMemoryMap* files_;
 };
 
 }  // namespace vfs

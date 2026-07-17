@@ -29,16 +29,6 @@ class XContentContainerDevice : public Device {
  public:
   constexpr static uint32_t kBlockSize = 0x1000;
 
-  static std::unique_ptr<XContentContainerDevice> CreateContentDevice(
-      const std::string_view mount_path,
-      const std::filesystem::path& host_path);
-
-  static std::unique_ptr<XContentContainerHeader> ReadContainerHeader(
-      const std::filesystem::path& file_path);
-
-  static std::unique_ptr<XContentContainerHeader> ReadContainerHeader(
-      FILE* host_file);
-
   ~XContentContainerDevice() override;
 
   bool Initialize() override;
@@ -49,42 +39,10 @@ class XContentContainerDevice : public Device {
   uint32_t sectors_per_allocation_unit() const override { return 8; }
   uint32_t bytes_per_sector() const override { return 0x200; }
 
-  size_t data_size() const {
-    if (header_->content_header.header_size) {
-      return files_total_size_ -
-             xe::round_up(header_->content_header.header_size, kBlockSize);
-    }
-    return files_total_size_ - sizeof(XContentContainerHeader);
-  }
-
-  uint64_t xuid() const { return header_->content_metadata.profile_id; }
-
-  uint32_t title_id() const {
-    return header_->content_metadata.execution_info.title_id;
-  }
-
-  uint32_t content_type() const {
-    return static_cast<uint32_t>(header_->content_metadata.content_type.get());
-  }
-
-  kernel::xam::XCONTENT_AGGREGATE_DATA content_header() const;
-  uint32_t license_mask() const {
-    uint32_t final_license = 0;
-    for (uint8_t i = 0; i < license_count; i++) {
-      if (header_->content_header.licenses[i].license_flags) {
-        final_license |= header_->content_header.licenses[i].license_bits;
-      }
-    }
-    return final_license;
-  }
-
-  const XContentContainerHeader* GetContainerHeader() const {
-    return header_.get();
-  }
-
  protected:
   XContentContainerDevice(const std::string_view mount_path,
-                          const std::filesystem::path& host_path);
+                          const size_t data_file_count = 1);
+
   enum class Result {
     kSuccess = 0,
     kOutOfMemory = -1,
@@ -97,13 +55,10 @@ class XContentContainerDevice : public Device {
   virtual Result Read() = 0;
   // Load all host files. Usually STFS is only 1 file, meanwhile SVOD is usually
   // multiple file.
-  virtual Result LoadHostFiles() = 0;
-  // Initialize container specific fields.
-  virtual void SetupContainer() {};
+  virtual Result LoadHostFiles(const size_t data_file_count) = 0;
 
   Entry* ResolvePath(const std::string_view path) override;
   void Dump(StringBuffer* string_buffer) override;
-  Result ReadHeaderAndVerify(FILE* header_file);
 
   void SetName(std::string name) { name_ = name; }
   const std::string& GetName() const { return name_; }
@@ -116,9 +71,9 @@ class XContentContainerDevice : public Device {
   std::string name_;
   std::filesystem::path host_path_;
 
+  const size_t data_file_count_;
   size_t files_total_size_;
   std::unique_ptr<Entry> root_entry_;
-  std::unique_ptr<XContentContainerHeader> header_;
 };
 
 }  // namespace vfs

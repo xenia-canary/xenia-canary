@@ -93,5 +93,45 @@ std::vector<FileInfo> FindFileWithName(const std::filesystem::path& path,
   return filtered_entries;
 }
 
+bool Copy(const std::filesystem::path& source,
+          const std::filesystem::path& destination, uint64_t& progress,
+          size_t copy_chunk) {
+  auto source_file = xe::filesystem::OpenFile(source, "rb");
+  if (!source_file) {
+    return false;
+  }
+
+  auto destination_file = xe::filesystem::OpenFile(destination, "wb");
+  if (!destination_file) {
+    fclose(source_file);
+    return false;
+  }
+
+  std::vector<uint8_t> buffer;
+  buffer.resize(copy_chunk);
+
+  const size_t file_size = std::filesystem::file_size(source);
+  size_t offset = 0;
+
+  while (offset < file_size) {
+    const auto read_count = fread(buffer.data(), 1, copy_chunk, source_file);
+    if (read_count == 0) {
+      break;
+    }
+
+    const auto write_count =
+        fwrite(buffer.data(), 1, read_count, destination_file);
+    if (write_count == 0) {
+      break;
+    }
+    offset += write_count;
+    progress += read_count;
+  }
+
+  fclose(source_file);
+  fclose(destination_file);
+  return file_size == std::filesystem::file_size(destination);
+}
+
 }  // namespace filesystem
 }  // namespace xe

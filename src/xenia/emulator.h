@@ -257,6 +257,7 @@ class Emulator {
 
     std::string name_{};
     std::filesystem::path path_;
+    std::filesystem::path filename_;
     std::filesystem::path data_installation_path_;
     std::filesystem::path header_installation_path_;
 
@@ -279,6 +280,9 @@ class Emulator {
 
   // Extract content of package to content specific directory.
   X_STATUS InstallContentPackage(const std::filesystem::path& path,
+                                 ContentInstallEntry& installation_info);
+
+  X_STATUS ExtractContentPackage(const std::filesystem::path& path,
                                  ContentInstallEntry& installation_info);
 
   // Extract content of zar package to desired directory.

@@ -44,7 +44,7 @@ DECLARE_XAM_EXPORT1(XamProfileFindAccount, kUserProfiles, kImplemented);
 
 dword_result_t XamProfileOpen_entry(
     qword_t xuid, lpstring_t mount_path, dword_t flags,
-    pointer_t<XCONTENT_AGGREGATE_DATA> content_data_ptr) {
+    pointer_t<XCONTENT_DATA_AGGREGATE> content_data_ptr) {
   /* Notes:
       - If xuid is not local then returns X_ERROR_INVALID_PARAMETER
   */
@@ -111,7 +111,8 @@ DECLARE_XAM_EXPORT1(XamProfileCreate, kNone, kSketchy);
 dword_result_t XamProfileClose_entry(lpstring_t mount_name) {
   std::string guest_name = mount_name.value();
   const bool result =
-      kernel_state()->file_system()->UnregisterDevice(guest_name + ':');
+      kernel_state()->xam_state()->profile_manager()->DismountProfile(
+          guest_name);
 
   return result ? X_ERROR_SUCCESS : X_ERROR_FUNCTION_FAILED;
 }
@@ -140,6 +141,29 @@ dword_result_t XamProfileGetCreationStatus_entry(
   return X_ERROR_SUCCESS;  // result
 }
 DECLARE_XAM_EXPORT1(XamProfileGetCreationStatus, kNone, kSketchy);
+
+dword_result_t XamProfileLoadAccountInfo_entry(
+    dword_t device_id, qword_t xuid, pointer_t<X_XAMACCOUNTINFO> account_ptr) {
+  if (!account_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!xuid) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  const X_XAMACCOUNTINFO* account =
+      kernel_state()->xam_state()->profile_manager()->GetAccount(xuid);
+
+  if (!account) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  *account_ptr = *account;
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamProfileLoadAccountInfo, kNone, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

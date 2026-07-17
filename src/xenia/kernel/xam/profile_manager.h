@@ -31,6 +31,7 @@ namespace xe {
 namespace kernel {
 namespace xam {
 class UserTracker;
+class ContentManager;
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
@@ -65,7 +66,8 @@ class ProfileManager {
 
   // Loading Profile means load everything
   // Loading Account means load basic data
-  ProfileManager(KernelState* kernel_state, UserTracker* user_tracker);
+  ProfileManager(KernelState* kernel_state, ContentManager* content_manager,
+                 UserTracker* user_tracker);
 
   ~ProfileManager() = default;
 
@@ -77,6 +79,7 @@ class ProfileManager {
 
   bool MountProfile(const uint64_t xuid, std::string mount_path = "");
   bool DismountProfile(const uint64_t xuid);
+  bool DismountProfile(const std::string_view mount_path);
 
   void Login(const uint64_t xuid, const uint8_t user_index = XUserIndexAny,
              bool notify = true);
@@ -101,6 +104,9 @@ class ProfileManager {
     return static_cast<uint32_t>(accounts_.size());
   }
   bool IsAnyProfileSignedIn() const { return !logged_profiles_.empty(); }
+  bool IsAnyProfileSlotFree() const {
+    return logged_profiles_.size() < XUserMaxUserCount;
+  }
 
   std::filesystem::path GetProfileContentPath(
       const uint64_t xuid, const uint32_t title_id = -1,
@@ -127,6 +133,7 @@ class ProfileManager {
   std::map<uint8_t, std::unique_ptr<UserProfile>> logged_profiles_;
 
   KernelState* kernel_state_;
+  ContentManager* content_manager_;
   UserTracker* user_tracker_;
 };
 

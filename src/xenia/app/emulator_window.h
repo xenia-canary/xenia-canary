@@ -30,6 +30,7 @@ namespace xe {
 namespace app {
 
 class ConsoleSettingsDialog;
+class ContentListDialog;
 
 struct RecentTitleEntry {
   std::string title_name;
@@ -97,8 +98,11 @@ class EmulatorWindow {
   void ToggleProfilesConfigDialog();
   void ToggleXMPConfigDialog();
   void ToggleConsoleSettingsDialog();
+  void ToggleContentListDialog();
 
   void SetHotkeysState(bool enabled) { disable_hotkeys_ = !enabled; }
+
+  void ExtractContent(const std::filesystem::path file = "");
 
   // Types of button functions for hotkeys.
   enum class ButtonFunctions {
@@ -318,7 +322,7 @@ class EmulatorWindow {
 
   std::unique_ptr<DisplayConfigDialog> display_config_dialog_;
   std::unique_ptr<ConsoleSettingsDialog> console_settings_dialog_;
-
+  std::unique_ptr<ContentListDialog> content_list_dialog_;
   // Storing pointers and toggling dialog state is useful for broadcasting
   // messages back to guest.
   std::unique_ptr<ProfileConfigDialog> profile_config_dialog_;

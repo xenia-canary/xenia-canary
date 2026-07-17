@@ -22,7 +22,9 @@ namespace vfs {
 class SvodContainerDevice : public XContentContainerDevice {
  public:
   SvodContainerDevice(const std::string_view mount_path,
-                      const std::filesystem::path& host_path);
+                      const std::filesystem::path& host_path,
+                      const size_t data_file_count,
+                      const SvodDeviceDescriptor* descriptor);
   ~SvodContainerDevice() override;
 
   bool is_read_only() const override { return true; }
@@ -30,7 +32,7 @@ class SvodContainerDevice : public XContentContainerDevice {
   uint32_t component_name_max_length() const override { return 255; }
 
   uint32_t total_allocation_units() const override {
-    return uint32_t(data_size() / sectors_per_allocation_unit() /
+    return uint32_t(files_total_size_ / sectors_per_allocation_unit() /
                     bytes_per_sector());
   }
   uint32_t available_allocation_units() const override { return 0; }
@@ -43,29 +45,32 @@ class SvodContainerDevice : public XContentContainerDevice {
     kSingleFile = 0x4,
     kMultipleFiles = 0x8,
   };
-  const char* MEDIA_MAGIC = "MICROSOFT*XBOX*MEDIA";
+  const std::string_view MEDIA_MAGIC = "MICROSOFT*XBOX*MEDIA";
 
-  Result LoadHostFiles() override;
+  Result LoadHostFiles(const size_t data_file_count) override;
 
   Result Read() override;
   Result ReadEntry(uint32_t sector, uint32_t ordinal,
                    SvodContainerEntry* parent);
   void BlockToOffset(size_t sector, size_t* address, size_t* file_index) const;
 
-  Result SetLayout(FILE* header, size_t& magic_offset);
-  Result SetEDGFLayout(FILE* header, size_t& magic_offset);
-  Result SetXSFLayout(FILE* header, size_t& magic_offset);
-  Result SetNormalLayout(FILE* header, size_t& magic_offset);
+  Result SetLayout(size_t& magic_offset);
+  Result SetEDGFLayout(size_t& magic_offset);
+  Result SetXSFLayout(size_t& magic_offset);
+  Result SetNormalLayout(size_t& magic_offset);
 
-  const bool IsEDGFLayout() const {
-    return header_->content_metadata.volume_descriptor.svod.features.bits
-        .enhanced_gdf_layout;
+  bool IsEDGFLayout() const {
+    return descriptor_->features.bits.enhanced_gdf_layout;
   }
-  const bool IsXSFLayout(FILE* header) const;
+  bool IsXSFLayout() const;
+
+  const std::filesystem::path host_path_;
 
   size_t svod_base_offset_;
   SvodLayoutType svod_layout_;
-  MultiFileHandles files_;
+  MultiMemoryMap files_;
+
+  const SvodDeviceDescriptor* descriptor_;
 };
 
 }  // namespace vfs
