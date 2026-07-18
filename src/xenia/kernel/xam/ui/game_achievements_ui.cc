@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
+#include "xenia/base/locale.h"
 
 namespace xe {
 namespace kernel {
@@ -57,7 +58,7 @@ bool GameAchievementsUI::LoadAchievementsData() {
 
 std::string GameAchievementsUI::GetAchievementTitle(
     const Achievement& achievement_entry) const {
-  std::string title = "Secret trophy";
+  std::string title = XE_LOCALIZE("Secret trophy");
 
   if (achievement_entry.IsUnlocked() || show_locked_info_ ||
       achievement_entry.flags &
@@ -70,7 +71,7 @@ std::string GameAchievementsUI::GetAchievementTitle(
 
 std::string GameAchievementsUI::GetAchievementDescription(
     const Achievement& achievement_entry) const {
-  std::string description = "Hidden description";
+  std::string description = XE_LOCALIZE("Hidden description");
 
   if (achievement_entry.flags &
       static_cast<uint32_t>(AchievementFlags::kShowUnachieved)) {
@@ -107,8 +108,9 @@ std::string GameAchievementsUI::GetUnlockedTime(
         std::chrono::system_clock::to_time_t(chrono::WinSystemClock::to_sys(
             achievement_entry.unlock_time.to_time_point()));
 
-    return fmt::format("Unlocked: Online {:%Y-%m-%d %H:%M}",
-                       *std::localtime(&unlock_time));
+    return fmt::format(
+        fmt::runtime(XE_LOCALIZE("Unlocked: Online {:%Y-%m-%d %H:%M}")),
+        *std::localtime(&unlock_time));
   }
 
   if (achievement_entry.unlock_time.is_valid()) {
@@ -116,10 +118,11 @@ std::string GameAchievementsUI::GetUnlockedTime(
         std::chrono::system_clock::to_time_t(chrono::WinSystemClock::to_sys(
             achievement_entry.unlock_time.to_time_point()));
 
-    return fmt::format("Unlocked: Offline ({:%Y-%m-%d %H:%M})",
-                       *std::localtime(&unlock_time));
+    return fmt::format(
+        fmt::runtime(XE_LOCALIZE("Unlocked: Offline ({:%Y-%m-%d %H:%M})")),
+        *std::localtime(&unlock_time));
   }
-  return fmt::format("Unlocked: Offline");
+  return XE_LOCALIZE("Unlocked: Offline");
 }
 
 void GameAchievementsUI::DrawTitleAchievementInfo(
@@ -188,7 +191,8 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
                    title_name.end());
 
   const std::string window_name =
-      fmt::format("{} Achievements###{}", title_name, window_id_);
+      fmt::format(fmt::runtime(XE_LOCALIZE("{} Achievements###{}")), title_name,
+                  window_id_);
   if (!ImGui::Begin(window_name.c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
@@ -198,11 +202,12 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
     return;
   }
 
-  ImGui::Checkbox("Show locked achievements information", &show_locked_info_);
+  ImGui::Checkbox(XE_LOCALIZE("Show locked achievements information").c_str(),
+                  &show_locked_info_);
   ImGui::Separator();
 
   if (achievements_info_.empty()) {
-    ImGui::TextUnformatted(fmt::format("No achievements data!").c_str());
+    ImGui::TextUnformatted(XE_LOCALIZE("No achievements data!").c_str());
   } else {
     if (ImGui::BeginTable("", 3, ImGuiTableFlags_BordersInnerH)) {
       for (const auto& entry : achievements_info_) {
