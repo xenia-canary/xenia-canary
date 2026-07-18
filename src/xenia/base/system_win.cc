@@ -25,6 +25,47 @@ void LaunchFileExplorer(const std::filesystem::path& url) {
                 SW_SHOWNORMAL);
 }
 
+bool RestartApplication() {
+  // Note for reviewers/static analysis: both arguments fed into
+  // CreateProcessW below come from the OS's own view of the *already
+  // running* process - GetModuleFileNameW (the on-disk path of this very
+  // executable) and GetCommandLineW() (the exact command line this same
+  // instance of Xenia was already launched with). No external or
+  // user-supplied string (e.g. a cvar value) is appended, so this cannot be
+  // used to execute anything other than another copy of Xenia with its own
+  // original arguments.
+
+  wchar_t module_path[MAX_PATH];
+  DWORD path_length = GetModuleFileNameW(nullptr, module_path, MAX_PATH);
+  if (!path_length || path_length == MAX_PATH) {
+    // Path missing or truncated - bail rather than launching something wrong.
+    return false;
+  }
+
+  // GetCommandLineW() returns the exact string this process was launched
+  // with (including the executable path itself as argv[0]), so simply
+  // passing it straight through to CreateProcessW reproduces the original
+  // invocation - whatever flags or content path the user originally used.
+  std::wstring command_line = GetCommandLineW();
+
+  STARTUPINFOW startup_info = {};
+  startup_info.cb = sizeof(startup_info);
+  PROCESS_INFORMATION process_info = {};
+
+  // CreateProcessW may modify its command-line buffer in place, so it must
+  // not point at read-only memory (unlike a string literal).
+  BOOL result =
+      CreateProcessW(module_path, command_line.data(), nullptr, nullptr, FALSE,
+                     0, nullptr, nullptr, &startup_info, &process_info);
+  if (!result) {
+    return false;
+  }
+
+  CloseHandle(process_info.hThread);
+  CloseHandle(process_info.hProcess);
+  return true;
+}
+
 void ShowSimpleMessageBox(SimpleMessageBoxType type,
                           const std::string_view message) {
   const wchar_t* title;

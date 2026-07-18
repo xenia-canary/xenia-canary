@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/ui/passcode_ui.h"
+#include "xenia/base/locale.h"
 
 namespace xe {
 namespace kernel {
@@ -25,11 +26,11 @@ ProfilePasscodeUI::ProfilePasscodeUI(xe::ui::ImGuiDrawer* imgui_drawer,
   std::memset(result_ptr, 0, sizeof(MESSAGEBOX_RESULT));
 
   if (title_.empty()) {
-    title_ = "Enter Pass Code";
+    title_ = XE_LOCALIZE("Enter Pass Code");
   }
 
   if (description_.empty()) {
-    description_ = "Enter your Xbox LIVE pass code.";
+    description_ = XE_LOCALIZE("Enter your Xbox LIVE pass code.");
   }
 }
 
