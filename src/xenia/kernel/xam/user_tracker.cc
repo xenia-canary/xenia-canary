@@ -165,10 +165,6 @@ void UserTracker::AddTitleToPlayedList(uint64_t xuid) {
     UpdateTitleGpdFile();
   }
 
-  if (!spa_data_->include_in_profile()) {
-    return;
-  }
-
   const uint64_t current_time = Clock::QueryGuestSystemTime();
 
   auto title_info = user->dashboard_gpd_.GetTitleInfo(title_id);

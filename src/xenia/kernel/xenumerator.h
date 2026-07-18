@@ -189,8 +189,10 @@ class XTitleEnumerator : public XEnumerator {
     xe::be<char16_t> title_name[64];
   };
 
-  XTitleEnumerator(KernelState* kernel_state, size_t items_per_enumerate)
-      : XEnumerator(kernel_state, items_per_enumerate, sizeof(XTITLE_PLAYED)) {}
+  XTitleEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
+                   size_t enumeration_offset)
+      : XEnumerator(kernel_state, items_per_enumerate, sizeof(XTITLE_PLAYED)),
+        current_item_(enumeration_offset) {}
 
   void AppendItem(const xam::TitleInfo& item) { items_.push_back(item); }
 
