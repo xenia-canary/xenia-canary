@@ -170,8 +170,9 @@ uint32_t XTitleEnumerator::WriteItems(uint8_t* buffer_data,
 
     // On console if title is played offline this field is set to 0.
     details[i].base.last_played = X_FILETIME((uint64_t)0);
-    string_util::copy_and_swap_truncating((char16_t*)&details[i].title_name,
-                                          item.title_name, 128);
+    string_util::copy_and_swap_truncating(
+        reinterpret_cast<char16_t*>(details[i].title_name), item.title_name,
+        xe::countof(details[i].title_name));
   }
 
   if (written_count) {
