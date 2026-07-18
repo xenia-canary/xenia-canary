@@ -8,8 +8,10 @@
  */
 #include "xenia/app/emulator_window.h"
 #include "xenia/app/profile_dialogs.h"
+#include "xenia/base/locale.h"
 #include "xenia/base/png_utils.h"
 #include "xenia/base/system.h"
+#include "xenia/config.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_ui.h"
 #include "xenia/ui/file_picker.h"
@@ -99,7 +101,7 @@ void DrawResolutionCombobox(ImGuiIO& io,
     }
   }
 
-  if (ImGui::BeginCombo("Resolution", preview)) {
+  if (ImGui::BeginCombo(XE_LOCALIZE("Resolution").c_str(), preview)) {
     for (const auto& opt : options) {
       const bool selected = (opt.to_host() == resolution.get());
       if (ImGui::Selectable(opt.name_.c_str(), selected)) {
@@ -137,7 +139,8 @@ void DrawTimezoneCombobox(ImGuiIO& io, kernel::XConfigData* xdata) {
     index = std::distance(kernel::kTimezones.cbegin(), it);
   }
 
-  if (ImGui::BeginCombo("Timezone", kernel::kTimezones[index].name.c_str())) {
+  if (ImGui::BeginCombo(XE_LOCALIZE("Timezone").c_str(),
+                        kernel::kTimezones[index].name.c_str())) {
     for (size_t i = 0; i < kernel::kTimezones.size(); ++i) {
       const bool is_selected =
           (kernel::kTimezones[i] == kernel::kTimezones[index]);
@@ -248,7 +251,7 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowSize(ImVec2(20, 20), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowBgAlpha(0.90f);
   bool dialog_open = true;
-  if (!ImGui::Begin("Console settings", &dialog_open,
+  if (!ImGui::Begin(XE_LOCALIZE("Console settings").c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_NoMove)) {
@@ -264,62 +267,147 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
   }
 
   if (ImGui::BeginTabBar("##Categories")) {
-    if (ImGui::BeginTabItem("User")) {
+    if (ImGui::BeginTabItem(XE_LOCALIZE("Interface").c_str())) {
+      ImGui::Dummy(ImVec2(2.f, 2.f));
+
+      GroupBox(XE_LOCALIZE("Language").c_str(), [&]() {
+        const std::string current_language = xe::locale::current_language();
+        const std::string preview = xe::locale::DisplayName(current_language);
+
+        if (ImGui::BeginCombo(XE_LOCALIZE("Xenia Interface Language").c_str(),
+                              preview.c_str())) {
+          for (const auto& code : xe::locale::AvailableLanguages()) {
+            const bool selected = (code == current_language);
+            const std::string label = xe::locale::DisplayName(code);
+            if (ImGui::Selectable(label.c_str(), selected)) {
+              xe::locale::SwitchLanguage(code);
+            }
+            if (selected) {
+              ImGui::SetItemDefaultFocus();
+            }
+          }
+          ImGui::EndCombo();
+        }
+
+        ImGui::TextWrapped(
+            "%s",
+            XE_LOCALIZE(
+                "Dialogs update immediately. The menu bar at the top of the "
+                "window is only rebuilt on the next launch of Xenia.")
+                .c_str());
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "%s",
+            XE_LOCALIZE(
+                "Community-contributed translations may be incomplete: any "
+                "text without a translation yet is simply shown in English.")
+                .c_str());
+
+        ImGui::Spacing();
+
+        const bool restart_required = xe::locale::RestartRequired();
+        ImGui::BeginDisabled(!restart_required);
+        if (ImGui::Button(XE_LOCALIZE("Restart Now").c_str())) {
+          // The language choice only lives in memory until the general
+          // Xenia config is written to disk - unrelated to (and not
+          // covered by) the "Save"/"Reset" buttons at the bottom of this
+          // dialog, which only apply to the emulated console's own
+          // settings. Without this, the new instance launched below would
+          // start up and read the *old* language back from
+          // xenia-canary.config.toml.
+          config::SaveConfig();
+          if (xe::RestartApplication()) {
+            emulator_window_.window()->RequestClose();
+          } else {
+            xe::ShowSimpleMessageBox(
+                xe::SimpleMessageBoxType::Warning,
+                XE_LOCALIZE(
+                    "Couldn't restart Xenia automatically. Please close and "
+                    "reopen it manually to finish applying the new "
+                    "language."));
+          }
+        }
+        ImGui::EndDisabled();
+        if (restart_required) {
+          ImGui::SameLine();
+          ImGui::TextUnformatted(
+              XE_LOCALIZE("Restarts Xenia now so the menu bar picks up the new "
+                          "language too.")
+                  .c_str());
+        }
+      });
+
+      ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(XE_LOCALIZE("User").c_str())) {
       ImGui::BeginDisabled(emulator_window_.emulator()->is_title_open());
       ImGui::Dummy(ImVec2(2.f, 2.f));
 
-      GroupBox("Time", [&]() {
+      GroupBox(XE_LOCALIZE("Time").c_str(), [&]() {
         DrawTimezoneCombobox(io, &xconfig_data_);
 
-        FlagCheckbox("Disable Daylight-Saving Time",
+        FlagCheckbox(XE_LOCALIZE("Disable Daylight-Saving Time").c_str(),
                      xconfig_data_.user.retail_flags,
                      static_cast<uint32_t>(kernel::X_RETAIL_FLAGS::DSTOff));
 
         FlagCheckbox(
-            "24H Time", xconfig_data_.user.retail_flags,
+            XE_LOCALIZE("24H Time").c_str(), xconfig_data_.user.retail_flags,
             static_cast<uint32_t>(kernel::X_RETAIL_FLAGS::TwentyFourHourClock));
       });
 
-      GroupBox("Locale", [&]() {
-        DrawCombobox(io, "Language", kLanguageMap, xconfig_data_.user.language);
-        DrawCombobox(io, "Country", kCountryMap, xconfig_data_.user.country);
+      GroupBox(XE_LOCALIZE("Locale").c_str(), [&]() {
+        // NOTE: the language/country VALUE LISTS below (kLanguageMap,
+        // kCountryMap) are deliberately NOT translated - they represent the
+        // fixed set of languages/countries the emulated Xbox 360 dashboard
+        // itself understands, not Xenia's own UI text.
+        DrawCombobox(io, XE_LOCALIZE("Language"), kLanguageMap,
+                     xconfig_data_.user.language);
+        DrawCombobox(io, XE_LOCALIZE("Country"), kCountryMap,
+                     xconfig_data_.user.country);
       });
 
-      GroupBox("Profile", [&]() {
-        DrawCombobox(io, "Default Profile", profiles_,
+      GroupBox(XE_LOCALIZE("Profile").c_str(), [&]() {
+        DrawCombobox(io, XE_LOCALIZE("Default Profile"), profiles_,
                      xconfig_data_.user.default_profile);
 
-        FlagCheckbox("Parental Control",
+        FlagCheckbox(XE_LOCALIZE("Parental Control").c_str(),
                      xconfig_data_.user.parental_control_flags,
                      static_cast<uint8_t>(kernel::X_PC_FLAGS::PCEnabled));
       });
 
       ImGui::Dummy(ImVec2(2.f, 2.f));
 
-      GroupBox("Retail Options", [&]() {
-        FlagCheckbox("Dashboard Initialized", xconfig_data_.user.retail_flags,
+      GroupBox(XE_LOCALIZE("Retail Options").c_str(), [&]() {
+        FlagCheckbox(XE_LOCALIZE("Dashboard Initialized").c_str(),
+                     xconfig_data_.user.retail_flags,
                      static_cast<uint32_t>(
                          kernel::X_RETAIL_FLAGS::DashboardInitialized));
         FlagCheckbox(
-            "IPTV Initialized", xconfig_data_.user.retail_flags,
+            XE_LOCALIZE("IPTV Initialized").c_str(),
+            xconfig_data_.user.retail_flags,
             static_cast<uint32_t>(kernel::X_RETAIL_FLAGS::IPTVEnabled));
         FlagCheckbox(
-            "DVR Initialized", xconfig_data_.user.retail_flags,
+            XE_LOCALIZE("DVR Initialized").c_str(),
+            xconfig_data_.user.retail_flags,
             static_cast<uint32_t>(kernel::X_RETAIL_FLAGS::IPTVDVREnabled));
         FlagCheckbox(
-            "Kinect Initialized", xconfig_data_.user.retail_flags,
+            XE_LOCALIZE("Kinect Initialized").c_str(),
+            xconfig_data_.user.retail_flags,
             static_cast<uint32_t>(kernel::X_RETAIL_FLAGS::KinectInitialized));
       });
       ImGui::EndDisabled();
       ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem("System")) {
+    if (ImGui::BeginTabItem(XE_LOCALIZE("System").c_str())) {
       ImGui::BeginDisabled(emulator_window_.emulator()->is_title_open());
       ImGui::Dummy(ImVec2(2.f, 2.f));
 
-      GroupBox("Video Options", [&]() {
-        DrawCombobox(io, "AV Region", kAVRegion,
+      GroupBox(XE_LOCALIZE("Video Options").c_str(), [&]() {
+        // kAVRegion values intentionally left untranslated (NTSC/PAL/...
+        // are the standard, universally-recognized region codes).
+        DrawCombobox(io, XE_LOCALIZE("AV Region"), kAVRegion,
                      xconfig_data_.secured.av_region);
 
         DrawResolutionCombobox(
@@ -330,44 +418,49 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
             kernel::Resolution(xconfig_data_.user.av_pack_hdmi_sz.get());
 
         ImGui::BeginDisabled(res.is_widescreen());
-        FlagCheckbox("Widescreen", xconfig_data_.user.video_flags,
+        FlagCheckbox(XE_LOCALIZE("Widescreen").c_str(),
+                     xconfig_data_.user.video_flags,
                      static_cast<uint32_t>(kernel::X_VIDEO_FLAGS::Widescreen));
         ImGui::EndDisabled();
       });
 
-      GroupBox("Audio Options", [&]() {
-        FlagCheckbox("Mono", xconfig_data_.user.audio_flags,
+      GroupBox(XE_LOCALIZE("Audio Options").c_str(), [&]() {
+        FlagCheckbox(XE_LOCALIZE("Mono").c_str(),
+                     xconfig_data_.user.audio_flags,
                      static_cast<uint32_t>(kernel::X_AUDIO_FLAGS::AnalogMono));
 
         FlagCheckbox(
-            "Dolby Pro Logic", xconfig_data_.user.audio_flags,
+            XE_LOCALIZE("Dolby Pro Logic").c_str(),
+            xconfig_data_.user.audio_flags,
             static_cast<uint32_t>(kernel::X_AUDIO_FLAGS::DolbyProLogic));
 
         FlagCheckbox(
-            "Dolby Digital", xconfig_data_.user.audio_flags,
+            XE_LOCALIZE("Dolby Digital").c_str(),
+            xconfig_data_.user.audio_flags,
             static_cast<uint32_t>(kernel::X_AUDIO_FLAGS::DolbyDigital));
 
-        FlagCheckbox("Dolby Digital WMA PRO", xconfig_data_.user.audio_flags,
+        FlagCheckbox(XE_LOCALIZE("Dolby Digital WMA PRO").c_str(),
+                     xconfig_data_.user.audio_flags,
                      static_cast<uint32_t>(
                          kernel::X_AUDIO_FLAGS::DolbyDigitalWithWMAPRO));
 
-        FlagCheckbox("Low Latency (unsupported)",
+        FlagCheckbox(XE_LOCALIZE("Low Latency (unsupported)").c_str(),
                      xconfig_data_.user.audio_flags,
                      static_cast<uint32_t>(kernel::X_AUDIO_FLAGS::LowLatency));
 
         float volume = xconfig_data_.user.music_volume.get();
-        if (ImGui::SliderFloat("Audio player volume", &volume, 0.0f, 1.0f,
-                               "%.2f")) {
+        if (ImGui::SliderFloat(XE_LOCALIZE("Audio player volume").c_str(),
+                               &volume, 0.0f, 1.0f, "%.2f")) {
           xconfig_data_.user.music_volume = volume;
         }
       });
 
-      GroupBox("Network", [&]() {
+      GroupBox(XE_LOCALIZE("Network").c_str(), [&]() {
         if (ImGui::BeginTable("##NetworkTable", 2)) {
           ImGui::TableNextRow();
           ImGui::TableNextColumn();
 
-          ImGui::Text("MAC Address: ");
+          ImGui::Text("%s", XE_LOCALIZE("MAC Address: ").c_str());
           ImGui::TableNextColumn();
 
           ByteArray("mac", xconfig_data_.secured.mac_address.data(),
@@ -376,7 +469,7 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
           ImGui::TableNextRow();
           ImGui::TableNextColumn();
 
-          ImGui::Text("Network ID: ");
+          ImGui::Text("%s", XE_LOCALIZE("Network ID: ").c_str());
           ImGui::TableNextColumn();
 
           ByteArray("netid", xconfig_data_.secured.online_network_id.data(),
@@ -397,21 +490,21 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
   ImGui::Separator();
 
   ImGui::BeginDisabled(emulator_window_.emulator()->is_title_open());
-  if (ImGui::Button("Save")) {
+  if (ImGui::Button(XE_LOCALIZE("Save").c_str())) {
     SaveConfig();
     save_confirmation_disappearance_ = ImGui::GetTime() + 3.0;
   }
 
   if (save_confirmation_disappearance_ > ImGui::GetTime()) {
     ImGui::SameLine();
-    ImGui::Text("Settings Saved!");
+    ImGui::Text("%s", XE_LOCALIZE("Settings Saved!").c_str());
   }
 
   ImGui::SameLine();
   ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
                        ImGui::GetContentRegionAvail().x - 55.f);
 
-  if (ImGui::Button("Reset", ImVec2(55.f, 0.0f))) {
+  if (ImGui::Button(XE_LOCALIZE("Reset").c_str(), ImVec2(55.f, 0.0f))) {
     xconfig_->SetDefaults();
     xconfig_data_ = *xconfig_->GetXConfig();
     save_confirmation_disappearance_ = ImGui::GetTime() + 3.0;

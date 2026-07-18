@@ -1,0 +1,242 @@
+# Traduzione italiana dell'interfaccia di Xenia Canary (bozza/proposta).
+#
+# Formato: "testo inglese originale" = "traduzione italiana"
+# - La chiave a sinistra DEVE corrispondere esattamente alla stringa inglese
+#   usata nel codice (compresi eventuali segnaposto {}/{:08X}/%s, che vanno
+#   riportati identici anche nella traduzione, senza tradurli).
+# - Il carattere & indica la lettera dell'acceleratore da tastiera
+#   (es. Alt+F apre il menu "&File"); nella traduzione va messo prima della
+#   lettera italiana scelta come scorciatoia.
+# - Le voci NON presenti in questo file restano automaticamente in inglese.
+
+# --- Menu principale --------------------------------------------------------
+"&File" = "&File"
+"&Open Recent" = "Apri &recenti"
+"&Zar Package" = "Pacchetto &Zar"
+"&Open..." = "&Apri..."
+"Install Content..." = "Installa contenuto..."
+"Create" = "Crea"
+"Extract" = "Estrai"
+"Close" = "Chiudi"
+"Show content directory..." = "Mostra cartella dei contenuti..."
+"E&xit" = "&Esci"
+
+"&Profile" = "&Profilo"
+"&Show Profile Menu" = "&Mostra menu profilo"
+
+"&CPU" = "&CPU"
+"&Reset Time Scalar" = "&Ripristina scala temporale"
+"Time Scalar /= 2" = "Scala temporale /= 2"
+"Time Scalar *= 2" = "Scala temporale *= 2"
+"Toggle Profiler &Display" = "Mostra/nascondi &display profiler"
+"&Pause/Resume Profiler" = "&Pausa/Riprendi profiler"
+"&Break and Show Guest Debugger" = "&Interrompi e mostra debugger guest"
+"&Break into Host Debugger" = "Interrompi nel de&bugger host"
+
+"&GPU" = "&GPU"
+"&Trace Frame" = "&Traccia fotogramma"
+"&Clear Runtime Caches" = "&Svuota cache di runtime"
+
+"&Display" = "&Schermo"
+"&Post-processing settings" = "Impostazioni &post-elaborazione"
+"&Fullscreen" = "&Schermo intero"
+"&Take Screenshot" = "&Cattura schermata"
+
+"&HID" = "&HID"
+"&Toggle controller vibration" = "&Attiva/disattiva vibrazione controller"
+"&Display controller hotkeys" = "Mostra &scorciatoie controller"
+
+"&XMP" = "&XMP"
+"&Show XMP Menu" = "&Mostra menu XMP"
+
+"&Console" = "&Console"
+"&Open console settings" = "&Apri impostazioni console"
+
+"&Help" = "&Aiuto"
+"FA&Q..." = "Domande fre&quenti..."
+"Game &compatibility..." = "&Compatibilità dei giochi..."
+"Build commit on GitHub..." = "Commit di build su GitHub..."
+"Recent changes on GitHub..." = "Modifiche recenti su GitHub..."
+"&About..." = "&Informazioni su..."
+
+# --- Notifiche e finestre di dialogo generiche ------------------------------
+"Screenshot Created!" = "Schermata creata!"
+"Screenshot saved: {}" = "Schermata salvata: {}"
+"Xenia Debugger" = "Debugger di Xenia"
+"Xenia must be launched with the --debug flag in order to enable debugging." = "Xenia deve essere avviato con il flag --debug per abilitare il debug."
+"Title Launch Failed!" = "Avvio del titolo non riuscito!"
+"Failed to launch title path is {}." = "Avvio del titolo non riuscito: il percorso è {}."
+"empty" = "vuoto"
+"invalid" = "non valido"
+"\nProvided Path: {}" = "\nPercorso fornito: {}"
+"Unsupported format!\nXenia does not support running software in an archived format." = "Formato non supportato!\nXenia non supporta l'esecuzione di software in formato archiviato."
+"Failed to launch title.\n\nCheck xenia.log for technical details." = "Avvio del titolo non riuscito.\n\nConsulta xenia.log per i dettagli tecnici."
+
+# --- Impostazioni console ----------------------------------------------------
+"Console settings" = "Impostazioni console"
+"User" = "Utente"
+"Time" = "Ora"
+"Disable Daylight-Saving Time" = "Disattiva ora legale"
+"24H Time" = "Formato 24 ore"
+"Locale" = "Lingua e paese"
+"Language" = "Lingua"
+"Country" = "Paese"
+"Profile" = "Profilo"
+"Default Profile" = "Profilo predefinito"
+"Parental Control" = "Controllo genitori"
+"Retail Options" = "Opzioni retail"
+"Dashboard Initialized" = "Dashboard inizializzata"
+"IPTV Initialized" = "IPTV inizializzato"
+"DVR Initialized" = "DVR inizializzato"
+"Kinect Initialized" = "Kinect inizializzato"
+"System" = "Sistema"
+"Video Options" = "Opzioni video"
+"AV Region" = "Regione AV"
+"Widescreen" = "Widescreen"
+"Audio Options" = "Opzioni audio"
+"Mono" = "Mono"
+"Dolby Pro Logic" = "Dolby Pro Logic"
+"Dolby Digital" = "Dolby Digital"
+"Dolby Digital WMA PRO" = "Dolby Digital WMA PRO"
+"Low Latency (unsupported)" = "Bassa latenza (non supportata)"
+"Audio player volume" = "Volume lettore musicale"
+"Network" = "Rete"
+"MAC Address: " = "Indirizzo MAC: "
+"Network ID: " = "ID di rete: "
+"Resolution" = "Risoluzione"
+"Timezone" = "Fuso orario"
+"Save" = "Salva"
+"Settings Saved!" = "Impostazioni salvate!"
+"Reset" = "Ripristina"
+
+# --- Profili -----------------------------------------------------------------
+"No Profiles Found" = "Nessun profilo trovato"
+"There is no profile available! You will not be able to save without one.\n\nWould you like to create one?" = "Non è disponibile alcun profilo! Non potrai salvare senza uno.\n\nVuoi crearne uno?"
+"Create Profile" = "Crea profilo"
+"Create profile & migrate data" = "Crea profilo e migra i dati"
+"Open profile menu" = "Apri menu profili"
+
+"Profiles Menu" = "Menu profili"
+"No profiles found!" = "Nessun profilo trovato!"
+"Profile Menu" = "Menu profilo"
+"Login" = "Accedi"
+"Login to slot:" = "Accedi allo slot:"
+"slot {}" = "slot {}"
+"Logout" = "Esci"
+"Modify" = "Modifica"
+"Show Played Titles" = "Mostra titoli giocati"
+"Show Content Directory" = "Mostra cartella contenuti"
+"Delete Profile" = "Elimina profilo"
+"You're about to delete profile: {} (XUID: {:016X}). This will remove all data assigned to this profile including savefiles. Are you sure?" = "Stai per eliminare il profilo: {} (XUID: {:016X}). Verranno rimossi tutti i dati assegnati a questo profilo, compresi i salvataggi. Sei sicuro?"
+"Yes, delete it!" = "Sì, eliminalo!"
+
+"Gamertag:" = "Gamertag:"
+"Cancel" = "Annulla"
+
+# --- Accesso (SigninUI) -------------------------------------------------------
+"Sign In" = "Accedi"
+"OK" = "OK"
+
+# --- Codice di accesso (PasscodeUI) ------------------------------------------
+"Enter Pass Code" = "Inserisci codice di accesso"
+"Enter your Xbox LIVE pass code." = "Inserisci il tuo codice di accesso Xbox LIVE."
+
+# --- Elenco titoli / achievement ---------------------------------------------
+"{}'s Games List###{}" = "Giochi di {}###{}"
+"Search: " = "Cerca: "
+"There are no titles, so far." = "Non ci sono ancora titoli."
+"Last played: {:%Y-%m-%d %H:%M}" = "Ultima sessione: {:%Y-%m-%d %H:%M}"
+"Last played: Unknown" = "Ultima sessione: sconosciuta"
+"Title Menu {:08X}" = "Menu titolo {:08X}"
+"Open savefile directory" = "Apri cartella salvataggi"
+"Open DLC directory" = "Apri cartella DLC"
+"Open Title Update directory" = "Apri cartella aggiornamenti titolo"
+"Refresh title stats" = "Aggiorna statistiche titolo"
+"Delete title" = "Elimina titolo"
+
+"{} Achievements###{}" = "Obiettivi di {}###{}"
+"Show locked achievements information" = "Mostra informazioni sugli obiettivi bloccati"
+"No achievements data!" = "Nessun dato sugli obiettivi!"
+"Secret trophy" = "Trofeo segreto"
+"Hidden description" = "Descrizione nascosta"
+"Unlocked: Online {:%Y-%m-%d %H:%M}" = "Sbloccato: online {:%Y-%m-%d %H:%M}"
+"Unlocked: Offline ({:%Y-%m-%d %H:%M})" = "Sbloccato: offline ({:%Y-%m-%d %H:%M})"
+"Unlocked: Offline" = "Sbloccato: offline"
+
+# --- Finestra "Post-processing" (impostazioni grafiche) ----------------------
+"Post-processing" = "Post-elaborazione"
+"All effects can be used on GPUs of any brand." = "Tutti gli effetti possono essere usati su GPU di qualsiasi marca."
+"None" = "Nessuno"
+"NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Normal Quality]" = "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Qualità normale]"
+"NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Extreme Quality]" = "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Qualità estrema]"
+"Resampling and sharpening" = "Ricampionamento e nitidezza"
+"None / Bilinear" = "Nessuno / Bilineare"
+"Simple bilinear filtering is done if resampling is needed.\nOtherwise, only anti-aliasing is done if enabled, or displaying as is." = "Se serve ricampionare, viene applicato un semplice filtro bilineare.\nAltrimenti viene eseguito solo l'anti-aliasing, se attivo, oppure l'immagine è mostrata così com'è."
+"Sharpening and resampling to up to 2x2 to improve the fidelity of details.\nFor scaling by more than 2x2, bilinear stretching is done afterwards." = "Nitidezza e ricampionamento fino a 2x2 per migliorare la fedeltà dei dettagli.\nPer ingrandimenti superiori a 2x2, viene applicato successivamente uno stiramento bilineare."
+"High-quality edge-preserving upscaling to arbitrary target resolutions.\nFor scaling by more than 2x2, multiple upsampling passes are done.\nIf not upscaling, Contrast Adaptive Sharpening (CAS) is used instead." = "Upscaling di alta qualità che preserva i bordi, verso qualsiasi risoluzione di destinazione.\nPer ingrandimenti superiori a 2x2 vengono eseguiti più passaggi di upsampling.\nSe non si esegue upscaling, viene usato invece il Contrast Adaptive Sharpening (CAS)."
+"FXAA is highly recommended when using CAS or FSR." = "FXAA è vivamente consigliato quando si usa CAS o FSR."
+"FSR sharpness reduction when upscaling (lower is sharper):" = "Riduzione della nitidezza FSR durante l'upscaling (più basso = più nitido):"
+"CAS additional sharpness when not upscaling (higher is sharper):" = "Nitidezza aggiuntiva CAS quando non si esegue upscaling (più alto = più nitido):"
+"CAS additional sharpness (higher is sharper):" = "Nitidezza aggiuntiva CAS (più alto = più nitido):"
+"Dithering" = "Dithering"
+"Dither the final output to 8bpc to make gradients smoother" = "Applica il dithering all'immagine finale a 8bpc per sfumature più morbide"
+
+# --- Nuova scheda "Interface" nelle impostazioni console --------------------
+"Interface" = "Interfaccia"
+"Xenia Interface Language" = "Lingua dell'interfaccia di Xenia"
+"Dialogs update immediately. The menu bar at the top of the window is only rebuilt on the next launch of Xenia." = "Le finestre di dialogo si aggiornano subito. La barra dei menu in alto viene invece ricostruita solo al prossimo avvio di Xenia."
+"Community-contributed translations may be incomplete: any text without a translation yet is simply shown in English." = "Le traduzioni realizzate dalla community potrebbero essere incomplete: il testo non ancora tradotto viene semplicemente mostrato in inglese."
+"Restart Now" = "Riavvia ora"
+"Couldn't restart Xenia automatically. Please close and reopen it manually to finish applying the new language." = "Non è stato possibile riavviare automaticamente Xenia. Chiudi e riapri il programma manualmente per completare l'applicazione della nuova lingua."
+"Restarts Xenia now so the menu bar picks up the new language too." = "Riavvia subito Xenia in modo che anche la barra dei menu passi alla nuova lingua."
+
+# --- Menu XMP (lettore audio) -------------------------------------------------
+"Audio Player Menu" = "Menu lettore audio"
+"Audio player status:" = "Stato del lettore audio:"
+"Idle" = "Inattivo"
+"Paused" = "In pausa"
+"Playing" = "In riproduzione"
+"Pause" = "Pausa"
+"Resume" = "Riprendi"
+
+# --- Finestra "Controller Hotkeys" -------------------------------------------
+"Controller Hotkeys" = "Scorciatoie controller"
+"Gameplay Hotkeys" = "Scorciatoie di gioco"
+"Readback Resolve: " = "Readback Resolve: "
+"Clear Memory Page State: " = "Azzera stato pagine di memoria: "
+"Controller Hotkeys: " = "Scorciatoie controller: "
+" (Disabled)" = " (Disattivata)"
+"A + Guide = Toggle Readback Resolve" = "A + Guide = Attiva/disattiva Readback Resolve"
+"A + Back = Toggle Readback Resolve" = "A + Back = Attiva/disattiva Readback Resolve"
+"B + Guide = Toggle between loglevel set in config and the 'Disabled' loglevel." = "B + Guide = Passa dal livello di log impostato in configurazione al livello 'Disabled'."
+"B + Back = Toggle between loglevel set in config and the 'Disabled' loglevel." = "B + Back = Passa dal livello di log impostato in configurazione al livello 'Disabled'."
+"Y + Guide = Toggle Fullscreen" = "Y + Guide = Attiva/disattiva schermo intero"
+"Y + Back = Toggle Fullscreen" = "Y + Back = Attiva/disattiva schermo intero"
+"X + Guide = Toggle Clear Memory Page State" = "X + Guide = Attiva/disattiva azzeramento pagine di memoria"
+"X + Back = Toggle Clear Memory Page State" = "X + Back = Attiva/disattiva azzeramento pagine di memoria"
+"Right Shoulder + Guide = Clear GPU Cache" = "Dorsale destro + Guide = Svuota cache GPU"
+"Right Shoulder + Back = Clear GPU Cache" = "Dorsale destro + Back = Svuota cache GPU"
+"Left Shoulder + Guide = Toggle Controller Vibration" = "Dorsale sinistro + Guide = Attiva/disattiva vibrazione controller"
+"Left Shoulder + Back = Toggle Controller Vibration" = "Dorsale sinistro + Back = Attiva/disattiva vibrazione controller"
+"D-PAD Down + Guide = Half CPU Scalar" = "Croce direzionale giù + Guide = Dimezza scala CPU"
+"D-PAD Down + Back = Half CPU Scalar" = "Croce direzionale giù + Back = Dimezza scala CPU"
+"D-PAD Up + Guide = Double CPU Scalar" = "Croce direzionale su + Guide = Raddoppia scala CPU"
+"D-PAD Up + Back = Double CPU Scalar" = "Croce direzionale su + Back = Raddoppia scala CPU"
+"D-PAD Right + Guide = Reset CPU Scalar" = "Croce direzionale destra + Guide = Ripristina scala CPU"
+"D-PAD Right + Back = Reset CPU Scalar" = "Croce direzionale destra + Back = Ripristina scala CPU"
+"Y = Toggle Fullscreen" = "Y = Attiva/disattiva schermo intero"
+"Start = Run Selected Title" = "Start = Avvia il titolo selezionato"
+"Back + Start = Toggle between loglevel set in config and the 'Disabled' loglevel." = "Back + Start = Passa dal livello di log impostato in configurazione al livello 'Disabled'."
+"D-PAD Down = Title Selection +1" = "Croce direzionale giù = Selezione titolo +1"
+"D-PAD Up = Title Selection -1" = "Croce direzionale su = Selezione titolo -1"
+
+# --- Menu profili (xam_ui.cc) -------------------------------------------------
+"Paste" = "Incolla"
+"Profile is not signed in" = "Il profilo non ha effettuato l'accesso"
+"User: {}\n" = "Utente: {}\n"
+"XUID: {:016X}  \n" = "XUID: {:016X}  \n"
+"Assigned to slot: {}\n" = "Assegnato allo slot: {}\n"
+
+
+
+

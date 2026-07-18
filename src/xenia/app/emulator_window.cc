@@ -25,6 +25,7 @@
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
+#include "xenia/base/locale.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
@@ -349,7 +350,7 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
   // through it.
   ImGui::SetNextWindowBgAlpha(0.6f);
   bool dialog_open = true;
-  if (!ImGui::Begin("Post-processing", &dialog_open,
+  if (!ImGui::Begin(XE_LOCALIZE("Post-processing").c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -362,26 +363,32 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
   // have one frame with an empty window.
 
   // Prevent user confusion which has been reported multiple times.
-  ImGui::TextUnformatted("All effects can be used on GPUs of any brand.");
+  ImGui::TextUnformatted(
+      XE_LOCALIZE("All effects can be used on GPUs of any brand.").c_str());
   ImGui::Spacing();
 
   gpu::CommandProcessor* command_processor =
       graphics_system->command_processor();
   if (command_processor) {
     if (ImGui::TreeNodeEx(
-            "Anti-aliasing",
+            XE_LOCALIZE("Anti-aliasing").c_str(),
             ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen)) {
       gpu::CommandProcessor::SwapPostEffect current_swap_post_effect =
           command_processor->GetDesiredSwapPostEffect();
       int new_swap_post_effect_index = int(current_swap_post_effect);
-      ImGui::RadioButton("None", &new_swap_post_effect_index,
+      ImGui::RadioButton(XE_LOCALIZE("None").c_str(),
+                         &new_swap_post_effect_index,
                          int(gpu::CommandProcessor::SwapPostEffect::kNone));
       ImGui::RadioButton(
-          "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Normal Quality]",
+          XE_LOCALIZE(
+              "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Normal Quality]")
+              .c_str(),
           &new_swap_post_effect_index,
           int(gpu::CommandProcessor::SwapPostEffect::kFxaa));
       ImGui::RadioButton(
-          "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Extreme Quality]",
+          XE_LOCALIZE("NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Extreme "
+                      "Quality]")
+              .c_str(),
           &new_swap_post_effect_index,
           int(gpu::CommandProcessor::SwapPostEffect::kFxaaExtreme));
       gpu::CommandProcessor::SwapPostEffect new_swap_post_effect =
@@ -410,12 +417,12 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
         current_presenter_config;
 
     if (ImGui::TreeNodeEx(
-            "Resampling and sharpening",
+            XE_LOCALIZE("Resampling and sharpening").c_str(),
             ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen)) {
       // Filtering effect.
       int new_effect_index = int(new_presenter_config.GetEffect());
       ImGui::RadioButton(
-          "None / Bilinear", &new_effect_index,
+          XE_LOCALIZE("None / Bilinear").c_str(), &new_effect_index,
           int(ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear));
       ImGui::RadioButton(
           "AMD FidelityFX Contrast Adaptive Sharpening (CAS)",
@@ -431,45 +438,47 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
       // line, as TextWrapped doesn't work correctly in auto-resizing windows
       // (in the initial frames, the window becomes extremely tall, and widgets
       // added after the wrapped text have no effect on the width of the text).
-      const char* effect_description = nullptr;
-      switch (new_presenter_config.GetEffect()) {
-        case ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear:
-          effect_description =
-              "Simple bilinear filtering is done if resampling is needed.\n"
-              "Otherwise, only anti-aliasing is done if enabled, or displaying "
-              "as is.";
-          break;
-        case ui::Presenter::GuestOutputPaintConfig::Effect::kCas:
-          effect_description =
-              "Sharpening and resampling to up to 2x2 to improve the fidelity "
-              "of details.\n"
-              "For scaling by more than 2x2, bilinear stretching is done "
-              "afterwards.";
-          break;
-        case ui::Presenter::GuestOutputPaintConfig::Effect::kFsr:
-          effect_description =
-              "High-quality edge-preserving upscaling to arbitrary target "
-              "resolutions.\n"
-              "For scaling by more than 2x2, multiple upsampling passes are "
-              "done.\n"
-              "If not upscaling, Contrast Adaptive Sharpening (CAS) is used "
-              "instead.";
-          break;
-      }
-      if (effect_description) {
-        ImGui::TextUnformatted(effect_description);
+      const std::string effect_description = [&]() -> std::string {
+        switch (new_presenter_config.GetEffect()) {
+          case ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear:
+            return XE_LOCALIZE(
+                "Simple bilinear filtering is done if resampling is "
+                "needed.\n"
+                "Otherwise, only anti-aliasing is done if enabled, or "
+                "displaying as is.");
+          case ui::Presenter::GuestOutputPaintConfig::Effect::kCas:
+            return XE_LOCALIZE(
+                "Sharpening and resampling to up to 2x2 to improve the "
+                "fidelity of details.\n"
+                "For scaling by more than 2x2, bilinear stretching is done "
+                "afterwards.");
+          case ui::Presenter::GuestOutputPaintConfig::Effect::kFsr:
+            return XE_LOCALIZE(
+                "High-quality edge-preserving upscaling to arbitrary target "
+                "resolutions.\n"
+                "For scaling by more than 2x2, multiple upsampling passes "
+                "are done.\n"
+                "If not upscaling, Contrast Adaptive Sharpening (CAS) is "
+                "used instead.");
+          default:
+            return std::string();
+        }
+      }();
+      if (!effect_description.empty()) {
+        ImGui::TextUnformatted(effect_description.c_str());
       }
 
       if (new_presenter_config.GetEffect() ==
               ui::Presenter::GuestOutputPaintConfig::Effect::kCas ||
           new_presenter_config.GetEffect() ==
               ui::Presenter::GuestOutputPaintConfig::Effect::kFsr) {
-        if (effect_description) {
+        if (!effect_description.empty()) {
           ImGui::Spacing();
         }
 
         ImGui::TextUnformatted(
-            "FXAA is highly recommended when using CAS or FSR.");
+            XE_LOCALIZE("FXAA is highly recommended when using CAS or FSR.")
+                .c_str());
 
         ImGui::Spacing();
 
@@ -488,7 +497,9 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
           float fsr_sharpness_reduction =
               new_presenter_config.GetFsrSharpnessReduction();
           ImGui::TextUnformatted(
-              "FSR sharpness reduction when upscaling (lower is sharper):");
+              XE_LOCALIZE("FSR sharpness reduction when upscaling (lower is "
+                          "sharper):")
+                  .c_str());
           const auto label = fmt::format(
               "{} %%", static_cast<int>(fsr_sharpness_reduction * 100));
           // Power 2.0 scaling as the reduction is in stops, used in exp2.
@@ -501,7 +512,9 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
           fsr_sharpness_reduction =
               .5f * fsr_sharpness_reduction * fsr_sharpness_reduction;
           ImGui::SameLine();
-          if (ImGui::Button("Reset##ResetFSRSharpnessReduction")) {
+          const std::string reset_fsr_label =
+              XE_LOCALIZE("Reset") + "##ResetFSRSharpnessReduction";
+          if (ImGui::Button(reset_fsr_label.c_str())) {
             fsr_sharpness_reduction = ui::Presenter::GuestOutputPaintConfig ::
                 kFsrSharpnessReductionDefault;
           }
@@ -512,11 +525,14 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
         float cas_additional_sharpness =
             new_presenter_config.GetCasAdditionalSharpness();
         ImGui::TextUnformatted(
-            new_presenter_config.GetEffect() ==
-                    ui::Presenter::GuestOutputPaintConfig::Effect::kFsr
-                ? "CAS additional sharpness when not upscaling (higher is "
-                  "sharper):"
-                : "CAS additional sharpness (higher is sharper):");
+            (new_presenter_config.GetEffect() ==
+                     ui::Presenter::GuestOutputPaintConfig::Effect::kFsr
+                 ? XE_LOCALIZE(
+                       "CAS additional sharpness when not upscaling (higher "
+                       "is sharper):")
+                 : XE_LOCALIZE("CAS additional sharpness (higher is "
+                               "sharper):"))
+                .c_str());
         const auto label = fmt::format(
             "{} %%", static_cast<int>(cas_additional_sharpness * 100));
         ImGui::SliderFloat(
@@ -525,7 +541,9 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
             ui::Presenter::GuestOutputPaintConfig::kCasAdditionalSharpnessMax,
             label.c_str(), ImGuiSliderFlags_NoInput);
         ImGui::SameLine();
-        if (ImGui::Button("Reset##ResetCASAdditionalSharpness")) {
+        const std::string reset_cas_label =
+            XE_LOCALIZE("Reset") + "##ResetCASAdditionalSharpness";
+        if (ImGui::Button(reset_cas_label.c_str())) {
           cas_additional_sharpness = ui::Presenter::GuestOutputPaintConfig ::
               kCasAdditionalSharpnessDefault;
         }
@@ -543,11 +561,14 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
       ImGui::TreePop();
     }
 
-    if (ImGui::TreeNodeEx("Dithering", ImGuiTreeNodeFlags_Framed |
-                                           ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::TreeNodeEx(
+            XE_LOCALIZE("Dithering").c_str(),
+            ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen)) {
       bool dither = current_presenter_config.GetDither();
       ImGui::Checkbox(
-          "Dither the final output to 8bpc to make gradients smoother",
+          XE_LOCALIZE(
+              "Dither the final output to 8bpc to make gradients smoother")
+              .c_str(),
           &dither);
       new_presenter_config.SetDither(dither);
 
@@ -687,7 +708,7 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowSize(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("Audio Player Menu", &dialog_open,
+  if (!ImGui::Begin(XE_LOCALIZE("Audio Player Menu").c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -699,28 +720,28 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
   auto audio_player = emulator_window_.emulator_->audio_media_player();
   using xmp_state = kernel::xam::apps::XmpApp::State;
   if (audio_player) {
-    ImGui::Text("Audio player status:");
+    ImGui::Text("%s", XE_LOCALIZE("Audio player status:").c_str());
     ImGui::SameLine();
     switch (audio_player->GetState()) {
       case xmp_state::kIdle:
-        ImGui::Text("Idle");
+        ImGui::Text("%s", XE_LOCALIZE("Idle").c_str());
         break;
       case xmp_state::kPaused:
-        ImGui::Text("Paused");
+        ImGui::Text("%s", XE_LOCALIZE("Paused").c_str());
         break;
       case xmp_state::kPlaying:
-        ImGui::Text("Playing");
+        ImGui::Text("%s", XE_LOCALIZE("Playing").c_str());
         break;
       default:
         break;
     }
 
     if (audio_player->IsPlaying()) {
-      if (ImGui::Button("Pause")) {
+      if (ImGui::Button(XE_LOCALIZE("Pause").c_str())) {
         audio_player->Pause();
       }
     } else if (audio_player->IsPaused()) {
-      if (ImGui::Button("Resume")) {
+      if (ImGui::Button(XE_LOCALIZE("Resume").c_str())) {
         audio_player->Continue();
       }
     }
@@ -728,8 +749,8 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
     volume_ =
         emulator_window_.emulator_->audio_media_player()->GetVolume()->load();
 
-    if (ImGui::SliderFloat("Audio player volume", &volume_, 0.0f, 1.0f,
-                           "%.2f")) {
+    if (ImGui::SliderFloat(XE_LOCALIZE("Audio player volume").c_str(), &volume_,
+                           0.0f, 1.0f, "%.2f")) {
       audio_player->SetVolume(volume_);
     }
   }
@@ -750,174 +771,182 @@ bool EmulatorWindow::Initialize() {
   // Main menu.
   // FIXME: This code is really messy.
   auto main_menu = MenuItem::Create(MenuItem::Type::kNormal);
-  auto file_menu = MenuItem::Create(MenuItem::Type::kPopup, "&File");
-  auto recent_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Open Recent");
-  auto zar_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Zar Package");
+  auto file_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&File"));
+  auto recent_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Open Recent"));
+  auto zar_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Zar Package"));
   FillRecentlyLaunchedTitlesMenu(recent_menu.get());
   {
     file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Open...", "Ctrl+O",
-                         std::bind(&EmulatorWindow::FileOpen, this)));
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("&Open..."),
+                         "Ctrl+O", std::bind(&EmulatorWindow::FileOpen, this)));
     file_menu->AddChild(std::move(recent_menu));
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-    file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Install Content...",
-                         std::bind(&EmulatorWindow::InstallContent, this)));
+    file_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("Install Content..."),
+        std::bind(&EmulatorWindow::InstallContent, this)));
     zar_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Create",
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("Create"),
                          std::bind(&EmulatorWindow::CreateZarchive, this)));
     zar_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Extract",
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("Extract"),
                          std::bind(&EmulatorWindow::ExtractZarchive, this)));
     file_menu->AddChild(std::move(zar_menu));
 #ifdef DEBUG
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Close",
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("Close"),
                          std::bind(&EmulatorWindow::FileClose, this)));
 #endif  // #ifdef DEBUG
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "Show content directory...",
+        MenuItem::Type::kString, XE_LOCALIZE("Show content directory..."),
         std::bind(&EmulatorWindow::ShowContentDirectory, this)));
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
-                         [this]() { window_->RequestClose(); }));
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("E&xit"),
+                         "Alt+F4", [this]() { window_->RequestClose(); }));
   }
   main_menu->AddChild(std::move(file_menu));
 
   // Profile Menu
-  auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Profile");
+  auto profile_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Profile"));
   {
     profile_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Show Profile Menu", "",
+        MenuItem::Type::kString, XE_LOCALIZE("&Show Profile Menu"), "",
         std::bind(&EmulatorWindow::ToggleProfilesConfigDialog, this)));
   }
   main_menu->AddChild(std::move(profile_menu));
 
   // CPU menu.
-  auto cpu_menu = MenuItem::Create(MenuItem::Type::kPopup, "&CPU");
+  auto cpu_menu = MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&CPU"));
   {
     cpu_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Reset Time Scalar", "Numpad *",
+        MenuItem::Type::kString, XE_LOCALIZE("&Reset Time Scalar"), "Numpad *",
         std::bind(&EmulatorWindow::CpuTimeScalarReset, this)));
     cpu_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "Time Scalar /= 2", "Numpad -",
+        MenuItem::Type::kString, XE_LOCALIZE("Time Scalar /= 2"), "Numpad -",
         std::bind(&EmulatorWindow::CpuTimeScalarSetHalf, this)));
     cpu_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "Time Scalar *= 2", "Numpad +",
+        MenuItem::Type::kString, XE_LOCALIZE("Time Scalar *= 2"), "Numpad +",
         std::bind(&EmulatorWindow::CpuTimeScalarSetDouble, this)));
   }
 #if XE_OPTION_PROFILING
   cpu_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
   {
-    cpu_menu->AddChild(MenuItem::Create(MenuItem::Type::kString,
-                                        "Toggle Profiler &Display", "F3",
-                                        []() { Profiler::ToggleDisplay(); }));
-    cpu_menu->AddChild(MenuItem::Create(MenuItem::Type::kString,
-                                        "&Pause/Resume Profiler", "`",
-                                        []() { Profiler::TogglePause(); }));
+    cpu_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("Toggle Profiler &Display"), "F3",
+        []() { Profiler::ToggleDisplay(); }));
+    cpu_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("&Pause/Resume Profiler"), "`",
+        []() { Profiler::TogglePause(); }));
   }
 #endif
   cpu_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
   {
     cpu_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Break and Show Guest Debugger",
+        MenuItem::Type::kString, XE_LOCALIZE("&Break and Show Guest Debugger"),
         "Pause/Break", std::bind(&EmulatorWindow::CpuBreakIntoDebugger, this)));
     cpu_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Break into Host Debugger",
+        MenuItem::Type::kString, XE_LOCALIZE("&Break into Host Debugger"),
         "Ctrl+Pause/Break",
         std::bind(&EmulatorWindow::CpuBreakIntoHostDebugger, this)));
   }
   main_menu->AddChild(std::move(cpu_menu));
 
   // GPU menu.
-  auto gpu_menu = MenuItem::Create(MenuItem::Type::kPopup, "&GPU");
+  auto gpu_menu = MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&GPU"));
   {
-    gpu_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Trace Frame", "F4",
-                         std::bind(&EmulatorWindow::GpuTraceFrame, this)));
+    gpu_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("&Trace Frame"), "F4",
+        std::bind(&EmulatorWindow::GpuTraceFrame, this)));
   }
   gpu_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
   {
-    gpu_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Clear Runtime Caches", "F5",
-                         std::bind(&EmulatorWindow::GpuClearCaches, this)));
+    gpu_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("&Clear Runtime Caches"), "F5",
+        std::bind(&EmulatorWindow::GpuClearCaches, this)));
   }
   main_menu->AddChild(std::move(gpu_menu));
 
   // Display menu.
-  auto display_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Display");
+  auto display_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Display"));
   {
     display_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Post-processing settings", "F6",
+        MenuItem::Type::kString, XE_LOCALIZE("&Post-processing settings"), "F6",
         std::bind(&EmulatorWindow::ToggleDisplayConfigDialog, this)));
   }
   display_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
   {
-    display_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Fullscreen", "F11",
-                         std::bind(&EmulatorWindow::ToggleFullscreen, this)));
-    display_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "&Take Screenshot", "F12",
-                         std::bind(&EmulatorWindow::TakeScreenshot, this)));
+    display_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("&Fullscreen"), "F11",
+        std::bind(&EmulatorWindow::ToggleFullscreen, this)));
+    display_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("&Take Screenshot"), "F12",
+        std::bind(&EmulatorWindow::TakeScreenshot, this)));
   }
   main_menu->AddChild(std::move(display_menu));
 
   // HID menu.
-  auto hid_menu = MenuItem::Create(MenuItem::Type::kPopup, "&HID");
+  auto hid_menu = MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&HID"));
   {
     hid_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Toggle controller vibration", "",
-        std::bind(&EmulatorWindow::ToggleControllerVibration, this)));
+        MenuItem::Type::kString, XE_LOCALIZE("&Toggle controller vibration"),
+        "", std::bind(&EmulatorWindow::ToggleControllerVibration, this)));
     hid_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Display controller hotkeys", "",
+        MenuItem::Type::kString, XE_LOCALIZE("&Display controller hotkeys"), "",
         std::bind(&EmulatorWindow::DisplayHotKeysConfig, this)));
   }
   main_menu->AddChild(std::move(hid_menu));
 
   // XMP menu
-  auto xmp_menu = MenuItem::Create(MenuItem::Type::kPopup, "&XMP");
+  auto xmp_menu = MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&XMP"));
   {
     xmp_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Show XMP Menu", "",
+        MenuItem::Type::kString, XE_LOCALIZE("&Show XMP Menu"), "",
         std::bind(&EmulatorWindow::ToggleXMPConfigDialog, this)));
   }
   main_menu->AddChild(std::move(xmp_menu));
 
   // Console menu
-  auto console_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Console");
+  auto console_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Console"));
   {
     console_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&Open console settings", "",
+        MenuItem::Type::kString, XE_LOCALIZE("&Open console settings"), "",
         std::bind(&EmulatorWindow::ToggleConsoleSettingsDialog, this)));
   }
   main_menu->AddChild(std::move(console_menu));
 
   // Help menu.
-  auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Help");
+  auto help_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, XE_LOCALIZE("&Help"));
   {
     help_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "FA&Q...", "F1",
+        MenuItem::Create(MenuItem::Type::kString, XE_LOCALIZE("FA&Q..."), "F1",
                          std::bind(&EmulatorWindow::ShowFAQ, this)));
     help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-    help_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Game &compatibility...",
-                         std::bind(&EmulatorWindow::ShowCompatibility, this)));
+    help_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, XE_LOCALIZE("Game &compatibility..."),
+        std::bind(&EmulatorWindow::ShowCompatibility, this)));
     help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     help_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "Build commit on GitHub...", "F2",
+        MenuItem::Type::kString, XE_LOCALIZE("Build commit on GitHub..."), "F2",
         std::bind(&EmulatorWindow::ShowBuildCommit, this)));
     help_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "Recent changes on GitHub...", []() {
+        MenuItem::Type::kString, XE_LOCALIZE("Recent changes on GitHub..."),
+        []() {
           LaunchWebBrowser(
               "https://github.com/xenia-canary/xenia-canary/"
               "compare/" XE_BUILD_COMMIT "..." XE_BUILD_BRANCH);
         }));
     help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     help_menu->AddChild(MenuItem::Create(
-        MenuItem::Type::kString, "&About...",
+        MenuItem::Type::kString, XE_LOCALIZE("&About..."),
         []() { LaunchWebBrowser("https://xenia.jp/about/"); }));
   }
   main_menu->AddChild(std::move(help_menu));
@@ -1176,10 +1205,11 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
   SaveImage(screenshot_path / filename, image);
 
   const std::string notification_text =
-      fmt::format("Screenshot saved: {}", filename);
+      fmt::format(fmt::runtime(XE_LOCALIZE("Screenshot saved: {}")), filename);
 
   app_context_.CallInUIThread([&, notification_text]() {
-    new xe::ui::HostNotificationWindow(imgui_drawer(), "Screenshot Created!",
+    new xe::ui::HostNotificationWindow(imgui_drawer(),
+                                       XE_LOCALIZE("Screenshot Created!"),
                                        notification_text, 0);
   });
 }
@@ -1528,10 +1558,11 @@ void EmulatorWindow::CpuTimeScalarSetDouble() {
 
 void EmulatorWindow::CpuBreakIntoDebugger() {
   if (!cvars::debug) {
-    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Xenia Debugger",
-                                        "Xenia must be launched with the "
-                                        "--debug flag in order to enable "
-                                        "debugging.");
+    xe::ui::ImGuiDialog::ShowMessageBox(
+        imgui_drawer_.get(), XE_LOCALIZE("Xenia Debugger"),
+        XE_LOCALIZE("Xenia must be launched with the "
+                    "--debug flag in order to enable "
+                    "debugging."));
     return;
   }
   auto processor = emulator()->processor();
@@ -2123,12 +2154,19 @@ void EmulatorWindow::DisplayHotKeysConfig() {
           "Back");
     }
 
+    // Translated here, after the Guide/Back substitution above: the
+    // hotkey descriptions live in a table built at static-initialization
+    // time (before locale::Initialize() has run), and the substitution
+    // relies on matching the literal English word "Guide" - both would
+    // break if done on already-translated text.
+    pretty_text = XE_LOCALIZE(pretty_text);
+
     if (emulator_->is_title_open() && !val.title_passthru) {
-      pretty_text += " (Disabled)";
+      pretty_text += XE_LOCALIZE(" (Disabled)");
     }
 
     if (val.title_passthru && !cvars::controller_hotkeys) {
-      pretty_text += " (Disabled)";
+      pretty_text += XE_LOCALIZE(" (Disabled)");
     }
 
     if (val.title_passthru) {
@@ -2139,26 +2177,26 @@ void EmulatorWindow::DisplayHotKeysConfig() {
   }
 
   // Add Title
-  msg.insert(0, "Gameplay Hotkeys\n");
+  msg.insert(0, XE_LOCALIZE("Gameplay Hotkeys") + "\n");
 
   // Prepend non-passthru hotkeys
   msg_passthru += "\n";
   msg.insert(0, msg_passthru);
   msg += "\n";
 
-  msg += "Readback Resolve: " + cvars::readback_resolve;
+  msg += XE_LOCALIZE("Readback Resolve: ") + cvars::readback_resolve;
   msg += "\n";
 
-  msg += "Clear Memory Page State: " +
+  msg += XE_LOCALIZE("Clear Memory Page State: ") +
          xe::string_util::BoolToString(cvars::clear_memory_page_state);
   msg += "\n";
 
-  msg += "Controller Hotkeys: " +
+  msg += XE_LOCALIZE("Controller Hotkeys: ") +
          xe::string_util::BoolToString(cvars::controller_hotkeys);
 
   ClearDialogs();
-  xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Controller Hotkeys",
-                                      msg);
+  xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
+                                      XE_LOCALIZE("Controller Hotkeys"), msg);
 }
 
 std::string EmulatorWindow::CanonicalizeFileExtension(
@@ -2172,6 +2210,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(
   bool titleExists = std::filesystem::exists(path_to_file, ec);
 
   if (path_to_file.empty() || !titleExists) {
+    // Kept in English regardless of UI language: this also gets written to
+    // xenia.log, and log files should stay in a language the developers
+    // reading bug reports can always understand.
     std::string log_msg =
         fmt::format("Failed to launch title path is {}.",
                     path_to_file.empty() ? "empty" : "invalid");
@@ -2189,8 +2230,18 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
     ClearDialogs();
 
-    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
-                                        "Title Launch Failed!", log_msg);
+    // The dialog shown to the user is translated separately from the log
+    // message above, since the two have different audiences.
+    std::string display_msg = fmt::format(
+        fmt::runtime(XE_LOCALIZE("Failed to launch title path is {}.")),
+        XE_LOCALIZE(path_to_file.empty() ? "empty" : "invalid"));
+    if (!path_to_file.empty() && !titleExists) {
+      display_msg.append(fmt::format(
+          fmt::runtime(XE_LOCALIZE("\nProvided Path: {}")), path_to_file));
+    }
+
+    xe::ui::ImGuiDialog::ShowMessageBox(
+        imgui_drawer_.get(), XE_LOCALIZE("Title Launch Failed!"), display_msg);
 
     return X_STATUS_NO_SUCH_FILE;
   }
@@ -2214,7 +2265,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
       extension == ".tar" || extension == ".gz") {
     xe::ShowSimpleMessageBox(
         xe::SimpleMessageBoxType::Error,
-        fmt::format(
+        XE_LOCALIZE(
             "Unsupported format!\n"
             "Xenia does not support running software in an archived format."));
 
@@ -2240,8 +2291,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     XELOGE("Failed to launch target: {:08X}", result);
 
     xe::ui::ImGuiDialog::ShowMessageBox(
-        imgui_drawer_.get(), "Title Launch Failed!",
-        "Failed to launch title.\n\nCheck xenia.log for technical details.");
+        imgui_drawer_.get(), XE_LOCALIZE("Title Launch Failed!"),
+        XE_LOCALIZE("Failed to launch title.\n\nCheck xenia.log for "
+                    "technical details."));
 
     emulator_->file_system()->Clear();
   } else {

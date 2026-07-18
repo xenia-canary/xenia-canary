@@ -19,6 +19,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
+#include "xenia/base/locale.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
@@ -495,6 +496,10 @@ bool EmulatorApp::OnInitialize() {
   XELOGI("Storage root: {}", storage_root);
 
   config::SetupConfig(storage_root);
+
+  // Load UI translations (if any) now that the "language" cvar has been
+  // read from the config file / command line.
+  xe::locale::Initialize();
 
 #if XE_ARCH_AMD64 == 1
   amd64::InitFeatureFlags();
