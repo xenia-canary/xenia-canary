@@ -827,9 +827,10 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // flow because of taking derivatives of the fragment depth.
   void FSI_DepthStencilTest(spv::Id msaa_samples,
                             bool sample_mask_potentially_narrowed_previouly);
-  // Adds the surviving coverage MSAA counts from FSI to the active ZPD counter
-  // slot after final PS depth/stencil.
-  void FSI_AddPassedMSAASamplesToZPD();
+  // Adds the surviving coverage MSAA counts into the counter slot selected by
+  // the ZPD FSI counter index that both ZPD segments and borrowed VIZ surveys
+  // are routed through.
+  void FSI_AddPassedMSAASamplesToCounter();
 
   // Alpha to coverage helper - tests one sample.
   // coverage_out is modified to include this sample if it passes.

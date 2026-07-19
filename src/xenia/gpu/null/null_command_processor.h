@@ -41,8 +41,8 @@ class NullCommandProcessor : public CommandProcessor {
                      uint32_t dword_count) override;
 
   bool IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,
-                 IndexBufferInfo* index_buffer_info,
-                 bool major_mode_explicit) override;
+                 IndexBufferInfo* index_buffer_info, bool major_mode_explicit,
+                 VIZQueryDrawResult* viz_query_draw_result = nullptr) override;
   bool IssueCopy() override;
 
   void InitializeTrace() override;

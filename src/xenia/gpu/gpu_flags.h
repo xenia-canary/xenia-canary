@@ -28,6 +28,10 @@ DECLARE_bool(half_pixel_offset);
 
 DECLARE_string(occlusion_query);
 
+DECLARE_bool(viz_query);
+
+DECLARE_bool(viz_query_log);
+
 DECLARE_int32(occlusion_query_fake_lower_threshold);
 
 DECLARE_int32(occlusion_query_fake_upper_threshold);

@@ -814,9 +814,11 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // unchanged or known that it's safe not to await kills/alphatest/AtoC),
   // returns from the shader.
   void ROV_DepthStencilTest();
-  // Adds the surviving coverage MSAA counts from ROV params to the active ZPD
-  // counter slot after the final PS depth/stencil decision.
-  void ROV_AddPassedMSAASamplesToZPD();
+  // Adds the surviving coverage MSAA counts from ROV params into the counter
+  // slot selected by the ZPD ROV counter index, after the final PS
+  // depth/stencil decision. ZPD segments and borrowed VIZ surveys both route
+  // through that index.
+  void ROV_AddPassedMSAASamplesToCounter();
   // Converts the float32 components of the register to extended-range float16
   // in their low 16 bits. Exponent 31 holds finite values up to 131008 of
   // either sign on the Xbox 360 instead of Inf or NaN, and NaN maps to 0.
