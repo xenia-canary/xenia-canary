@@ -29,13 +29,13 @@
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
+#include "xenia/gpu/vulkan/vulkan_occlusion_query_pool.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_primitive_processor.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/gpu/vulkan/vulkan_texture_cache.h"
-#include "xenia/gpu/vulkan/vulkan_zpd_query_pool.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/ui/vulkan/linked_type_descriptor_set_allocator.h"
@@ -283,8 +283,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
                      uint32_t dword_count) override;
 
   bool IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,
-                 IndexBufferInfo* index_buffer_info,
-                 bool major_mode_explicit) override;
+                 IndexBufferInfo* index_buffer_info, bool major_mode_explicit,
+                 VIZQueryDrawResult* viz_query_draw_result = nullptr) override;
   bool IssueCopy() override;
 
   void InitializeTrace() override;
@@ -478,6 +478,23 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool AwaitQueryResolve(ReportHandle report_handle,
                          uint64_t wait_for_submission) override;
 
+  // VIZ_QUERY conditional rendering backend.
+  // Shared CP owns IDs and predicates, the backend owns the physical query
+  // slots and predicate buffer.
+  QueryOpenResult OpenVIZQuery(uint32_t id, uint64_t generation) override;
+  bool CloseVIZQuery(uint32_t id, uint64_t generation) override;
+  void PumpVIZResolves() override;
+  void AwaitSubmittedVIZResolve(uint64_t wait_for_submission) override;
+  // One uint32_t predicate slot per ID.
+  bool EnsureVIZPredicateBuffer();
+  // Closes surveys before EndRenderPass. Predicate copies queued for teardown.
+  void CloseVIZOcclusionSegment();
+  // Drains the queued predicate copies.
+  void RecordVIZCopies();
+  // Drains queued copies when the bound slot's value hasn't landed yet.
+  VkBuffer BindVIZPredicate(VkDeviceSize& offset_out);
+  void ShutdownVIZQueryResources();
+
   void UpdateDynamicState(const draw_util::ViewportInfo& viewport_info,
                           bool primitive_polygonal,
                           reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -636,7 +653,35 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   std::unique_ptr<VulkanRenderTargetCache> render_target_cache_;
 
-  std::unique_ptr<VulkanZPDQueryPool> zpd_host_query_pool_;
+  std::unique_ptr<VulkanOcclusionQueryPool> zpd_host_query_pool_;
+
+  std::unique_ptr<VulkanOcclusionQueryPool> viz_host_query_pool_;
+
+  struct ActiveVIZQuery {
+    uint32_t query_index = UINT32_MAX;
+    uint32_t query_generation = 0;
+    bool valid = false;
+    // FSI surveys borrow a ZPD FSI counter slot, no host query.
+    // query_index/query_generation index that pool.
+    bool is_fsi = false;
+  };
+  ActiveVIZQuery viz_active_query_{};
+  // True while IssueDraw is recording a survey, so the system constants route
+  // the FSI counter to the borrowed slot rather than an open ZPD segment.
+  // Reassigned on every draw.
+  bool viz_survey_draw_active_ = false;
+  // One uint32_t predicate slot per ID, filled by copying a finished occlusion
+  // query result, read by conditional rendering on unresolved consumer draws.
+  VkBuffer viz_predicate_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory viz_predicate_buffer_memory_ = VK_NULL_HANDLE;
+  bool viz_predicate_buffer_failed_ = false;
+  // Finished queries waiting to be copied into their predicate slots at the
+  // next pass boundary, so back-to-back ENDs don't each split the pass.
+  struct PendingVIZCopy {
+    uint32_t id;
+    uint32_t query_index;
+  };
+  std::vector<PendingVIZCopy> viz_pending_copies_;
 
   // Deferred query slot releases for discards that happen outside a render
   // pass, where vkCmdEndQuery cannot be issued.  The slot is held until the

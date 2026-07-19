@@ -2293,7 +2293,7 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
   a_.OpEndIf();
 }
 
-void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
+void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToCounter() {
   if (uav_index_zpd_rov_counter_ == kBindingIndexUnallocated) {
     uav_index_zpd_rov_counter_ = uav_count_++;
   }
@@ -2308,7 +2308,7 @@ void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
       SystemConstants::Index::kZpdRovCounterIndex,
       offsetof(SystemConstants, zpd_rov_counter_index), dxbc::Src::kXXXX));
 
-  // UINT32_MAX means no ZPD segment is currently open for this draw.
+  // UINT32_MAX means no counter segment is currently open for this draw.
   a_.OpINE(temp_x_dest, counter_index_src, dxbc::Src::LU(UINT32_MAX));
   a_.OpIf(true, temp_x_src);
 
@@ -2327,7 +2327,7 @@ void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
                 dxbc::Src::LU(sizeof(uint32_t)));
       // Add the number of samples that survived depth/stencil for this pixel to
       // the active query slot. This slot is copied to the readback buffer when
-      // the ZPD segment is closed.
+      // the counter segment is closed.
       a_.OpAtomicIAdd(dxbc::Dest::U(uav_index_zpd_rov_counter_,
                                     uint32_t(UAVRegister::kZpdRovCounter), 0),
                       temp_y_src, 0b0001, temp_x_src);
@@ -2397,7 +2397,7 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
   // system_temp_rov_params_.y (the depth / stencil sample address) is not
   // needed anymore, can be used for color writing.
 
-  ROV_AddPassedMSAASamplesToZPD();
+  ROV_AddPassedMSAASamplesToCounter();
 
   if (!is_depth_only_pixel_shader_) {
     // Check if any sample is still covered after depth testing and writing,

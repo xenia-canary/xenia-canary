@@ -135,6 +135,12 @@ void DeferredCommandList::Execute(ID3D12GraphicsCommandList* command_list,
             args.query_heap, args.query_type, args.start_index,
             args.query_count, args.destination_buffer, args.destination_offset);
       } break;
+      case Command::kD3DSetPredication: {
+        auto& args =
+            *reinterpret_cast<const D3DSetPredicationArguments*>(stream);
+        command_list->SetPredication(args.buffer, args.aligned_buffer_offset,
+                                     args.operation);
+      } break;
       case Command::kD3DIASetIndexBuffer: {
         auto view = reinterpret_cast<const D3D12_INDEX_BUFFER_VIEW*>(stream);
         command_list->IASetIndexBuffer(

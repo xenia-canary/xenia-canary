@@ -215,6 +215,15 @@ class DeferredCommandList {
     args.destination_offset = destination_offset;
   }
 
+  void D3DSetPredication(ID3D12Resource* buffer, UINT64 aligned_buffer_offset,
+                         D3D12_PREDICATION_OP operation) {
+    auto& args = *reinterpret_cast<D3DSetPredicationArguments*>(WriteCommand(
+        Command::kD3DSetPredication, sizeof(D3DSetPredicationArguments)));
+    args.buffer = buffer;
+    args.aligned_buffer_offset = aligned_buffer_offset;
+    args.operation = operation;
+  }
+
   void D3DIASetIndexBuffer(const D3D12_INDEX_BUFFER_VIEW* view) {
     auto& args = *reinterpret_cast<D3D12_INDEX_BUFFER_VIEW*>(WriteCommand(
         Command::kD3DIASetIndexBuffer, sizeof(D3D12_INDEX_BUFFER_VIEW)));
@@ -495,6 +504,7 @@ class DeferredCommandList {
     kD3DBeginQuery,
     kD3DEndQuery,
     kD3DResolveQueryData,
+    kD3DSetPredication,
     kD3DIASetIndexBuffer,
     kD3DIASetPrimitiveTopology,
     kD3DIASetVertexBuffers,
@@ -617,6 +627,12 @@ class DeferredCommandList {
     UINT query_count;
     ID3D12Resource* destination_buffer;
     UINT64 destination_offset;
+  };
+
+  struct D3DSetPredicationArguments {
+    ID3D12Resource* buffer;
+    UINT64 aligned_buffer_offset;
+    D3D12_PREDICATION_OP operation;
   };
 
   struct D3DIASetVertexBuffersHeader {
