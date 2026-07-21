@@ -9,6 +9,7 @@
 
 #include <alloca.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -25,6 +26,10 @@
 // Use headers in third party to not depend on system sdl headers for building
 #include "third_party/SDL2/include/SDL.h"
 
+// Not reliably declared by <unistd.h> on all libcs without feature-test
+// macros we don't otherwise need; declared explicitly for fexecve() below.
+extern char** environ;
+
 namespace xe {
 
 void LaunchWebBrowser(const std::string_view url) {
@@ -40,21 +45,34 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
 }
 
 bool RestartApplication() {
-  // Note for reviewers/static analysis: every value fed into fork()/execv()
+  // Note for reviewers/static analysis: every value fed into fork()/exec()
   // below comes from the kernel's own view of the *already-running* process
   // (/proc/self/exe, /proc/self/cmdline) - i.e. exactly the binary path and
   // arguments this same instance of Xenia was already launched with. There
-  // is no shell involved (execv, not system()/popen()) and no external or
+  // is no shell involved (fexecve, not system()/popen()) and no external or
   // user-supplied string (e.g. a cvar value) is appended to argv, so this
   // cannot be used to execute anything other than another copy of Xenia
   // with its own original arguments.
+  //
+  // The executable is opened once here and executed via its file descriptor
+  // (fexecve) rather than by re-resolving "/proc/self/exe" as a path string
+  // a second time at exec() - this closes the Time-Of-Check-To-Time-Of-Use
+  // gap a path-based execv() would otherwise have between "look up the
+  // path" and "run whatever is at that path now": with fexecve, the binary
+  // actually launched is guaranteed to be the exact file that was just
+  // open()'d, not whatever a symlink might resolve to a moment later.
+  int exe_fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+  if (exe_fd < 0) {
+    return false;
+  }
 
-  // /proc/self/exe resolves to the actual running binary regardless of how
-  // it was invoked (relative path, $PATH lookup, symlink, etc.).
+  // Only used for the argv[0] fallback below if /proc/self/cmdline can't be
+  // read - never used to choose what gets executed.
   char exe_path[PATH_MAX];
   ssize_t exe_path_length =
       readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
   if (exe_path_length <= 0) {
+    close(exe_fd);
     return false;
   }
   exe_path[exe_path_length] = '\0';
@@ -64,6 +82,7 @@ bool RestartApplication() {
   // path Xenia was originally launched with.
   std::ifstream cmdline_file("/proc/self/cmdline", std::ios::binary);
   if (!cmdline_file.is_open()) {
+    close(exe_fd);
     return false;
   }
   std::vector<char> cmdline_bytes(
@@ -92,16 +111,19 @@ bool RestartApplication() {
 
   pid_t child_pid = fork();
   if (child_pid < 0) {
+    close(exe_fd);
     return false;
   }
   if (child_pid == 0) {
-    // Child: replace this process image with a fresh instance of Xenia.
-    execv(exe_path, argv.data());
-    // Only reached if execv failed.
+    // Child: replace this process image with a fresh instance of Xenia,
+    // launched from the exact file descriptor opened above.
+    fexecve(exe_fd, argv.data(), environ);
+    // Only reached if fexecve failed.
     _exit(127);
   }
   // Parent: the new instance is on its way up: let the caller shut this one
   // down normally (saving config, releasing resources, etc).
+  close(exe_fd);
   return true;
 }
 
