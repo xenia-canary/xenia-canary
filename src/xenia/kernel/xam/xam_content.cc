@@ -85,9 +85,11 @@ dword_result_t xeXamContentResolve(
     if (content_data_size == sizeof(XCONTENT_DATA)) {
       content_data = *content_data_ptr.as<XCONTENT_DATA*>();
     } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
-      // Due to the current implementation of content data we can't use
-      // XCONTENT_DATA_INTERNAL
-      content_data = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+      const auto& internal_data =
+          *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
+      content_data = XCONTENT_AGGREGATE_DATA(internal_data);
+      content_data.xuid = internal_data.xuid;
+      content_data.title_id = internal_data.title_id;
     } else {
       assert_always();
       return X_ERROR_INVALID_PARAMETER;
@@ -127,10 +129,24 @@ dword_result_t xeXamContentResolve(
         static_cast<uint32_t>(content_data.content_type.get()),
         content_data.file_name());
 
-    string_util::copy_truncating(path_ptr, root_device_path + relative_path,
-                                 path_size);
+    std::string resolved_path = root_device_path + relative_path;
+    if (content_data.device_id == static_cast<uint32_t>(DummyDeviceId::HDD)) {
+      // Xenia represents content packages as host directories. 4343081F
+      // creates same-named files inside saved-game packages, then opens the
+      // path returned by XamContentResolve as a file. Mount such a package and
+      // return a guest path to its payload. This is an approximation for
+      // directory-backed packages, not evidence that the console exposes an
+      // inner file path.
+      auto payload_path =
+          kernel_state()->content_manager()->ResolvePackagePayloadPath(
+              xuid, content_data);
+      if (payload_path) {
+        resolved_path = *payload_path;
+      }
+    }
 
-    // Check if it exists and try to mount that package
+    string_util::copy_truncating(path_ptr, resolved_path, path_size);
+
     // Result of buffer_ptr is sent to RtlInitAnsiString.
     // buffer_size is usually 260 (max path).
     return X_ERROR_SUCCESS;
