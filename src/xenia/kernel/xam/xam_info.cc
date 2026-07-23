@@ -197,6 +197,12 @@ dword_result_t XamGetCachedTitleName_entry(dword_t title_id,
 }
 DECLARE_XAM_EXPORT1(XamGetCachedTitleName, kNone, kImplemented);
 
+dword_result_t XamXStudioRequest_entry(dword_t unk1, lpdword_t unk2) {
+  // uses xstudio.xex function with an ordinal of 1
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamXStudioRequest, kNone, kStub);
+
 dword_result_t XamGetSystemVersion_entry() {
   // eh, just picking one. If we go too low we may break new games, but
   // this value seems to be used for conditionally loading symbols and if
