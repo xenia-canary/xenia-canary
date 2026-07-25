@@ -217,6 +217,13 @@ dword_result_t NetDll_XNetCleanup_entry(dword_t caller, lpvoid_t params) {
 }
 DECLARE_XAM_EXPORT1(NetDll_XNetCleanup, kNetworking, kImplemented);
 
+dword_result_t XNetLogonGetMachineID_entry(lpqword_t machine_id_ptr) {
+  // See Netplay
+  *machine_id_ptr = 0;
+  return 0x80151802;  // X_ERROR_LOGON_NOT_LOGGED_ON;
+}
+DECLARE_XAM_EXPORT1(XNetLogonGetMachineID, kNetworking, kStub);
+
 dword_result_t NetDll_XNetGetOpt_entry(dword_t one, dword_t option_id,
                                        lpvoid_t buffer_ptr,
                                        lpdword_t buffer_size) {
