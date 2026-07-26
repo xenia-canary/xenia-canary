@@ -57,15 +57,20 @@ static constexpr uint32_t GUEST_TRAMPOLINE_MIN_LEN = 8;
 static constexpr uint32_t MAX_GUEST_TRAMPOLINES =
     (GUEST_TRAMPOLINE_END - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
 
-#define RESERVE_BLOCK_SHIFT 16
-
-#define RESERVE_NUM_ENTRIES \
-  ((1024ULL * 1024ULL * 1024ULL * 4ULL) >> RESERVE_BLOCK_SHIFT)
 // https://codalogic.com/blog/2022/12/06/Exploring-PowerPCs-read-modify-write-operations
-struct ReserveHelper {
-  uint64_t blocks[RESERVE_NUM_ENTRIES / 64];
+// The Xenon reservation granule is one 128 byte cache line.
+static constexpr uint32_t RESERVE_GRANULE_SHIFT = 7;
+// One generation counter per granule, hashed into a fixed size table. A
+// successful stwcx. bumps its granule, which kills every other thread's
+// reservation on it. Two granules colliding in the table only costs a spurious
+// stwcx. failure, which the architecture permits.
+static constexpr uint32_t RESERVE_NUM_ENTRIES = 1u << 20;
+static constexpr uint32_t RESERVE_ENTRY_MASK = RESERVE_NUM_ENTRIES - 1;
 
-  ReserveHelper() { memset(blocks, 0, sizeof(blocks)); }
+struct ReserveHelper {
+  uint32_t generations[RESERVE_NUM_ENTRIES];
+
+  ReserveHelper() { memset(generations, 0, sizeof(generations)); }
 };
 
 struct X64BackendStackpoint {
@@ -100,8 +105,10 @@ struct X64BackendContext {
   uint64_t* guest_tick_count;
   // records mapping of host_stack to guest_stack
   X64BackendStackpoint* stackpoints;
-  uint64_t cached_reserve_offset;
-  uint32_t cached_reserve_bit;
+  // guest address the live reservation was taken on, and the granule
+  // generation as it read at that point
+  uint32_t reserve_address;
+  uint32_t reserve_generation;
   unsigned int current_stackpoint_depth;
   unsigned int mxcsr_fpu;  // currently, the way we implement rounding mode
                            // affects both vmx and the fpu

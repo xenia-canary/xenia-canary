@@ -93,8 +93,6 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   Value* LoadVR(uint32_t reg);
   void StoreVR(uint32_t reg, Value* value);
 
-  void StoreReserved(Value* val);
-  Value* LoadReserved();
   // calls original impl in hirbuilder, but also records the is_return_site bit
   // into flags in the guestmodule
   void SetReturnAddress(Value* value);

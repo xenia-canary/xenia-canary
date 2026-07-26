@@ -894,7 +894,7 @@ int InstrEmit_stwcx(PPCHIRBuilder& f, const InstrData& i) {
 
     f.StoreContext(offsetof(PPCContext, cr0.cr0_eq), f.LoadConstantInt8(1));
   } else {
-    Value* v = f.StoreWithReserve(ea, rt, INT64_TYPE);
+    Value* v = f.StoreWithReserve(ea, rt, INT32_TYPE);
     f.StoreContext(offsetof(PPCContext, cr0.cr0_eq), v);
   }
 
