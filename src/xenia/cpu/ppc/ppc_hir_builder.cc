@@ -676,14 +676,6 @@ void PPCHIRBuilder::StoreVR(uint32_t reg, Value* value) {
   trace_reg.value = value;
 }
 
-void PPCHIRBuilder::StoreReserved(Value* val) {
-  assert_true(val->type == INT64_TYPE);
-  StoreContext(offsetof(PPCContext, reserved_val), val);
-}
-
-Value* PPCHIRBuilder::LoadReserved() {
-  return LoadContext(offsetof(PPCContext, reserved_val), INT64_TYPE);
-}
 void PPCHIRBuilder::SetReturnAddress(Value* value) {
   /*
      Record the address as being a possible target of a return. This is
