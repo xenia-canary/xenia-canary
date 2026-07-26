@@ -428,8 +428,6 @@ typedef struct alignas(64) PPCContext_s {
 
   uint8_t* physical_membase;
 
-  // Value of last reserved load
-  uint64_t reserved_val;
   ThreadState* thread_state;
   uint8_t* virtual_membase;
 
