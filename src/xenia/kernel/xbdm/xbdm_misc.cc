@@ -22,9 +22,10 @@ DECLARE_bool(debug);
 
 DEFINE_bool(force_mount_devkit, false, "Force devkit mount", "Storage");
 
-DEFINE_int32(console_type, 0,
-             "Console Type Identifier: 0 - Development Kit, 1 - Test Kit",
-             "Kernel");
+DEFINE_int32(
+    console_type, -1,
+    "Console Type Identifier: -1 - Retail, 0 - Development Kit, 1 - Test Kit",
+    "Kernel");
 
 namespace xe {
 namespace kernel {
