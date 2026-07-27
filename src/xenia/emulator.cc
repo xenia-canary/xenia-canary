@@ -92,6 +92,8 @@ DEFINE_int32(priority_class, 0,
              "values: 0 - Normal, 1 - Above normal, 2 - High",
              "General");
 
+DECLARE_int32(console_type);
+
 namespace xe {
 using namespace xe::literals;
 
@@ -313,7 +315,11 @@ X_STATUS Emulator::Setup(
   // HLE kernel modules.
   LOAD_KERNEL_MODULE(xboxkrnl::XboxkrnlModule);
   LOAD_KERNEL_MODULE(xam::XamModule);
-  LOAD_KERNEL_MODULE(xbdm::XbdmModule);
+
+  // 415608C3 anti-cheat checks if XDBM is loaded.
+  if (cvars::console_type >= 0) {
+    LOAD_KERNEL_MODULE(xbdm::XbdmModule);
+  }
 #undef LOAD_KERNEL_MODULE
   plugin_loader_ = std::make_unique<xe::patcher::PluginLoader>(
       kernel_state_.get(), storage_root() / "plugins");
