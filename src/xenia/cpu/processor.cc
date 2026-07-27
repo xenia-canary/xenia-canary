@@ -1298,62 +1298,59 @@ uint32_t Processor::CalculateNextGuestInstruction(ThreadDebugInfo* thread_info,
     return current_pc + 4;
   }
 }
+// These run a real lwarx/stwcx. loop, so they cancel any guest thread's
+// reservation on the same granule. Each returns the pre-update value.
+// context must be the calling thread's, it holds the reservation.
 uint32_t Processor::GuestAtomicIncrement32(ppc::PPCContext* context,
                                            uint32_t guest_address) {
-  uint32_t* host_address = context->TranslateVirtual<uint32_t*>(guest_address);
-
   uint32_t result;
-  while (true) {
-    result = *host_address;
-    // todo: should call a processor->backend function that acquires a
-    // reservation instead of using host atomics
-    if (xe::atomic_cas(result, xe::byte_swap(xe::byte_swap(result) + 1),
-                       host_address)) {
-      break;
-    }
-  }
-  return xe::byte_swap(result);
+  do {
+    result = backend()->ReservedLoad32(context, guest_address);
+  } while (!backend()->ReservedStore32(context, guest_address, result + 1));
+  return result;
 }
 uint32_t Processor::GuestAtomicDecrement32(ppc::PPCContext* context,
                                            uint32_t guest_address) {
-  uint32_t* host_address = context->TranslateVirtual<uint32_t*>(guest_address);
-
   uint32_t result;
-  while (true) {
-    result = *host_address;
-    // todo: should call a processor->backend function that acquires a
-    // reservation instead of using host atomics
-    if (xe::atomic_cas(result, xe::byte_swap(xe::byte_swap(result) - 1),
-                       host_address)) {
-      break;
-    }
-  }
-  return xe::byte_swap(result);
+  do {
+    result = backend()->ReservedLoad32(context, guest_address);
+  } while (!backend()->ReservedStore32(context, guest_address, result - 1));
+  return result;
 }
 
 uint32_t Processor::GuestAtomicOr32(ppc::PPCContext* context,
                                     uint32_t guest_address, uint32_t mask) {
-  return xe::byte_swap(
-      xe::atomic_or(context->TranslateVirtual<volatile int32_t*>(guest_address),
-                    xe::byte_swap(mask)));
+  uint32_t result;
+  do {
+    result = backend()->ReservedLoad32(context, guest_address);
+  } while (!backend()->ReservedStore32(context, guest_address, result | mask));
+  return result;
 }
 uint32_t Processor::GuestAtomicXor32(ppc::PPCContext* context,
                                      uint32_t guest_address, uint32_t mask) {
-  return xe::byte_swap(xe::atomic_xor(
-      context->TranslateVirtual<volatile int32_t*>(guest_address),
-      xe::byte_swap(mask)));
+  uint32_t result;
+  do {
+    result = backend()->ReservedLoad32(context, guest_address);
+  } while (!backend()->ReservedStore32(context, guest_address, result ^ mask));
+  return result;
 }
 uint32_t Processor::GuestAtomicAnd32(ppc::PPCContext* context,
                                      uint32_t guest_address, uint32_t mask) {
-  return xe::byte_swap(xe::atomic_and(
-      context->TranslateVirtual<volatile int32_t*>(guest_address),
-      xe::byte_swap(mask)));
+  uint32_t result;
+  do {
+    result = backend()->ReservedLoad32(context, guest_address);
+  } while (!backend()->ReservedStore32(context, guest_address, result & mask));
+  return result;
 }
 
+// Does not retry. A lost reservation reports a failed exchange, which is what
+// a guest compare-exchange loop sees.
 bool Processor::GuestAtomicCAS32(ppc::PPCContext* context, uint32_t old_value,
                                  uint32_t new_value, uint32_t guest_address) {
-  return xe::atomic_cas(xe::byte_swap(old_value), xe::byte_swap(new_value),
-                        context->TranslateVirtual<uint32_t*>(guest_address));
+  if (backend()->ReservedLoad32(context, guest_address) != old_value) {
+    return false;
+  }
+  return backend()->ReservedStore32(context, guest_address, new_value);
 }
 }  // namespace cpu
 }  // namespace xe
