@@ -28,7 +28,7 @@ class XMutant : public XObject {
   ~XMutant() override;
 
   void Initialize(bool initial_owner);
-  void InitializeNative(void* native_ptr, X_DISPATCH_HEADER* header);
+  void InitializeNative(void* native_ptr, const X_DISPATCH_HEADER* header);
 
   X_STATUS ReleaseMutant(uint32_t priority_increment, bool abandon, bool wait);
 

@@ -30,7 +30,8 @@ bool XSemaphore::Initialize(int32_t initial_count, int32_t maximum_count) {
   return !!semaphore_;
 }
 
-bool XSemaphore::InitializeNative(void* native_ptr, X_DISPATCH_HEADER* header) {
+bool XSemaphore::InitializeNative(void* native_ptr,
+                                  const X_DISPATCH_HEADER* header) {
   assert_false(semaphore_);
 
   auto semaphore = reinterpret_cast<X_KSEMAPHORE*>(native_ptr);
