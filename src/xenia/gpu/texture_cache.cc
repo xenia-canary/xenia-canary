@@ -688,10 +688,10 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
 
 // Packs the integer scale the fetch shader reads from the system constant to
 // undo the host sampler's normalization - the guest wants e.g. [0, 255], not
-// [0, 1]. 5 bits per output component: bits 0:3 = width - 1, bit 4 = signed.
-// The scale lands after swizzling, so each output lane walks the host swizzle
-// back to its source component's width; constant (0/1) lanes, gamma, and
-// non-fixed formats have nothing to rescale and stay 0.
+// [0, 1]. 6 bits per output component: bits 0:3 = width - 1, bit 4 = signed,
+// bit 5 = unsigned-biased. The scale lands after swizzling, so each output lane
+// walks the host swizzle back to its source component's width; constant (0/1)
+// lanes, gamma, and non-fixed formats have nothing to rescale and stay 0.
 uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
                                            uint32_t num_format,
                                            uint32_t host_swizzle,
@@ -721,9 +721,12 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
     uint32_t component_scale = uint32_t(width - 1);
     if (sign == xenos::TextureSign::kSigned) {
       component_scale |= UINT32_C(1) << 4;
+      // Unsigned-biased: halve the scaled value and apply an extra offset.
+    } else if (sign == xenos::TextureSign::kUnsignedBiased) {
+      component_scale |= UINT32_C(1) << 5;
     }
 
-    scale_bits |= component_scale << (i * 5);
+    scale_bits |= component_scale << (i * 6);
   }
 
   return scale_bits;

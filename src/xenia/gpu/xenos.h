@@ -616,6 +616,10 @@ constexpr bool IsColorResolveFormatBitwiseEquivalent(
   switch (render_target_format) {
     case ColorRenderTargetFormat::k_8_8_8_8:
     // Shaders fetch data copied from k_8_8_8_8_GAMMA with TextureSign::kGamma.
+    // Gamma sources are decoded to linear by real hardware resolve, so with the
+    // decode enabled, GetCopyShader separately excludes all raw copies. Any
+    // title that keeps the encoding to fetch it back with kGamma re-aliases the
+    // surface as k_8_8_8_8.
     case ColorRenderTargetFormat::k_8_8_8_8_GAMMA:
       // TODO(Triang3l): Investigate k_8_8_8_8_A.
       return color_format == ColorFormat::k_8_8_8_8 ||

@@ -690,18 +690,14 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
         XeResolveInfo resolve_info, inout_param_xe(float4_xe, pixel)) {
       // Source gamma is RGB only. 8_8_8_8_GAMMA still stores alpha as ordinary
       // fixed data, so alpha needs to stay with normal resolve.
+      // A gamma render target is decoded to linear by resolve and doesn't have
+      // an encoding stage, so it can be inferred that linear values are what
+      // every destination stores. Keeping the bytes is done on the render
+      // target side, by re-aliasing the surface as 8_8_8_8 before resolving,
+      // the same model that maintains float 2_10_10_10 bits, which makes it
+      // not a gamma source here either.
       dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
         XeResolvePWLGammaToLinearRGB(pixel);
-      }
-    }
-
-    void XeResolveEncodePWLGammaDest(
-        XeResolveInfo resolve_info, inout_param_xe(float4_xe, pixel)) {
-      // Only re-encode when the source was PWL gamma and the destination is the
-      // 8_8_8_8 UNORM storage we treat as the same PWL byte stream.
-      dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info) &&
-                          XeResolveDestStoresPWLGamma(resolve_info)) {
-        XeResolveLinearToPWLGammaRGB(pixel);
       }
     }
 
@@ -761,8 +757,6 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       }
       pixel_0 *= exp_bias;
       pixel_1 *= exp_bias;
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_0);
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_1);
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
@@ -847,10 +841,6 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       pixel_1 *= exp_bias;
       pixel_2 *= exp_bias;
       pixel_3 *= exp_bias;
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_0);
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_1);
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_2);
-      XeResolveEncodePWLGammaDest(resolve_info, pixel_3);
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
