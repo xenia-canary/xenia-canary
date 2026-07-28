@@ -29,15 +29,12 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
-    resolve_check_number_format, false,
+    resolve_check_number_format, true,
     "Require the destination number format to match before using fast color "
     "resolves.\n"
     "Fast resolves copy the exact EDRAM bits. If a title resolves unsigned "
     "color data to a signed or integer destination, enabling this forces full "
-    "resolves in the shader so the destination gets repacked instead.\n"
-    "This can fix some garbage shading stemming from format mismatches, but "
-    "it's disabled by default because it can worsen performance in some games "
-    "that realistically don't need it.",
+    "resolves in the shader so the destination gets repacked instead.",
     "GPU");
 
 DEFINE_bool(
@@ -1372,17 +1369,24 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
   ResolveEdramInfo edram_info = is_depth ? depth_edram_info : color_edram_info;
   bool source_is_64bpp = !is_depth && color_edram_info.format_is_64bpp != 0;
   // Fast color resolve is a raw copy. If copy_dest_number asks for a different
-  // fixed interpretation, full resolve has to do the repack.
-  if (is_depth || (!copy_dest_info.copy_dest_exp_bias &&
-                   xenos::IsSingleCopySampleSelected(
-                       copy_dest_coordinate_info.copy_sample_select) &&
-                   xenos::IsColorResolveFormatBitwiseEquivalent(
-                       xenos::ColorRenderTargetFormat(color_edram_info.format),
-                       xenos::ColorFormat(copy_dest_info.copy_dest_format)) &&
-                   (!cvars::resolve_check_number_format ||
-                    ColorResolveNumberFormatMatches(
-                        xenos::ColorFormat(copy_dest_info.copy_dest_format),
-                        copy_dest_info.copy_dest_number)))) {
+  // target that'd be decoded to linear by a real hardware resolve, it needs the
+  // full shader conversion. Any title keeping the encoding will re-alias as
+  // 8_8_8_8 before resolving, so any gamma source is always being decoded.
+  bool gamma_decoded_source =
+      !is_depth && color_edram_info.decode_pwl_gamma &&
+      xenos::ColorRenderTargetFormat(color_edram_info.format) ==
+          xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA;
+  if (is_depth ||
+      (!gamma_decoded_source && !copy_dest_info.copy_dest_exp_bias &&
+       xenos::IsSingleCopySampleSelected(
+           copy_dest_coordinate_info.copy_sample_select) &&
+       xenos::IsColorResolveFormatBitwiseEquivalent(
+           xenos::ColorRenderTargetFormat(color_edram_info.format),
+           xenos::ColorFormat(copy_dest_info.copy_dest_format)) &&
+       (!cvars::resolve_check_number_format ||
+        ColorResolveNumberFormatMatches(
+            xenos::ColorFormat(copy_dest_info.copy_dest_format),
+            copy_dest_info.copy_dest_number)))) {
     if (edram_info.msaa_samples >= xenos::MsaaSamples::k4X) {
       shader = source_is_64bpp ? ResolveCopyShaderIndex::kFast64bpp4xMSAA
                                : ResolveCopyShaderIndex::kFast32bpp4xMSAA;

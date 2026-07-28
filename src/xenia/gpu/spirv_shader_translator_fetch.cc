@@ -2346,8 +2346,8 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               spv::Id scale_bits = builder_->createTriOp(
                   spv::OpBitFieldUExtract, type_uint_,
                   integer_scale_bits_packed,
-                  builder_->makeUintConstant(result_component_index * 5),
-                  builder_->makeUintConstant(5));
+                  builder_->makeUintConstant(result_component_index * 6),
+                  builder_->makeUintConstant(6));
               spv::Id scale_shift = builder_->createBinOp(
                   spv::OpIAdd, type_uint_,
                   builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
@@ -2365,11 +2365,32 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                   builder_->createBinOp(spv::OpShiftLeftLogical, type_uint_,
                                         const_uint_1, scale_shift),
                   const_uint_1);
+              // Unsigned biased samples are already mapped [0, 1] to [-1, 1],
+              // so use half of the unsigned scale and subtract 0.5 to restore
+              // the guest's integer value.
+              spv::Id biased = builder_->createBinOp(
+                  spv::OpINotEqual, type_bool_,
+                  builder_->createTriOp(spv::OpBitFieldUExtract, type_uint_,
+                                        scale_bits,
+                                        builder_->makeUintConstant(5),
+                                        builder_->makeUintConstant(1)),
+                  builder_->makeUintConstant(0));
+              spv::Id scale_float = builder_->createNoContractionBinOp(
+                  spv::OpFMul, type_float_,
+                  builder_->createUnaryOp(spv::OpConvertUToF, type_float_,
+                                          scale_uint),
+                  builder_->createTriOp(spv::OpSelect, type_float_, biased,
+                                        builder_->makeFloatConstant(0.5f),
+                                        builder_->makeFloatConstant(1.0f)));
               scaled_result[result_component_index] =
                   builder_->createNoContractionBinOp(
-                      spv::OpFMul, type_float_, result[result_component_index],
-                      builder_->createUnaryOp(spv::OpConvertUToF, type_float_,
-                                              scale_uint));
+                      spv::OpFAdd, type_float_,
+                      builder_->createNoContractionBinOp(
+                          spv::OpFMul, type_float_,
+                          result[result_component_index], scale_float),
+                      builder_->createTriOp(spv::OpSelect, type_float_, biased,
+                                            builder_->makeFloatConstant(-0.5f),
+                                            builder_->makeFloatConstant(0.0f)));
             }
           }
           if_integer_scale.makeEndIf();
