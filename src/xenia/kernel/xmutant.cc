@@ -31,7 +31,8 @@ void XMutant::Initialize(bool initial_owner) {
   assert_not_null(mutant_);
 }
 
-void XMutant::InitializeNative(void* native_ptr, X_DISPATCH_HEADER* header) {
+void XMutant::InitializeNative(void* native_ptr,
+                               const X_DISPATCH_HEADER* header) {
   assert_false(mutant_);
 
   // Haven't seen this yet, but it's possible.
