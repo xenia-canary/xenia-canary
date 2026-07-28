@@ -73,42 +73,17 @@ typedef struct {
 } X_DISPATCH_HEADER;
 static_assert_size(X_DISPATCH_HEADER, 0x10);
 
-// https://www.nirsoft.net/kernel_struct/vista/OBJECT_HEADER.html
 struct X_OBJECT_HEADER {
-  xe::be<uint32_t> pointer_count;
-  union {
-    xe::be<uint32_t> handle_count;
-    xe::be<uint32_t> next_to_free;
-  };
-  uint8_t name_info_offset;
-  uint8_t handle_info_offset;
-  uint8_t quota_info_offset;
-  uint8_t flags;
-  union {
-    xe::be<uint32_t> object_create_info;  // X_OBJECT_CREATE_INFORMATION
-    xe::be<uint32_t> quota_block_charged;
-  };
-  xe::be<uint32_t> object_type_ptr;  // -0x8 POBJECT_TYPE
-  xe::be<uint32_t> unk_04;           // -0x4
-
+  xe::be<int32_t> pointer_count;
+  xe::be<int32_t> handle_count;
+  xe::be<uint32_t> object_type_ptr;  // X_OBJECT_TYPE*
+  xe::be<int16_t> flags;
+  xe::be<int8_t> hash_index;
+  xe::be<int8_t> padding;
+  xe::be<int64_t> used;
   // Object lives after this header.
-  // (There's actually a body field here which is the object itself)
 };
-
-// https://www.nirsoft.net/kernel_struct/vista/OBJECT_CREATE_INFORMATION.html
-struct X_OBJECT_CREATE_INFORMATION {
-  xe::be<uint32_t> attributes;                  // 0x0
-  xe::be<uint32_t> root_directory_ptr;          // 0x4
-  xe::be<uint32_t> parse_context_ptr;           // 0x8
-  xe::be<uint32_t> probe_mode;                  // 0xC
-  xe::be<uint32_t> paged_pool_charge;           // 0x10
-  xe::be<uint32_t> non_paged_pool_charge;       // 0x14
-  xe::be<uint32_t> security_descriptor_charge;  // 0x18
-  xe::be<uint32_t> security_descriptor;         // 0x1C
-  xe::be<uint32_t> security_qos_ptr;            // 0x20
-
-  // Security QoS here (SECURITY_QUALITY_OF_SERVICE) too!
-};
+static_assert_size(X_OBJECT_HEADER, 0x18);
 
 class XObject {
  public:
