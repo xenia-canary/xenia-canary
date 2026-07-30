@@ -125,3 +125,9 @@ DEFINE_bool(
     "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
     "Might cause issues in other titles.",
     "HACKS");
+
+DEFINE_bool(
+    cod3_grass_fix, false,
+    "This fixes the stretched grass blade vertices in COD 3. Since this only "
+    "targets a specific vertex shader, it won't cause issues in other titles.",
+    "HACKS");

@@ -11,6 +11,7 @@
 #define XENIA_GPU_SHADER_TRANSLATOR_H_
 
 #include <memory>
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/shader.h"
 
 namespace xe {

@@ -3320,6 +3320,17 @@ void SpirvShaderTranslator::StoreResult(const InstructionResult& result,
         value_to_store, type_float3_, 0);
   }
 
+  // (HACK) Force r1.w=1.0 in the 415607E1 grass VS to prevent stretched geo.
+  if (cvars::cod3_grass_fix && is_vertex_shader() &&
+      current_shader().ucode_data_hash() == UINT64_C(0x4B4E6FDA02FB39C3) &&
+      result.storage_target == InstructionStorageTarget::kRegister &&
+      result.storage_addressing_mode ==
+          InstructionStorageAddressingMode::kAbsolute &&
+      result.storage_index == 1 && (used_write_mask & 0b1000)) {
+    value_to_store = builder_->createCompositeInsert(
+        const_float_1_, value_to_store, target_type, 3);
+  }
+
   builder_->createStore(value_to_store, target_pointer);
 }
 

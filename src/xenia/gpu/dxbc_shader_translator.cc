@@ -1641,6 +1641,16 @@ void DxbcShaderTranslator::StoreResult(const InstructionResult& result,
                            float((constant_1_mask >> 3) & 1)));
   }
 
+  // (HACK) Force r1.w=1.0 in the 415607E1 grass VS to prevent stretched geo.
+  if (cvars::cod3_grass_fix && is_vertex_shader() &&
+      current_shader().ucode_data_hash() == UINT64_C(0x4B4E6FDA02FB39C3) &&
+      result.storage_target == InstructionStorageTarget::kRegister &&
+      result.storage_addressing_mode ==
+          InstructionStorageAddressingMode::kAbsolute &&
+      result.storage_index == 1 && (used_write_mask & 0b1000)) {
+    a_.OpMov(dest.Mask(0b1000), dxbc::Src::LF(1.0f));
+  }
+
   // Make the point size non-negative as negative is used to indicate that the
   // default size must be used, and also clamp it to the bounds the way the R400
   // (Adreno 200, to be more precise) hardware clamps it (functionally like a
