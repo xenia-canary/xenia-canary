@@ -415,7 +415,7 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
   XObject* result = nullptr;
 
   auto header = reinterpret_cast<X_DISPATCH_HEADER*>(native_ptr);
-  X_DISPATCHER_FLAGS type = X_DISPATCHER_FLAGS::DISPATCHER_UNDEFINED;
+  X_DISPATCHER_FLAGS type = as_type;
 
   if (as_type == X_DISPATCHER_FLAGS::DISPATCHER_UNDEFINED) {
     type = header->type;
