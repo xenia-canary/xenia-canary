@@ -1015,6 +1015,40 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           }
         } break;
       }
+      // HZB reducers in 555308B6 and 5553080B lock the sampler to one mip
+      // and address it with unnormalized coordinates. Those coordinates are
+      // in the locked mip's grid, but the denominator below was always the
+      // base level size, so each reduction after the first read garbage.
+      // Limit this to 2D unnormalized fetches with a locked mip. This changes
+      // only the denominator.
+      spv::Id selected_mip_level = spv::NoResult;
+      spv::Id selected_mip_locked = spv::NoResult;
+      bool selected_mip_grid_possible =
+          instr.opcode == ucode::FetchOpcode::kTextureFetch &&
+          instr.dimension == xenos::FetchOpDimension::k2D &&
+          instr.attributes.unnormalized_coordinates;
+      if (selected_mip_grid_possible) {
+        // Word 4 has MipMinLevel in bits 2:5 and MipMaxLevel in bits 6:9.
+        id_vector_temp_.clear();
+        id_vector_temp_.push_back(const_int_0_);
+        id_vector_temp_.push_back(builder_->makeIntConstant(
+            int((fetch_constant_word_0_index + 4) >> 2)));
+        id_vector_temp_.push_back(builder_->makeIntConstant(
+            int((fetch_constant_word_0_index + 4) & 3)));
+        spv::Id fetch_constant_word_4_mips =
+            builder_->createLoad(builder_->createAccessChain(
+                                     spv::StorageClassUniform,
+                                     uniform_fetch_constants_, id_vector_temp_),
+                                 spv::NoPrecision);
+        selected_mip_level = builder_->createTriOp(
+            spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_4_mips,
+            builder_->makeUintConstant(2), builder_->makeUintConstant(4));
+        spv::Id mip_max_level = builder_->createTriOp(
+            spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_4_mips,
+            builder_->makeUintConstant(6), builder_->makeUintConstant(4));
+        selected_mip_locked = builder_->createBinOp(
+            spv::OpIEqual, type_bool_, selected_mip_level, mip_max_level);
+      }
       {
         uint32_t size_remaining_components = size_needed_components;
         uint32_t size_component_index;
@@ -1026,6 +1060,18 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           size_component_ref =
               builder_->createBinOp(spv::OpIAdd, type_uint_, size_component_ref,
                                     builder_->makeUintConstant(1));
+          if (selected_mip_locked != spv::NoResult) {
+            // max(size >> mip, 1) for non-pow2 textures. Scaling stays
+            // unchanged.
+            spv::Id selected_mip_size = builder_->createBinBuiltinCall(
+                type_uint_, ext_inst_glsl_std_450_, GLSLstd450UMax,
+                builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
+                                      size_component_ref, selected_mip_level),
+                builder_->makeUintConstant(1));
+            size_component_ref = builder_->createTriOp(
+                spv::OpSelect, type_uint_, selected_mip_locked,
+                selected_mip_size, size_component_ref);
+          }
           // Convert the size to float for multiplication or division.
           size_component_ref = builder_->createUnaryOp(
               spv::OpConvertUToF, type_float_, size_component_ref);
