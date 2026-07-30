@@ -1034,13 +1034,6 @@ void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
                                   0x001510F1L);
     listener->EnqueueNotification(kXNotificationLiveLinkStateChanged, 0);
   }
-
-  if (!has_notified_xmp_startup_ && listener->mask() & kXNotifyXmp) {
-    has_notified_xmp_startup_ = true;
-    listener->EnqueueNotification(kXNotificationXmpStateChanged, 0);
-    listener->EnqueueNotification(kXNotificationXmpPlaybackControllerChanged,
-                                  1);
-  }
 }
 
 void KernelState::UnregisterNotifyListener(XNotifyListener* listener) {
