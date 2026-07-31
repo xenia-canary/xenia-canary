@@ -668,6 +668,7 @@ VulkanTextureCache::SamplerParameters VulkanTextureCache::GetSamplerParameters(
       xenos::ClampModeUsesBorder(parameters.clamp_y) ||
       xenos::ClampModeUsesBorder(parameters.clamp_z)) {
     parameters.border_color = fetch.border_color;
+    parameters.force_bc_w_to_max = fetch.force_bc_w_to_max;
   } else {
     parameters.border_color = xenos::BorderColor::k_ABGR_Black;
   }
@@ -889,18 +890,23 @@ VkSampler VulkanTextureCache::UseSampler(SamplerParameters parameters,
           color[1] = 0.5f;
           color[2] = 0.5f;
         }
-        color[3] = 0.0f;
+        color[3] = parameters.force_bc_w_to_max ? 1.0f : 0.0f;
         custom_border_color.format = VK_FORMAT_UNDEFINED;
         custom_border_color.pNext = sampler_create_info.pNext;
         sampler_create_info.pNext = &custom_border_color;
         sampler_create_info.borderColor = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
       } else {
         sampler_create_info.borderColor =
-            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+            parameters.force_bc_w_to_max
+                ? VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK
+                : VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
       }
       break;
     default:
-      sampler_create_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+      sampler_create_info.borderColor =
+          parameters.force_bc_w_to_max
+              ? VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK
+              : VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
       break;
   }
   VkSampler vulkan_sampler;

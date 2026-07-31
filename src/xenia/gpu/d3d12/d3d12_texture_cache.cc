@@ -765,6 +765,7 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
       xenos::ClampModeUsesBorder(parameters.clamp_y) ||
       xenos::ClampModeUsesBorder(parameters.clamp_z)) {
     parameters.border_color = fetch.border_color;
+    parameters.force_bc_w_to_max = fetch.force_bc_w_to_max;
   } else {
     parameters.border_color = xenos::BorderColor::k_ABGR_Black;
   }
@@ -890,6 +891,9 @@ void D3D12TextureCache::WriteSampler(SamplerParameters parameters,
       desc.BorderColor[2] = 0.0f;
       desc.BorderColor[3] = 0.0f;
       break;
+  }
+  if (parameters.force_bc_w_to_max) {
+    desc.BorderColor[3] = 1.0f;
   }
   desc.MinLOD = float(parameters.mip_min_level);
   if (parameters.mip_base_map) {
