@@ -862,10 +862,42 @@ VkSampler VulkanTextureCache::UseSampler(SamplerParameters parameters,
   } else {
     sampler_create_info.maxLod = VK_LOD_CLAMP_NONE;
   }
-  // TODO(Triang3l): Custom border colors for CrYCb / YCrCb.
+  // The two YCbCr border colors are not expressible as fixed Vulkan border
+  // color enums. Use a custom border color when supported, otherwise fall back
+  // to transparent black (matching the alpha at least).
+  VkSamplerCustomBorderColorCreateInfoEXT custom_border_color = {
+      VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT};
+  const bool custom_border_color_supported =
+      vulkan_device->properties().customBorderColors &&
+      vulkan_device->properties().customBorderColorWithoutFormat;
   switch (parameters.border_color) {
     case xenos::BorderColor::k_ABGR_White:
       sampler_create_info.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+      break;
+    case xenos::BorderColor::k_ACBYCR_Black:
+    case xenos::BorderColor::k_ACBCRY_Black:
+      if (custom_border_color_supported) {
+        float* const color = custom_border_color.customBorderColor.float32;
+        if (parameters.border_color == xenos::BorderColor::k_ACBYCR_Black) {
+          // (Cr, Y, Cb) unsigned.
+          color[0] = 0.5f;
+          color[1] = 0.0f;
+          color[2] = 0.5f;
+        } else {
+          // (Y, Cr, Cb) unsigned.
+          color[0] = 0.0f;
+          color[1] = 0.5f;
+          color[2] = 0.5f;
+        }
+        color[3] = 0.0f;
+        custom_border_color.format = VK_FORMAT_UNDEFINED;
+        custom_border_color.pNext = sampler_create_info.pNext;
+        sampler_create_info.pNext = &custom_border_color;
+        sampler_create_info.borderColor = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
+      } else {
+        sampler_create_info.borderColor =
+            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+      }
       break;
     default:
       sampler_create_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
