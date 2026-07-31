@@ -217,7 +217,11 @@ TextureGuestLayout GetGuestTextureLayout(
     // GetPackedMipOffset may result in packing along Y for `width > height`
     // textures.
     assert_false(has_packed_levels);
-    height_texels = 1;
+    // For wide 1D textures mapped to 2D, height_texels is the number of rows.
+    // Only force height=1 for normal 1D textures.
+    if (height_texels <= 1) {
+      height_texels = 1;
+    }
   }
   uint32_t depth =
       dimension == xenos::DataDimension::k3D ? depth_or_array_size : 1;
