@@ -116,7 +116,7 @@ float Float7e3To32(uint32_t f10) {
     mantissa = (mantissa << mantissa_lzcnt) & 0x7F;
   }
   return xe::memory::Reinterpret<float>(
-      uint32_t(((exponent + 124) << 23) | (mantissa << 3)));
+      uint32_t(((exponent + 124) << 23) | (mantissa << 16)));
 }
 
 // Based on CFloat24 from d3dref9.dll and the 6e4 code from:
