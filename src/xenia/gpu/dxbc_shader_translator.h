@@ -584,7 +584,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
       uint32_t f32_temp, uint32_t f32_temp_component, uint32_t temp_temp,
       uint32_t temp_temp_component, bool round_to_nearest_even,
       bool remap_from_0_to_0_5);
-  // Converts the 20e4 number in bits [f24_shift, f24_shift + 10) to a 32-bit
+  // Converts the 20e4 number in bits [f24_shift, f24_shift + 24) to a 32-bit
   // float. Two temporaries must be different, but one can be the same as the
   // source. The destination may be anything writable. If remap_to_0_to_0_5 is
   // true, 0...1 in float24 will be remaped to 0...0.5 in float32.
