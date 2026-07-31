@@ -229,6 +229,17 @@ class TextureCache {
       return depth_or_array_size_minus_1 + 1;
     }
 
+    // Returns true if this is a wide 1D texture (> 8192 wide) mapped to 2D.
+    bool IsWide1D() const {
+      return dimension == xenos::DataDimension::k1D && height_minus_1 > 0;
+    }
+    uint32_t Get1DWidth() const {
+      if (IsWide1D()) {
+        return GetWidth() * GetHeight();
+      }
+      return GetWidth();
+    }
+
     texture_util::TextureGuestLayout GetGuestLayout() const {
       return texture_util::GetGuestTextureLayout(
           dimension, pitch, GetWidth(), GetHeight(), GetDepthOrArraySize(),
