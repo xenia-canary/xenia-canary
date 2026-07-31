@@ -2651,7 +2651,7 @@ void SpirvShaderTranslator::SampleTexture(
                                                  sign_result, lerp_first),
               lerp_factor);
           sign_result = builder_->createNoContractionBinOp(
-              spv::OpFAdd, type_float4_, sign_result, lerp_difference);
+              spv::OpFAdd, type_float4_, lerp_first, lerp_difference);
         }
       }
     }
