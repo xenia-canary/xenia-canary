@@ -34,7 +34,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // TODO(Triang3l): Change to 0xYYYYMMDD once it's out of the rapid
     // prototyping stage (easier to do small granular updates with an
     // incremental counter).
-    static constexpr uint32_t kVersion = 13;
+    static constexpr uint32_t kVersion = 14;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -51,6 +51,13 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // Similar to kFloat24Truncating, but rounding to the nearest even, so
       // plain ExecutionModeDepthReplacing is used rather than DepthLess.
       kFloat24Rounding,
+      // Host RT shader polygon offset for suspected coplanar redraws with tiny
+      // biases. Writes the biased depth from the pixel shader and zeroes fixed
+      // function depth bias to avoid host slope/quantization quirks. This path
+      // is controlled by depth_bias_shader_offset.
+      kPolygonOffset,
+      kFloat24TruncatingPolygonOffset,
+      kFloat24RoundingPolygonOffset,
       // TODO(Triang3l): Unorm24 (rounding) output mode.
     };
 
@@ -590,8 +597,27 @@ class SpirvShaderTranslator : public ShaderTranslator {
         GetSpirvShaderModification().pixel.depth_stencil_mode;
     return depth_stencil_mode ==
                Modification::DepthStencilMode::kFloat24Truncating ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
            depth_stencil_mode ==
-               Modification::DepthStencilMode::kFloat24Rounding;
+               Modification::DepthStencilMode::kFloat24Rounding ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
+  }
+  // Whether the current non-FSI pixel shader applies polygon offset via shader
+  // depth output instead of fixed function bias.
+  bool DSV_IsApplyingPolygonOffset() const {
+    if (edram_fragment_shader_interlock_) {
+      return false;
+    }
+    Modification::DepthStencilMode depth_stencil_mode =
+        GetSpirvShaderModification().pixel.depth_stencil_mode;
+    return depth_stencil_mode ==
+               Modification::DepthStencilMode::kPolygonOffset ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
   }
   // Whether the shader runs at sample frequency - when converting depth to
   // float24 from the rasterizer's own depth (not guest oDepth), each sample
@@ -624,9 +650,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   void StartFragmentShaderInMain();
   void CompleteFragmentShaderInMain();
 
-  // Writes gl_FragDepth at the end of an FBO pixel shader, remapping the
-  // guest 0...1 oDepth value to host 0...0.5 when the bound depth buffer is
-  // float24. No-op for FSI and for shaders that don't write oDepth.
+  // Writes gl_FragDepth for FBO shaders that need explicit depth: guest oDepth,
+  // float24 conversion, or the host RT decal bias path.
   void CompleteFragmentShader_DSV_DepthTo24Bit();
 
   // Updates the current flow control condition (to be called in the beginning
@@ -1052,6 +1077,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // FBO only: actual gl_FragDepth Output.
   // Written at the end of the pixel shader from output_or_var_fragment_depth_.
   spv::Id output_fragment_depth_;
+  // Raster depth and derivatives captured early for the host RT decal path.
+  spv::Id main_fbo_depth_unbiased_;
+  std::array<spv::Id, 2> main_fbo_depth_derivatives_;
 
   // Fragment shader sample mask output (gl_SampleMask).
   // Only used for alpha-to-coverage in non-FSI mode.

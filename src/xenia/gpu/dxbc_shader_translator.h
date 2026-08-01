@@ -114,7 +114,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // If anything in this is structure is changed in a way not compatible with
     // the previous layout, invalidate the pipeline storages by increasing this
     // version number (0xYYYYMMDD)!
-    static constexpr uint32_t kVersion = 0x20260801;
+    static constexpr uint32_t kVersion = 0x20260802;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -140,6 +140,13 @@ class DxbcShaderTranslator : public ShaderTranslator {
       // however, always using SV_Depth rather than SV_DepthLessEqual because
       // rounding up results in a bigger value. Same viewport usage rules apply.
       kFloat24Rounding,
+      // Host RT shader polygon offset for suspected coplanar redraws with tiny
+      // biases. Writes the biased depth from the pixel shader and zeroes fixed
+      // function depth bias to avoid host slope/quantization quirks. This path
+      // is controlled by depth_bias_shader_offset.
+      kPolygonOffset,
+      kFloat24TruncatingPolygonOffset,
+      kFloat24RoundingPolygonOffset,
     };
 
     uint64_t value;
@@ -178,7 +185,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
       uint32_t param_gen_point : 1;
       uint32_t dynamic_addressable_register_count : 8;
       // Non-ROV - depth / stencil output mode.
-      DepthStencilMode depth_stencil_mode : 2;
+      DepthStencilMode depth_stencil_mode : 3;
       // For host render targets with MIN/MAX blend op - the source blend factor
       // to pre-multiply the shader output by (since D3D12 MIN/MAX ignores blend
       // factors, but Xbox 360 applies them). kOne means no pre-multiply.
@@ -743,6 +750,12 @@ class DxbcShaderTranslator : public ShaderTranslator {
       // With ROV, need to store it to write later.
       return true;
     }
+    if (DSV_IsApplyingPolygonOffset()) {
+      // Shader polygon offset for needs raster depth derivatives, so we have to
+      // stash the system-temp depth/stencil before guest control flow starts
+      // branching or killing fragments.
+      return true;
+    }
     return false;
   }
   // Whether the current non-ROV pixel shader should convert the depth to 20e4.
@@ -754,8 +767,27 @@ class DxbcShaderTranslator : public ShaderTranslator {
         GetDxbcShaderModification().pixel.depth_stencil_mode;
     return depth_stencil_mode ==
                Modification::DepthStencilMode::kFloat24Truncating ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
            depth_stencil_mode ==
-               Modification::DepthStencilMode::kFloat24Rounding;
+               Modification::DepthStencilMode::kFloat24Rounding ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
+  }
+  // Whether the current non-ROV pixel shader applies polygon offset via shader
+  // depth output instead of fixed function bias.
+  bool DSV_IsApplyingPolygonOffset() const {
+    if (edram_rov_used_) {
+      return false;
+    }
+    Modification::DepthStencilMode depth_stencil_mode =
+        GetDxbcShaderModification().pixel.depth_stencil_mode;
+    return depth_stencil_mode ==
+               Modification::DepthStencilMode::kPolygonOffset ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
   }
   // Whether it's possible and worth skipping running the translated shader for
   // 2x2 quads.

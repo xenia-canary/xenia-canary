@@ -2443,6 +2443,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   VulkanShader::VulkanTranslation* pixel_shader_translation;
   uint32_t normalized_color_mask;
   reg::RB_DEPTHCONTROL normalized_depth_control;
+  draw_util::HostDepthPolygonOffset host_depth_polygon_offset;
+  bool apply_host_depth_polygon_offset = false;
 
   // Two iterations because a submission (even the current one - in which case
   // it needs to be ended, and a new one must be started) may need to be awaited
@@ -2484,6 +2486,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         pixel_shader ? draw_util::GetNormalizedColorMask(
                            regs, pixel_shader->writes_color_targets())
                      : 0;
+    apply_host_depth_polygon_offset =
+        pixel_shader && !pixel_shader->writes_depth() &&
+        render_target_cache_->GetPath() ==
+            RenderTargetCache::Path::kHostRenderTargets &&
+        draw_util::GetHostDepthPolygonOffsetIfNeeded(
+            regs, primitive_polygonal, normalized_depth_control,
+            normalized_color_mask, host_depth_polygon_offset);
 
     // Shader modifications.
     vertex_shader_modification =
@@ -2493,7 +2502,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     pixel_shader_modification =
         pixel_shader ? pipeline_cache_->GetCurrentPixelShaderModification(
                            *pixel_shader, interpolator_mask, ps_param_gen_pos,
-                           normalized_depth_control, normalized_color_mask)
+                           normalized_depth_control, normalized_color_mask,
+                           apply_host_depth_polygon_offset)
                      : SpirvShaderTranslator::Modification(0);
 
     // Translate the shaders now to obtain the sampler bindings.
@@ -2724,7 +2734,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // Update dynamic graphics pipeline state.
   UpdateDynamicState(viewport_info, primitive_polygonal,
                      normalized_depth_control, draw_resolution_scale_x,
-                     draw_resolution_scale_y);
+                     draw_resolution_scale_y, apply_host_depth_polygon_offset);
 
   auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
 
@@ -2740,10 +2750,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
           Shader::HostVertexShaderType::kVertex;
 
   // Update system constants before uploading them.
-  UpdateSystemConstantValues(primitive_polygonal, primitive_processing_result,
-                             shader_32bit_index_dma, viewport_info,
-                             used_texture_mask, normalized_depth_control,
-                             normalized_color_mask);
+  UpdateSystemConstantValues(
+      primitive_polygonal, primitive_processing_result, shader_32bit_index_dma,
+      viewport_info, used_texture_mask, normalized_depth_control,
+      normalized_color_mask,
+      apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr);
 
   // Update uniform buffers and descriptor sets after binding the pipeline with
   // the new layout.
@@ -4543,7 +4554,8 @@ void VulkanCommandProcessor::DestroyScratchBuffer() {
 void VulkanCommandProcessor::UpdateDynamicState(
     const draw_util::ViewportInfo& viewport_info, bool primitive_polygonal,
     reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y) {
+    uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y,
+    bool depth_bias_in_pixel_shader) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -4595,21 +4607,27 @@ void VulkanCommandProcessor::UpdateDynamicState(
       RenderTargetCache::Path::kHostRenderTargets) {
     // Depth bias.
     float depth_bias_constant_factor, depth_bias_slope_factor;
-    draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
-                                             depth_bias_slope_factor,
-                                             depth_bias_constant_factor);
-    depth_bias_constant_factor *=
-        regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
-                xenos::DepthRenderTargetFormat::kD24S8
-            ? draw_util::kD3D10PolygonOffsetFactorUnorm24
-            : draw_util::kD3D10PolygonOffsetFactorFloat24;
-    // With non-square resolution scaling, make sure the worst-case impact is
-    // reverted (slope only along the scaled axis), thus max. Per-draw scale
-    // so native draws get the guest bias as is. More bias is better than less
-    // bias; less bias means Z fighting with the background is more likely.
-    depth_bias_slope_factor *=
-        xenos::kPolygonOffsetScaleSubpixelUnit *
-        float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
+    if (depth_bias_in_pixel_shader) {
+      depth_bias_constant_factor = 0.0f;
+      depth_bias_slope_factor = 0.0f;
+    } else {
+      draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
+                                               depth_bias_slope_factor,
+                                               depth_bias_constant_factor);
+      depth_bias_constant_factor *=
+          regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+                  xenos::DepthRenderTargetFormat::kD24S8
+              ? draw_util::kD3D10PolygonOffsetFactorUnorm24
+              : draw_util::kD3D10PolygonOffsetFactorFloat24;
+      // With non-square resolution scaling, make sure the worst-case impact is
+      // reverted (slope only along the scaled axis), thus max. More bias is
+      // better than less bias, because less bias means Z fighting with the
+      // background is more likely.
+      depth_bias_slope_factor *=
+          xenos::kPolygonOffsetScaleSubpixelUnit *
+          float(std::max(render_target_cache_->draw_resolution_scale_x(),
+                         render_target_cache_->draw_resolution_scale_y()));
+    }
     // std::memcmp instead of != so in case of NaN, every draw won't be
     // invalidating it.
     dynamic_depth_bias_update_needed_ |=
@@ -4770,7 +4788,8 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
     bool shader_32bit_index_dma, const draw_util::ViewportInfo& viewport_info,
     uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t normalized_color_mask) {
+    uint32_t normalized_color_mask,
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -5186,6 +5205,30 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
                     4 * sizeof(float));
       }
     }
+  }
+
+  if (!edram_fragment_shader_interlock && host_depth_polygon_offset) {
+    draw_util::HostDepthPolygonOffset polygon_offset =
+        *host_depth_polygon_offset;
+    float scale_factor =
+        float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
+    polygon_offset.front_scale *= scale_factor;
+    polygon_offset.back_scale *= scale_factor;
+    dirty |= system_constants_.edram_poly_offset_front_scale !=
+             polygon_offset.front_scale;
+    system_constants_.edram_poly_offset_front_scale =
+        polygon_offset.front_scale;
+    dirty |= system_constants_.edram_poly_offset_front_offset !=
+             polygon_offset.front_offset;
+    system_constants_.edram_poly_offset_front_offset =
+        polygon_offset.front_offset;
+    dirty |= system_constants_.edram_poly_offset_back_scale !=
+             polygon_offset.back_scale;
+    system_constants_.edram_poly_offset_back_scale = polygon_offset.back_scale;
+    dirty |= system_constants_.edram_poly_offset_back_offset !=
+             polygon_offset.back_offset;
+    system_constants_.edram_poly_offset_back_offset =
+        polygon_offset.back_offset;
   }
 
   if (edram_fragment_shader_interlock) {

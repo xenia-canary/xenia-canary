@@ -2675,6 +2675,18 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
   reg::RB_DEPTHCONTROL normalized_depth_control =
       draw_util::GetNormalizedDepthControl(regs);
+  uint32_t normalized_color_mask =
+      pixel_shader ? draw_util::GetNormalizedColorMask(
+                         regs, pixel_shader->writes_color_targets())
+                   : 0;
+  draw_util::HostDepthPolygonOffset host_depth_polygon_offset;
+  bool apply_host_depth_polygon_offset =
+      pixel_shader && !pixel_shader->writes_depth() &&
+      render_target_cache_->GetPath() ==
+          RenderTargetCache::Path::kHostRenderTargets &&
+      draw_util::GetHostDepthPolygonOffsetIfNeeded(
+          regs, primitive_polygonal, normalized_depth_control,
+          normalized_color_mask, host_depth_polygon_offset);
 
   // Shader modifications.
   uint32_t ps_param_gen_pos = UINT32_MAX;
@@ -2689,16 +2701,13 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
           *vertex_shader, primitive_processing_result.host_vertex_shader_type,
           interpolator_mask);
   DxbcShaderTranslator::Modification pixel_shader_modification =
-      pixel_shader ? pipeline_cache_->GetCurrentPixelShaderModification(
-                         *pixel_shader, interpolator_mask, ps_param_gen_pos,
-                         normalized_depth_control)
-                   : DxbcShaderTranslator::Modification(0);
+      pixel_shader
+          ? pipeline_cache_->GetCurrentPixelShaderModification(
+                *pixel_shader, interpolator_mask, ps_param_gen_pos,
+                normalized_depth_control, apply_host_depth_polygon_offset)
+          : DxbcShaderTranslator::Modification(0);
 
   // Set up the render targets - this may perform dispatches and draws.
-  uint32_t normalized_color_mask =
-      pixel_shader ? draw_util::GetNormalizedColorMask(
-                         regs, pixel_shader->writes_color_targets())
-                   : 0;
   if (!render_target_cache_->Update(is_rasterization_done,
                                     normalized_depth_control,
                                     normalized_color_mask, *vertex_shader)) {
@@ -2734,7 +2743,8 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   if (!pipeline_cache_->ConfigurePipeline(
           vertex_shader_translation, pixel_shader_translation,
           primitive_processing_result, normalized_depth_control,
-          normalized_color_mask, bound_depth_and_color_render_target_bits,
+          normalized_color_mask, apply_host_depth_polygon_offset,
+          bound_depth_and_color_render_target_bits,
           bound_depth_and_color_render_target_formats, &pipeline_handle,
           &root_signature)) {
     return false;
@@ -2828,7 +2838,8 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       memexport_used, primitive_polygonal,
       primitive_processing_result.line_loop_closing_index,
       primitive_processing_result.host_shader_index_endian, viewport_info,
-      used_texture_mask, normalized_depth_control, normalized_color_mask);
+      used_texture_mask, normalized_depth_control, normalized_color_mask,
+      apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr);
 
   // Update constant buffers, descriptors and root parameters.
   if (!UpdateBindings(vertex_shader, pixel_shader, root_signature,
@@ -3959,7 +3970,8 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     bool shared_memory_is_uav, uint32_t line_loop_closing_index,
     xenos::Endian index_endian, const draw_util::ViewportInfo& viewport_info,
     uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t normalized_color_mask) {
+    uint32_t normalized_color_mask,
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
   const RegisterFile& regs = *register_file_;
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
   auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
@@ -4416,6 +4428,32 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
   }
 
 #endif
+  if constexpr (!edram_rov_used) {
+    if (host_depth_polygon_offset) {
+      draw_util::HostDepthPolygonOffset polygon_offset =
+          *host_depth_polygon_offset;
+      float scale_factor =
+          float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
+      polygon_offset.front_scale *= scale_factor;
+      polygon_offset.back_scale *= scale_factor;
+      update_dirty_floatmask(system_constants_.edram_poly_offset_front_scale,
+                             polygon_offset.front_scale);
+      system_constants_.edram_poly_offset_front_scale =
+          polygon_offset.front_scale;
+      update_dirty_floatmask(system_constants_.edram_poly_offset_front_offset,
+                             polygon_offset.front_offset);
+      system_constants_.edram_poly_offset_front_offset =
+          polygon_offset.front_offset;
+      update_dirty_floatmask(system_constants_.edram_poly_offset_back_scale,
+                             polygon_offset.back_scale);
+      system_constants_.edram_poly_offset_back_scale =
+          polygon_offset.back_scale;
+      update_dirty_floatmask(system_constants_.edram_poly_offset_back_offset,
+                             polygon_offset.back_offset);
+      system_constants_.edram_poly_offset_back_offset =
+          polygon_offset.back_offset;
+    }
+  }
   if constexpr (edram_rov_used) {
     uint32_t depth_base_dwords_scaled =
         rb_depth_info.depth_base * edram_tile_dwords_scaled;
@@ -4565,7 +4603,8 @@ void D3D12CommandProcessor::UpdateSystemConstantValues(
     uint32_t line_loop_closing_index, xenos::Endian index_endian,
     const draw_util::ViewportInfo& viewport_info, uint32_t used_texture_mask,
     reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t normalized_color_mask) {
+    uint32_t normalized_color_mask,
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
   bool edram_rov_used = render_target_cache_->GetPath() ==
                         RenderTargetCache::Path::kPixelShaderInterlock;
 
@@ -4574,24 +4613,24 @@ void D3D12CommandProcessor::UpdateSystemConstantValues(
       UpdateSystemConstantValues_Impl<true, false>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask);
+          normalized_color_mask, host_depth_polygon_offset);
     } else {
       UpdateSystemConstantValues_Impl<false, false>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask);
+          normalized_color_mask, host_depth_polygon_offset);
     }
   } else {
     if (primitive_polygonal) {
       UpdateSystemConstantValues_Impl<true, true>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask);
+          normalized_color_mask, nullptr);
     } else {
       UpdateSystemConstantValues_Impl<false, true>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask);
+          normalized_color_mask, nullptr);
     }
   }
 }

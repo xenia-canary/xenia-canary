@@ -1848,6 +1848,38 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToRTVs() {
 
 void DxbcShaderTranslator::CompletePixelShader_DSV_DepthTo24Bit() {
   bool shader_writes_depth = current_shader().writes_depth();
+  bool apply_polygon_offset = DSV_IsApplyingPolygonOffset();
+  auto write_polygon_offset_depth = [&](dxbc::Dest depth_dest, uint32_t temp,
+                                        dxbc::Src unbiased_depth) {
+    dxbc::Dest temp_x_dest(dxbc::Dest::R(temp, 0b0001));
+    dxbc::Src temp_x_src(dxbc::Src::R(temp, dxbc::Src::kXXXX));
+    in_front_face_used_ = true;
+    assert_true(system_temp_depth_stencil_ != UINT32_MAX);
+    a_.OpMax(temp_x_dest,
+             dxbc::Src::R(system_temp_depth_stencil_, dxbc::Src::kXXXX).Abs(),
+             dxbc::Src::R(system_temp_depth_stencil_, dxbc::Src::kYYYY).Abs());
+    a_.OpIf(true, dxbc::Src::V1D(in_reg_ps_front_face_sample_index_,
+                                 dxbc::Src::kXXXX));
+    a_.OpMAd(
+        temp_x_dest, temp_x_src,
+        LoadSystemConstant(SystemConstants::Index::kEdramPolyOffsetFront,
+                           offsetof(SystemConstants, edram_poly_offset_front),
+                           dxbc::Src::kXXXX),
+        LoadSystemConstant(SystemConstants::Index::kEdramPolyOffsetFront,
+                           offsetof(SystemConstants, edram_poly_offset_front),
+                           dxbc::Src::kYYYY));
+    a_.OpElse();
+    a_.OpMAd(
+        temp_x_dest, temp_x_src,
+        LoadSystemConstant(SystemConstants::Index::kEdramPolyOffsetBack,
+                           offsetof(SystemConstants, edram_poly_offset_back),
+                           dxbc::Src::kXXXX),
+        LoadSystemConstant(SystemConstants::Index::kEdramPolyOffsetBack,
+                           offsetof(SystemConstants, edram_poly_offset_back),
+                           dxbc::Src::kYYYY));
+    a_.OpEndIf();
+    a_.OpAdd(depth_dest, temp_x_src, unbiased_depth);
+  };
 
   if (!DSV_IsWritingFloat24Depth()) {
     if (shader_writes_depth) {
@@ -1865,6 +1897,16 @@ void DxbcShaderTranslator::CompletePixelShader_DSV_DepthTo24Bit() {
       // Write the depth from the temporary to the system depth output.
       a_.OpMov(dxbc::Dest::ODepth(),
                dxbc::Src::R(system_temp_depth_stencil_, dxbc::Src::kXXXX));
+    } else if (apply_polygon_offset) {
+      // Some decal draws use bias values too small for host RT depth bias to
+      // stay stable. Writing the biased depth here keeps those redraws stable
+      // against the receiver without forcing larger bias on unrelated draws.
+      uint32_t temp = PushSystemTemp();
+      dxbc::Src in_position_z(
+          dxbc::Src::V1D(in_reg_ps_position_, dxbc::Src::kZZZZ));
+      in_position_used_ |= 0b0100;
+      write_polygon_offset_depth(dxbc::Dest::ODepth(), temp, in_position_z);
+      PopSystemTemp();
     }
     return;
   }
@@ -1884,9 +1926,18 @@ void DxbcShaderTranslator::CompletePixelShader_DSV_DepthTo24Bit() {
     // assumption of it being clamped while working with the bit representation.
     temp = PushSystemTemp();
     in_position_used_ |= 0b0100;
-    a_.OpMul(dxbc::Dest::R(temp, 0b0001),
-             dxbc::Src::V1D(in_reg_ps_position_, dxbc::Src::kZZZZ),
-             dxbc::Src::LF(2.0f), true);
+    dxbc::Dest temp_x_dest(dxbc::Dest::R(temp, 0b0001));
+    dxbc::Src temp_x_src(dxbc::Src::R(temp, dxbc::Src::kXXXX));
+    dxbc::Src in_position_z(
+        dxbc::Src::V1D(in_reg_ps_position_, dxbc::Src::kZZZZ));
+    if (apply_polygon_offset) {
+      // Bias host depth first, then reuse the normal float24 conversion. D24FS
+      // scaling was handled when the polygon offset constants were uploaded.
+      write_polygon_offset_depth(temp_x_dest, temp, in_position_z);
+      a_.OpMul(temp_x_dest, temp_x_src, dxbc::Src::LF(2.0f), true);
+    } else {
+      a_.OpMul(temp_x_dest, in_position_z, dxbc::Src::LF(2.0f), true);
+    }
   }
 
   dxbc::Dest temp_x_dest(dxbc::Dest::R(temp, 0b0001));
@@ -1894,8 +1945,14 @@ void DxbcShaderTranslator::CompletePixelShader_DSV_DepthTo24Bit() {
   dxbc::Dest temp_y_dest(dxbc::Dest::R(temp, 0b0010));
   dxbc::Src temp_y_src(dxbc::Src::R(temp, dxbc::Src::kYYYY));
 
-  if (GetDxbcShaderModification().pixel.depth_stencil_mode ==
-      Modification::DepthStencilMode::kFloat24Truncating) {
+  Modification::DepthStencilMode depth_stencil_mode =
+      GetDxbcShaderModification().pixel.depth_stencil_mode;
+  bool depth_float24_truncating =
+      depth_stencil_mode ==
+          Modification::DepthStencilMode::kFloat24Truncating ||
+      depth_stencil_mode ==
+          Modification::DepthStencilMode::kFloat24TruncatingPolygonOffset;
+  if (depth_float24_truncating) {
     // Simplified conversion, always less than or equal to the original value -
     // just drop the lower bits.
     // The float32 exponent bias is 127.
@@ -1905,8 +1962,9 @@ void DxbcShaderTranslator::CompletePixelShader_DSV_DepthTo24Bit() {
     // The smallest denormalized 20e4 number is -34 - should drop 23 mantissa
     // bits at -34.
     // Anything smaller than 2^-34 becomes 0.
-    dxbc::Dest truncate_dest(shader_writes_depth ? dxbc::Dest::ODepth()
-                                                 : dxbc::Dest::ODepthLE());
+    dxbc::Dest truncate_dest((shader_writes_depth || apply_polygon_offset)
+                                 ? dxbc::Dest::ODepth()
+                                 : dxbc::Dest::ODepthLE());
     // Check if the number is representable as a float24 after truncation - the
     // exponent is at least -34.
     a_.OpUGE(temp_y_dest, temp_x_src, dxbc::Src::LU(0x2E800000));

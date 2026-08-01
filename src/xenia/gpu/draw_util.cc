@@ -48,6 +48,15 @@ DEFINE_bool(
     "MSAA resolves. Disable only if it causes a title-specific regression.",
     "GPU");
 
+DEFINE_bool(
+    depth_bias_shader_offset, false,
+    "Route decal host render target draws with polygon offset through shader "
+    "depth. This avoids Z-fighting in games that rely on tiny depth bias "
+    "values that host fixed function depth bias cannot reproduce reliably."
+    "This likely causes some minor performance penalty, but the cost should "
+    "be minimal if only a small portion of the scene is affected.",
+    "GPU");
+
 namespace xe {
 namespace gpu {
 namespace draw_util {
@@ -96,6 +105,57 @@ reg::RB_DEPTHCONTROL GetNormalizedDepthControl(const RegisterFile& regs) {
   // Stencil is more complex and is expected to be usually enabled explicitly
   // when needed.
   return depthcontrol;
+}
+
+bool GetHostDepthPolygonOffsetIfNeeded(
+    const RegisterFile& regs, bool primitive_polygonal,
+    reg::RB_DEPTHCONTROL normalized_depth_control,
+    uint32_t normalized_color_mask,
+    HostDepthPolygonOffset& polygon_offset_out) {
+  polygon_offset_out = {};
+  if (!cvars::depth_bias_shader_offset) {
+    return false;
+  }
+
+  const xenos::CompareFunction zfunc = normalized_depth_control.zfunc;
+  // Keep this on the decal-style redraws that need it. Larger use of shader
+  // depth changes early-Z and coverage behavior in places like hair, foliage,
+  // and stencil masked effects.
+  if (!primitive_polygonal || !normalized_depth_control.z_enable ||
+      !(zfunc == xenos::CompareFunction::kLessEqual ||
+        zfunc == xenos::CompareFunction::kGreaterEqual) ||
+      !normalized_color_mask || normalized_depth_control.stencil_enable ||
+      regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable) {
+    return false;
+  }
+
+  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
+  if (pa_su_sc_mode_cntl.poly_offset_front_enable) {
+    polygon_offset_out.front_scale =
+        regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_SCALE);
+    polygon_offset_out.front_offset =
+        regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_OFFSET);
+  }
+  if (pa_su_sc_mode_cntl.poly_offset_back_enable) {
+    polygon_offset_out.back_scale =
+        regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_BACK_SCALE);
+    polygon_offset_out.back_offset =
+        regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_BACK_OFFSET);
+  }
+
+  if (!polygon_offset_out.front_scale && !polygon_offset_out.front_offset &&
+      !polygon_offset_out.back_scale && !polygon_offset_out.back_offset) {
+    return false;
+  }
+
+  polygon_offset_out.front_scale *= xenos::kPolygonOffsetScaleSubpixelUnit;
+  polygon_offset_out.back_scale *= xenos::kPolygonOffsetScaleSubpixelUnit;
+  if (regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+      xenos::DepthRenderTargetFormat::kD24FS8) {
+    polygon_offset_out.front_offset *= 0.5f;
+    polygon_offset_out.back_offset *= 0.5f;
+  }
+  return true;
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_standard_multisample_quality_levels
