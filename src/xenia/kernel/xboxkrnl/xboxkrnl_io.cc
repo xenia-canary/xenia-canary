@@ -700,7 +700,109 @@ DECLARE_XBOXKRNL_EXPORT1(NtDeviceIoControlFile, kFileSystem, kStub);
 // ObCreateObject
 
 // todo: need device guest object struct + host object for device
-dword_result_t IoCreateDevice_entry(dword_t driver_object,
+struct X_DRIVER_OBJECT {
+  xe::be<uint32_t> driver_start_io_ptr;
+  xe::be<uint32_t> driver_delete_device_ptr;
+  xe::be<uint32_t> driver_dismount_volume_ptr;
+  xe::be<uint32_t> major_function_ptr[11];
+};
+static_assert_size(X_DRIVER_OBJECT, 0x38);
+
+struct X_KDEVICE_QUEUE {
+  xe::be<uint16_t> type;                  // 0x0 sz:0x2
+  xe::be<uint8_t> padding;                // 0x2 sz:0x1
+  xe::be<uint8_t> busy;                   // 0x3 sz:0x1
+  xe::be<uint32_t> lock;                  // 0x4 sz:0x4
+  xe::be<X_LIST_ENTRY> device_list_head;  // 0x8 sz:0x8
+};
+static_assert_size(X_KDEVICE_QUEUE, 0x10);
+
+struct X_KDEVICE_QUEUE_ENTRY {
+  X_LIST_ENTRY device_list_entry;  // 0x0 sz:0x2
+  xe::be<uint32_t> sort_key;       // 0x8 sz:0x4
+  xe::be<uint8_t> inserted;        // 0xC sz:0x1
+};
+static_assert_size(X_KDEVICE_QUEUE_ENTRY, 0x10);
+
+struct X_IRP_ASYNC_PARAM {
+  xe::be<uint32_t> user_apc_routine_ptr;  // 0x0 sz:0x4
+  xe::be<uint32_t> user_apc_context_ptr;  // 0x4 sz:0x4
+};
+static_assert_size(X_IRP_ASYNC_PARAM, 0x8);
+
+union X_UNION_IRP_OVERLAY {
+  X_IRP_ASYNC_PARAM asynchronous_parameters;
+  xe::be<int64_t> allocation_size;
+};
+
+struct X_IRP_OVERLAY {
+  union {
+    X_KDEVICE_QUEUE_ENTRY device_queue_entry;  // 0x0 sz:0x10
+    X_LIST_ENTRY device_list_entry;            // 0x0 sz:0x8
+    xe::be<uint32_t> driver_context_ptr[4];    // 0x0 sz:0x10
+  };
+  xe::be<uint32_t> locked_buffer_length;  // 0x10 sz:0x4
+  xe::be<uint32_t> thread_ptr;            // 0x14 sz:0x4
+  X_LIST_ENTRY list_entry;                // 0x18 sz:0x8
+  union {
+    xe::be<uint32_t>
+        current_stack_location_ptr;  // 0x20 sz:0x4, X_IO_STACK_LOCATION -> 0x24
+    xe::be<uint32_t> packet_type;    // 0x20 sz:0x4
+  };
+  xe::be<uint32_t>
+      original_file_object_ptr;  // 0x24 sz:0x4, X_FILE_OBJECT -> 0x68
+};
+static_assert_size(X_IRP_OVERLAY, 0x28);
+
+union X_IRP_TAIL {
+  X_IRP_OVERLAY overlay;                // 0x0 sz:0x28
+  xe::be<XAPC> apc;                     // 0x0 sz:0x28
+  xe::be<uint32_t> completion_key_ptr;  // 0x0 sz:0x4
+};
+
+struct X_IRP {
+  xe::be<uint16_t> type;                // 0x0 sz:0x2
+  xe::be<uint16_t> size;                // 0x2 sz:0x2
+  xe::be<uint32_t> flags;               // 0x4 sz:0x4
+  X_LIST_ENTRY thread_list_entry;       // 0x8 sz:0x8
+  X_IO_STATUS_BLOCK io_status;          // 0x10 sz:0x8
+  xe::be<uint8_t> stack_count;          // 0x18 sz:0x1
+  xe::be<uint8_t> current_location;     // 0x19 sz:0x1
+  xe::be<uint8_t> pending_returned;     // 0x1A sz:0x1
+  xe::be<uint8_t> cancel;               // 0x1B sz:0x1
+  xe::be<uint32_t> user_buffer_ptr;     // 0x1C sz:0x4
+  xe::be<uint32_t> user_iosb_ptr;       // 0x20 sz:0x4, X_IO_STATUS_BLOCK*
+  xe::be<uint32_t> user_event_ptr;      // 0x24 sz:0x4, X_KEVENT*
+  X_UNION_IRP_OVERLAY overlay;          // 0x28 sz:0x8
+  X_IRP_TAIL tail;                      // 0x30 sz:0x28
+  xe::be<uint32_t> cancel_routine_ptr;  // 0x58 sz:0x4
+};
+static_assert_size(X_IRP, 0x60);
+
+struct X_DEVICE_OBJECT {
+  xe::be<uint16_t> type;                    // 0x0 sz:0x2
+  xe::be<uint16_t> device_extension_size;   // 0x2 sz:0x2
+  xe::be<uint32_t> reference_count;         // 0x4 sz:0x4
+  xe::be<uint32_t> drive_object_ptr;        // 0x8 sz:0x4, X_DRIVER_OBJECT*
+  xe::be<uint32_t> mounted_or_self_device;  // 0xC sz:0x4, X_DEVICE_OBJECT*
+  xe::be<uint32_t> current_irp_ptr;         // 0x10 sz:0x4, X_IRP*
+  xe::be<uint32_t> flags;                   // 0x14 sz:0x4
+  xe::be<uint32_t> device_extension_ptr;    // 0x18 sz:0x4
+  xe::be<uint8_t> device_type;              // 0x1C sz:0x1
+  xe::be<uint8_t> start_io_flags;           // 0x1D sz:0x1
+  xe::be<uint8_t> stack_size;               // 0x1E sz:0x1
+  xe::be<uint8_t> delete_pending;           // 0x1F sz:0x1
+  xe::be<uint32_t> sector_size;  // 0x20 sz:0x4, set by XamRamDriveCreate
+  xe::be<uint32_t>
+      alignment;  // 0x24 sz:0x4, NtQueryInformationFile called to verify
+  xe::be<X_KDEVICE_QUEUE> device_queue;  // 0x28 sz:0x10
+  xe::be<X_KEVENT> device_lock;          // 0x38 sz:0x10
+  xe::be<uint32_t> start_io_count;       // 0x48 sz:0x4
+  xe::be<uint32_t> start_io_key;         // 0x4C sz:0x4
+};
+static_assert_size(X_DEVICE_OBJECT, 0x50);
+
+dword_result_t IoCreateDevice_entry(pointer_t<X_DRIVER_OBJECT> driver_object,
                                     dword_t device_extension_size,
                                     pointer_t<X_ANSI_STRING> device_name,
                                     dword_t device_type,
@@ -708,27 +810,22 @@ dword_result_t IoCreateDevice_entry(dword_t driver_object,
                                     lpdword_t device_object,
                                     const ppc_context_t& ctx) {
   // Called from XMountUtilityDrive XAM-task code
-  // That code tries writing things to a pointer at out_struct+0x18
   // We'll alloc some scratch space for it so it doesn't cause any exceptions
+  auto kernel_mem = ctx->kernel_state->memory();
 
-  // 0x24 is guessed size from accesses to out_struct - likely incorrect
-  auto current_kernel = ctx->kernel_state;
-
-  uint32_t required_size = 80 + xe::align<uint32_t>(device_extension_size, 8);
-
-  auto kernel_mem = current_kernel->memory();
+  uint32_t required_size =
+      sizeof(X_DEVICE_OBJECT) + xe::align<uint32_t>(device_extension_size, 8);
 
   auto out_guest = kernel_mem->SystemHeapAlloc(required_size);
 
-  auto out = kernel_mem->TranslateVirtual<uint8_t*>(out_guest);
+  auto out = kernel_mem->TranslateVirtual<X_DEVICE_OBJECT*>(out_guest);
 
   memset(out, 0, required_size);
 
-  xe::store<unsigned char>(out, 3);  // maybe device object's Ob type?
+  out->type = 3;  // maybe device object's Ob type?
 
   // this stores the total object size, without alignment!
-
-  xe::store_and_swap<uint16_t>(out + 2, device_extension_size + 80);
+  out->device_extension_size = device_extension_size + sizeof(X_DEVICE_OBJECT);
 
   // from 17559
   if (device_type == 7 || device_type == 58 || device_type == 62 ||
@@ -737,28 +834,27 @@ dword_result_t IoCreateDevice_entry(dword_t driver_object,
       device_type == 65 || device_type == 66 || device_type == 67 ||
       device_type == 68 || device_type == 69 || device_type == 70 ||
       device_type == 72 || device_type == 73) {
-    xe::store_and_swap<uint32_t>(out + 0xC, 0);
+    out->mounted_or_self_device = 0;
   } else {
-    // pointer to itself?
-    xe::store_and_swap<uint32_t>(out + 0xC, out_guest);
+    out->mounted_or_self_device = static_cast<uint32_t>(out_guest);
   }
-  xe::store<uint8_t>(out + 0x1C, static_cast<uint8_t>(device_type));
+  out->device_type = static_cast<uint8_t>(device_type);
 
   uint32_t flags_field_value = 16;
   if (device_name) {
     flags_field_value |= 8;
   }
-  xe::store<unsigned char>(out + 0x1e, 1);
-  xe::store_and_swap<uint32_t>(out + 0x14, flags_field_value);
+  out->stack_size = 1;
+  out->flags = flags_field_value;
   if (device_extension_size != 0) {
     // pointer to device specific data
-    //  XMountUtilityDrive writes some kind of header here
-    xe::store_and_swap<uint32_t>(out + 0x18, out_guest + 80);
+    // XMountUtilityDrive writes some kind of header here
+    out->device_extension_ptr = out_guest + 80;
   }
 
-  xe::store_and_swap<uint32_t>(out + 8, driver_object);
+  out->drive_object_ptr = static_cast<uint32_t>(driver_object);
 
-  *device_object = out_guest;
+  *device_object = static_cast<uint32_t>(out_guest);
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(IoCreateDevice, kFileSystem, kStub);
@@ -766,7 +862,8 @@ DECLARE_XBOXKRNL_EXPORT1(IoCreateDevice, kFileSystem, kStub);
 // supposed to invoke a callback on the driver object! its some sort of
 // destructor function intended to be called for all devices created from the
 // driver
-void IoDeleteDevice_entry(dword_t device_ptr, const ppc_context_t& ctx) {
+void IoDeleteDevice_entry(pointer_t<X_DEVICE_OBJECT> device_ptr,
+                          const ppc_context_t& ctx) {
   if (device_ptr) {
     auto kernel_mem = ctx->kernel_state->memory();
     kernel_mem->SystemHeapFree(device_ptr);
