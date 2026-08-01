@@ -134,7 +134,8 @@ class VulkanPipelineCache {
   SpirvShaderTranslator::Modification GetCurrentPixelShaderModification(
       const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
       reg::RB_DEPTHCONTROL normalized_depth_control,
-      uint32_t normalized_color_mask) const;
+      uint32_t normalized_color_mask,
+      bool apply_polygon_offset_in_shader) const;
 
   bool EnsureShadersTranslated(VulkanShader::VulkanTranslation* vertex_shader,
                                VulkanShader::VulkanTranslation* pixel_shader);
