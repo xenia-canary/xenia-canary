@@ -410,6 +410,13 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
   modification.vertex.user_clip_plane_cull =
       uint32_t(user_clip_planes && pa_cl_clip_cntl.ucp_cull_only_ena);
 
+  // Vertex kill via the kill flag (oPts.z). The "and" operator (kill only when
+  // all vertices of the primitive request it) is emulated with a cull distance;
+  // the "or" operator sets the position to NaN in the translator.
+  modification.vertex.vertex_kill_and =
+      uint32_t((shader.writes_point_size_edge_flag_kill_vertex() & 0b100) &&
+               !pa_cl_clip_cntl.vtx_kill_or);
+
   if (host_vertex_shader_type ==
       Shader::HostVertexShaderType::kPointListAsTriangleStrip) {
     modification.vertex.output_point_parameters = uint32_t(ps_param_gen_used);
@@ -1469,12 +1476,9 @@ bool VulkanPipelineCache::GetGeometryShaderKey(
   }
   GeometryShaderKey key;
   key.type = geometry_shader_type;
-  // TODO(Triang3l): Once all needed inputs and outputs are added, uncomment the
-  // real counts here.
   key.interpolator_count =
       xe::bit_count(vertex_shader_modification.vertex.interpolator_mask);
-  key.has_vertex_kill_and =
-      /* vertex_shader_modification.vertex.vertex_kill_and */ 0;
+  key.has_vertex_kill_and = vertex_shader_modification.vertex.vertex_kill_and;
   key.has_point_size =
       vertex_shader_modification.vertex.output_point_parameters;
   key.has_point_coordinates = pixel_shader_modification.pixel.param_gen_point;

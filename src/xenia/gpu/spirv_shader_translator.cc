@@ -1363,6 +1363,11 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   } else {
     clip_distance_count = user_clip_plane_count;
   }
+  // Vertex kill with "and" operator writes a dedicated cull distance after
+  // the user clip plane cull distances.
+  if (shader_modification.vertex.vertex_kill_and) {
+    ++cull_distance_count;
+  }
   output_per_vertex_clip_distance_member_index_ = 0;
   output_per_vertex_cull_distance_member_index_ = 0;
   if (user_clip_plane_count > 0) {
@@ -1997,6 +2002,58 @@ void SpirvShaderTranslator::CompleteVertexOrTessEvalShaderInMain() {
       spv::OpVectorTimesScalar, type_float3_, ndc_offset, position_w);
   position_xyz = builder_->createNoContractionBinOp(
       spv::OpFAdd, type_float3_, position_xyz, ndc_offset_mul_w);
+
+  // Apply vertex killing requested via the kill flag (oPts.z) - bits 0:30 of
+  // the value being non-zero kills. Done after the NDC transform since the kill
+  // cull distance is just a flag and the position is about to be written.
+  if (current_shader().writes_point_size_edge_flag_kill_vertex() & 0b100) {
+    assert_true(var_main_point_size_edge_flag_kill_vertex_ != spv::NoResult);
+    id_vector_temp_.clear();
+    // Z vector component.
+    id_vector_temp_.push_back(builder_->makeIntConstant(2));
+    spv::Id kill_value = builder_->createLoad(
+        builder_->createAccessChain(spv::StorageClassFunction,
+                                    var_main_point_size_edge_flag_kill_vertex_,
+                                    id_vector_temp_),
+        spv::NoPrecision);
+    // Test the integer bits 0:30 rather than comparing the float to avoid
+    // denormal flushing affecting the result (matching the Direct3D 12 path).
+    spv::Id vertex_killed = builder_->createBinOp(
+        spv::OpINotEqual, type_bool_,
+        builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_,
+            builder_->createUnaryOp(spv::OpBitcast, type_uint_, kill_value),
+            builder_->makeUintConstant(UINT32_C(0x7FFFFFFF))),
+        const_uint_0_);
+    if (shader_modification.vertex.vertex_kill_and) {
+      // "and" operator - write -1 to the dedicated cull distance when killed
+      // (the primitive is culled only if it's negative for all the vertices).
+      uint32_t vertex_kill_cull_distance_index =
+          shader_modification.vertex.user_clip_plane_cull
+              ? user_clip_plane_count
+              : 0;
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(builder_->makeIntConstant(
+          int(output_per_vertex_cull_distance_member_index_)));
+      id_vector_temp_.push_back(
+          builder_->makeIntConstant(int(vertex_kill_cull_distance_index)));
+      builder_->createStore(
+          builder_->createTriOp(spv::OpSelect, type_float_, vertex_killed,
+                                builder_->makeFloatConstant(-1.0f),
+                                const_float_0_),
+          builder_->createAccessChain(spv::StorageClassOutput,
+                                      output_per_vertex_, id_vector_temp_));
+    } else {
+      // "or" operator - setting the position W to NaN kills the whole primitive
+      // if any of its vertices requests the kill.
+      position_w = builder_->createTriOp(
+          spv::OpSelect, type_float_, vertex_killed,
+          builder_->createUnaryOp(
+              spv::OpBitcast, type_float_,
+              builder_->makeUintConstant(UINT32_C(0x7FC00000))),
+          position_w);
+    }
+  }
 
   // Write the point size.
   if (output_point_size_ != spv::NoResult) {
