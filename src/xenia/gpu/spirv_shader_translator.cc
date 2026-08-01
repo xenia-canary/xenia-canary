@@ -119,7 +119,7 @@ void SpirvShaderTranslator::Reset() {
   // Vertex shader inputs.
   input_vertex_index_ = spv::NoResult;
   // Tessellation evaluation shader inputs.
-  input_primitive_id_ = spv::NoResult;
+  input_control_point_index_ = spv::NoResult;
   input_tess_coord_ = spv::NoResult;
   // Pixel shader inputs.
   input_point_coordinates_ = spv::NoResult;
@@ -795,16 +795,22 @@ std::vector<uint8_t> SpirvShaderTranslator::CompleteTranslation() {
           assert_unhandled_case(host_type);
           break;
       }
-      // Tessellation spacing - fractional_even for continuous mode, equal
-      // (integer) for discrete mode. The actual mode is determined by the TCS
-      // (hull shader), but we use fractional_even here as the default since it
-      // provides smooth results. The TCS sets the actual tessellation levels.
-      // For now, use fractional_even as it's more compatible.
+      // Tessellation spacing. In SPIR-V the spacing is part of the domain
+      // shader rather than the hull shader. Match the Direct3D 12 hull shader
+      // partitioning. Integer (equal) for discrete, fractional even for
+      // continuous and adaptive.
       builder_->addExecutionMode(function_main_,
-                                 spv::ExecutionModeSpacingFractionalEven);
-      // Vertex ordering - counter-clockwise (Vulkan default for front face).
+                                 shader_modification.vertex.tessellation_mode ==
+                                         xenos::TessellationMode::kDiscrete
+                                     ? spv::ExecutionModeSpacingEqual
+                                     : spv::ExecutionModeSpacingFractionalEven);
+      // Vertex ordering. Xenia does not flip the clip space Y on Vulkan
+      // (origin_bottom_left is false, so ndc_scale.y keeps the guest sign), so
+      // the tessellator must wind the same way as the Direct3D 12 hull shaders,
+      // which use triangle_cw. Counter-clockwise here inverts the facing and
+      // the guest backface culling removes the whole surface.
       builder_->addExecutionMode(function_main_,
-                                 spv::ExecutionModeVertexOrderCcw);
+                                 spv::ExecutionModeVertexOrderCw);
     } else {
       execution_model = spv::ExecutionModelVertex;
     }
@@ -1273,11 +1279,33 @@ void SpirvShaderTranslator::EnsureBuildPointAvailable() {
 void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   // Create the inputs.
   if (IsSpirvTessEvalShader()) {
-    input_primitive_id_ = builder_->createVariable(
-        spv::NoPrecision, spv::StorageClassInput, type_int_, "gl_PrimitiveID");
-    builder_->addDecoration(input_primitive_id_, spv::DecorationBuiltIn,
-                            static_cast<int>(spv::BuiltIn::PrimitiveId));
-    main_interface_.push_back(input_primitive_id_);
+    // Per-control-point index input from the hull shader, mirroring the control
+    // point input read by the Direct3D 12 domain shader. The hull shader has
+    // already applied the endian swap, the vertex index offset, the low 24-bit
+    // wrap and the min/max clamp, so this is the index the guest expects rather
+    // than the raw gl_PrimitiveID. The array size matches the hull shader's
+    // output control point count for the domain type.
+    uint32_t control_point_count = 1;
+    switch (GetSpirvShaderModification().vertex.host_vertex_shader_type) {
+      case Shader::HostVertexShaderType::kTriangleDomainCPIndexed:
+        control_point_count = 3;
+        break;
+      case Shader::HostVertexShaderType::kQuadDomainCPIndexed:
+        control_point_count = 4;
+        break;
+      default:
+        // Patch-indexed (and line) domains output a single control point.
+        control_point_count = 1;
+        break;
+    }
+    input_control_point_index_ = builder_->createVariable(
+        spv::NoPrecision, spv::StorageClassInput,
+        builder_->makeArrayType(
+            type_float_, builder_->makeUintConstant(control_point_count), 0),
+        "xe_in_control_point_index");
+    builder_->addDecoration(input_control_point_index_, spv::DecorationLocation,
+                            0);
+    main_interface_.push_back(input_control_point_index_);
 
     // Tessellation coordinates (barycentric coordinates for the tessellated
     // vertex within the patch).
@@ -1562,32 +1590,56 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
           break;
         }
         case Shader::HostVertexShaderType::kQuadDomainCPIndexed: {
-          // Quad domain requires at least 2 registers (r0 for domain location,
-          // r1 for control point indices).
+          // Quad domain requires at least 2 registers (r0 for the domain
+          // location and the first control point index, r1 for the other
+          // three).
           assert_true(register_count() >= 2);
-          // Quad domain CP-indexed: gl_TessCoord.xy -> r0.yz, r0.x = 0, r0.w =
-          // 1 XY swizzle according to the ground shader in 4D5307F2.
-          uint_vector_temp_.clear();
-          uint_vector_temp_.push_back(0);  // x -> r0.y
-          uint_vector_temp_.push_back(1);  // y -> r0.z
-          spv::Id tess_coord_xy = builder_->createRvalueSwizzle(
-              spv::NoPrecision, type_float2_, tess_coord, uint_vector_temp_);
-          // Store to r0
+          // Quad domain CP-indexed, matching the Direct3D 12 domain shader:
+          // r0.xy = domain location, r0.z = control point index 0,
+          // r1.xyz = control point indices 1, 2, 3 (already endian swapped and
+          // converted to float by the host vertex and hull shaders).
+          spv::Id tess_coord_x =
+              builder_->createCompositeExtract(tess_coord, type_float_, 0);
+          spv::Id tess_coord_y =
+              builder_->createCompositeExtract(tess_coord, type_float_, 1);
+          // Load control point index 0.
+          id_vector_temp_.clear();
+          id_vector_temp_.push_back(const_int_0_);
+          spv::Id control_point_index_0 = builder_->createLoad(
+              builder_->createAccessChain(spv::StorageClassInput,
+                                          input_control_point_index_,
+                                          id_vector_temp_),
+              spv::NoPrecision);
+          // Store r0 = (domain.x, domain.y, control point index 0, 0).
           id_vector_temp_.clear();
           id_vector_temp_.push_back(const_int_0_);
           spv::Id r0_ptr = builder_->createAccessChain(
               spv::StorageClassFunction, var_main_registers_, id_vector_temp_);
-          // Build float4 with x=0, yz from tess coord, w=1
           id_vector_temp_.clear();
+          id_vector_temp_.push_back(tess_coord_x);
+          id_vector_temp_.push_back(tess_coord_y);
+          id_vector_temp_.push_back(control_point_index_0);
           id_vector_temp_.push_back(const_float_0_);
-          id_vector_temp_.push_back(
-              builder_->createCompositeExtract(tess_coord_xy, type_float_, 0));
-          id_vector_temp_.push_back(
-              builder_->createCompositeExtract(tess_coord_xy, type_float_, 1));
-          id_vector_temp_.push_back(const_float_1_);
           builder_->createStore(
               builder_->createCompositeConstruct(type_float4_, id_vector_temp_),
               r0_ptr);
+          // Store r1.xyz = control point indices 1, 2, 3.
+          for (uint32_t i = 1; i <= 3; ++i) {
+            id_vector_temp_.clear();
+            id_vector_temp_.push_back(builder_->makeIntConstant(int(i)));
+            spv::Id control_point_index = builder_->createLoad(
+                builder_->createAccessChain(spv::StorageClassInput,
+                                            input_control_point_index_,
+                                            id_vector_temp_),
+                spv::NoPrecision);
+            id_vector_temp_.clear();
+            id_vector_temp_.push_back(builder_->makeIntConstant(1));
+            id_vector_temp_.push_back(builder_->makeIntConstant(int(i - 1)));
+            builder_->createStore(control_point_index,
+                                  builder_->createAccessChain(
+                                      spv::StorageClassFunction,
+                                      var_main_registers_, id_vector_temp_));
+          }
           break;
         }
         case Shader::HostVertexShaderType::kQuadDomainPatchIndexed: {
@@ -1602,11 +1654,17 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
           uint_vector_temp_.push_back(1);  // y -> r0.z
           spv::Id tess_coord_xy = builder_->createRvalueSwizzle(
               spv::NoPrecision, type_float2_, tess_coord, uint_vector_temp_);
-          // Load primitive ID (patch index) and convert to float.
-          spv::Id primitive_id =
-              builder_->createLoad(input_primitive_id_, spv::NoPrecision);
-          spv::Id patch_index_float = builder_->createUnaryOp(
-              spv::OpConvertSToF, type_float_, primitive_id);
+          // Read the patch index from control point 0 (already endian swapped,
+          // offset, wrapped and clamped by the host vertex and hull shaders),
+          // matching the Direct3D 12 domain shader, rather than using the raw
+          // gl_PrimitiveID.
+          id_vector_temp_.clear();
+          id_vector_temp_.push_back(const_int_0_);
+          spv::Id patch_index_float = builder_->createLoad(
+              builder_->createAccessChain(spv::StorageClassInput,
+                                          input_control_point_index_,
+                                          id_vector_temp_),
+              spv::NoPrecision);
           // Store to r0: x = patch index, yz = tess coord, w = 1
           id_vector_temp_.clear();
           id_vector_temp_.push_back(const_int_0_);
@@ -1652,11 +1710,17 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
       if (register_count() >= 2) {
         if (host_type ==
             Shader::HostVertexShaderType::kTriangleDomainPatchIndexed) {
-          // Load primitive ID (patch index) and convert to float.
-          spv::Id primitive_id =
-              builder_->createLoad(input_primitive_id_, spv::NoPrecision);
-          spv::Id patch_index_float = builder_->createUnaryOp(
-              spv::OpConvertSToF, type_float_, primitive_id);
+          // Read the patch index from control point 0 (already endian swapped,
+          // offset, wrapped and clamped by the host vertex and hull shaders),
+          // matching the Direct3D 12 domain shader, rather than using the raw
+          // gl_PrimitiveID.
+          id_vector_temp_.clear();
+          id_vector_temp_.push_back(const_int_0_);
+          spv::Id patch_index_float = builder_->createLoad(
+              builder_->createAccessChain(spv::StorageClassInput,
+                                          input_control_point_index_,
+                                          id_vector_temp_),
+              spv::NoPrecision);
           // Store patch index to r1.x
           id_vector_temp_.clear();
           id_vector_temp_.push_back(builder_->makeIntConstant(1));
@@ -1675,6 +1739,27 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
                                 builder_->createAccessChain(
                                     spv::StorageClassFunction,
                                     var_main_registers_, id_vector_temp_));
+        } else if (host_type ==
+                   Shader::HostVertexShaderType::kTriangleDomainCPIndexed) {
+          // Store the three control point indices (already endian swapped and
+          // converted to float by the host vertex and hull shaders) to r1.xyz,
+          // matching the Direct3D 12 domain shader.
+          for (uint32_t i = 0; i < 3; ++i) {
+            id_vector_temp_.clear();
+            id_vector_temp_.push_back(builder_->makeIntConstant(int(i)));
+            spv::Id control_point_index = builder_->createLoad(
+                builder_->createAccessChain(spv::StorageClassInput,
+                                            input_control_point_index_,
+                                            id_vector_temp_),
+                spv::NoPrecision);
+            id_vector_temp_.clear();
+            id_vector_temp_.push_back(builder_->makeIntConstant(1));
+            id_vector_temp_.push_back(builder_->makeIntConstant(int(i)));
+            builder_->createStore(control_point_index,
+                                  builder_->createAccessChain(
+                                      spv::StorageClassFunction,
+                                      var_main_registers_, id_vector_temp_));
+          }
         }
       }
     } else if (IsSpirvVertexShader()) {
