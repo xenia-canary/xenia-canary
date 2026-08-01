@@ -1785,12 +1785,19 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               builder_->makeFloatConstant(instr.attributes.lod_bias));
         }
 
+        // Cube auto-LOD without register gradients uses implicit LOD + bias to
+        // work around wrong-mip explicit cube gradients on Vulkan. Other dims
+        // keep explicit gradients.
+        bool use_lod_bias = use_computed_lod &&
+                            !instr.attributes.use_register_gradients &&
+                            instr.dimension == xenos::FetchOpDimension::kCube;
+
         // Calculate the gradients for sampling the texture if needed.
         // 2D vectors for k1D (because 1D images are emulated as 2D arrays),
         // k2D.
         // 3D vectors for k3DOrStacked, kCube.
         spv::Id gradients_h = spv::NoResult, gradients_v = spv::NoResult;
-        if (use_computed_lod) {
+        if (use_computed_lod && !use_lod_bias) {
           // TODO(Triang3l): Gradient exponent adjustment is currently not done
           // in getCompTexLOD, so not doing it here too for now. Apply the
           // gradient exponent biases from the word 4 of the fetch constant in
@@ -1941,31 +1948,15 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                   lod_gradient_scale);
             } break;
             case xenos::FetchOpDimension::kCube: {
-              if (instr.attributes.use_register_gradients) {
-                // Register gradients are already in the cube space for cube
-                // maps.
-                // TODO(Triang3l): Are cube map register gradients unnormalized
-                // if the coordinates themselves are unnormalized?
-                gradients_h = builder_->createLoad(var_main_tfetch_gradients_h_,
-                                                   spv::NoPrecision);
-                gradients_v = builder_->createLoad(var_main_tfetch_gradients_v_,
-                                                   spv::NoPrecision);
-              } else {
-                id_vector_temp_.clear();
-                for (uint32_t i = 0; i < 3; ++i) {
-                  id_vector_temp_.push_back(coordinates[i]);
-                }
-                spv::Id gradient_coordinate_vector =
-                    builder_->createCompositeConstruct(type_float3_,
-                                                       id_vector_temp_);
-                builder_->addCapability(spv::CapabilityDerivativeControl);
-                gradients_h =
-                    builder_->createUnaryOp(spv::OpDPdxCoarse, type_float3_,
-                                            gradient_coordinate_vector);
-                gradients_v =
-                    builder_->createUnaryOp(spv::OpDPdyCoarse, type_float3_,
-                                            gradient_coordinate_vector);
-              }
+              // Only register gradients reach here (auto-LOD uses implicit LOD
+              // + bias, handled at the gradient block guard above). Register
+              // gradients are already in the cube space for cube maps.
+              // TODO(Triang3l): Are cube map register gradients unnormalized
+              // if the coordinates themselves are unnormalized?
+              gradients_h = builder_->createLoad(var_main_tfetch_gradients_h_,
+                                                 spv::NoPrecision);
+              gradients_v = builder_->createLoad(var_main_tfetch_gradients_v_,
+                                                 spv::NoPrecision);
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_h,
                   lod_gradient_scale);
@@ -1978,10 +1969,13 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
 
         // Sample the texture.
         spv::ImageOperandsMask image_operands_mask =
-            use_computed_lod ? spv::ImageOperandsGradMask
-                             : spv::ImageOperandsLodMask;
+            use_lod_bias ? spv::ImageOperandsBiasMask
+                         : (use_computed_lod ? spv::ImageOperandsGradMask
+                                             : spv::ImageOperandsLodMask);
         spv::Id sample_result_unsigned, sample_result_signed;
-        if (!use_computed_lod) {
+        if (use_lod_bias) {
+          texture_parameters.bias = lod;
+        } else if (!use_computed_lod) {
           texture_parameters.lod = lod;
         }
         if (instr.dimension == xenos::FetchOpDimension::k3DOrStacked) {
@@ -2232,7 +2226,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           sample_result_signed = if_data_is_3d.createMergePhi(
               sample_result_signed_3d, sample_result_signed_stacked);
         } else {
-          if (use_computed_lod) {
+          if (use_computed_lod && !use_lod_bias) {
             texture_parameters.gradX = gradients_h;
             texture_parameters.gradY = gradients_v;
           }
