@@ -83,6 +83,19 @@ Entry::Status EntryTable::GetOrCreate(uint32_t address, Entry** out_entry) {
   return status;
 }
 
+void EntryTable::MarkReady(Entry* entry, Function* function,
+                           uint32_t end_address) {
+  auto global_lock = global_critical_region_.Acquire();
+  entry->function = function;
+  entry->end_address = end_address;
+  entry->status = Entry::STATUS_READY;
+}
+
+void EntryTable::MarkFailed(Entry* entry) {
+  auto global_lock = global_critical_region_.Acquire();
+  entry->status = Entry::STATUS_FAILED;
+}
+
 void EntryTable::Delete(uint32_t address) {
   auto global_lock = global_critical_region_.Acquire();
   // doesnt this leak memory by not deleting the entry?
