@@ -1792,18 +1792,58 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                             !instr.attributes.use_register_gradients &&
                             instr.dimension == xenos::FetchOpDimension::kCube;
 
+        if (use_lod_bias) {
+          // The per-axis gradient exponent biases can't be applied to the
+          // host's implicit gradients, so we approximate them by adding the
+          // greater of the two to the LOD bias. Scaling both gradients by 2^n
+          // shifts the computed LOD by n, so this is exact whenever both biases
+          // are equal, and biases a blurrier mip rather than a shimmering one.
+          spv::Id grad_exp_adjust_max = builder_->createBinBuiltinCall(
+              type_int_, ext_inst_glsl_std_450_, GLSLstd450SMax,
+              builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
+                                    fetch_constant_word_4_signed,
+                                    builder_->makeUintConstant(22),
+                                    builder_->makeUintConstant(5)),
+              builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
+                                    fetch_constant_word_4_signed,
+                                    builder_->makeUintConstant(27),
+                                    builder_->makeUintConstant(5)));
+          lod = builder_->createNoContractionBinOp(
+              spv::OpFAdd, type_float_, lod,
+              builder_->createUnaryOp(spv::OpConvertSToF, type_float_,
+                                      grad_exp_adjust_max));
+        }
         // Calculate the gradients for sampling the texture if needed.
         // 2D vectors for k1D (because 1D images are emulated as 2D arrays),
         // k2D.
         // 3D vectors for k3DOrStacked, kCube.
         spv::Id gradients_h = spv::NoResult, gradients_v = spv::NoResult;
         if (use_computed_lod && !use_lod_bias) {
-          // TODO(Triang3l): Gradient exponent adjustment is currently not done
-          // in getCompTexLOD, so not doing it here too for now. Apply the
-          // gradient exponent biases from the word 4 of the fetch constant in
-          // the future when it's handled in getCompTexLOD somehow.
-          spv::Id lod_gradient_scale = builder_->createUnaryBuiltinCall(
-              type_float_, ext_inst_glsl_std_450_, GLSLstd450Exp2, lod);
+          // Per-axis gradient exponent biases (LodBiasH/V) from word 4: h in
+          // bits 22:26, v in bits 27:31. Applied here in the sample path like
+          // the fetch-constant LOD bias (getCompTexLOD returns the raw queried
+          // LOD, so neither bias is folded into it). Zero (the common case) is
+          // a no-op.
+          spv::Id grad_exp_adjust_h = builder_->createUnaryOp(
+              spv::OpConvertSToF, type_float_,
+              builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
+                                    fetch_constant_word_4_signed,
+                                    builder_->makeUintConstant(22),
+                                    builder_->makeUintConstant(5)));
+          spv::Id grad_exp_adjust_v = builder_->createUnaryOp(
+              spv::OpConvertSToF, type_float_,
+              builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
+                                    fetch_constant_word_4_signed,
+                                    builder_->makeUintConstant(27),
+                                    builder_->makeUintConstant(5)));
+          spv::Id lod_gradient_scale_h = builder_->createUnaryBuiltinCall(
+              type_float_, ext_inst_glsl_std_450_, GLSLstd450Exp2,
+              builder_->createNoContractionBinOp(spv::OpFAdd, type_float_, lod,
+                                                 grad_exp_adjust_h));
+          spv::Id lod_gradient_scale_v = builder_->createUnaryBuiltinCall(
+              type_float_, ext_inst_glsl_std_450_, GLSLstd450Exp2,
+              builder_->createNoContractionBinOp(spv::OpFAdd, type_float_, lod,
+                                                 grad_exp_adjust_v));
           switch (coordinate_dimension) {
             case xenos::FetchOpDimension::k1D: {
               spv::Id gradient_h_x, gradient_v_x;
@@ -1828,13 +1868,13 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               gradient_v_y = builder_->createUnaryOp(
                   spv::OpDPdyCoarse, type_float_, coordinates[1]);
               gradient_h_x = builder_->createNoContractionBinOp(
-                  spv::OpFMul, type_float_, gradient_h_x, lod_gradient_scale);
+                  spv::OpFMul, type_float_, gradient_h_x, lod_gradient_scale_h);
               gradient_v_x = builder_->createNoContractionBinOp(
-                  spv::OpFMul, type_float_, gradient_v_x, lod_gradient_scale);
+                  spv::OpFMul, type_float_, gradient_v_x, lod_gradient_scale_v);
               gradient_h_y = builder_->createNoContractionBinOp(
-                  spv::OpFMul, type_float_, gradient_h_y, lod_gradient_scale);
+                  spv::OpFMul, type_float_, gradient_h_y, lod_gradient_scale_h);
               gradient_v_y = builder_->createNoContractionBinOp(
-                  spv::OpFMul, type_float_, gradient_v_y, lod_gradient_scale);
+                  spv::OpFMul, type_float_, gradient_v_y, lod_gradient_scale_v);
               // 1D textures are sampled as 2D arrays - need 2-component
               // gradients.
               id_vector_temp_.clear();
@@ -1895,10 +1935,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               }
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float2_, gradients_h,
-                  lod_gradient_scale);
+                  lod_gradient_scale_h);
               gradients_v = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float2_, gradients_v,
-                  lod_gradient_scale);
+                  lod_gradient_scale_v);
             } break;
             case xenos::FetchOpDimension::k3DOrStacked: {
               if (instr.attributes.use_register_gradients) {
@@ -1942,10 +1982,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
               }
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_h,
-                  lod_gradient_scale);
+                  lod_gradient_scale_h);
               gradients_v = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_v,
-                  lod_gradient_scale);
+                  lod_gradient_scale_v);
             } break;
             case xenos::FetchOpDimension::kCube: {
               // Only register gradients reach here (auto-LOD uses implicit LOD
@@ -1959,10 +1999,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                                                  spv::NoPrecision);
               gradients_h = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_h,
-                  lod_gradient_scale);
+                  lod_gradient_scale_h);
               gradients_v = builder_->createNoContractionBinOp(
                   spv::OpVectorTimesScalar, type_float3_, gradients_v,
-                  lod_gradient_scale);
+                  lod_gradient_scale_v);
             } break;
           }
         }
