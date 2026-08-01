@@ -2441,6 +2441,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   SpirvShaderTranslator::Modification pixel_shader_modification;
   VulkanShader::VulkanTranslation* vertex_shader_translation;
   VulkanShader::VulkanTranslation* pixel_shader_translation;
+  uint32_t normalized_color_mask;
+  reg::RB_DEPTHCONTROL normalized_depth_control;
 
   // Two iterations because a submission (even the current one - in which case
   // it needs to be ended, and a new one must be started) may need to be awaited
@@ -2475,6 +2477,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
 
+    normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);
+
+    // Compute which color render targets are used.
+    normalized_color_mask =
+        pixel_shader ? draw_util::GetNormalizedColorMask(
+                           regs, pixel_shader->writes_color_targets())
+                     : 0;
+
     // Shader modifications.
     vertex_shader_modification =
         pipeline_cache_->GetCurrentVertexShaderModification(
@@ -2482,7 +2492,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             interpolator_mask, ps_param_gen_pos != UINT32_MAX);
     pixel_shader_modification =
         pixel_shader ? pipeline_cache_->GetCurrentPixelShaderModification(
-                           *pixel_shader, interpolator_mask, ps_param_gen_pos)
+                           *pixel_shader, interpolator_mask, ps_param_gen_pos,
+                           normalized_depth_control, normalized_color_mask)
                      : SpirvShaderTranslator::Modification(0);
 
     // Translate the shaders now to obtain the sampler bindings.
@@ -2571,12 +2582,6 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   }
 
   // Set up the render targets - this may perform dispatches and draws.
-  reg::RB_DEPTHCONTROL normalized_depth_control =
-      draw_util::GetNormalizedDepthControl(regs);
-  uint32_t normalized_color_mask =
-      pixel_shader ? draw_util::GetNormalizedColorMask(
-                         regs, pixel_shader->writes_color_targets())
-                   : 0;
   if (!render_target_cache_->Update(is_rasterization_done,
                                     normalized_depth_control,
                                     normalized_color_mask, *vertex_shader)) {
@@ -2699,17 +2704,20 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // into system constants.
   UpdateZPDScale(draw_resolution_scale_x * draw_resolution_scale_y);
   draw_util::GetViewportInfoArgs gviargs{};
-  gviargs.Setup(draw_resolution_scale_x, draw_resolution_scale_y,
-                draw_resolution_scale_x > 1
-                    ? texture_cache_->draw_resolution_scale_x_divisor()
-                    : divisors::MagicDiv(1),
-                draw_resolution_scale_y > 1
-                    ? texture_cache_->draw_resolution_scale_y_divisor()
-                    : divisors::MagicDiv(1),
-                false, device_properties.maxViewportDimensions[0],
-                device_properties.maxViewportDimensions[1], true,
-                normalized_depth_control, false, host_render_targets_used,
-                pixel_shader && pixel_shader->writes_depth());
+  gviargs.Setup(
+      draw_resolution_scale_x, draw_resolution_scale_y,
+      draw_resolution_scale_x > 1
+          ? texture_cache_->draw_resolution_scale_x_divisor()
+          : divisors::MagicDiv(1),
+      draw_resolution_scale_y > 1
+          ? texture_cache_->draw_resolution_scale_y_divisor()
+          : divisors::MagicDiv(1),
+      false, device_properties.maxViewportDimensions[0],
+      device_properties.maxViewportDimensions[1], true,
+      normalized_depth_control,
+      host_render_targets_used &&
+          render_target_cache_->depth_float24_convert_in_pixel_shader(),
+      host_render_targets_used, pixel_shader && pixel_shader->writes_depth());
   gviargs.SetupRegisterValues(regs);
 
   draw_util::GetHostViewportInfo(&gviargs, viewport_info);
