@@ -354,6 +354,7 @@ namespace spv {
 // Backward compatibility for ImageOperands
 #define ImageOperandsGradMask ImageOperandsMask::Grad
 #define ImageOperandsLodMask ImageOperandsMask::Lod
+#define ImageOperandsBiasMask ImageOperandsMask::Bias
 #define ImageOperandsMaskNone ImageOperandsMask::MaskNone
 
 // Backward compatibility for StorageClass
