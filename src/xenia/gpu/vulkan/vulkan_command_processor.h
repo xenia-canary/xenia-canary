@@ -788,6 +788,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Whether up-to-date data has been written to constant (uniform) buffers, and
   // the buffer infos in current_constant_buffer_infos_ point to them.
   uint32_t current_constant_buffers_up_to_date_;
+  // The index endian the tessellation constant buffer was filled with, from the
+  // primitive processor for the current draw. Not a register, so changes
+  // between draws invalidate the buffer separately from WriteRegister.
+  xenos::Endian current_tessellation_index_endian_ = xenos::Endian::kNone;
   VkDescriptorSet current_graphics_descriptor_sets_
       [SpirvShaderTranslator::kDescriptorSetCount];
   // Whether descriptor sets in current_graphics_descriptor_sets_ point to

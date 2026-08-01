@@ -34,7 +34,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // TODO(Triang3l): Change to 0xYYYYMMDD once it's out of the rapid
     // prototyping stage (easier to do small granular updates with an
     // incremental counter).
-    static constexpr uint32_t kVersion = 17;
+    static constexpr uint32_t kVersion = 18;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -86,6 +86,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // cull distance written after the user clip plane cull distances. The
       // "or" operator sets the position to NaN instead and needs no bit here.
       uint32_t vertex_kill_and : 1;
+      // The tessellation mode for domain shaders, selecting the tessellation
+      // evaluation shader spacing (Direct3D 12 sets it in the hull shaders, but
+      // in SPIR-V the spacing lives in the domain shader). Discrete uses equal
+      // spacing, continuous and adaptive use fractional even.
+      xenos::TessellationMode tessellation_mode : 2;
     } vertex;
     struct PixelShaderModification {
       // uint32_t 0.
@@ -1024,8 +1029,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
   // VS as VS only - int.
   spv::Id input_vertex_index_;
-  // VS as TES only - int.
-  spv::Id input_primitive_id_;
+  // VS as TES only - per-control-point float array carrying the patch/control
+  // point index computed by the host vertex and hull shaders.
+  spv::Id input_control_point_index_;
   // VS as TES only - float3 (barycentric coordinates).
   spv::Id input_tess_coord_;
   // PS, only when needed - float2.

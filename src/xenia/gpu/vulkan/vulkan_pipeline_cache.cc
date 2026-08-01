@@ -409,6 +409,12 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
 
   modification.vertex.interpolator_mask = interpolator_mask;
 
+  // Tessellation mode selects the domain shader spacing.
+  if (Shader::IsHostVertexShaderTypeDomain(host_vertex_shader_type)) {
+    modification.vertex.tessellation_mode =
+        regs.Get<reg::VGT_HOS_CNTL>().tess_mode;
+  }
+
   // User clip planes.
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
   uint32_t user_clip_planes =
