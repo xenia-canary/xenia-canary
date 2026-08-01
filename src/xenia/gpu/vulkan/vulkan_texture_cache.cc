@@ -688,29 +688,6 @@ VulkanTextureCache::SamplerParameters VulkanTextureCache::GetSamplerParameters(
           ? fetch.mip_filter
           : binding.mip_filter;
   parameters.mip_linear = mip_filter == xenos::TextureFilter::kLinear;
-  if (parameters.mag_linear || parameters.min_linear || parameters.mip_linear) {
-    // Check if the texture is actually filterable on the host.
-    bool linear_filterable = true;
-    TextureKey texture_key;
-    uint8_t texture_swizzled_signs;
-    BindingInfoFromFetchConstant(fetch, texture_key, &texture_swizzled_signs);
-    if (texture_key.is_valid) {
-      const HostFormatPair& host_format_pair = GetHostFormatPair(texture_key);
-      if ((texture_util::IsAnySignNotSigned(texture_swizzled_signs) &&
-           !host_format_pair.format_unsigned.linear_filterable) ||
-          (texture_util::IsAnySignSigned(texture_swizzled_signs) &&
-           !host_format_pair.format_signed.linear_filterable)) {
-        linear_filterable = false;
-      }
-    } else {
-      linear_filterable = false;
-    }
-    if (!linear_filterable) {
-      parameters.mag_linear = 0;
-      parameters.min_linear = 0;
-      parameters.mip_linear = 0;
-    }
-  }
   xenos::AnisoFilter aniso_filter =
       binding.aniso_filter == xenos::AnisoFilter::kUseFetchConst
           ? fetch.aniso_filter
@@ -733,6 +710,31 @@ VulkanTextureCache::SamplerParameters VulkanTextureCache::GetSamplerParameters(
     aniso_filter = xenos::AnisoFilter(cvars::anisotropic_override);
   }
   parameters.aniso_filter = std::min(aniso_filter, max_anisotropy_);
+
+  // Fall back to point sampling if the host can't linearly filter the formats
+  // the texture will be sampled through. Anisotropic filtering implies linear
+  // filtering too.
+  if (parameters.mag_linear || parameters.min_linear || parameters.mip_linear ||
+      parameters.aniso_filter != xenos::AnisoFilter::kDisabled) {
+    bool linear_filterable = false;
+    TextureKey texture_key;
+    uint8_t texture_swizzled_signs;
+    BindingInfoFromFetchConstant(fetch, texture_key, &texture_swizzled_signs);
+    if (texture_key.is_valid) {
+      const HostFormatPair& host_format_pair = GetHostFormatPair(texture_key);
+      linear_filterable =
+          (!texture_util::IsAnySignNotSigned(texture_swizzled_signs) ||
+           host_format_pair.format_unsigned.linear_filterable) &&
+          (!texture_util::IsAnySignSigned(texture_swizzled_signs) ||
+           host_format_pair.format_signed.linear_filterable);
+    }
+    if (!linear_filterable) {
+      parameters.mag_linear = 0;
+      parameters.min_linear = 0;
+      parameters.mip_linear = 0;
+      parameters.aniso_filter = xenos::AnisoFilter::kDisabled;
+    }
+  }
 
   return parameters;
 }
