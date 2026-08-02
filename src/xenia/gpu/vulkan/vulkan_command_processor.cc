@@ -1413,6 +1413,11 @@ void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
     // staying stale from the first draw of the submission.
     current_constant_buffers_up_to_date_ &=
         ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferTessellation);
+  } else if ((index >= XE_GPU_REG_PA_CL_UCP_0_X &&
+              index <= XE_GPU_REG_PA_CL_UCP_5_W) ||
+             index == XE_GPU_REG_PA_CL_CLIP_CNTL) {
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferClipPlanes);
   }
 }
 void VulkanCommandProcessor::WriteRegistersFromMem(uint32_t start_index,
