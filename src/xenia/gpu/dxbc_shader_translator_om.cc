@@ -1294,8 +1294,9 @@ void DxbcShaderTranslator::ROV_UnpackColor(
               dxbc::Src::LU(0, 16, 0, 16),
               dxbc::Src::R(packed_temp,
                            0b01010000 + packed_temp_components * 0b01010101));
-    // Convert from 16-bit float.
-    a_.OpF16ToF32(color_components_dest, dxbc::Src::R(color_temp));
+    // Convert from extended-range float16, exponent 31 holds finite values on
+    // the guest.
+    Float16ExtendedRangeTo32(color_temp, i ? 0b1111 : 0b0011);
     a_.OpBreak();
   }
 
@@ -1465,18 +1466,20 @@ void DxbcShaderTranslator::ROV_PackPreClampedColor(
     a_.OpCase(dxbc::Src::LU(RenderTargetCache::AddPSIColorFormatFlags(
         i ? xenos::ColorRenderTargetFormat::k_16_16_16_16_FLOAT
           : xenos::ColorRenderTargetFormat::k_16_16_FLOAT)));
+    // Convert to extended-range float16 instead of the plain IEEE conversion,
+    // exponent 31 holds finite values on the guest.
+    Float32ToF16ExtendedRange(color_temp, i ? 0b1111 : 0b0011);
     for (uint32_t j = 0; j < (uint32_t(2) << i); ++j) {
       dxbc::Dest packed_dest_half(
           dxbc::Dest::R(packed_temp, 1 << (packed_temp_components + (j >> 1))));
-      // Convert to 16-bit float.
-      a_.OpF32ToF16((j & 1) ? temp1_dest : packed_dest_half,
-                    dxbc::Src::R(color_temp).Select(j));
-      // Pack green or alpha.
+      // Pack green or alpha into the high half.
       if (j & 1) {
         a_.OpBFI(packed_dest_half, dxbc::Src::LU(16), dxbc::Src::LU(16),
-                 temp1_src,
+                 dxbc::Src::R(color_temp).Select(j),
                  dxbc::Src::R(packed_temp)
                      .Select(packed_temp_components + (j >> 1)));
+      } else {
+        a_.OpMov(packed_dest_half, dxbc::Src::R(color_temp).Select(j));
       }
     }
     a_.OpBreak();
@@ -3456,6 +3459,73 @@ void DxbcShaderTranslator::CompletePixelShader() {
     CompletePixelShader_WriteToRTVs();
     CompletePixelShader_DSV_DepthTo24Bit();
   }
+}
+
+void DxbcShaderTranslator::Float32ToF16ExtendedRange(uint32_t reg,
+                                                     uint32_t components) {
+  uint32_t original_temp = PushSystemTemp();
+  uint32_t mask_temp = PushSystemTemp();
+  // The Xbox 360 float16 has no NaN, map it to 0 before converting. Otherwise
+  // the overflow check below reads its exponent as an overflow, and since min
+  // and max drop the NaN operand in DXBC, the clamp would turn it into
+  // +131008.
+  a_.OpNE(dxbc::Dest::R(mask_temp, components), dxbc::Src::R(reg),
+          dxbc::Src::R(reg));
+  a_.OpMovC(dxbc::Dest::R(reg, components), dxbc::Src::R(mask_temp),
+            dxbc::Src::LF(0.0f), dxbc::Src::R(reg));
+  // Keep the original float32 values for the overflow path.
+  a_.OpMov(dxbc::Dest::R(original_temp, components), dxbc::Src::R(reg));
+  // The standard conversion covers magnitudes up to 65504, anything larger
+  // becomes Inf with all five exponent bits set.
+  a_.OpF32ToF16(dxbc::Dest::R(reg, components), dxbc::Src::R(reg));
+  // Find the lanes that overflowed.
+  a_.OpAnd(dxbc::Dest::R(mask_temp, components), dxbc::Src::R(reg),
+           dxbc::Src::LU(0x7C00));
+  a_.OpIEq(dxbc::Dest::R(mask_temp, components), dxbc::Src::R(mask_temp),
+           dxbc::Src::LU(0x7C00));
+  // Encode the overflowed lanes into exponent 31, which the Xbox 360 treats
+  // as finite. Clamp to the 131008 limit, halve so the exponent lands at 30
+  // or below, convert, then add one to the exponent to undo the halving.
+  a_.OpMin(dxbc::Dest::R(original_temp, components),
+           dxbc::Src::R(original_temp), dxbc::Src::LF(131008.0f));
+  a_.OpMax(dxbc::Dest::R(original_temp, components),
+           dxbc::Src::R(original_temp), dxbc::Src::LF(-131008.0f));
+  a_.OpMul(dxbc::Dest::R(original_temp, components),
+           dxbc::Src::R(original_temp), dxbc::Src::LF(0.5f));
+  a_.OpF32ToF16(dxbc::Dest::R(original_temp, components),
+                dxbc::Src::R(original_temp));
+  a_.OpIAdd(dxbc::Dest::R(original_temp, components),
+            dxbc::Src::R(original_temp), dxbc::Src::LU(0x0400));
+  // Choose the encoded value for the overflowed lanes.
+  a_.OpMovC(dxbc::Dest::R(reg, components), dxbc::Src::R(mask_temp),
+            dxbc::Src::R(original_temp), dxbc::Src::R(reg));
+  // Release original_temp and mask_temp.
+  PopSystemTemp(2);
+}
+
+void DxbcShaderTranslator::Float16ExtendedRangeTo32(uint32_t reg,
+                                                    uint32_t components) {
+  uint32_t reduced_temp = PushSystemTemp();
+  uint32_t mask_temp = PushSystemTemp();
+  // Find the exponent 31 lanes, which hold finite values on the Xbox 360
+  // rather than Inf or NaN.
+  a_.OpAnd(dxbc::Dest::R(mask_temp, components), dxbc::Src::R(reg),
+           dxbc::Src::LU(0x7C00));
+  a_.OpIEq(dxbc::Dest::R(mask_temp, components), dxbc::Src::R(mask_temp),
+           dxbc::Src::LU(0x7C00));
+  // Lower their exponent by one so the conversion sees a normal float16, then
+  // double the result to undo it.
+  a_.OpIAdd(dxbc::Dest::R(reduced_temp, components), dxbc::Src::R(reg),
+            dxbc::Src::LI(-0x0400));
+  a_.OpMovC(dxbc::Dest::R(reg, components), dxbc::Src::R(mask_temp),
+            dxbc::Src::R(reduced_temp), dxbc::Src::R(reg));
+  a_.OpF16ToF32(dxbc::Dest::R(reg, components), dxbc::Src::R(reg));
+  a_.OpMul(dxbc::Dest::R(reduced_temp, components), dxbc::Src::R(reg),
+           dxbc::Src::LF(2.0f));
+  a_.OpMovC(dxbc::Dest::R(reg, components), dxbc::Src::R(mask_temp),
+            dxbc::Src::R(reduced_temp), dxbc::Src::R(reg));
+  // Release reduced_temp and mask_temp.
+  PopSystemTemp(2);
 }
 
 void DxbcShaderTranslator::PreClampedFloat32To7e3(

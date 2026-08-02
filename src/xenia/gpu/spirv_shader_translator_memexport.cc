@@ -650,95 +650,8 @@ void SpirvShaderTranslator::ExportToMemory(uint8_t export_eM) {
     add_format_case(fixed16_packed, 3);
   }
 
-  // Xbox 360 float16 uses extended range: exponent 31 is NOT Inf/NaN
-  // but a valid large value (up to +/-131008). Standard PackHalf2x16
-  // clamps to +/-65504 and produces Inf for larger values. This helper
-  // detects where standard conversion overflowed to Inf/NaN and
-  // re-encodes those values using the extended range representation:
-  // halve the value, convert to standard f16 (giving exponent <= 30),
-  // then increment the exponent by 1 (placing it in the exponent 31
-  // slot that Xbox 360 treats as a normal value, not Inf/NaN).
-  // Operates on a float2 packed via PackHalf2x16 into a uint32, with
-  // per-lane overflow detection and selection.
-  auto pack_half_2x16_extended_range = [&](spv::Id float2_value) -> spv::Id {
-    // Standard f32 to f16 conversion (handles +/-0..65504 correctly).
-    spv::Id standard =
-        builder_->createUnaryBuiltinCall(type_uint_, ext_inst_glsl_std_450_,
-                                         GLSLstd450PackHalf2x16, float2_value);
-
-    // Detect where standard conversion produced Inf or NaN
-    // (exponent field = 31, i.e. bits [14:10] all set = 0x7C00)
-    // in each 16-bit lane of the packed result.
-    spv::Id const_0x7C00 = builder_->makeUintConstant(0x7C00);
-    spv::Id lower_exp = builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
-                                              standard, const_0x7C00);
-    spv::Id lower_overflow = builder_->createBinOp(spv::OpIEqual, type_bool_,
-                                                   lower_exp, const_0x7C00);
-    spv::Id upper_bits =
-        builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, standard,
-                              builder_->makeUintConstant(16));
-    spv::Id upper_exp = builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
-                                              upper_bits, const_0x7C00);
-    spv::Id upper_overflow = builder_->createBinOp(spv::OpIEqual, type_bool_,
-                                                   upper_exp, const_0x7C00);
-
-    // For values that overflowed, compute extended range encoding:
-    // 1. Clamp to +/-131008.0 (max extended float16 can represent).
-    spv::Id const_131008 = builder_->makeFloatConstant(131008.0f);
-    spv::Id const_neg_131008 = builder_->makeFloatConstant(-131008.0f);
-    id_vector_temp_.clear();
-    id_vector_temp_.push_back(const_neg_131008);
-    id_vector_temp_.push_back(const_neg_131008);
-    spv::Id const_neg_131008_vec2 =
-        builder_->makeCompositeConstant(type_float2_, id_vector_temp_);
-    id_vector_temp_.clear();
-    id_vector_temp_.push_back(const_131008);
-    id_vector_temp_.push_back(const_131008);
-    spv::Id const_131008_vec2 =
-        builder_->makeCompositeConstant(type_float2_, id_vector_temp_);
-    spv::Id clamped = builder_->createTriBuiltinCall(
-        type_float2_, ext_inst_glsl_std_450_, GLSLstd450FClamp, float2_value,
-        const_neg_131008_vec2, const_131008_vec2);
-
-    // 2. Halve to bring into standard float16 range (max 65504).
-    spv::Id const_half = builder_->makeFloatConstant(0.5f);
-    id_vector_temp_.clear();
-    id_vector_temp_.push_back(const_half);
-    id_vector_temp_.push_back(const_half);
-    spv::Id const_half_vec2 =
-        builder_->makeCompositeConstant(type_float2_, id_vector_temp_);
-    spv::Id halved = builder_->createBinOp(spv::OpFMul, type_float2_, clamped,
-                                           const_half_vec2);
-
-    // 3. Convert the halved value (will have exponent <= 30).
-    spv::Id halved_packed = builder_->createUnaryBuiltinCall(
-        type_uint_, ext_inst_glsl_std_450_, GLSLstd450PackHalf2x16, halved);
-
-    // 4. Increment exponent by 1 in both lanes (add 0x0400 to each
-    //    16-bit half = 0x04000400) to compensate for the halving.
-    spv::Id extended =
-        builder_->createBinOp(spv::OpIAdd, type_uint_, halved_packed,
-                              builder_->makeUintConstant(0x04000400));
-
-    // Select: use extended result where standard gave Inf/NaN,
-    // keep standard result otherwise. Per-lane selection via masking.
-    spv::Id const_0xFFFF = builder_->makeUintConstant(0xFFFF);
-    spv::Id const_0xFFFF0000 = builder_->makeUintConstant(0xFFFF0000);
-    spv::Id result_lower = builder_->createTriOp(
-        spv::OpSelect, type_uint_, lower_overflow,
-        builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, extended,
-                              const_0xFFFF),
-        builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, standard,
-                              const_0xFFFF));
-    spv::Id result_upper = builder_->createTriOp(
-        spv::OpSelect, type_uint_, upper_overflow,
-        builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, extended,
-                              const_0xFFFF0000),
-        builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, standard,
-                              const_0xFFFF0000));
-    return builder_->createBinOp(spv::OpBitwiseOr, type_uint_, result_lower,
-                                 result_upper);
-  };
+  // Xbox 360 float16 uses extended range: exponent 31 is a large finite value,
+  // not Inf/NaN. See PackFloat16x2ExtendedRange.
 
   // k_16_FLOAT
   format_switch.makeBeginCase(
@@ -750,7 +663,7 @@ void SpirvShaderTranslator::ExportToMemory(uint8_t export_eM) {
       id_vector_temp_.push_back(builder_->createCompositeExtract(
           eM_swapped[eM_index], type_float_, 0));
       id_vector_temp_.push_back(const_float_0_);
-      spv::Id format_packed_16_float_x = pack_half_2x16_extended_range(
+      spv::Id format_packed_16_float_x = PackFloat16x2ExtendedRange(
           builder_->createCompositeConstruct(type_float2_, id_vector_temp_));
       id_vector_temp_.clear();
       id_vector_temp_.resize(4, const_uint_0_);
@@ -771,7 +684,7 @@ void SpirvShaderTranslator::ExportToMemory(uint8_t export_eM) {
       uint_vector_temp_.push_back(0);
       uint_vector_temp_.push_back(1);
       spv::Id format_packed_16_16_float_xy =
-          pack_half_2x16_extended_range(builder_->createRvalueSwizzle(
+          PackFloat16x2ExtendedRange(builder_->createRvalueSwizzle(
               spv::NoPrecision, type_float2_, eM_swapped[eM_index],
               uint_vector_temp_));
       id_vector_temp_.clear();
@@ -796,7 +709,7 @@ void SpirvShaderTranslator::ExportToMemory(uint8_t export_eM) {
         uint_vector_temp_.push_back(2 * component_index);
         uint_vector_temp_.push_back(2 * component_index + 1);
         format_packed_16_16_16_16_float_xy_zw[component_index] =
-            pack_half_2x16_extended_range(builder_->createRvalueSwizzle(
+            PackFloat16x2ExtendedRange(builder_->createRvalueSwizzle(
                 spv::NoPrecision, type_float2_, eM_swapped[eM_index],
                 uint_vector_temp_));
       }
