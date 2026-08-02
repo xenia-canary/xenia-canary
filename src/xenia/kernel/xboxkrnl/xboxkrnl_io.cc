@@ -388,10 +388,10 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
 }
 DECLARE_XBOXKRNL_EXPORT1(NtWriteFile, kFileSystem, kImplemented);
 
-dword_result_t NtCreateIoCompletion_entry(lpdword_t out_handle,
-                                          dword_t desired_access,
-                                          lpvoid_t object_attribs,
-                                          dword_t num_concurrent_threads) {
+dword_result_t NtCreateIoCompletion_entry(
+    lpdword_t out_handle, dword_t desired_access,
+    pointer_t<X_OBJECT_ATTRIBUTES> object_attribs,
+    dword_t num_concurrent_threads) {
   auto completion = new XIOCompletion(kernel_state());
   if (out_handle) {
     *out_handle = completion->handle();
@@ -641,6 +641,19 @@ dword_result_t FscSetCacheElementCount_entry(dword_t unk_0, dword_t unk_1) {
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(FscSetCacheElementCount, kFileSystem, kStub);
+
+struct X_DRIVE_GEOMETRY {
+  xe::be<uint32_t> sector_count;
+  xe::be<uint32_t> sector_size;
+};
+static_assert_size(X_DRIVE_GEOMETRY, 0x8);
+
+struct X_PARTITION_INFO {
+  xe::be<uint64_t> unk;
+  xe::be<uint64_t> total_size;
+};
+static_assert_size(X_PARTITION_INFO, 0x10);
+
 // todo: this should fill in the io status block and queue the apc
 dword_result_t NtDeviceIoControlFile_entry(
     dword_t handle, dword_t event_handle, dword_t apc_routine,
@@ -653,19 +666,21 @@ dword_result_t NtDeviceIoControlFile_entry(
   constexpr uint32_t cache_size = 0xFF000;
 
   if (io_control_code == X_IOCTL_DISK_GET_DRIVE_GEOMETRY) {
-    if (output_buffer_len < 0x8) {
+    if (output_buffer_len < sizeof(X_DRIVE_GEOMETRY)) {
       assert_always();
       return X_STATUS_BUFFER_TOO_SMALL;
     }
-    xe::store_and_swap<uint32_t>(output_buffer, cache_size / 512);
-    xe::store_and_swap<uint32_t>(output_buffer + 4, 512);
+    auto buffer = output_buffer.as<X_DRIVE_GEOMETRY*>();
+    buffer->sector_count = cache_size / 0x200;
+    buffer->sector_size = 0x200;  // 0x200, 0x1000, 0x4000
   } else if (io_control_code == X_IOCTL_DISK_GET_PARTITION_INFO) {
-    if (output_buffer_len < 0x10) {
+    if (output_buffer_len < sizeof(X_PARTITION_INFO)) {
       assert_always();
       return X_STATUS_BUFFER_TOO_SMALL;
     }
-    xe::store_and_swap<uint64_t>(output_buffer, 0);
-    xe::store_and_swap<uint64_t>(output_buffer + 8, cache_size);
+    auto buffer = output_buffer.as<X_PARTITION_INFO*>();
+    buffer->unk = 0;
+    buffer->total_size = cache_size;
   } else {
     XELOGD("NtDeviceIoControlFile(0x{:X}) - unhandled IOCTL!",
            uint32_t(io_control_code));
