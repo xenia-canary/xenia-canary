@@ -1121,6 +1121,18 @@ void ParseTextureFetchInstruction(const TextureFetchInstruction& op,
       opcode_info.override_component_count
           ? opcode_info.override_component_count
           : xenos::GetFetchOpDimensionComponentCount(op.dimension());
+  if (op.opcode() == FetchOpcode::kTextureFetch &&
+      op.dimension() == xenos::FetchOpDimension::k1D) {
+    uint32_t src_swizzle = op.src_swizzle();
+    uint32_t src_select_x = src_swizzle & 0x3;
+    if (((src_swizzle >> 2) & 0x3) != src_select_x ||
+        ((src_swizzle >> 4) & 0x3) != src_select_x) {
+      // 1D may provide XY for a 2D fetch constant. 545407D4's UI shader does
+      // this, and it seems like we have to support it, even if it doesn't
+      // make sense on paper.
+      src_op.component_count = 2;
+    }
+  }
   uint32_t swizzle = op.src_swizzle();
   for (uint32_t j = 0; j < src_op.component_count; ++j, swizzle >>= 2) {
     src_op.components[j] = GetSwizzleFromComponentIndex(swizzle & 0x3);
