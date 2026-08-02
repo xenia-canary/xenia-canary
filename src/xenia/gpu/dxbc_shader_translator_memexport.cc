@@ -195,8 +195,9 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
         while (xe::bit_scan_forward(eM_remaining, &eM_index)) {
           eM_remaining &= ~(uint8_t(1) << eM_index);
           uint32_t eM = system_temps_memexport_data_[eM_index];
-          a_.OpBFI(dxbc::Dest::R(eM, components), dxbc::Src::LU(31),
-                   dxbc::Src::LU(0), dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
+          a_.OpBFI(dxbc::Dest::R(round_bias_temp, components),
+                   dxbc::Src::LU(31), dxbc::Src::LU(0), dxbc::Src::LF(0.5f),
+                   dxbc::Src::R(eM));
           a_.OpAdd(dxbc::Dest::R(eM, components), dxbc::Src::R(eM),
                    dxbc::Src::R(round_bias_temp));
           a_.OpFToI(dxbc::Dest::R(eM, components), dxbc::Src::R(eM));
@@ -421,8 +422,8 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
         while (xe::bit_scan_forward(eM_remaining, &eM_index)) {
           eM_remaining &= ~(uint8_t(1) << eM_index);
           uint32_t eM = system_temps_memexport_data_[eM_index];
-          a_.OpBFI(dxbc::Dest::R(eM), dxbc::Src::LU(31), dxbc::Src::LU(0),
-                   dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
+          a_.OpBFI(dxbc::Dest::R(round_bias_temp), dxbc::Src::LU(31),
+                   dxbc::Src::LU(0), dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
           a_.OpAdd(dxbc::Dest::R(eM), dxbc::Src::R(eM),
                    dxbc::Src::R(round_bias_temp));
           a_.OpFToI(dxbc::Dest::R(eM), dxbc::Src::R(eM));
