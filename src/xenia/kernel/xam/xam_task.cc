@@ -23,35 +23,16 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
-struct XTASK_MESSAGE {
-  be<uint32_t> unknown_00;
-  be<uint32_t> unknown_04;
-  be<uint32_t> unknown_08;
-  be<uint32_t> callback_arg_ptr;
-  be<uint32_t> event_handle;
-  be<uint32_t> unknown_14;
-  be<uint32_t> task_handle;
-};
-
-struct XAM_TASK_ARGS {
-  be<uint32_t> flags;
-  be<uint32_t> value2;
-  // i think there might be another value here, it might be padding
-};
-static_assert_size(XTASK_MESSAGE, 0x1C);
-
-dword_result_t XamTaskSchedule_entry(lpvoid_t callback,
-                                     pointer_t<XTASK_MESSAGE> message,
-                                     dword_t optional_ptr, lpdword_t handle_ptr,
+dword_result_t XamTaskSchedule_entry(lpvoid_t callback, lpvoid_t message,
+                                     pointer_t<X_TASK_ARGS> optional_ptr,
+                                     lpdword_t handle_ptr,
                                      const ppc_context_t& ctx) {
   // TODO(gibbed): figure out what this is for
   *handle_ptr = 12345;
 
   if (optional_ptr) {
-    auto option = ctx->TranslateVirtual<XAM_TASK_ARGS*>(optional_ptr);
-
-    auto v1 = option->flags;
-    auto v2 = option->value2;  // typically 0?
+    auto v1 = optional_ptr->flags;   // 4, 8, 0x4000008, 0x402008, etc
+    auto v2 = optional_ptr->value2;  // 10, 1000, 0xea60, etc
 
     XELOGI("Got xam task args: v1 = {:08X}, v2 = {:08X}", v1.get(), v2.get());
   }

@@ -378,6 +378,12 @@ enum LoaderLaunchFlags : uint32_t {
   GetVersionFromExecutionId = 0x00010000,
 };
 
+struct X_TASK_ARGS {
+  be<uint32_t> flags;
+  be<uint32_t> value2;
+};
+static_assert_size(X_TASK_ARGS, 0x8);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

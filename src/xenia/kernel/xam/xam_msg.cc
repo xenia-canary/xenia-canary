@@ -45,15 +45,10 @@ dword_result_t XMsgSystemProcessCall_entry(dword_t app, dword_t message,
 }
 DECLARE_XAM_EXPORT1(XMsgSystemProcessCall, kNone, kImplemented);
 
-struct XMSGSTARTIOREQUEST_UNKNOWNARG {
-  be<uint32_t> unk_0;
-  be<uint32_t> unk_1;
-};
-
 X_HRESULT xeXMsgStartIORequestEx(uint32_t app, uint32_t message,
                                  uint32_t overlapped_ptr, uint32_t buffer_ptr,
                                  uint32_t buffer_length,
-                                 XMSGSTARTIOREQUEST_UNKNOWNARG* unknown) {
+                                 X_TASK_ARGS* xam_task_args_ptr) {
   auto result = kernel_state()->app_manager()->DispatchMessageAsync(
       app, message, buffer_ptr, buffer_length);
   if (result == X_E_NOTFOUND) {
@@ -74,9 +69,9 @@ X_HRESULT xeXMsgStartIORequestEx(uint32_t app, uint32_t message,
 dword_result_t XMsgStartIORequestEx_entry(
     dword_t app, dword_t message, pointer_t<XAM_OVERLAPPED> overlapped_ptr,
     dword_t buffer_ptr, dword_t buffer_length,
-    pointer_t<XMSGSTARTIOREQUEST_UNKNOWNARG> unknown_ptr) {
+    pointer_t<X_TASK_ARGS> xam_task_args_ptr) {
   return xeXMsgStartIORequestEx(app, message, overlapped_ptr, buffer_ptr,
-                                buffer_length, unknown_ptr);
+                                buffer_length, xam_task_args_ptr);
 }
 DECLARE_XAM_EXPORT1(XMsgStartIORequestEx, kNone, kImplemented);
 
