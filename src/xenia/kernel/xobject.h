@@ -80,11 +80,9 @@ struct X_OBJECT_HEADER {
   xe::be<uint32_t> object_type_ptr;  // X_OBJECT_TYPE*
   xe::be<int16_t> flags;
   xe::be<int8_t> hash_index;
-  xe::be<int8_t> padding;
-  xe::be<int64_t> used;
   // Object lives after this header.
 };
-static_assert_size(X_OBJECT_HEADER, 0x18);
+static_assert_size(X_OBJECT_HEADER, 0x10);
 
 class XObject {
  public:
