@@ -125,3 +125,10 @@ DEFINE_bool(
     "This fixes(hide) issues with black ground in AC6. Use only in AC6. "
     "Might cause issues in other titles.",
     "HACKS");
+
+DEFINE_bool(
+    force_depth_clamp, false,
+    "Use host depth clamping instead of near and far plane clipping when "
+    "guest clipping is enabled. X/Y/W clipping is unaffected. On Vulkan, "
+    "this requires depthClamp support.",
+    "GPU");

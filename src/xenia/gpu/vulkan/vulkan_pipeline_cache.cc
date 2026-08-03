@@ -170,6 +170,13 @@ bool VulkanPipelineCache::Initialize() {
     }
   }
 
+  if (cvars::force_depth_clamp && !vulkan_device->properties().depthClamp) {
+    XELOGW(
+        "force_depth_clamp is enabled, but the device doesn't support depth "
+        "clamping - guest draws with clipping enabled will still be clipped "
+        "to the host planes");
+  }
+
   // Create placeholder pixel shader for pipeline hot-swap (stutter reduction).
   placeholder_pixel_shader_ = ui::vulkan::util::CreateShaderModule(
       vulkan_device, shaders::placeholder_ps, sizeof(shaders::placeholder_ps));
@@ -1212,9 +1219,16 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
   description_out.primitive_restart =
       primitive_processing_result.host_primitive_reset_enabled;
 
+  // With force_depth_clamp, use the host viewport clamp instead of near and far
+  // Z plane clipping. X/Y/W clipping is unchanged. Both 494707EE and 41560881
+  // have passes that rely on alpha inputs that currently gets dropped by
+  // near-plane clipping.
+  // TODO(boma): Investigate whether the difference is in shader arithmetic or
+  // the clipper itself.
   description_out.depth_clamp_enable =
       device_properties.depthClamp &&
-      regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable;
+      (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable ||
+       cvars::force_depth_clamp);
 
   // TODO(Triang3l): Tessellation.
   bool primitive_polygonal = draw_util::IsPrimitivePolygonal(regs);
