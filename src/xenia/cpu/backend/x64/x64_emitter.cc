@@ -681,9 +681,104 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
   return addr;
 }
 
+bool X64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
+                                              const GuestFunction* function) {
+  if (!function->IsSaverest() ||
+      function->SaverestType() != SaveRestoreType::GPR) {
+    return false;
+  }
+
+  const unsigned first_gpr = function->SaverestIndex();
+  if (first_gpr < 14 || first_gpr > 31) {
+    return false;
+  }
+
+  const bool is_tail_call = (instr->flags & hir::CALL_TAIL) != 0;
+  if ((function->IsSave() && is_tail_call) ||
+      (function->IsRestore() && !is_tail_call)) {
+    return false;
+  }
+
+  // Standard PPC helper layout:
+  //   std/ld rN, -((33 - N) * 8)(r1), N = first_gpr..31
+  //   stw/lwz r12, -8(r1)
+  const int32_t first_slot_offset = static_cast<int32_t>((33 - first_gpr) * 8);
+  const int32_t lr_slot_offset = -8;
+
+  // rax = guest r1. Scratch here must stay out of gpr_reg_map_ (RBX, R10-R15)
+  // so live HIR values survive; rax/rcx/rdx are free at a call site.
+  mov(eax, dword[GetContextReg() + offsetof(ppc::PPCContext, r[1])]);
+  if (xe::memory::allocation_granularity() > 0x1000) {
+    // Branch-free: edx = r1 + 0x1000, kept only when r1 >= 0xE0000000.
+    lea(edx, ptr[rax + 0x1000]);
+    cmp(eax, 0xE0000000);
+    cmovae(eax, edx);
+  }
+
+  const bool has_movbe = IsFeatureEnabled(kX64EmitMovbe);
+
+  if (function->IsSave()) {
+    for (unsigned guest_reg = first_gpr; guest_reg <= 31; ++guest_reg) {
+      const int32_t disp = -first_slot_offset +
+                           static_cast<int32_t>((guest_reg - first_gpr) * 8);
+      mov(rdx,
+          qword[GetContextReg() + offsetof(ppc::PPCContext, r[guest_reg])]);
+      if (has_movbe) {
+        movbe(qword[GetMembaseReg() + rax + disp], rdx);
+      } else {
+        bswap(rdx);
+        mov(qword[GetMembaseReg() + rax + disp], rdx);
+      }
+    }
+
+    mov(edx, dword[GetContextReg() + offsetof(ppc::PPCContext, r[12])]);
+    if (has_movbe) {
+      movbe(dword[GetMembaseReg() + rax + lr_slot_offset], edx);
+    } else {
+      bswap(edx);
+      mov(dword[GetMembaseReg() + rax + lr_slot_offset], edx);
+    }
+    return true;
+  }
+
+  for (unsigned guest_reg = first_gpr; guest_reg <= 31; ++guest_reg) {
+    const int32_t disp =
+        -first_slot_offset + static_cast<int32_t>((guest_reg - first_gpr) * 8);
+    if (has_movbe) {
+      movbe(rdx, qword[GetMembaseReg() + rax + disp]);
+    } else {
+      mov(rdx, qword[GetMembaseReg() + rax + disp]);
+      bswap(rdx);
+    }
+    mov(qword[GetContextReg() + offsetof(ppc::PPCContext, r[guest_reg])], rdx);
+  }
+
+  // The reloaded LR lands in both r12 and lr; 32-bit ops zero the rest of rcx.
+  if (has_movbe) {
+    movbe(ecx, dword[GetMembaseReg() + rax + lr_slot_offset]);
+  } else {
+    mov(ecx, dword[GetMembaseReg() + rax + lr_slot_offset]);
+    bswap(ecx);
+  }
+  mov(qword[GetContextReg() + offsetof(ppc::PPCContext, r[12])], rcx);
+  mov(qword[GetContextReg() + offsetof(ppc::PPCContext, lr)], rcx);
+
+  // __restgprlr_N returns to the reloaded LR: take our epilogue when it is our
+  // own return address, otherwise tail-call it. CallIndirect emits the
+  // indirection lookup and, for a tail call, the stack teardown and jump.
+  cmp(ecx, dword[rsp + StackLayout::GUEST_RET_ADDR]);
+  je(epilog_label(), CodeGenerator::T_NEAR);
+  CallIndirect(instr, rcx);
+  return true;
+}
+
 void X64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   assert_not_null(function);
   ForgetMxcsrMode();
+  if (TryInlinePPCGprLrSaveRestore(instr, function)) {
+    return;
+  }
+
   auto fn = static_cast<X64Function*>(function);
   // Resolve address to the function to call and store in rax.
 
