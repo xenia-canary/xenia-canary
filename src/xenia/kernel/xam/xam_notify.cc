@@ -17,7 +17,7 @@
 #include "xenia/xbox.h"
 
 DEFINE_bool(
-    xmp_initial_state_notification, true,
+    xmp_initial_state_notification, false,
     "Deliver an initial XMP state snapshot (player idle, title holds playback "
     "control) to each newly created notification listener, mirroring the "
     "state a real console's dashboard exposes to a starting title. Titles "
