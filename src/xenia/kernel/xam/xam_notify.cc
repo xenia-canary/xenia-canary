@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include "xenia/base/cvar.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
@@ -14,6 +15,16 @@
 #include "xenia/kernel/xnotifylistener.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
+
+DEFINE_bool(
+    xmp_initial_state_notification, true,
+    "Deliver an initial XMP state snapshot (player idle, title holds playback "
+    "control) to each newly created notification listener, mirroring the "
+    "state a real console's dashboard exposes to a starting title. Titles "
+    "that mute their own soundtrack until told that no user custom "
+    "soundtrack is active (TCR compliance) otherwise wait forever and play "
+    "no music (e.g. Call of Duty: Black Ops II).",
+    "Kernel");
 
 namespace xe {
 namespace kernel {
@@ -30,6 +41,20 @@ uint32_t xeXamNotifyCreateListener(uint64_t mask, uint32_t is_system,
   auto listener =
       object_ref<XNotifyListener>(new XNotifyListener(kernel_state()));
   listener->Initialize(mask, is_system, max_version);
+
+  // On real hardware XAM leaves a title's fresh listener knowing where the
+  // system media player stands; without this, a title that boots with its
+  // music muted and waits to be told "no user soundtrack is active" waits
+  // forever. Payloads mirror the reactive broadcasts elsewhere in this
+  // codebase: state 0 = XmpApp::State::kIdle (audio_media_player.cc) and
+  // 1 = title holds playback control (xmp_app.cc, XMPSetPlaybackController).
+  // EnqueueNotification filters against the listener's own mask, so
+  // listeners that do not subscribe to the XMP area are unaffected.
+  if (cvars::xmp_initial_state_notification) {
+    listener->EnqueueNotification(kXNotificationXmpStateChanged, 0);
+    listener->EnqueueNotification(kXNotificationXmpPlaybackControllerChanged,
+                                  1);
+  }
 
   // Handle ref is incremented, so return that.
   uint32_t handle = listener->handle();
