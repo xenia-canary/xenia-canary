@@ -130,8 +130,12 @@ class UserData {
            data_.type == X_USER_DATA_TYPE::WSTRING;
   }
 
+  static AttributeKey get_attribute_key(uint32_t id) {
+    return AttributeKey{.value = id};
+  }
+
   static X_USER_DATA_TYPE get_type(uint32_t id) {
-    return static_cast<X_USER_DATA_TYPE>(id >> 28);
+    return static_cast<X_USER_DATA_TYPE>(get_attribute_key(id).type);
   }
 
   static bool is_system_property(uint32_t id) {
@@ -139,7 +143,7 @@ class UserData {
   }
 
   static uint16_t get_max_size(uint32_t id) {
-    return static_cast<uint16_t>(id >> 16) & kMaxUserDataSize;
+    return std::min<uint16_t>(get_attribute_key(id).size, kMaxUserDataSize);
   }
 
   static bool requires_additional_data(uint32_t id) {
