@@ -1051,8 +1051,10 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
       GetOperandScalarXY(operand_storage[0], instr.scalar_operands[0], a, b);
       if (instr.scalar_opcode == ucode::AluScalarOpcode::kMaxAs ||
           instr.scalar_opcode == ucode::AluScalarOpcode::kMaxAsf) {
-        // maxas: a0 = (int)clamp(floor(src0.a + 0.5), -256.0, 255.0)
-        // maxasf: a0 = (int)clamp(floor(src0.a), -256.0, 255.0)
+        // Scalar maxas/maxasf clamp a0 to [0, 255] (non-negative), unlike the
+        // vector maxa which allows [-256, 255]. Matches DxbcShaderTranslator.
+        // maxas: a0 = (int)clamp(floor(src0.a + 0.5), 0.0, 255.0)
+        // maxasf: a0 = (int)clamp(floor(src0.a), 0.0, 255.0)
         spv::Id maxa_address;
         if (instr.scalar_opcode == ucode::AluScalarOpcode::kMaxAs) {
           maxa_address = builder_->createNoContractionBinOp(
@@ -1068,7 +1070,7 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
                     builder_->createUnaryBuiltinCall(
                         type_float_, ext_inst_glsl_std_450_, GLSLstd450Floor,
                         maxa_address),
-                    builder_->makeFloatConstant(-256.0f),
+                    builder_->makeFloatConstant(0.0f),
                     builder_->makeFloatConstant(255.0f))),
             var_main_address_register_);
       }
