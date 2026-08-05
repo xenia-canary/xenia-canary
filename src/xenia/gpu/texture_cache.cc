@@ -364,9 +364,8 @@ void TextureCache::RequestTextures(uint32_t used_texture_mask) {
     uint32_t old_host_swizzle = binding.host_swizzle;
     binding.host_swizzle =
         GuestToHostSwizzle(fetch.swizzle, GetHostFormatSwizzle(binding.key));
-    binding.integer_scale_bits =
-        GetIntegerScaleBits(fetch.format, fetch.num_format,
-                            binding.host_swizzle, binding.swizzled_signs);
+    binding.integer_scale_bits = GetIntegerScaleBits(
+        fetch.format, fetch.num_format, fetch.swizzle, binding.swizzled_signs);
 
     // Check if need to load the unsigned and the signed versions of the texture
     // (if the format is emulated with different host bit representations for
@@ -690,11 +689,11 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
 // undo the host sampler's normalization - the guest wants e.g. [0, 255], not
 // [0, 1]. 6 bits per output component: bits 0:3 = width - 1, bit 4 = signed,
 // bit 5 = unsigned-biased. The scale lands after swizzling, so each output lane
-// walks the host swizzle back to its source component's width; constant (0/1)
+// walks the guest swizzle back to its source component's width; constant (0/1)
 // lanes, gamma, and non-fixed formats have nothing to rescale and stay 0.
 uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
                                            uint32_t num_format,
-                                           uint32_t host_swizzle,
+                                           uint32_t guest_swizzle,
                                            uint8_t swizzled_signs) {
   // num_format 0 is the normalized/fractional fetch - nothing to rescale.
   const FormatInfo& format_info = *FormatInfo::Get(guest_format);
@@ -705,7 +704,7 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
   }
 
   for (uint32_t i = 0; i < 4; ++i) {
-    uint32_t source_component = (host_swizzle >> (i * 3)) & 0b111;
+    uint32_t source_component = (guest_swizzle >> (i * 3)) & 0b111;
     if (source_component >= xenos::XE_GPU_TEXTURE_SWIZZLE_0) {
       continue;
     }

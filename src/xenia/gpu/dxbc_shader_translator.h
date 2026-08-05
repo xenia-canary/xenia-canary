@@ -417,6 +417,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // to turn normalized host samples back into guest integer values.
     // bits 0:3 = component_bits - 1
     // bit 4 = signed
+    // bit 5 = unsigned-biased
     // Zero means no scale.
     uint32_t texture_integer_scale_bits[32];
 
