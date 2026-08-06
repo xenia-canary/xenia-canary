@@ -217,6 +217,13 @@ struct XMP_SET_MEDIA_SOURCE_WORKSPACE {
 };
 static_assert_size(XMP_SET_MEDIA_SOURCE_WORKSPACE, 0x10);
 
+struct XMP_GET_MEDIA_SOURCE {
+  xe::be<apu::XMP_CLIENT> xmp_client;
+  xe::be<uint32_t> unk1;
+  xe::be<uint32_t> media_resources_ptr;  // *MSAL_MEDIASOURCEINFO
+};
+static_assert_size(XMP_GET_MEDIA_SOURCE, 0xC);
+
 struct XMP_GET_DASH_INIT_STATE {
   xe::be<apu::XMP_CLIENT> xmp_client;
   xe::be<uint32_t> dash_init_state_ptr;
