@@ -741,9 +741,9 @@ struct X_IRP_OVERLAY {
     X_LIST_ENTRY device_list_entry;            // 0x0 sz:0x8
     xe::be<uint32_t> driver_context_ptr[4];    // 0x0 sz:0x10
   };
-  xe::be<uint32_t> locked_buffer_length;  // 0x10 sz:0x4
-  xe::be<uint32_t> thread_ptr;            // 0x14 sz:0x4
-  X_LIST_ENTRY list_entry;                // 0x18 sz:0x8
+  xe::be<uint32_t> locked_buffer_length;    // 0x10 sz:0x4
+  TypedGuestPointer<X_KTHREAD> thread_ptr;  // 0x14 sz:0x4
+  X_LIST_ENTRY list_entry;                  // 0x18 sz:0x8
   union {
     xe::be<uint32_t>
         current_stack_location_ptr;  // 0x20 sz:0x4, X_IO_STACK_LOCATION -> 0x24
@@ -761,37 +761,37 @@ union X_IRP_TAIL {
 };
 
 struct X_IRP {
-  xe::be<uint16_t> type;                // 0x0 sz:0x2
-  xe::be<uint16_t> size;                // 0x2 sz:0x2
-  xe::be<uint32_t> flags;               // 0x4 sz:0x4
-  X_LIST_ENTRY thread_list_entry;       // 0x8 sz:0x8
-  X_IO_STATUS_BLOCK io_status;          // 0x10 sz:0x8
-  xe::be<uint8_t> stack_count;          // 0x18 sz:0x1
-  xe::be<uint8_t> current_location;     // 0x19 sz:0x1
-  xe::be<uint8_t> pending_returned;     // 0x1A sz:0x1
-  xe::be<uint8_t> cancel;               // 0x1B sz:0x1
-  xe::be<uint32_t> user_buffer_ptr;     // 0x1C sz:0x4
-  xe::be<uint32_t> user_iosb_ptr;       // 0x20 sz:0x4, X_IO_STATUS_BLOCK*
-  xe::be<uint32_t> user_event_ptr;      // 0x24 sz:0x4, X_KEVENT*
-  X_UNION_IRP_OVERLAY overlay;          // 0x28 sz:0x8
-  X_IRP_TAIL tail;                      // 0x30 sz:0x28
-  xe::be<uint32_t> cancel_routine_ptr;  // 0x58 sz:0x4
+  xe::be<uint16_t> type;                               // 0x0 sz:0x2
+  xe::be<uint16_t> size;                               // 0x2 sz:0x2
+  xe::be<uint32_t> flags;                              // 0x4 sz:0x4
+  X_LIST_ENTRY thread_list_entry;                      // 0x8 sz:0x8
+  X_IO_STATUS_BLOCK io_status;                         // 0x10 sz:0x8
+  xe::be<uint8_t> stack_count;                         // 0x18 sz:0x1
+  xe::be<uint8_t> current_location;                    // 0x19 sz:0x1
+  xe::be<uint8_t> pending_returned;                    // 0x1A sz:0x1
+  xe::be<uint8_t> cancel;                              // 0x1B sz:0x1
+  xe::be<uint32_t> user_buffer_ptr;                    // 0x1C sz:0x4
+  TypedGuestPointer<X_IO_STATUS_BLOCK> user_iosb_ptr;  // 0x20 sz:0x4
+  TypedGuestPointer<X_KEVENT> user_event_ptr;          // 0x24 sz:0x4
+  X_UNION_IRP_OVERLAY overlay;                         // 0x28 sz:0x8
+  X_IRP_TAIL tail;                                     // 0x30 sz:0x28
+  xe::be<uint32_t> cancel_routine_ptr;                 // 0x58 sz:0x4
 };
 static_assert_size(X_IRP, 0x60);
 
 struct X_DEVICE_OBJECT {
-  xe::be<uint16_t> type;                    // 0x0 sz:0x2
-  xe::be<uint16_t> device_extension_size;   // 0x2 sz:0x2
-  xe::be<uint32_t> reference_count;         // 0x4 sz:0x4
-  xe::be<uint32_t> drive_object_ptr;        // 0x8 sz:0x4, X_DRIVER_OBJECT*
-  xe::be<uint32_t> mounted_or_self_device;  // 0xC sz:0x4, X_DEVICE_OBJECT*
-  xe::be<uint32_t> current_irp_ptr;         // 0x10 sz:0x4, X_IRP*
-  xe::be<uint32_t> flags;                   // 0x14 sz:0x4
-  xe::be<uint32_t> device_extension_ptr;    // 0x18 sz:0x4
-  xe::be<uint8_t> device_type;              // 0x1C sz:0x1
-  xe::be<uint8_t> start_io_flags;           // 0x1D sz:0x1
-  xe::be<uint8_t> stack_size;               // 0x1E sz:0x1
-  xe::be<uint8_t> delete_pending;           // 0x1F sz:0x1
+  xe::be<uint16_t> type;                                      // 0x0 sz:0x2
+  xe::be<uint16_t> device_extension_size;                     // 0x2 sz:0x2
+  xe::be<uint32_t> reference_count;                           // 0x4 sz:0x4
+  TypedGuestPointer<X_DRIVER_OBJECT> drive_object_ptr;        // 0x8 sz:0x4
+  TypedGuestPointer<X_DEVICE_OBJECT> mounted_or_self_device;  // 0xC sz:0x4
+  TypedGuestPointer<X_IRP> current_irp_ptr;                   // 0x10 sz:0x4
+  xe::be<uint32_t> flags;                                     // 0x14 sz:0x4
+  xe::be<uint32_t> device_extension_ptr;                      // 0x18 sz:0x4
+  xe::be<uint8_t> device_type;                                // 0x1C sz:0x1
+  xe::be<uint8_t> start_io_flags;                             // 0x1D sz:0x1
+  xe::be<uint8_t> stack_size;                                 // 0x1E sz:0x1
+  xe::be<uint8_t> delete_pending;                             // 0x1F sz:0x1
   xe::be<uint32_t> sector_size;  // 0x20 sz:0x4, set by XamRamDriveCreate
   xe::be<uint32_t>
       alignment;  // 0x24 sz:0x4, NtQueryInformationFile called to verify

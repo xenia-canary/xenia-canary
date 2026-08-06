@@ -773,9 +773,9 @@ dword_result_t KeReleaseSemaphore_entry(pointer_t<X_KSEMAPHORE> semaphore_ptr,
 }
 DECLARE_XBOXKRNL_EXPORT1(KeReleaseSemaphore, kThreading, kImplemented);
 
-dword_result_t NtCreateSemaphore_entry(lpdword_t handle_ptr,
-                                       lpvoid_t obj_attributes_ptr,
-                                       dword_t count, dword_t limit) {
+dword_result_t NtCreateSemaphore_entry(
+    lpdword_t handle_ptr, pointer_t<X_OBJECT_ATTRIBUTES> obj_attributes_ptr,
+    dword_t count, dword_t limit) {
   // Check for an existing semaphore with the same name.
   auto existing_object =
       LookupNamedObject<XSemaphore>(kernel_state(), obj_attributes_ptr);
@@ -903,9 +903,9 @@ dword_result_t NtReleaseMutant_entry(dword_t mutant_handle,
 }
 DECLARE_XBOXKRNL_EXPORT1(NtReleaseMutant, kThreading, kImplemented);
 
-dword_result_t NtCreateTimer_entry(lpdword_t handle_ptr,
-                                   lpvoid_t obj_attributes_ptr,
-                                   dword_t timer_type) {
+dword_result_t NtCreateTimer_entry(
+    lpdword_t handle_ptr, pointer_t<X_OBJECT_ATTRIBUTES> obj_attributes_ptr,
+    dword_t timer_type) {
   // timer_type = NotificationTimer (0) or SynchronizationTimer (1)
 
   // Check for an existing timer with the same name.
@@ -1057,7 +1057,7 @@ DECLARE_XBOXKRNL_EXPORT3(NtWaitForSingleObjectEx, kThreading, kImplemented,
 dword_result_t KeWaitForMultipleObjects_entry(
     dword_t count, lpdword_t objects_ptr, dword_t wait_type,
     dword_t wait_reason, dword_t processor_mode, dword_t alertable,
-    lpqword_t timeout_ptr, lpvoid_t wait_block_array_ptr) {
+    lpqword_t timeout_ptr, pointer_t<X_KWAIT_BLOCK> wait_block_array_ptr) {
   assert_true(wait_type <= X_KWAIT_REASON::WaitAny);
 
   assert_true(count <= 64);
@@ -1531,7 +1531,7 @@ void xeKeInitializeApc(XAPC* apc, uint32_t thread_ptr, uint32_t kernel_routine,
   }
   apc->enqueued = 0;
 }
-void KeInitializeApc_entry(pointer_t<XAPC> apc, lpvoid_t thread_ptr,
+void KeInitializeApc_entry(pointer_t<XAPC> apc, pointer_t<X_KTHREAD> thread_ptr,
                            lpvoid_t kernel_routine, lpvoid_t rundown_routine,
                            lpvoid_t normal_routine, dword_t processor_mode,
                            lpvoid_t normal_context) {

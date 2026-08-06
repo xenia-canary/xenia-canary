@@ -535,9 +535,9 @@ DECLARE_XBOXKRNL_EXPORT1(RtlImageXexHeaderField, kNone, kImplemented);
 #pragma pack(push, 1)
 struct X_RTL_CRITICAL_SECTION {
   X_DISPATCH_HEADER header;
-  int32_t lock_count;               // 0x10 -1 -> 0 on first lock
-  xe::be<int32_t> recursion_count;  // 0x14  0 -> 1 on first lock
-  xe::be<uint32_t> owning_thread;   // 0x18 PKTHREAD 0 unless locked
+  int32_t lock_count;                          // 0x10 -1 -> 0 on first lock
+  xe::be<int32_t> recursion_count;             // 0x14  0 -> 1 on first lock
+  TypedGuestPointer<X_KTHREAD> owning_thread;  // 0x18 PKTHREAD 0 unless locked
 };
 #pragma pack(pop)
 static_assert_size(X_RTL_CRITICAL_SECTION, 28);
