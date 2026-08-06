@@ -645,6 +645,22 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
             block_rt_0_alpha_tests_rt_written_head->getId());
         main_fsi_sample_mask_ =
             builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+      } else if (edram_fragment_shader_interlock_) {
+        // Demote path: the alpha test demotes instead of touching the mask, but
+        // alpha to coverage still modified main_fsi_sample_mask_ inside the
+        // written branch. Merge in fsi_sample_mask_in_rt_0_alpha_tests, the
+        // mask from before the branch, on the edge where the render target
+        // wasn't written so the value dominates the merge. Otherwise it is
+        // undefined there (invalid SPIR-V dominance and garbage coverage).
+        id_vector_temp_.clear();
+        id_vector_temp_.push_back(main_fsi_sample_mask_);
+        id_vector_temp_.push_back(
+            block_rt_0_alpha_tests_rt_written_end.getId());
+        id_vector_temp_.push_back(fsi_sample_mask_in_rt_0_alpha_tests);
+        id_vector_temp_.push_back(
+            block_rt_0_alpha_tests_rt_written_head->getId());
+        main_fsi_sample_mask_ =
+            builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
       }
     }
   }
@@ -1741,12 +1757,12 @@ void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
                                 input_sample_mask_value),
         builder_->makeUintConstant(32 - 2));
   } else {
-    // 0 and 3 to 0 and 1.
+    // 0 and 3 to 0 and 1. Guest sample 1 comes from host sample 3.
     sample_mask_2x = builder_->createQuadOp(
         spv::OpBitFieldInsert, type_uint_, input_sample_mask_value,
         builder_->createTriOp(spv::OpBitFieldUExtract, type_uint_,
-                              input_sample_mask_value, const_uint_2,
-                              const_uint_1),
+                              input_sample_mask_value,
+                              builder_->makeUintConstant(3), const_uint_1),
         const_uint_1, builder_->makeUintConstant(32 - 1));
   }
   builder_->createBranch(&block_msaa_merge);
