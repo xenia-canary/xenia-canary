@@ -131,7 +131,6 @@ class XObject {
       case X_DISPATCHER_FLAGS::DISPATCHER_MANUAL_RESET_EVENT:
       case X_DISPATCHER_FLAGS::DISPATCHER_AUTO_RESET_EVENT:
         return Type::Event;
-        return Type::Mutant;
       case X_DISPATCHER_FLAGS::DISPATCHER_MUTANT:
         return Type::Mutant;
       case X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE:
