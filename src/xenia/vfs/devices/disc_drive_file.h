@@ -33,7 +33,7 @@ class DiscDriveFile : public File {
     return X_STATUS_ACCESS_DENIED;
   }
 
-  //TODO: Async Reads/Writes.
+  // TODO: Async Reads/Writes.
 
   X_STATUS SetLength(size_t length) override { return X_STATUS_ACCESS_DENIED; }
 

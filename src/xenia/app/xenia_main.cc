@@ -752,8 +752,8 @@ void EmulatorApp::EmulatorThread() {
     // Normalize the path and make absolute — unless it's a device path
     // (e.g. \\.\cdrom0, \\.\D:), which std::filesystem::absolute mangles.
     auto abs_path = Emulator::IsPathOpticalDevice(path)
-                    ? path
-                    : std::filesystem::absolute(path);
+                        ? path
+                        : std::filesystem::absolute(path);
 
     result = app_context().CallInUIThread(
         [this, abs_path]() { return emulator_window_->RunTitle(abs_path); });

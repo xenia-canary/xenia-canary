@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -23,21 +23,22 @@
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 
-#include <winioctl.h>
+#include <winioctl.h>  //The next newline fixes a linter bug. Removing it will break compilation.
+
 #include <ntddcdrm.h>
 #include <ntddscsi.h>
 
 namespace xe {
-  extern bool IsRunningUnderWine();
+extern bool IsRunningUnderWine();
 }
 #endif  // XE_PLATFORM_WIN32
 
+#include "xenia/app/physical_drive_dialogs.h"
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/system.h"
 #include "xenia/base/xxhash.h"
-#include "xenia/app/physical_drive_dialogs.h"
 #include "xenia/vfs/devices/disc_drive_entry.h"
 
 namespace xe::vfs {
@@ -75,8 +76,7 @@ constexpr size_t kOmniDriveDvdMainDataOffset = 12;
 constexpr size_t kOmniDriveDvdMainDataSize = 2048;
 constexpr size_t kGdfSectorSize = 2_KiB;
 constexpr uint64_t kUnixEpochAsFiletime = 10000 * 11644473600000LL;
-constexpr uint64_t kInvalidIssueSector =
-  std::numeric_limits<uint64_t>::max();
+constexpr uint64_t kInvalidIssueSector = std::numeric_limits<uint64_t>::max();
 constexpr uint32_t kSequentialPrefetchSectors = 64;
 constexpr uint32_t kMaxTransportReadSectors = 256;
 constexpr size_t kReadCacheMaxBytes = 32 * 1024 * 1024;
@@ -209,7 +209,7 @@ struct InquiryIdentityDetection {
 constexpr size_t kOmnidriveReserved5Offset = 74;
 constexpr char kOmnidriveFirmwareMarker[] = "OmniDrive";
 constexpr size_t kOmnidriveFirmwareMarkerLength = 9;
-constexpr DriveVersion kOmnidriveMinimumFirmwareVersion{1,0,2};
+constexpr DriveVersion kOmnidriveMinimumFirmwareVersion{1, 0, 2};
 
 InquiryIdentityDetection ParseOmnidriveInquiryIdentity(
     const uint8_t* inquiry_data, size_t inquiry_data_length) {
@@ -228,9 +228,8 @@ InquiryIdentityDetection ParseOmnidriveInquiryIdentity(
   if (inquiry_data_length >= required_length) {
     const uint8_t* reserved5 = inquiry_data + kOmnidriveReserved5Offset;
     if (std::memcmp(reserved5, kOmnidriveFirmwareMarker,
-                     kOmnidriveFirmwareMarkerLength) == 0) {
-      const uint8_t* version_bytes =
-          reserved5 + kOmnidriveFirmwareMarkerLength;
+                    kOmnidriveFirmwareMarkerLength) == 0) {
+      const uint8_t* version_bytes = reserved5 + kOmnidriveFirmwareMarkerLength;
       result.omnidrive_confirmed = true;
       result.omnidrive_version.major = version_bytes[0];
       result.omnidrive_version.minor = version_bytes[1];
@@ -256,8 +255,8 @@ bool IsPlausibleLinuxScsiPath(const std::filesystem::path& path) {
   }
 
   const std::string node = path.filename().string();
-  return StartsWith(node, "sg") || StartsWith(node, "sr") ||
-         node == "cdrom" || node == "dvd";
+  return StartsWith(node, "sg") || StartsWith(node, "sr") || node == "cdrom" ||
+         node == "dvd";
 }
 
 #if XE_PLATFORM_LINUX
@@ -281,16 +280,22 @@ bool RunLinuxScsiCommand(int fd, const char* command_name, const uint8_t* cdb,
   io_hdr.timeout = timeout_ms;
 
   if (ioctl(fd, SG_IO, &io_hdr) != 0) {
-    XELOGW("DiscOmnidriveDevice: {} failed with SG_IO error: {}",
-           command_name, std::strerror(errno));
+    XELOGW("DiscOmnidriveDevice: {} failed with SG_IO error: {}", command_name,
+           std::strerror(errno));
     return false;
   }
 
   if (io_hdr.sb_len_wr >= 14 &&
       (sense_buffer[0] & 0x7F) == 0x70 /* current fixed-format sense */) {
-    if (out_sense_key) *out_sense_key = sense_buffer[2] & 0x0F;
-    if (out_asc) *out_asc = sense_buffer[12];
-    if (out_ascq) *out_ascq = sense_buffer[13];
+    if (out_sense_key) {
+      *out_sense_key = sense_buffer[2] & 0x0F;
+    }
+    if (out_asc) {
+      *out_asc = sense_buffer[12];
+    }
+    if (out_ascq) {
+      *out_ascq = sense_buffer[13];
+    }
   }
 
   if ((io_hdr.info & SG_INFO_OK_MASK) != SG_INFO_OK || io_hdr.status != 0 ||
@@ -331,7 +336,8 @@ bool IsPlausibleWindowsCdromPath(const std::filesystem::path& path) {
   return false;
 }
 
-std::filesystem::path TranslateWineLinuxPath(const std::filesystem::path& path) {
+std::filesystem::path TranslateWineLinuxPath(
+    const std::filesystem::path& path) {
   const std::string path_string = path.string();
   if (!StartsWith(path_string, "/")) {
     return path;
@@ -380,7 +386,7 @@ DiscOmnidriveDevice::DiscOmnidriveDevice(std::string_view mount_path,
       has_physical_transport_(false)
 #endif
 #if XE_PLATFORM_WIN32
-      physical_transport_handle_(INVALID_HANDLE_VALUE),
+          physical_transport_handle_(INVALID_HANDLE_VALUE),
       has_physical_transport_(false),
       running_under_wine_(false),
       physical_transport_backend_(PhysicalTransportBackend::kNone),
@@ -388,7 +394,8 @@ DiscOmnidriveDevice::DiscOmnidriveDevice(std::string_view mount_path,
       windows_exclusive_access_held_(false),
       windows_exclusive_access_last_error_(0)
 #endif  // XE_PLATFORM_WIN32
-{}
+{
+}
 
 DiscOmnidriveDevice::~DiscOmnidriveDevice() {
   StopReadWorker();
@@ -455,10 +462,9 @@ bool DiscOmnidriveDevice::Initialize() {
   }
 
   std::vector<uint8_t> root_buffer(state.root_size);
-  if (!ReadMetadataBytesFromPhysicalTransport(state.root_offset,
-                          std::span<uint8_t>(
-                            root_buffer.data(),
-                            root_buffer.size()))) {
+  if (!ReadMetadataBytesFromPhysicalTransport(
+          state.root_offset,
+          std::span<uint8_t>(root_buffer.data(), root_buffer.size()))) {
     XELOGE(
         "DiscOmnidriveDevice::Initialize: failed reading root metadata for "
         "{} (offset={} size={})",
@@ -515,11 +521,10 @@ DiscOmnidriveDevice::ReadSecuritySectorFromCandidates() const {
   candidates.reserve(kSecuritySectorProbeRetryCount);
 
   for (uint32_t retry = 0; retry < kSecuritySectorProbeRetryCount; ++retry) {
-    const uint32_t probe_address =
-        kSecuritySectorProbeBaseAddress + retry * kSecuritySectorProbeRetryStride;
+    const uint32_t probe_address = kSecuritySectorProbeBaseAddress +
+                                   retry * kSecuritySectorProbeRetryStride;
     const OmniDriveAddress translated = TranslateAddress(probe_address, true);
-    candidates.push_back(
-        {probe_address, translated.lba, translated.sector});
+    candidates.push_back({probe_address, translated.lba, translated.sector});
   }
 
   std::stable_sort(
@@ -540,12 +545,12 @@ DiscOmnidriveDevice::ReadSecuritySectorFromCandidates() const {
       });
 
   for (const SecuritySectorCandidate& candidate : candidates) {
-    auto sector_payload = std::make_unique<std::vector<uint8_t>>(
-        SecuritySectorPayloadSize());
+    auto sector_payload =
+        std::make_unique<std::vector<uint8_t>>(SecuritySectorPayloadSize());
     if (!ReadOmniDriveBlocks(candidate.address, 1, true, false, false,
                              OmniDriveSubchannel::kNone, false,
-                             sector_payload->data(),
-                             sector_payload->size(), nullptr)) {
+                             sector_payload->data(), sector_payload->size(),
+                             nullptr)) {
       continue;
     }
     return sector_payload;
@@ -570,7 +575,8 @@ bool DiscOmnidriveDevice::is_media_available() const {
     return verify_security_sector();
   }
   if (!has_physical_transport_) {
-    if (!const_cast<DiscOmnidriveDevice*>(this)->InitializePhysicalTransport()) {
+    if (!const_cast<DiscOmnidriveDevice*>(this)
+             ->InitializePhysicalTransport()) {
       return false;
     }
   }
@@ -597,7 +603,8 @@ size_t DiscOmnidriveDevice::physical_sector_size() const {
     case OmniDriveDiscType::kCD:
       return raw_dump_mode_ ? 2352 : kGdfSectorSize;
     case OmniDriveDiscType::kDVD:
-      return raw_dump_mode_ ? kOmniDriveDvdFrameSize : kOmniDriveDvdMainDataSize;
+      return raw_dump_mode_ ? kOmniDriveDvdFrameSize
+                            : kOmniDriveDvdMainDataSize;
   }
 
   return kOmniDriveDvdMainDataSize;
@@ -716,12 +723,10 @@ void DiscOmnidriveDevice::ReadWorkerMain() {
     bool has_prefetch_chunk = false;
     {
       std::unique_lock<std::mutex> lock(read_worker_mutex_);
-      read_worker_cv_.wait(lock,
-                           [this]() {
-                             return read_worker_stop_ ||
-                                    !read_worker_demand_tasks_.empty() ||
-                                    pending_prefetch_request_.has_value();
-                           });
+      read_worker_cv_.wait(lock, [this]() {
+        return read_worker_stop_ || !read_worker_demand_tasks_.empty() ||
+               pending_prefetch_request_.has_value();
+      });
       if (read_worker_stop_ && read_worker_demand_tasks_.empty() &&
           !pending_prefetch_request_.has_value()) {
         return;
@@ -761,10 +766,10 @@ void DiscOmnidriveDevice::ReadWorkerMain() {
           const uint64_t merged_end = std::max(
               pending.sector_start + pending.sector_count - 1,
               prefetch_chunk.sector_start + prefetch_chunk.sector_count - 1);
-          pending.sector_start = std::min(pending.sector_start,
-                                          prefetch_chunk.sector_start);
-          pending.sector_count = static_cast<uint32_t>(
-              merged_end - pending.sector_start + 1);
+          pending.sector_start =
+              std::min(pending.sector_start, prefetch_chunk.sector_start);
+          pending.sector_count =
+              static_cast<uint32_t>(merged_end - pending.sector_start + 1);
         } else {
           pending_prefetch_request_ = prefetch_chunk;
         }
@@ -812,14 +817,16 @@ std::future<bool> DiscOmnidriveDevice::EnqueueReadTask(
 }
 
 uint32_t DiscOmnidriveDevice::EffectiveTransportReadChunkCap() const {
-  const uint32_t cap = transport_read_chunk_cap_.load(std::memory_order_relaxed);
+  const uint32_t cap =
+      transport_read_chunk_cap_.load(std::memory_order_relaxed);
   if (cap == 0) {
     return kMaxTransportReadSectors;
   }
   return std::min(cap, kMaxTransportReadSectors);
 }
 
-void DiscOmnidriveDevice::LowerTransportReadChunkCap(uint32_t reduced_cap) const {
+void DiscOmnidriveDevice::LowerTransportReadChunkCap(
+    uint32_t reduced_cap) const {
   const uint32_t clamped_cap =
       std::max(1u, std::min(reduced_cap, kMaxTransportReadSectors));
 
@@ -867,9 +874,8 @@ bool DiscOmnidriveDevice::ExecuteDemandRead(uint64_t sector_start,
           static_cast<size_t>(chunk_count) * physical_sector_size();
       TransportFailureKind failure_kind = TransportFailureKind::kNone;
       if (ReadOmniDriveBlocks(static_cast<uint32_t>(chunk_start), chunk_count,
-                              false, false, true,
-                              OmniDriveSubchannel::kNone, false,
-                              buffer + buffer_offset, chunk_length,
+                              false, false, true, OmniDriveSubchannel::kNone,
+                              false, buffer + buffer_offset, chunk_length,
                               &failure_kind)) {
         chunk_start += chunk_count;
         remaining -= chunk_count;
@@ -973,11 +979,11 @@ bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
                      [](uint8_t value) { return value != 0; });
 }
 
-void DiscOmnidriveDevice::InsertCacheRange(uint64_t sector_start,
-                                           uint32_t sector_count,
-                                           std::span<const uint8_t> data) const {
-  if (sector_count == 0 ||
-      data.size() != static_cast<size_t>(sector_count) * physical_sector_size()) {
+void DiscOmnidriveDevice::InsertCacheRange(
+    uint64_t sector_start, uint32_t sector_count,
+    std::span<const uint8_t> data) const {
+  if (sector_count == 0 || data.size() != static_cast<size_t>(sector_count) *
+                                              physical_sector_size()) {
     return;
   }
 
@@ -1001,9 +1007,9 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
   const uint64_t prefetch_start = current_end_sector + 1;
 
   if (pending_demand_reads_.load(std::memory_order_relaxed) != 0) {
-    const uint64_t deferred =
-        read_telemetry_.prefetch_deferred.fetch_add(1, std::memory_order_relaxed) +
-        1;
+    const uint64_t deferred = read_telemetry_.prefetch_deferred.fetch_add(
+                                  1, std::memory_order_relaxed) +
+                              1;
     if (deferred == 1 || (deferred % 128) == 0) {
       XELOGD(
           "DiscOmnidriveDevice::TryScheduleSequentialPrefetch: deferred "
@@ -1037,9 +1043,9 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
       if (deferred == 1 || (deferred % 128) == 0) {
         XELOGD(
             "DiscOmnidriveDevice::TryScheduleSequentialPrefetch: deferred "
-        "prefetch due to worker pressure (pending={} demand_queued={} "
-        "deferred={})",
-        pending_demand, read_worker_demand_tasks_.size(), deferred);
+            "prefetch due to worker pressure (pending={} demand_queued={} "
+            "deferred={})",
+            pending_demand, read_worker_demand_tasks_.size(), deferred);
       }
       return;
     }
@@ -1062,8 +1068,8 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
         read_telemetry_.prefetch_superseded.fetch_add(
             1, std::memory_order_relaxed);
       } else if (incoming_end > pending_end) {
-        pending.sector_count = static_cast<uint32_t>(incoming_end -
-                                                     pending.sector_start + 1);
+        pending.sector_count =
+            static_cast<uint32_t>(incoming_end - pending.sector_start + 1);
         read_telemetry_.prefetch_coalesced.fetch_add(1,
                                                      std::memory_order_relaxed);
       } else {
@@ -1082,9 +1088,9 @@ bool DiscOmnidriveDevice::ExecutePrefetchRead(uint64_t sector_start,
   }
 
   if (pending_demand_reads_.load(std::memory_order_relaxed) != 0) {
-    const uint64_t skipped =
-        read_telemetry_.prefetch_skipped.fetch_add(1, std::memory_order_relaxed) +
-        1;
+    const uint64_t skipped = read_telemetry_.prefetch_skipped.fetch_add(
+                                 1, std::memory_order_relaxed) +
+                             1;
     const uint64_t deferred = read_telemetry_.prefetch_deferred.fetch_add(
                                   1, std::memory_order_relaxed) +
                               1;
@@ -1101,13 +1107,13 @@ bool DiscOmnidriveDevice::ExecutePrefetchRead(uint64_t sector_start,
   if (sector_start > (std::numeric_limits<uint32_t>::max)()) {
     return false;
   }
-  if (sector_count >
-      (std::numeric_limits<uint32_t>::max)() - static_cast<uint32_t>(sector_start)) {
+  if (sector_count > (std::numeric_limits<uint32_t>::max)() -
+                         static_cast<uint32_t>(sector_start)) {
     return false;
   }
 
-  std::vector<uint8_t> prefetch_buffer(
-      static_cast<size_t>(sector_count) * physical_sector_size());
+  std::vector<uint8_t> prefetch_buffer(static_cast<size_t>(sector_count) *
+                                       physical_sector_size());
   const bool success = ReadOmniDriveBlocks(
       static_cast<uint32_t>(sector_start), sector_count, false, false, true,
       OmniDriveSubchannel::kNone, false, prefetch_buffer.data(),
@@ -1116,7 +1122,8 @@ bool DiscOmnidriveDevice::ExecutePrefetchRead(uint64_t sector_start,
     return false;
   }
 
-  std::span<uint8_t> prefetch_span{prefetch_buffer.data(), prefetch_buffer.size()};
+  std::span<uint8_t> prefetch_span{prefetch_buffer.data(),
+                                   prefetch_buffer.size()};
   InsertCacheRange(sector_start, sector_count, prefetch_span);
   read_telemetry_.prefetch_exec_count.fetch_add(1, std::memory_order_relaxed);
 
@@ -1163,17 +1170,17 @@ void DiscOmnidriveDevice::RecordDiskIssue(uint64_t start_sector,
     return;
   }
   if (start_sector > previous_end + 1) {
-    read_telemetry_.disk_issue_forward_gap.fetch_add(
-        1, std::memory_order_relaxed);
+    read_telemetry_.disk_issue_forward_gap.fetch_add(1,
+                                                     std::memory_order_relaxed);
     const uint64_t gap = start_sector - (previous_end + 1);
     uint64_t previous_largest =
         read_telemetry_.disk_issue_largest_forward_gap.load(
             std::memory_order_relaxed);
-    while (gap > previous_largest &&
-           !read_telemetry_.disk_issue_largest_forward_gap
-                .compare_exchange_weak(previous_largest, gap,
-                                       std::memory_order_relaxed,
-                                       std::memory_order_relaxed)) {
+    while (
+        gap > previous_largest &&
+        !read_telemetry_.disk_issue_largest_forward_gap.compare_exchange_weak(
+            previous_largest, gap, std::memory_order_relaxed,
+            std::memory_order_relaxed)) {
     }
     return;
   }
@@ -1235,8 +1242,7 @@ void DiscOmnidriveDevice::MaybeLogReadTelemetry() const {
         read_telemetry_.failed_reads.load(std::memory_order_relaxed),
         read_telemetry_.disk_issue_total.load(std::memory_order_relaxed),
         read_telemetry_.disk_issue_contiguous.load(std::memory_order_relaxed),
-        read_telemetry_.disk_issue_forward_gap.load(
-            std::memory_order_relaxed),
+        read_telemetry_.disk_issue_forward_gap.load(std::memory_order_relaxed),
         read_telemetry_.disk_issue_backward.load(std::memory_order_relaxed),
         read_telemetry_.disk_issue_largest_forward_gap.load(
             std::memory_order_relaxed),
@@ -1284,8 +1290,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
   }
   const uint32_t sector_count = static_cast<uint32_t>(sector_count_u64);
 
-  std::vector<uint8_t> aligned(
-      static_cast<size_t>(sector_count) * physical_sector_size());
+  std::vector<uint8_t> aligned(static_cast<size_t>(sector_count) *
+                               physical_sector_size());
   std::vector<uint8_t> covered(sector_count, 0);
 
   {
@@ -1305,7 +1311,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
           static_cast<size_t>(overlap_start - first_sector) *
           physical_sector_size();
       const size_t copy_size =
-          static_cast<size_t>(overlap_end - overlap_start) * physical_sector_size();
+          static_cast<size_t>(overlap_end - overlap_start) *
+          physical_sector_size();
 
       std::memcpy(aligned.data() + dst_offset, chunk.data.data() + src_offset,
                   copy_size);
@@ -1320,7 +1327,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
   for (uint8_t bit : covered) {
     covered_count += bit ? 1 : 0;
   }
-  read_telemetry_.cache_hits.fetch_add(covered_count, std::memory_order_relaxed);
+  read_telemetry_.cache_hits.fetch_add(covered_count,
+                                       std::memory_order_relaxed);
 
   bool read_failed = false;
   size_t i = 0;
@@ -1335,9 +1343,11 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
     }
     const size_t run_end = i;
     const uint64_t sector_start = first_sector + run_start;
-    const uint32_t run_sector_count = static_cast<uint32_t>(run_end - run_start);
+    const uint32_t run_sector_count =
+        static_cast<uint32_t>(run_end - run_start);
     uint8_t* run_buffer =
-        aligned.data() + run_start * static_cast<size_t>(physical_sector_size());
+        aligned.data() +
+        run_start * static_cast<size_t>(physical_sector_size());
     if (!ReadSectorsBlocking(sector_start, run_sector_count, run_buffer)) {
       read_failed = true;
       break;
@@ -1345,11 +1355,10 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
 
     read_telemetry_.cache_misses.fetch_add(run_sector_count,
                                            std::memory_order_relaxed);
-    InsertCacheRange(
-        sector_start, run_sector_count,
-        std::span<const uint8_t>(run_buffer,
-                                 static_cast<size_t>(run_sector_count) *
-                                     physical_sector_size()));
+    InsertCacheRange(sector_start, run_sector_count,
+                     std::span<const uint8_t>(
+                         run_buffer, static_cast<size_t>(run_sector_count) *
+                                         physical_sector_size()));
   }
 
   if (read_failed) {
@@ -1369,7 +1378,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
   bool sequential_read = false;
   {
     std::lock_guard<std::mutex> lock(cache_mutex_);
-    sequential_read = last_read_valid_ && first_sector == last_read_end_sector_ + 1;
+    sequential_read =
+        last_read_valid_ && first_sector == last_read_end_sector_ + 1;
     last_read_valid_ = true;
     last_read_end_sector_ = last_sector;
   }
@@ -1449,10 +1459,10 @@ bool DiscOmnidriveDevice::InitializePhysicalTransport() {
   std::filesystem::path path_to_open = host_path_;
   if (running_under_wine_ && IsPlausibleLinuxScsiPath(host_path_)) {
     path_to_open = TranslateWineLinuxPath(host_path_);
-    HANDLE handle = CreateFile(
-        path_to_open.c_str(), GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE handle =
+        CreateFile(path_to_open.c_str(), GENERIC_READ | GENERIC_WRITE,
+                   FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                   FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle != INVALID_HANDLE_VALUE) {
       physical_transport_handle_ = handle;
       has_physical_transport_ = true;
@@ -1480,10 +1490,9 @@ bool DiscOmnidriveDevice::InitializePhysicalTransport() {
     return false;
   }
 
-  HANDLE handle = CreateFile(
-      host_path_.c_str(), GENERIC_READ | GENERIC_WRITE,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  HANDLE handle = CreateFile(host_path_.c_str(), GENERIC_READ | GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (handle == INVALID_HANDLE_VALUE) {
     XELOGW(
         "DiscOmnidriveDevice::InitializePhysicalTransport: open failed for "
@@ -1538,9 +1547,10 @@ DiscOmnidriveDevice::EnumerateCandidateOpticalDrivePaths() {
   std::vector<std::filesystem::path> result;
 #if XE_PLATFORM_LINUX
   std::error_code ec;
-  for (const auto& entry :
-       std::filesystem::directory_iterator("/dev", ec)) {
-    if (ec) break;
+  for (const auto& entry : std::filesystem::directory_iterator("/dev", ec)) {
+    if (ec) {
+      break;
+    }
     const std::string name = entry.path().filename().string();
     if (StartsWith(name, "sg")) {
       result.push_back(entry.path());
@@ -1550,7 +1560,9 @@ DiscOmnidriveDevice::EnumerateCandidateOpticalDrivePaths() {
 #elif XE_PLATFORM_WIN32
   const DWORD drive_mask = GetLogicalDrives();
   for (int i = 0; i < 26; ++i) {
-    if (!(drive_mask & (1u << i))) continue;
+    if (!(drive_mask & (1u << i))) {
+      continue;
+    }
     const wchar_t drive_letter = static_cast<wchar_t>(L'A' + i);
     std::wstring root = std::wstring(1, drive_letter) + L":\\";
     if (GetDriveTypeW(root.c_str()) == DRIVE_CDROM) {
@@ -1603,9 +1615,8 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
 
   const uint8_t cdb_inquiry[6] = {0x12, 0, 0, 0, sizeof(inquiry_data), 0};
   if (!RunLinuxScsiCommand(physical_transport_fd_, "INQUIRY (standard)",
-                           cdb_inquiry, sizeof(cdb_inquiry),
-                           SG_DXFER_FROM_DEV, inquiry_data,
-                           sizeof(inquiry_data))) {
+                           cdb_inquiry, sizeof(cdb_inquiry), SG_DXFER_FROM_DEV,
+                           inquiry_data, sizeof(inquiry_data))) {
     XELOGW(
         "DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry: INQUIRY failed "
         "for {}",
@@ -1634,8 +1645,7 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
 
   DWORD returned = 0;
   if (!DeviceIoControl(handle, IOCTL_SCSI_PASS_THROUGH_DIRECT, &sptd,
-                       sizeof(sptd), &sptd, sizeof(sptd), &returned,
-                       nullptr)) {
+                       sizeof(sptd), &sptd, sizeof(sptd), &returned, nullptr)) {
     XELOGW(
         "DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry: SPTI INQUIRY "
         "failed for {}: error {}",
@@ -1656,7 +1666,7 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
 
   const InquiryIdentityDetection detection =
       ParseOmnidriveInquiryIdentity(inquiry_data, sizeof(inquiry_data));
-  
+
   result.omnidrive_detected = detection.omnidrive_confirmed;
   result.omnidrive_version.major = detection.omnidrive_version.major;
   result.omnidrive_version.minor = detection.omnidrive_version.minor;
@@ -1667,15 +1677,18 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
         "firmware marker detected for {} (version v{}.{}.{})",
         host_path_.string(), result.omnidrive_version.major,
         result.omnidrive_version.minor, result.omnidrive_version.build);
-    if ((static_cast<uint32_t>(result.omnidrive_version.major) << 16 | static_cast<uint32_t>(result.omnidrive_version.minor) << 8 | static_cast<uint32_t>(result.omnidrive_version.build)) < (static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.major) << 16 | static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.minor) << 8 | static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.build))) {
+    if ((static_cast<uint32_t>(result.omnidrive_version.major) << 16 |
+         static_cast<uint32_t>(result.omnidrive_version.minor) << 8 |
+         static_cast<uint32_t>(result.omnidrive_version.build)) <
+        (static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.major) << 16 |
+         static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.minor) << 8 |
+         static_cast<uint32_t>(kOmnidriveMinimumFirmwareVersion.build))) {
       XELOGW(
           "DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry: OmniDrive "
           "firmware version v{}.{}.{} for {} is below the minimum "
           "supported version v{}.{}.{}",
-          result.omnidrive_version.major,
-          result.omnidrive_version.minor,
-          result.omnidrive_version.build,
-          host_path_.string(),
+          result.omnidrive_version.major, result.omnidrive_version.minor,
+          result.omnidrive_version.build, host_path_.string(),
           kOmnidriveMinimumFirmwareVersion.major,
           kOmnidriveMinimumFirmwareVersion.minor,
           kOmnidriveMinimumFirmwareVersion.build);
@@ -1688,14 +1701,9 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
       "DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry: "
       "omnidrive_detected={} v{}.{}.{} for {} "
       "(vendor='{}' product='{}' revision='{}')",
-      result.omnidrive_detected,
-      result.omnidrive_version.major,
-      result.omnidrive_version.minor,
-      result.omnidrive_version.build,
-      host_path_.string(),
-      result.vendor,
-      result.product,
-      result.revision);
+      result.omnidrive_detected, result.omnidrive_version.major,
+      result.omnidrive_version.minor, result.omnidrive_version.build,
+      host_path_.string(), result.vendor, result.product, result.revision);
   return result;
 }
 
@@ -1750,9 +1758,8 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
   uint8_t inquiry_data[36] = {0};
   const uint8_t cdb_inquiry[6] = {0x12, 0, 0, 0, sizeof(inquiry_data), 0};
   if (!RunLinuxScsiCommand(physical_transport_fd_, "INQUIRY (standard)",
-                           cdb_inquiry, sizeof(cdb_inquiry),
-                           SG_DXFER_FROM_DEV, inquiry_data,
-                           sizeof(inquiry_data))) {
+                           cdb_inquiry, sizeof(cdb_inquiry), SG_DXFER_FROM_DEV,
+                           inquiry_data, sizeof(inquiry_data))) {
     XELOGW(
         "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
         "noncritical preflight command failed: INQUIRY (standard)");
@@ -1763,15 +1770,15 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
   omnidrive_version_.major = firmware_probe.omnidrive_version.major;
   omnidrive_version_.minor = firmware_probe.omnidrive_version.minor;
   omnidrive_version_.build = firmware_probe.omnidrive_version.build;
-  identity_summary_ = fmt::format(
-      "{} {} rev{}{}", firmware_probe.vendor, firmware_probe.product,
-      firmware_probe.revision,
-      firmware_probe.omnidrive_detected
-          ? fmt::format(" (OmniDrive v{}.{}.{})",
-                        firmware_probe.omnidrive_version.major,
-                        firmware_probe.omnidrive_version.minor,
-                        firmware_probe.omnidrive_version.build)
-          : std::string());
+  identity_summary_ =
+      fmt::format("{} {} rev{}{}", firmware_probe.vendor,
+                  firmware_probe.product, firmware_probe.revision,
+                  firmware_probe.omnidrive_detected
+                      ? fmt::format(" (OmniDrive v{}.{}.{})",
+                                    firmware_probe.omnidrive_version.major,
+                                    firmware_probe.omnidrive_version.minor,
+                                    firmware_probe.omnidrive_version.build)
+                      : std::string());
   XELOGI(
       "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
       "omnidrive_firmware_confirmed={} for {}",
@@ -1814,7 +1821,8 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
   }
 
   uint8_t disc_structure_data[256] = {0};
-  const uint16_t alloc_length = static_cast<uint16_t>(sizeof(disc_structure_data));
+  const uint16_t alloc_length =
+      static_cast<uint16_t>(sizeof(disc_structure_data));
   const uint8_t cdb_read_disc_structure[12] = {
       0xAD,
       0,
@@ -1829,12 +1837,10 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
       0,
       0,
   };
-  const bool read_disc_structure_ok =
-      RunLinuxScsiCommand(physical_transport_fd_,
-                "READ DISC STRUCTURE (physical format, layer 0)",
-                cdb_read_disc_structure,
-                sizeof(cdb_read_disc_structure), SG_DXFER_FROM_DEV,
-                disc_structure_data, sizeof(disc_structure_data));
+  const bool read_disc_structure_ok = RunLinuxScsiCommand(
+      physical_transport_fd_, "READ DISC STRUCTURE (physical format, layer 0)",
+      cdb_read_disc_structure, sizeof(cdb_read_disc_structure),
+      SG_DXFER_FROM_DEV, disc_structure_data, sizeof(disc_structure_data));
   if (!read_disc_structure_ok) {
     XELOGW(
         "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
@@ -1847,12 +1853,10 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
     return true;
   }
 
-  const uint16_t payload_length =
-      static_cast<uint16_t>((static_cast<uint16_t>(disc_structure_data[0])
-                             << 8) |
-                            static_cast<uint16_t>(disc_structure_data[1]));
-  const size_t total_response_length =
-      static_cast<size_t>(payload_length) + 2;
+  const uint16_t payload_length = static_cast<uint16_t>(
+      (static_cast<uint16_t>(disc_structure_data[0]) << 8) |
+      static_cast<uint16_t>(disc_structure_data[1]));
+  const size_t total_response_length = static_cast<size_t>(payload_length) + 2;
   if (total_response_length < 12 ||
       total_response_length > sizeof(disc_structure_data)) {
     XELOGW(
@@ -1861,9 +1865,9 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
         total_response_length);
     physical_drive_state_ready_ = true;
     XELOGI(
-      "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
-      "physical preflight succeeded for {}",
-      host_path_.string());
+        "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
+        "physical preflight succeeded for {}",
+        host_path_.string());
     return true;
   }
 
@@ -2004,7 +2008,7 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows() const {
   DWORD returned = 0;
   const bool ioctl_ok =
       DeviceIoControl(handle, IOCTL_SCSI_PASS_THROUGH_DIRECT, &sptd,
-                     sizeof(sptd), &sptd, sizeof(sptd), &returned, nullptr);
+                      sizeof(sptd), &sptd, sizeof(sptd), &returned, nullptr);
   if (!ioctl_ok) {
     physical_drive_state_failed_command_ = "TEST UNIT READY";
     XELOGE(
@@ -2036,8 +2040,8 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows() const {
           "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows: "
           "physical preflight failed for {} at required command {} "
           "(sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X})",
-          host_path_.string(), physical_drive_state_failed_command_,
-          sense_key, asc, ascq);
+          host_path_.string(), physical_drive_state_failed_command_, sense_key,
+          asc, ascq);
       return false;
     }
   } else {
@@ -2045,19 +2049,19 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows() const {
   }
 
   const InquiryProbeResult firmware_probe = ProbeFirmwareIdentityByInquiry();
-    omnidrive_firmware_confirmed_ = firmware_probe.omnidrive_detected;
-    omnidrive_version_.major = firmware_probe.omnidrive_version.major;
-    omnidrive_version_.minor = firmware_probe.omnidrive_version.minor;
-    omnidrive_version_.build = firmware_probe.omnidrive_version.build;
-  identity_summary_ = fmt::format(
-      "{} {} rev{}{}", firmware_probe.vendor, firmware_probe.product,
-      firmware_probe.revision,
-      firmware_probe.omnidrive_detected
-          ? fmt::format(" (OmniDrive v{}.{}.{})",
-              firmware_probe.omnidrive_version.major,
-              firmware_probe.omnidrive_version.minor,
-              firmware_probe.omnidrive_version.build)
-          : std::string());
+  omnidrive_firmware_confirmed_ = firmware_probe.omnidrive_detected;
+  omnidrive_version_.major = firmware_probe.omnidrive_version.major;
+  omnidrive_version_.minor = firmware_probe.omnidrive_version.minor;
+  omnidrive_version_.build = firmware_probe.omnidrive_version.build;
+  identity_summary_ =
+      fmt::format("{} {} rev{}{}", firmware_probe.vendor,
+                  firmware_probe.product, firmware_probe.revision,
+                  firmware_probe.omnidrive_detected
+                      ? fmt::format(" (OmniDrive v{}.{}.{})",
+                                    firmware_probe.omnidrive_version.major,
+                                    firmware_probe.omnidrive_version.minor,
+                                    firmware_probe.omnidrive_version.build)
+                      : std::string());
   XELOGI(
       "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows: "
       "omnidrive_firmware_confirmed={} for {}",
@@ -2077,7 +2081,7 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceWindows() const {
 bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     uint32_t address, uint32_t transfer_length, bool raw_addressing, bool fua,
     bool descramble, OmniDriveSubchannel subchannels, bool c2, uint8_t* buffer,
-  size_t buffer_length, TransportFailureKind* out_failure_kind) const {
+    size_t buffer_length, TransportFailureKind* out_failure_kind) const {
   if (out_failure_kind) {
     *out_failure_kind = TransportFailureKind::kNone;
   }
@@ -2133,7 +2137,8 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     sg_buffer = frame_buffer.data();
   }
 
-  const uint32_t sg_transfer_length = static_cast<uint32_t>(physical_read_length);
+  const uint32_t sg_transfer_length =
+      static_cast<uint32_t>(physical_read_length);
 
   const bool force_descramble =
       disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
@@ -2222,9 +2227,9 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     return true;
   };
 
-  const bool read12_primary_active =
-      disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_ &&
-      !omnidrive_firmware_confirmed_;
+  const bool read12_primary_active = disc_type_ == OmniDriveDiscType::kDVD &&
+                                     !raw_dump_mode_ &&
+                                     !omnidrive_firmware_confirmed_;
   if (read12_primary_active) {
     CDB12_Read12 read12_cdb = BuildRead12Cdb(address, transfer_length, fua);
     const uint8_t* read12_cdb_ptr =
@@ -2248,9 +2253,8 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
             "DiscOmnidriveDevice::ReadFromPhysicalTransport: parse_read "
             "path=READ12 addr={} blocks={} frame_extraction={} payload_hash="
             "0x{:016X} preview=[{}]",
-            address, transfer_length,
-            frame_extraction_active ? "on" : "off", payload_hash,
-            HexPreview(buffer, read_length));
+            address, transfer_length, frame_extraction_active ? "on" : "off",
+            payload_hash, HexPreview(buffer, read_length));
       }
       XELOGD(
           "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
@@ -2295,10 +2299,12 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   if (frame_extraction_active) {
     for (uint32_t i = 0; i < transfer_length; ++i) {
       const size_t frame_base = static_cast<size_t>(i) * kOmniDriveDvdFrameSize;
-      const size_t out_base = static_cast<size_t>(i) * kOmniDriveDvdMainDataSize;
-      std::memcpy(buffer + out_base,
-                  frame_buffer.data() + frame_base + kOmniDriveDvdMainDataOffset,
-                  kOmniDriveDvdMainDataSize);
+      const size_t out_base =
+          static_cast<size_t>(i) * kOmniDriveDvdMainDataSize;
+      std::memcpy(
+          buffer + out_base,
+          frame_buffer.data() + frame_base + kOmniDriveDvdMainDataOffset,
+          kOmniDriveDvdMainDataSize);
     }
   }
 
@@ -2367,8 +2373,10 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   const OmniDriveAddress translated_issue =
       TranslateAddress(address, raw_addressing);
 
-  if (physical_transport_backend_ == PhysicalTransportBackend::kLinuxStyleFile) {
-    const OmniDriveAddress translated = TranslateAddress(address, raw_addressing);
+  if (physical_transport_backend_ ==
+      PhysicalTransportBackend::kLinuxStyleFile) {
+    const OmniDriveAddress translated =
+        TranslateAddress(address, raw_addressing);
     if (translated.lba < 0) {
       return false;
     }
@@ -2496,8 +2504,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     }
 
     if (run_spti(read12_cdb_ptr, read12_cdb_len, buffer,
-                 static_cast<ULONG>(read_length), false,
-                 out_failure_kind)) {
+                 static_cast<ULONG>(read_length), false, out_failure_kind)) {
       XELOGI(
           "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
           "final_path=READ12 opcode=0xA8 address={} blocks={} success=true",
@@ -2553,10 +2560,12 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   if (frame_extraction_active) {
     for (uint32_t i = 0; i < transfer_length; ++i) {
       const size_t frame_base = static_cast<size_t>(i) * kOmniDriveDvdFrameSize;
-      const size_t out_base = static_cast<size_t>(i) * kOmniDriveDvdMainDataSize;
-      std::memcpy(buffer + out_base,
-                  frame_buffer.data() + frame_base + kOmniDriveDvdMainDataOffset,
-                  kOmniDriveDvdMainDataSize);
+      const size_t out_base =
+          static_cast<size_t>(i) * kOmniDriveDvdMainDataSize;
+      std::memcpy(
+          buffer + out_base,
+          frame_buffer.data() + frame_base + kOmniDriveDvdMainDataOffset,
+          kOmniDriveDvdMainDataSize);
     }
   }
 
@@ -2592,8 +2601,7 @@ DiscOmnidriveDevice::Error DiscOmnidriveDevice::Verify(ParseState* state) {
   const size_t fs_offset = state->game_offset + (32 * kGdfSectorSize);
   std::array<uint8_t, kGdfSectorSize> fs_sector{};
   if (!ReadMetadataBytesFromPhysicalTransport(
-          fs_offset,
-          std::span<uint8_t>(fs_sector.data(), fs_sector.size()))) {
+          fs_offset, std::span<uint8_t>(fs_sector.data(), fs_sector.size()))) {
     return Error::kErrorReadError;
   }
 
@@ -2603,7 +2611,8 @@ DiscOmnidriveDevice::Error DiscOmnidriveDevice::Verify(ParseState* state) {
     return Error::kErrorDamagedFile;
   }
 
-  if (state->root_sector > (std::numeric_limits<size_t>::max)() / kGdfSectorSize) {
+  if (state->root_sector >
+      (std::numeric_limits<size_t>::max)() / kGdfSectorSize) {
     return Error::kErrorDamagedFile;
   }
   const size_t root_offset =
@@ -2627,7 +2636,8 @@ bool DiscOmnidriveDevice::VerifyMagic(ParseState* state, size_t offset) {
   if (offset > (std::numeric_limits<size_t>::max)() - 20) {
     return false;
   }
-  if (state->size != (std::numeric_limits<size_t>::max)() && offset >= state->size) {
+  if (state->size != (std::numeric_limits<size_t>::max)() &&
+      offset >= state->size) {
     return false;
   }
 
@@ -2706,8 +2716,8 @@ bool DiscOmnidriveDevice::ReadEntry(ParseState* state, const uint8_t* buffer,
     data_size = length;
   }
 
-  auto entry = DiscDriveEntry::Create(this, parent, name, data_offset,
-                                      data_size);
+  auto entry =
+      DiscDriveEntry::Create(this, parent, name, data_offset, data_size);
   entry->SetMetadata(attributes | kFileAttributeReadOnly, length,
                      xe::round_up(length, bytes_per_sector()),
                      kUnixEpochAsFiletime, kUnixEpochAsFiletime,
@@ -2719,7 +2729,8 @@ bool DiscOmnidriveDevice::ReadEntry(ParseState* state, const uint8_t* buffer,
           sector > (std::numeric_limits<size_t>::max)() / kGdfSectorSize) {
         return false;
       }
-      const size_t folder_offset = state->game_offset + (sector * kGdfSectorSize);
+      const size_t folder_offset =
+          state->game_offset + (sector * kGdfSectorSize);
       if (folder_offset < state->game_offset) {
         return false;
       }

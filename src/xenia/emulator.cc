@@ -55,12 +55,12 @@
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/vfs/device.h"
 #include "xenia/vfs/devices/disc_image_device.h"
-#include "xenia/vfs/physical_device.h"
 #include "xenia/vfs/devices/disc_omnidrive_device.h"
 #include "xenia/vfs/devices/disc_zarchive_device.h"
 #include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/vfs/devices/null_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
+#include "xenia/vfs/physical_device.h"
 #include "xenia/vfs/virtual_file_system.h"
 
 #if XE_ARCH_AMD64
@@ -71,7 +71,7 @@
 
 #if XE_PLATFORM_WIN32
 namespace xe {
-  extern bool IsRunningUnderWine();
+extern bool IsRunningUnderWine();
 }
 #endif
 
@@ -376,9 +376,11 @@ X_STATUS Emulator::TerminateTitle() {
 
 const std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
     const std::filesystem::path& path, const std::string_view mount_path) {
-  //First check if the path is to a physical drive that supports omnidrive, if so, mount it with the omnidrive device
-  if(IsPathOpticalDevice(path)){
-    return std::make_unique<vfs::DiscOmnidriveDevice>(mount_path, path, vfs::OmniDriveDiscType::kDVD);
+  // First check if the path is to a physical drive that supports omnidrive, if
+  // so, mount it with the omnidrive device
+  if (IsPathOpticalDevice(path)) {
+    return std::make_unique<vfs::DiscOmnidriveDevice>(
+        mount_path, path, vfs::OmniDriveDiscType::kDVD);
   }
 
   // Must check if the type has changed e.g. XamSwapDisc
@@ -467,9 +469,10 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
     return X_STATUS_NO_SUCH_FILE;
   }
 
-  if(device->has_physical_backend()){
-    xe::vfs::PhysicalDevice* physical_device = dynamic_cast<xe::vfs::PhysicalDevice*>(device.get());
-    if(!physical_device->is_media_available()){
+  if (device->has_physical_backend()) {
+    xe::vfs::PhysicalDevice* physical_device =
+        dynamic_cast<xe::vfs::PhysicalDevice*>(device.get());
+    if (!physical_device->is_media_available()) {
       XELOGE("No media available in device {}.", path);
       return X_STATUS_NO_SUCH_FILE;
     }
@@ -492,16 +495,17 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
   file_system_->RegisterSymbolicLink(kDefaultGameSymbolicLink, mount_path);
   file_system_->RegisterSymbolicLink(kDefaultPartitionSymbolicLink, mount_path);
 
-  if (mount_path.compare("\\Device\\Cdrom0") == 0)
+  if (mount_path.compare("\\Device\\Cdrom0") == 0) {
     kernel_state_->smc()->SetTrayState(X_DVD_TRAY_STATE::DISK_IN_TRAY);
-  
+  }
+
   return X_STATUS_SUCCESS;
 }
 
 Emulator::FileSignatureType Emulator::GetFileSignature(
     const std::filesystem::path& path) {
   // Check if Physical Media
-  if(IsPathOpticalDevice(path)){
+  if (IsPathOpticalDevice(path)) {
     return FileSignatureType::XISO;
   }
   FILE* file = xe::filesystem::OpenFile(path, "rb");
@@ -609,9 +613,11 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     case FileSignatureType::XISO: {
       mount_result = MountPath(path, "\\Device\\Cdrom0");
       if (kernel_state_->title_id() == 0xFFFE07D1) {
-        //The dashboard is running, so we need to mount the disk but not launch it until the dashboard asks for it.
-        if(mount_result)
+        // The dashboard is running, so we need to mount the disk but not launch
+        // it until the dashboard asks for it.
+        if (mount_result) {
           return mount_result;
+        }
         return X_STATUS_SUCCESS;
       }
       return mount_result ? mount_result : LaunchDiscImage(path);
@@ -679,22 +685,22 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
 
 bool Emulator::IsPathOpticalDevice(const std::filesystem::path& path) {
 #if XE_PLATFORM_WIN32
-  if (xe::IsRunningUnderWine()){
+  if (xe::IsRunningUnderWine()) {
     const std::string devicepath = "Z:\\dev";
 #else
   const std::string devicepath = "/dev";
 #endif
-  std::string filename = path.filename().string();
-  return path.parent_path().compare(devicepath) == 0 && filename[0] == 's' && filename[1] == 'g';
+    std::string filename = path.filename().string();
+    return path.parent_path().compare(devicepath) == 0 && filename[0] == 's' &&
+           filename[1] == 'g';
 #if XE_PLATFORM_WIN32
-  }else{
+  } else {
     const std::string path_string = path.string();
-    return path_string.starts_with("\\\\.\\") || (path_string[1] == ':' && path_string.length() == 2);
+    return path_string.starts_with("\\\\.\\") ||
+           (path_string[1] == ':' && path_string.length() == 2);
   }
 #endif
 }
-
-
 
 X_STATUS Emulator::LaunchDiscImage(const std::filesystem::path& path) {
   std::string module_path = FindLaunchModule();

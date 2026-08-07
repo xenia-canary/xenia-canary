@@ -49,9 +49,9 @@ X_STATUS DiscDriveFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
   while (progressed < read_length) {
     const size_t chunk_length =
         std::min(read_length - progressed, kPhysicalReadChunkSize);
-    if (!physical_device->ReadFileBytes(real_offset + progressed,
-                                        buffer.subspan(progressed,
-                                                       chunk_length))) {
+    if (!physical_device->ReadFileBytes(
+            real_offset + progressed,
+            buffer.subspan(progressed, chunk_length))) {
       return X_STATUS_UNSUCCESSFUL;
     }
     progressed += chunk_length;

@@ -61,7 +61,7 @@ void PhysicalDriveSelectionDialog::OnDraw(ImGuiIO& io) {
 
   ImGui::Separator();
   const bool can_confirm = selected_index_ >= 0 &&
-                          selected_index_ < static_cast<int>(drives_.size());
+                           selected_index_ < static_cast<int>(drives_.size());
   ImGui::BeginDisabled(!can_confirm);
   if (ImGui::Button("Open")) {
     emulator_window_->RunTitle(drives_[selected_index_].path);
@@ -79,9 +79,9 @@ void PhysicalDriveSelectionDialog::OnDraw(ImGuiIO& io) {
 void PhysicalDriveDiscEjectedDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowPos(ImVec2(80, 80), ImGuiCond_FirstUseEver);
   bool dialog_open = true;
-  if (!ImGui::Begin("Disc Ejected", &dialog_open,
-                    ImGuiWindowFlags_AlwaysAutoResize |
-                        ImGuiWindowFlags_NoCollapse)) {
+  if (!ImGui::Begin(
+          "Disc Ejected", &dialog_open,
+          ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
     ImGui::End();
     return;
   }
@@ -99,8 +99,8 @@ void PhysicalDriveDiscEjectedDialog::OnDraw(ImGuiIO& io) {
   ImGui::Separator();
   if (ImGui::Button("Retry")) {
     const auto probes = vfs::DiscOmnidriveDevice::ProbeAllCandidateDrives();
-    const bool present = std::any_of(
-        probes.begin(), probes.end(), [&](const auto& info) {
+    const bool present =
+        std::any_of(probes.begin(), probes.end(), [&](const auto& info) {
           return info.path == drive_path_ && info.omnidrive_confirmed &&
                  info.media_inserted;
         });

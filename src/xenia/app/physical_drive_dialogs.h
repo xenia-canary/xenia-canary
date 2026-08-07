@@ -28,8 +28,8 @@ class EmulatorWindow;
 class PhysicalDriveSelectionDialog final : public ui::ImGuiDialog {
  public:
   PhysicalDriveSelectionDialog(ui::ImGuiDrawer* imgui_drawer,
-                                EmulatorWindow* emulator_window,
-                                std::vector<vfs::OmnidriveDriveInfo> drives)
+                               EmulatorWindow* emulator_window,
+                               std::vector<vfs::OmnidriveDriveInfo> drives)
       : ui::ImGuiDialog(imgui_drawer),
         emulator_window_(emulator_window),
         drives_(std::move(drives)) {}

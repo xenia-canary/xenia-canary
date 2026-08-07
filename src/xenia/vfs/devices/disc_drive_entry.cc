@@ -15,8 +15,7 @@ namespace xe {
 namespace vfs {
 
 DiscDriveEntry::DiscDriveEntry(Device* device, Entry* parent,
-                               std::string_view path,
-                               size_t allocation_base,
+                               std::string_view path, size_t allocation_base,
                                size_t allocation_size)
     : Entry(device, parent, path),
       data_offset_(allocation_base),
@@ -24,12 +23,14 @@ DiscDriveEntry::DiscDriveEntry(Device* device, Entry* parent,
 
 DiscDriveEntry::~DiscDriveEntry() = default;
 
-std::unique_ptr<DiscDriveEntry> DiscDriveEntry::Create(
-    Device* device, Entry* parent, std::string_view name,
-  size_t allocation_base, size_t data_size) {
+std::unique_ptr<DiscDriveEntry> DiscDriveEntry::Create(Device* device,
+                                                       Entry* parent,
+                                                       std::string_view name,
+                                                       size_t allocation_base,
+                                                       size_t data_size) {
   auto path = xe::utf8::join_guest_paths(parent->path(), name);
-  return std::make_unique<DiscDriveEntry>(device, parent, path,
-                                          allocation_base, data_size);
+  return std::make_unique<DiscDriveEntry>(device, parent, path, allocation_base,
+                                          data_size);
 }
 
 X_STATUS DiscDriveEntry::Open(uint32_t desired_access, File** out_file) {

@@ -10,10 +10,10 @@
 #ifndef XENIA_VFS_DEVICES_DISC_OMNIDRIVE_DEVICE_H_
 #define XENIA_VFS_DEVICES_DISC_OMNIDRIVE_DEVICE_H_
 
-#include <cstddef>
-#include <cstdint>
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -73,15 +73,15 @@ struct OmnidriveDriveInfo {
   bool omnidrive_confirmed = false;
   bool media_inserted = false;
   DriveVersion omnidrive_version = {0};
-  std::string identity_summary;  // e.g. "PLDS DG-16D5S rev0500 (OmniDrive v1.0.4)"
+  std::string
+      identity_summary;  // e.g. "PLDS DG-16D5S rev0500 (OmniDrive v1.0.4)"
 };
 
 class DiscOmnidriveDevice : public OpticalDriveDevice {
  public:
   DiscOmnidriveDevice(std::string_view mount_path,
                       const std::filesystem::path& host_path,
-                      OmniDriveDiscType disc_type,
-                      bool raw_dump_mode = false);
+                      OmniDriveDiscType disc_type, bool raw_dump_mode = false);
   ~DiscOmnidriveDevice() override;
 
   bool Initialize() override;
@@ -112,9 +112,7 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   bool omnidrive_firmware_confirmed() const {
     return omnidrive_firmware_confirmed_;
   }
-  DriveVersion* omnidrive_version() const {
-    return &omnidrive_version_;
-  }
+  DriveVersion* omnidrive_version() const { return &omnidrive_version_; }
   const std::string& omnidrive_identity_summary() const {
     return identity_summary_;
   }
@@ -133,7 +131,6 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   static std::vector<std::filesystem::path>
   EnumerateCandidateOpticalDrivePaths();
 
-
   // Enumerates candidates, constructs a transient (unregistered, not
   // mounted into any VFS) DiscOmnidriveDevice per candidate, calls
   // ProbeOnly() on each, and returns info for every candidate that at least
@@ -141,17 +138,17 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   // filters for "qualifying" = firmware_confirmed && media_inserted).
   static std::vector<OmnidriveDriveInfo> ProbeAllCandidateDrives();
 
-  std::unique_ptr<std::vector<uint8_t>> ReadSecuritySectorFromCandidates() const;
+  std::unique_ptr<std::vector<uint8_t>> ReadSecuritySectorFromCandidates()
+      const;
 
  private:
   size_t total_sector_units() const;
 
-  bool ReadOmniDriveBlocks(uint32_t address, uint32_t transfer_length,
-                           bool raw_addressing, bool fua, bool descramble,
-                           OmniDriveSubchannel subchannels, bool c2,
-                           uint8_t* buffer, size_t buffer_length,
-                 TransportFailureKind* out_failure_kind =
-                   nullptr) const;
+  bool ReadOmniDriveBlocks(
+      uint32_t address, uint32_t transfer_length, bool raw_addressing, bool fua,
+      bool descramble, OmniDriveSubchannel subchannels, bool c2,
+      uint8_t* buffer, size_t buffer_length,
+      TransportFailureKind* out_failure_kind = nullptr) const;
   bool ReadDiskBytesAsync(size_t offset, std::span<uint8_t> buffer) const;
 
   void set_layer0_last(uint32_t layer0_last) {
@@ -204,9 +201,9 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
     std::atomic<uint64_t> disk_issue_backward{0};
     std::atomic<uint64_t> disk_issue_largest_forward_gap{0};
     std::atomic<uint64_t> disk_issue_last_start{
-      std::numeric_limits<uint64_t>::max()};
+        std::numeric_limits<uint64_t>::max()};
     std::atomic<uint64_t> disk_issue_last_end{
-      std::numeric_limits<uint64_t>::max()};
+        std::numeric_limits<uint64_t>::max()};
   };
 
   struct PendingPrefetchRequest {
@@ -240,11 +237,9 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   bool InitializePhysicalDriveStateOnceWindows() const;
 #endif  // XE_PLATFORM_WIN32
   bool ReadFromPhysicalTransport(uint32_t address, uint32_t transfer_length,
-                                 bool raw_addressing, bool fua,
-                                 bool descramble,
+                                 bool raw_addressing, bool fua, bool descramble,
                                  OmniDriveSubchannel subchannels, bool c2,
-                                 uint8_t* buffer,
-                                 size_t buffer_length,
+                                 uint8_t* buffer, size_t buffer_length,
                                  TransportFailureKind* out_failure_kind) const;
   uint32_t EffectiveTransportReadChunkCap() const;
   void LowerTransportReadChunkCap(uint32_t reduced_cap) const;
@@ -256,8 +251,8 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
                            uint8_t* buffer) const;
   bool ExecuteDemandRead(uint64_t sector_start, uint32_t sector_count,
                          uint8_t* buffer) const;
-  bool ReadMetadataBytesFromPhysicalTransport(
-      size_t offset, std::span<uint8_t> buffer) const;
+  bool ReadMetadataBytesFromPhysicalTransport(size_t offset,
+                                              std::span<uint8_t> buffer) const;
   bool IsRangeCachedLocked(uint64_t sector_start, uint32_t sector_count) const;
   void InsertCacheRange(uint64_t sector_start, uint32_t sector_count,
                         std::span<const uint8_t> data) const;
@@ -349,8 +344,7 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   Error Verify(ParseState* state);
   bool VerifyMagic(ParseState* state, size_t offset);
   Error ReadAllEntries(ParseState* state, const uint8_t* root_buffer);
-  bool ReadEntry(ParseState* state, const uint8_t* buffer,
-                 size_t buffer_length,
+  bool ReadEntry(ParseState* state, const uint8_t* buffer, size_t buffer_length,
                  uint16_t entry_ordinal, DiscDriveEntry* parent);
 };
 

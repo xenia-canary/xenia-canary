@@ -59,8 +59,7 @@ bool OpticalDriveDevice::IsSecuritySectorSane(
   const size_t ranges_bytes = expected_count * kSecuritySectorRangeEntrySize;
   const uint8_t* ranges_a = payload.data() + kSecuritySectorRangesAOffset;
   const uint8_t* ranges_b = payload.data() + kSecuritySectorRangesBOffset;
-  if (payload[768] != 2 &&
-      std::memcmp(ranges_a, ranges_b, ranges_bytes) != 0) {
+  if (payload[768] != 2 && std::memcmp(ranges_a, ranges_b, ranges_bytes) != 0) {
     return false;
   }
 

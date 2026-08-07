@@ -7,10 +7,10 @@
  ******************************************************************************
  */
 
-#include <cstdint>
-#include <cstring>
-#include <cstdio>
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -69,16 +69,20 @@ struct ProbeOptions {
 };
 
 void PrintUsage(const char* exe_name) {
-  XELOGI("Usage: {} [--device_path PATH] [--disc_type cd|dvd] "
-    "[--address N] [--block_count N] [--raw_addressing BOOL] "
-    "[--layer0_last N] [--compare_iso PATH] [--compare_iso_base_lba N] [--compare_iso_auto_base BOOL] "
-    "[--sanity_read_next BOOL]",
-         exe_name);
-  XELOGI("Optional: [--raw_dump_mode BOOL] [--fua BOOL] [--descramble BOOL] "
-         "[--subchannel none|q16|raw96] [--c2 BOOL]");
-  XELOGI("Example: {} --device_path /dev/sg1 --disc_type dvd --address 0 "
-         "--block_count 1 --raw_addressing false",
-         exe_name);
+  XELOGI(
+      "Usage: {} [--device_path PATH] [--disc_type cd|dvd] "
+      "[--address N] [--block_count N] [--raw_addressing BOOL] "
+      "[--layer0_last N] [--compare_iso PATH] [--compare_iso_base_lba N] "
+      "[--compare_iso_auto_base BOOL] "
+      "[--sanity_read_next BOOL]",
+      exe_name);
+  XELOGI(
+      "Optional: [--raw_dump_mode BOOL] [--fua BOOL] [--descramble BOOL] "
+      "[--subchannel none|q16|raw96] [--c2 BOOL]");
+  XELOGI(
+      "Example: {} --device_path /dev/sg1 --disc_type dvd --address 0 "
+      "--block_count 1 --raw_addressing false",
+      exe_name);
   std::fprintf(
       stdout,
       "Usage: %s [--device_path PATH] [--disc_type cd|dvd] [--address N] "
@@ -90,11 +94,10 @@ void PrintUsage(const char* exe_name) {
       stdout,
       "Optional: [--raw_dump_mode BOOL] [--fua BOOL] [--descramble BOOL] "
       "[--subchannel none|q16|raw96] [--c2 BOOL]\n");
-  std::fprintf(
-      stdout,
-      "Example: %s --device_path /dev/sg1 --disc_type dvd --address 0 "
-      "--block_count 1 --raw_addressing false\n",
-      exe_name);
+  std::fprintf(stdout,
+               "Example: %s --device_path /dev/sg1 --disc_type dvd --address 0 "
+               "--block_count 1 --raw_addressing false\n",
+               exe_name);
 }
 
 std::string ToLower(std::string value) {
@@ -112,8 +115,7 @@ bool ParseBool(std::string_view text, bool* out_value) {
     *out_value = true;
     return true;
   }
-  if (lower == "0" || lower == "false" || lower == "no" ||
-      lower == "off") {
+  if (lower == "0" || lower == "false" || lower == "no" || lower == "off") {
     *out_value = false;
     return true;
   }
@@ -198,7 +200,8 @@ bool NextArgumentValue(const std::vector<std::string>& args, size_t* index,
     return true;
   }
 
-  if (arg.size() > flag_view.size() && arg.compare(0, flag_view.size(), flag) == 0 &&
+  if (arg.size() > flag_view.size() &&
+      arg.compare(0, flag_view.size(), flag) == 0 &&
       arg[flag_view.size()] == '=') {
     *out_value = arg.substr(flag_view.size() + 1);
     return true;
@@ -226,9 +229,9 @@ bool ParseProbeOptions(const std::vector<std::string>& args,
                            const char* expected) -> ParseResult {
       const size_t flag_length = std::strlen(flag);
       const bool exact_match = arg == flag;
-      const bool match_with_equals =
-          arg.size() > flag_length && arg.compare(0, flag_length, flag) == 0 &&
-          arg[flag_length] == '=';
+      const bool match_with_equals = arg.size() > flag_length &&
+                                     arg.compare(0, flag_length, flag) == 0 &&
+                                     arg[flag_length] == '=';
       if (!exact_match && !match_with_equals) {
         return ParseResult::kNoMatch;
       }
@@ -242,21 +245,22 @@ bool ParseProbeOptions(const std::vector<std::string>& args,
       if (!parse_fn(value, target)) {
         XELOGE("Invalid value '{}' for {} (expected {})", value, flag,
                expected);
-        std::fprintf(stderr,
-                     "Parse error: invalid value '%.*s' for %s (expected %s).\n",
-                     static_cast<int>(value.size()), value.data(), flag,
-                     expected);
+        std::fprintf(
+            stderr, "Parse error: invalid value '%.*s' for %s (expected %s).\n",
+            static_cast<int>(value.size()), value.data(), flag, expected);
         return ParseResult::kError;
       }
       return ParseResult::kSuccess;
     };
 
     ParseResult parse_result = ParseResult::kNoMatch;
-    parse_result = parse_value("--device_path", [](std::string_view value,
-                                                    std::string* out_value) {
-      out_value->assign(value);
-      return !out_value->empty();
-    }, &out_options->device_path, "non-empty path");
+    parse_result = parse_value(
+        "--device_path",
+        [](std::string_view value, std::string* out_value) {
+          out_value->assign(value);
+          return !out_value->empty();
+        },
+        &out_options->device_path, "non-empty path");
     if (parse_result == ParseResult::kError) {
       return false;
     }
@@ -273,11 +277,13 @@ bool ParseProbeOptions(const std::vector<std::string>& args,
       continue;
     }
 
-    parse_result = parse_value("--compare_iso", [](std::string_view value,
-                                                    std::string* out_value) {
-      out_value->assign(value);
-      return !out_value->empty();
-    }, &out_options->compare_iso_path, "non-empty path");
+    parse_result = parse_value(
+        "--compare_iso",
+        [](std::string_view value, std::string* out_value) {
+          out_value->assign(value);
+          return !out_value->empty();
+        },
+        &out_options->compare_iso_path, "non-empty path");
     if (parse_result == ParseResult::kError) {
       return false;
     }
@@ -314,9 +320,9 @@ bool ParseProbeOptions(const std::vector<std::string>& args,
       continue;
     }
 
-    parse_result = parse_value("--compare_iso_auto_base", ParseBool,
-                               &out_options->compare_iso_auto_base,
-                               "true|false");
+    parse_result =
+        parse_value("--compare_iso_auto_base", ParseBool,
+                    &out_options->compare_iso_auto_base, "true|false");
     if (parse_result == ParseResult::kError) {
       return false;
     }
@@ -388,8 +394,8 @@ bool ParseProbeOptions(const std::vector<std::string>& args,
       continue;
     }
 
-    parse_result = parse_value("--c2", ParseBool, &out_options->c2,
-                               "true|false");
+    parse_result =
+        parse_value("--c2", ParseBool, &out_options->c2, "true|false");
     if (parse_result == ParseResult::kError) {
       return false;
     }
@@ -451,13 +457,15 @@ const char* DiscTypeName(OmniDriveDiscType disc_type) {
 }
 
 void LogFailureHints(const std::string& device_path) {
-  XELOGW("Hints: ensure you have read permission for {} (udev/group settings, "
-         "often 'cdrom').",
-         device_path);
+  XELOGW(
+      "Hints: ensure you have read permission for {} (udev/group settings, "
+      "often 'cdrom').",
+      device_path);
   if (device_path.rfind("/dev/sg", 0) == 0) {
-    XELOGW("Hints: verify {} maps to the optical drive (for example, lsscsi -g). "
-           "Non-optical sg nodes will fail this probe.",
-           device_path);
+    XELOGW(
+        "Hints: verify {} maps to the optical drive (for example, lsscsi -g). "
+        "Non-optical sg nodes will fail this probe.",
+        device_path);
   }
 }
 
@@ -543,12 +551,10 @@ SecuritySectorSanityReport AnalyzeSecuritySector(
   }
 
   report.byte_768_ok = report.expected_range_entry_count != 0;
-  report.byte_769_ok =
-      report.expected_range_entry_count != 0 &&
-      payload[769] == report.expected_range_entry_count;
-  report.byte_1632_ok =
-      report.expected_range_entry_count != 0 &&
-      payload[1632] == report.expected_range_entry_count;
+  report.byte_769_ok = report.expected_range_entry_count != 0 &&
+                       payload[769] == report.expected_range_entry_count;
+  report.byte_1632_ok = report.expected_range_entry_count != 0 &&
+                        payload[1632] == report.expected_range_entry_count;
   if (!report.byte_768_ok || !report.byte_769_ok || !report.byte_1632_ok) {
     report.first_failure_reason = "header_marker_mismatch";
     return report;
@@ -608,83 +614,88 @@ void DumpAnnotatedSecuritySector(const std::vector<uint8_t>& payload,
     return;
   }
 
-    XELOGI("Byte[768]={} expected=1|2 pass={}", payload[768], report.byte_768_ok);
-    std::fprintf(stdout, "Byte[768]=%u expected=1|2 pass=%s\n",
+  XELOGI("Byte[768]={} expected=1|2 pass={}", payload[768], report.byte_768_ok);
+  std::fprintf(stdout, "Byte[768]=%u expected=1|2 pass=%s\n",
                static_cast<unsigned int>(payload[768]),
                report.byte_768_ok ? "true" : "false");
-    XELOGI("Byte[769]={} expected={} (from version={}) pass={}", payload[769],
-       report.expected_range_entry_count, report.detected_version,
-       report.byte_769_ok);
-    std::fprintf(stdout,
-           "Byte[769]=%u expected=%zu (from version=%u) pass=%s\n",
+  XELOGI("Byte[769]={} expected={} (from version={}) pass={}", payload[769],
+         report.expected_range_entry_count, report.detected_version,
+         report.byte_769_ok);
+  std::fprintf(stdout, "Byte[769]=%u expected=%zu (from version=%u) pass=%s\n",
                static_cast<unsigned int>(payload[769]),
-           report.expected_range_entry_count,
-           static_cast<unsigned int>(report.detected_version),
+               report.expected_range_entry_count,
+               static_cast<unsigned int>(report.detected_version),
                report.byte_769_ok ? "true" : "false");
-    XELOGI("Byte[1632]={} expected={} (from version={}) pass={}", payload[1632],
-       report.expected_range_entry_count, report.detected_version,
-       report.byte_1632_ok);
-    std::fprintf(stdout,
-           "Byte[1632]=%u expected=%zu (from version=%u) pass=%s\n",
+  XELOGI("Byte[1632]={} expected={} (from version={}) pass={}", payload[1632],
+         report.expected_range_entry_count, report.detected_version,
+         report.byte_1632_ok);
+  std::fprintf(stdout, "Byte[1632]=%u expected=%zu (from version=%u) pass=%s\n",
                static_cast<unsigned int>(payload[1632]),
-           report.expected_range_entry_count,
-           static_cast<unsigned int>(report.detected_version),
+               report.expected_range_entry_count,
+               static_cast<unsigned int>(report.detected_version),
                report.byte_1632_ok ? "true" : "false");
 
   const size_t ranges_bytes =
       report.expected_range_entry_count * kSecuritySectorRangeEntrySize;
-    if (report.ranges_equality_check_skipped) {
+  if (report.ranges_equality_check_skipped) {
     XELOGI(
-      "Ranges A/B equality: a_offset={} b_offset={} entries={} entry_size={} bytes={} pass=skipped (version={})",
-      kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
-      report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
-      ranges_bytes, report.detected_version);
-    std::fprintf(
-      stdout,
-      "Ranges A/B equality: a_offset=%zu b_offset=%zu entries=%zu entry_size=%zu bytes=%zu pass=skipped (version=%u)\n",
-      kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
-      report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
-      ranges_bytes, static_cast<unsigned int>(report.detected_version));
-    } else {
+        "Ranges A/B equality: a_offset={} b_offset={} entries={} entry_size={} "
+        "bytes={} pass=skipped (version={})",
+        kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
+        report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
+        ranges_bytes, report.detected_version);
+    std::fprintf(stdout,
+                 "Ranges A/B equality: a_offset=%zu b_offset=%zu entries=%zu "
+                 "entry_size=%zu bytes=%zu pass=skipped (version=%u)\n",
+                 kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
+                 report.expected_range_entry_count,
+                 kSecuritySectorRangeEntrySize, ranges_bytes,
+                 static_cast<unsigned int>(report.detected_version));
+  } else {
     XELOGI(
-      "Ranges A/B equality: a_offset={} b_offset={} entries={} entry_size={} bytes={} pass={}",
-      kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
-      report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
-      ranges_bytes, report.ranges_equal);
-    std::fprintf(
-      stdout,
-      "Ranges A/B equality: a_offset=%zu b_offset=%zu entries=%zu entry_size=%zu bytes=%zu pass=%s\n",
-      kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
-      report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
-      ranges_bytes, report.ranges_equal ? "true" : "false");
-    }
+        "Ranges A/B equality: a_offset={} b_offset={} entries={} entry_size={} "
+        "bytes={} pass={}",
+        kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
+        report.expected_range_entry_count, kSecuritySectorRangeEntrySize,
+        ranges_bytes, report.ranges_equal);
+    std::fprintf(stdout,
+                 "Ranges A/B equality: a_offset=%zu b_offset=%zu entries=%zu "
+                 "entry_size=%zu bytes=%zu pass=%s\n",
+                 kSecuritySectorRangesAOffset, kSecuritySectorRangesBOffset,
+                 report.expected_range_entry_count,
+                 kSecuritySectorRangeEntrySize, ranges_bytes,
+                 report.ranges_equal ? "true" : "false");
+  }
 
   const uint8_t* ranges_a = payload.data() + kSecuritySectorRangesAOffset;
-    for (size_t i = 0; i < report.expected_range_entry_count; ++i) {
+  for (size_t i = 0; i < report.expected_range_entry_count; ++i) {
     const uint8_t* entry = ranges_a + i * kSecuritySectorRangeEntrySize;
     const bool zero_entry = IsAllZero(entry, kSecuritySectorRangeEntrySize);
     const uint32_t start_psn = ParseBE24(entry + 3);
     const uint32_t end_psn = ParseBE24(entry + 6);
     const bool ordered = start_psn <= end_psn;
     XELOGI(
-        "Entry {:02}: raw=[{}] start_psn(be24,+3)={} end_psn(be24,+6)={} zero_entry={} start_le_end={}",
+        "Entry {:02}: raw=[{}] start_psn(be24,+3)={} end_psn(be24,+6)={} "
+        "zero_entry={} start_le_end={}",
         i, FormatHexSlice(entry, kSecuritySectorRangeEntrySize), start_psn,
         end_psn, zero_entry, ordered);
-    std::fprintf(
-      stdout,
-      "Entry %02zu: raw=[%s] start_psn(be24,+3)=%u end_psn(be24,+6)=%u zero_entry=%s start_le_end=%s\n",
-      i, FormatHexSlice(entry, kSecuritySectorRangeEntrySize).c_str(),
-      start_psn, end_psn, zero_entry ? "true" : "false",
-      ordered ? "true" : "false");
+    std::fprintf(stdout,
+                 "Entry %02zu: raw=[%s] start_psn(be24,+3)=%u "
+                 "end_psn(be24,+6)=%u zero_entry=%s start_le_end=%s\n",
+                 i,
+                 FormatHexSlice(entry, kSecuritySectorRangeEntrySize).c_str(),
+                 start_psn, end_psn, zero_entry ? "true" : "false",
+                 ordered ? "true" : "false");
   }
 
   XELOGI("Sanity summary: sane={} first_failure_reason={}", report.sane,
-         report.first_failure_reason.empty() ? "none" : report.first_failure_reason);
-    std::fprintf(stdout, "Sanity summary: sane=%s first_failure_reason=%s\n",
-           report.sane ? "true" : "false",
-           report.first_failure_reason.empty()
-             ? "none"
-             : report.first_failure_reason.c_str());
+         report.first_failure_reason.empty() ? "none"
+                                             : report.first_failure_reason);
+  std::fprintf(stdout, "Sanity summary: sane=%s first_failure_reason=%s\n",
+               report.sane ? "true" : "false",
+               report.first_failure_reason.empty()
+                   ? "none"
+                   : report.first_failure_reason.c_str());
 }
 
 bool LoadIsoRange(const std::string& iso_path, uint64_t byte_offset,
@@ -716,15 +727,14 @@ bool LoadIsoRange(const std::string& iso_path, uint64_t byte_offset,
 
   const uint64_t requested_end = byte_offset + static_cast<uint64_t>(read_size);
   if (requested_end < byte_offset || requested_end > iso_size) {
-    XELOGE(
-        "ISO compare failed: requested range [{}..{}) exceeds ISO size {}",
-        byte_offset, requested_end, iso_size);
-    std::fprintf(
-        stderr,
-        "ISO compare failed: requested range [%llu..%llu) exceeds ISO size %llu\n",
-        static_cast<unsigned long long>(byte_offset),
-        static_cast<unsigned long long>(requested_end),
-        static_cast<unsigned long long>(iso_size));
+    XELOGE("ISO compare failed: requested range [{}..{}) exceeds ISO size {}",
+           byte_offset, requested_end, iso_size);
+    std::fprintf(stderr,
+                 "ISO compare failed: requested range [%llu..%llu) exceeds ISO "
+                 "size %llu\n",
+                 static_cast<unsigned long long>(byte_offset),
+                 static_cast<unsigned long long>(requested_end),
+                 static_cast<unsigned long long>(iso_size));
     return false;
   }
 
@@ -732,8 +742,7 @@ bool LoadIsoRange(const std::string& iso_path, uint64_t byte_offset,
   if (!iso_stream.good()) {
     XELOGE("ISO compare failed: could not seek to {} in {}", byte_offset,
            iso_path);
-    std::fprintf(stderr,
-                 "ISO compare failed: could not seek to %llu in %s\n",
+    std::fprintf(stderr, "ISO compare failed: could not seek to %llu in %s\n",
                  static_cast<unsigned long long>(byte_offset),
                  iso_path.c_str());
     return false;
@@ -770,14 +779,19 @@ bool ComputeCompareByteOffset(const ProbeOptions& options, size_t sector_size,
 
   if (translated_lba < 0) {
     XELOGE(
-        "Compare failed: translated LBA is negative (disc_type={} address=0x{:X} raw_addressing={} translated_lba={} layer0_last_used={}). "
-        "Provide --layer0_last for wrapped DVD raw addressing or adjust compare options.",
-        DiscTypeName(options.disc_type), options.address, options.raw_addressing,
-        translated_lba, layer0_last_used);
+        "Compare failed: translated LBA is negative (disc_type={} "
+        "address=0x{:X} raw_addressing={} translated_lba={} "
+        "layer0_last_used={}). "
+        "Provide --layer0_last for wrapped DVD raw addressing or adjust "
+        "compare options.",
+        DiscTypeName(options.disc_type), options.address,
+        options.raw_addressing, translated_lba, layer0_last_used);
     std::fprintf(
         stderr,
-        "Compare failed: translated LBA is negative (disc_type=%s address=0x%X raw_addressing=%s translated_lba=%lld layer0_last_used=%s). "
-        "Provide --layer0_last for wrapped DVD raw addressing or adjust compare options.\n",
+        "Compare failed: translated LBA is negative (disc_type=%s address=0x%X "
+        "raw_addressing=%s translated_lba=%lld layer0_last_used=%s). "
+        "Provide --layer0_last for wrapped DVD raw addressing or adjust "
+        "compare options.\n",
         DiscTypeName(options.disc_type), options.address,
         options.raw_addressing ? "true" : "false",
         static_cast<long long>(translated_lba),
@@ -788,14 +802,15 @@ bool ComputeCompareByteOffset(const ProbeOptions& options, size_t sector_size,
   const int64_t iso_lba = translated_lba + options.compare_iso_base_lba;
   if (iso_lba < 0) {
     XELOGE(
-        "Compare failed: ISO LBA is negative (translated_lba={} compare_iso_base_lba={} iso_lba={}).",
+        "Compare failed: ISO LBA is negative (translated_lba={} "
+        "compare_iso_base_lba={} iso_lba={}).",
         translated_lba, options.compare_iso_base_lba, iso_lba);
-    std::fprintf(
-        stderr,
-        "Compare failed: ISO LBA is negative (translated_lba=%lld compare_iso_base_lba=%lld iso_lba=%lld).\n",
-        static_cast<long long>(translated_lba),
-        static_cast<long long>(options.compare_iso_base_lba),
-        static_cast<long long>(iso_lba));
+    std::fprintf(stderr,
+                 "Compare failed: ISO LBA is negative (translated_lba=%lld "
+                 "compare_iso_base_lba=%lld iso_lba=%lld).\n",
+                 static_cast<long long>(translated_lba),
+                 static_cast<long long>(options.compare_iso_base_lba),
+                 static_cast<long long>(iso_lba));
     return false;
   }
 
@@ -805,7 +820,8 @@ bool ComputeCompareByteOffset(const ProbeOptions& options, size_t sector_size,
     XELOGE("Compare failed: byte offset overflow (iso_lba={} sector_size={})",
            iso_lba, sector_size);
     std::fprintf(stderr,
-                 "Compare failed: byte offset overflow (iso_lba=%lld sector_size=%zu).\n",
+                 "Compare failed: byte offset overflow (iso_lba=%lld "
+                 "sector_size=%zu).\n",
                  static_cast<long long>(iso_lba), sector_size);
     return false;
   }
@@ -813,22 +829,27 @@ bool ComputeCompareByteOffset(const ProbeOptions& options, size_t sector_size,
   *out_byte_offset = iso_lba_u64 * static_cast<uint64_t>(sector_size);
 
   XELOGI(
-      "Compare parameters: disc_type={} raw_addressing={} address={} translated_lba={} layer0_last_available={} layer0_last={} layer0_last_used={} compare_iso_base_lba={} iso_lba={} sector_size={} byte_offset={}",
+      "Compare parameters: disc_type={} raw_addressing={} address={} "
+      "translated_lba={} layer0_last_available={} layer0_last={} "
+      "layer0_last_used={} compare_iso_base_lba={} iso_lba={} sector_size={} "
+      "byte_offset={}",
       DiscTypeName(options.disc_type), options.raw_addressing, options.address,
       translated_lba, options.layer0_last_available, options.layer0_last,
       layer0_last_used, options.compare_iso_base_lba, iso_lba, sector_size,
       *out_byte_offset);
-  std::fprintf(
-      stderr,
-      "Compare parameters: disc_type=%s raw_addressing=%s address=%u translated_lba=%lld layer0_last_available=%s layer0_last=%u layer0_last_used=%s compare_iso_base_lba=%lld iso_lba=%lld sector_size=%zu byte_offset=%llu\n",
-      DiscTypeName(options.disc_type),
-      options.raw_addressing ? "true" : "false", options.address,
-      static_cast<long long>(translated_lba),
-      options.layer0_last_available ? "true" : "false", options.layer0_last,
-      layer0_last_used ? "true" : "false",
-      static_cast<long long>(options.compare_iso_base_lba),
-      static_cast<long long>(iso_lba), sector_size,
-      static_cast<unsigned long long>(*out_byte_offset));
+  std::fprintf(stderr,
+               "Compare parameters: disc_type=%s raw_addressing=%s address=%u "
+               "translated_lba=%lld layer0_last_available=%s layer0_last=%u "
+               "layer0_last_used=%s compare_iso_base_lba=%lld iso_lba=%lld "
+               "sector_size=%zu byte_offset=%llu\n",
+               DiscTypeName(options.disc_type),
+               options.raw_addressing ? "true" : "false", options.address,
+               static_cast<long long>(translated_lba),
+               options.layer0_last_available ? "true" : "false",
+               options.layer0_last, layer0_last_used ? "true" : "false",
+               static_cast<long long>(options.compare_iso_base_lba),
+               static_cast<long long>(iso_lba), sector_size,
+               static_cast<unsigned long long>(*out_byte_offset));
 
   return true;
 }
@@ -848,28 +869,28 @@ bool CompareAndReport(const std::vector<uint8_t>& device_data,
 
     const size_t context_before = i < 8 ? i : 8;
     const size_t context_start = i - context_before;
-    const size_t context_length =
-        ((device_data.size() - context_start) < 16)
-            ? (device_data.size() - context_start)
-            : 16;
+    const size_t context_length = ((device_data.size() - context_start) < 16)
+                                      ? (device_data.size() - context_start)
+                                      : 16;
 
     XELOGE("COMPARE MISMATCH at +0x{:X} (device=0x{:02X} iso=0x{:02X})", i,
            static_cast<uint32_t>(device_data[i]),
            static_cast<uint32_t>(iso_data[i]));
     XELOGE("Context @ +0x{:X} ({} bytes)", context_start, context_length);
-    XELOGE("Device: {}", FormatHexSlice(device_data.data() + context_start,
-                                         context_length));
+    XELOGE("Device: {}",
+           FormatHexSlice(device_data.data() + context_start, context_length));
     XELOGE("ISO   : {}",
            FormatHexSlice(iso_data.data() + context_start, context_length));
     std::fprintf(
-      stderr,
-      "COMPARE MISMATCH at +0x%zX (device=0x%02X iso=0x%02X)\nContext @ +0x%zX (%zu bytes)\nDevice: %s\nISO   : %s\n",
-      i, static_cast<unsigned int>(device_data[i]),
-      static_cast<unsigned int>(iso_data[i]), context_start, context_length,
-      FormatHexSlice(device_data.data() + context_start, context_length)
-        .c_str(),
-      FormatHexSlice(iso_data.data() + context_start, context_length)
-        .c_str());
+        stderr,
+        "COMPARE MISMATCH at +0x%zX (device=0x%02X iso=0x%02X)\nContext @ "
+        "+0x%zX (%zu bytes)\nDevice: %s\nISO   : %s\n",
+        i, static_cast<unsigned int>(device_data[i]),
+        static_cast<unsigned int>(iso_data[i]), context_start, context_length,
+        FormatHexSlice(device_data.data() + context_start, context_length)
+            .c_str(),
+        FormatHexSlice(iso_data.data() + context_start, context_length)
+            .c_str());
     return false;
   }
 
@@ -881,8 +902,7 @@ bool CompareAndReport(const std::vector<uint8_t>& device_data,
 
 int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
 #if !(XE_PLATFORM_LINUX || XE_PLATFORM_WIN32)
-  XELOGE(
-      "xenia-vfs-omnidrive-sg-probe is supported only on Linux and Windows");
+  XELOGE("xenia-vfs-omnidrive-sg-probe is supported only on Linux and Windows");
   std::fprintf(stderr,
                "FAIL: xenia-vfs-omnidrive-sg-probe is supported only on Linux "
                "and Windows.\n");
@@ -901,7 +921,8 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
   const size_t sector_size =
       ComputeSectorSize(options.disc_type, options.raw_dump_mode);
   if (sector_size == 0 ||
-      options.block_count > (std::numeric_limits<size_t>::max)() / sector_size) {
+      options.block_count >
+          (std::numeric_limits<size_t>::max)() / sector_size) {
     XELOGE("Requested buffer size is too large: block_count={} sector_size={}",
            options.block_count, sector_size);
     std::fprintf(stderr,
@@ -910,7 +931,8 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
                  options.block_count, sector_size);
     return static_cast<int>(ProbeExitCode::kParseFailure);
   }
-  const size_t buffer_size = static_cast<size_t>(options.block_count) * sector_size;
+  const size_t buffer_size =
+      static_cast<size_t>(options.block_count) * sector_size;
 
   XELOGI(
       "Probing OmniDrive: device_path={} disc_type={} address={} "
@@ -919,15 +941,14 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
       "sanity_read_next={} buffer_size={}",
       options.device_path, DiscTypeName(options.disc_type), options.address,
       options.block_count, options.raw_addressing, options.raw_dump_mode,
-      options.fua, options.descramble, static_cast<uint32_t>(options.subchannel),
-      options.c2, options.layer0_last_available, options.layer0_last,
-      options.sanity_read_next,
-      buffer_size);
+      options.fua, options.descramble,
+      static_cast<uint32_t>(options.subchannel), options.c2,
+      options.layer0_last_available, options.layer0_last,
+      options.sanity_read_next, buffer_size);
 
   if (!options.compare_iso_path.empty() &&
-      options.disc_type == OmniDriveDiscType::kDVD &&
-      !options.raw_dump_mode && options.descramble_explicitly_set &&
-      !options.descramble) {
+      options.disc_type == OmniDriveDiscType::kDVD && !options.raw_dump_mode &&
+      options.descramble_explicitly_set && !options.descramble) {
     XELOGI(
         "Startup note: --descramble=false was requested, but DVD non-raw "
         "physical reads force descramble=true in the backend for ISO-byte "
@@ -944,22 +965,28 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
     return static_cast<int>(ProbeExitCode::kInitializeFailure);
   }
   if (options.layer0_last_available) {
-    XELOGI("Note: --layer0_last is ignored by this probe path (security-sector API). value={}",
-           options.layer0_last);
+    XELOGI(
+        "Note: --layer0_last is ignored by this probe path (security-sector "
+        "API). value={}",
+        options.layer0_last);
   }
   if (options.sanity_read_next) {
-    XELOGI("Note: --sanity_read_next is ignored by this probe path (single security-sector API read)." );
+    XELOGI(
+        "Note: --sanity_read_next is ignored by this probe path (single "
+        "security-sector API read).");
   }
 
   auto security_sector = device.ReadSecuritySectorFromCandidates();
   if (!security_sector) {
     XELOGE(
-        "Security sector read failed: ReadSecuritySectorFromCandidates returned no payload.");
+        "Security sector read failed: ReadSecuritySectorFromCandidates "
+        "returned no payload.");
     XELOGE(
-        "Dialog activation diagnosis: warning dialog does not trigger because no security sector payload was available for sanity evaluation.");
+        "Dialog activation diagnosis: warning dialog does not trigger because "
+        "no security sector payload was available for sanity evaluation.");
     LogFailureHints(options.device_path);
     std::fprintf(stderr,
-           "FAIL: security sector read failed (no payload available).\n");
+                 "FAIL: security sector read failed (no payload available).\n");
     return static_cast<int>(ProbeExitCode::kReadFailure);
   }
 
@@ -971,21 +998,24 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
       AnalyzeSecuritySector(buffer);
   DumpAnnotatedSecuritySector(buffer, sanity_report);
   XELOGI(
-      "Dialog activation diagnosis: warning_dialog_would_trigger={} (trigger requires payload present AND sanity failure).",
+      "Dialog activation diagnosis: warning_dialog_would_trigger={} (trigger "
+      "requires payload present AND sanity failure).",
       !sanity_report.sane);
-    std::fprintf(
-      stdout,
-      "Dialog activation diagnosis: warning_dialog_would_trigger=%s (trigger requires payload present AND sanity failure).\n",
-      !sanity_report.sane ? "true" : "false");
+  std::fprintf(stdout,
+               "Dialog activation diagnosis: warning_dialog_would_trigger=%s "
+               "(trigger requires payload present AND sanity failure).\n",
+               !sanity_report.sane ? "true" : "false");
 
   if (!options.compare_iso_path.empty()) {
     if (options.compare_iso_auto_base) {
       XELOGE(
-          "--compare_iso_auto_base is disabled to keep compare deterministic and Xbox 360 explicit. "
+          "--compare_iso_auto_base is disabled to keep compare deterministic "
+          "and Xbox 360 explicit. "
           "Use --compare_iso_base_lba and optionally --layer0_last instead.");
       std::fprintf(
           stderr,
-          "--compare_iso_auto_base is disabled to keep compare deterministic and Xbox 360 explicit. "
+          "--compare_iso_auto_base is disabled to keep compare deterministic "
+          "and Xbox 360 explicit. "
           "Use --compare_iso_base_lba and optionally --layer0_last instead.\n");
       std::fprintf(stderr, "FAIL: argument parsing failed.\n");
       return static_cast<int>(ProbeExitCode::kParseFailure);
@@ -998,7 +1028,8 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
     }
     XELOGI("Comparing against ISO: path={} offset={} size={}",
            options.compare_iso_path, byte_offset, buffer.size());
-    std::fprintf(stderr, "Comparing against ISO: path=%s offset=%llu size=%zu\n",
+    std::fprintf(stderr,
+                 "Comparing against ISO: path=%s offset=%llu size=%zu\n",
                  options.compare_iso_path.c_str(),
                  static_cast<unsigned long long>(byte_offset), buffer.size());
 
