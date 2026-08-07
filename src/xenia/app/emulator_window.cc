@@ -923,7 +923,7 @@ bool EmulatorWindow::Initialize() {
   main_menu->AddChild(std::move(help_menu));
 
   window_->SetMainMenu(std::move(main_menu));
-
+  
   window_->SetMainMenuEnabled(false);
 
   UpdateTitle();
@@ -2177,7 +2177,13 @@ std::string EmulatorWindow::CanonicalizeFileExtension(
 xe::X_STATUS EmulatorWindow::RunTitle(
     const std::filesystem::path& path_to_file) {
   std::error_code ec = {};
-  bool titleExists = std::filesystem::exists(path_to_file, ec);
+  // Optical device paths (e.g. \\.\D: on Windows, /dev/sg0 on Linux/Wine)
+  // are not regular filesystem paths — std::filesystem::exists returns false
+  // for them. Skip the existence check for those and let the device open
+  // logic downstream validate them.
+  const bool is_optical_device = Emulator::IsPathOpticalDevice(path_to_file);
+  bool titleExists = is_optical_device ||
+                    std::filesystem::exists(path_to_file, ec);
 
   if (path_to_file.empty() || !titleExists) {
     std::string log_msg =
@@ -2214,7 +2220,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
   // Prevent crashing the emulator by not loading a game if a game is already
   // loaded.
-  auto abs_path = std::filesystem::absolute(path_to_file);
+  auto abs_path = (Emulator::IsPathOpticalDevice(path_to_file)? path_to_file : std::filesystem::absolute(path_to_file));
 
   auto extension = CanonicalizeFileExtension(abs_path);
 
