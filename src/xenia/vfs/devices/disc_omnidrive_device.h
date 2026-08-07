@@ -175,7 +175,14 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
     uint64_t sector_start;
     uint32_t sector_count;
     std::vector<uint8_t> data;
+    // Frequency counter: starts at 1 if inserted by a demand read, 0 if
+    // inserted by a prefetch; incremented by 1 on every subsequent cache
+    // hit. Primary eviction key (evict lowest first).
     uint64_t use_tick;
+    // Set once at insertion time, never modified afterward. Tiebreak key
+    // for eviction when use_tick is equal: evict the smallest (oldest)
+    // insertion_tick first.
+    uint64_t insertion_tick;
   };
 
   struct ReadTelemetry {
@@ -255,7 +262,8 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
                                               std::span<uint8_t> buffer) const;
   bool IsRangeCachedLocked(uint64_t sector_start, uint32_t sector_count) const;
   void InsertCacheRange(uint64_t sector_start, uint32_t sector_count,
-                        std::span<const uint8_t> data) const;
+                        std::span<const uint8_t> data,
+                        bool is_demand_read) const;
   void TryScheduleSequentialPrefetch(uint64_t current_end_sector) const;
   bool ExecutePrefetchRead(uint64_t sector_start, uint32_t sector_count) const;
   void MaybeLogReadTelemetry() const;
@@ -294,7 +302,7 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
   mutable std::mutex cache_mutex_;
   mutable std::deque<CachedReadRange> read_cache_;
   mutable size_t read_cache_bytes_;
-  mutable uint64_t cache_use_tick_;
+  mutable uint64_t cache_insertion_count_;
   mutable bool last_read_valid_;
   mutable uint64_t last_read_end_sector_;
 

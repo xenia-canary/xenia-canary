@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "disc_scsi.h"
+
 #if XE_PLATFORM_LINUX
 #include <fcntl.h>
 #include <scsi/sg.h>
@@ -46,40 +48,16 @@ namespace {
 
 using namespace xe::literals;
 
-#pragma pack(push, 1)
-struct CDB12_ReadOmniDrive {
-  uint8_t operation_code;
-  uint8_t byte1;
-  uint8_t address[4];
-  uint8_t transfer_length[4];
-  uint8_t byte10;
-  uint8_t control;
-};
-#pragma pack(pop)
-static_assert(sizeof(CDB12_ReadOmniDrive) == 12,
-              "CDB12_ReadOmniDrive must be 12 bytes");
-
-#pragma pack(push, 1)
-struct CDB12_Read12 {
-  uint8_t operation_code;
-  uint8_t byte1;
-  uint8_t logical_block_address[4];
-  uint8_t transfer_length[4];
-  uint8_t byte10;
-  uint8_t control;
-};
-#pragma pack(pop)
-static_assert(sizeof(CDB12_Read12) == 12, "CDB12_Read12 must be 12 bytes");
-
 constexpr size_t kOmniDriveDvdFrameSize = 2064;
 constexpr size_t kOmniDriveDvdMainDataOffset = 12;
 constexpr size_t kOmniDriveDvdMainDataSize = 2048;
 constexpr size_t kGdfSectorSize = 2_KiB;
 constexpr uint64_t kUnixEpochAsFiletime = 10000 * 11644473600000LL;
 constexpr uint64_t kInvalidIssueSector = std::numeric_limits<uint64_t>::max();
-constexpr uint32_t kSequentialPrefetchSectors = 64;
+constexpr uint32_t kSequentialPrefetchSectors = 32;
 constexpr uint32_t kMaxTransportReadSectors = 256;
-constexpr size_t kReadCacheMaxBytes = 128 * 1024 * 1024;
+constexpr size_t kReadCacheMaxBytes = 256_MiB;
+constexpr uint64_t kCacheFrequencyRescaleThreshold = uint64_t{1} << 32;
 constexpr uint32_t kSecuritySectorProbeBaseAddress = 0x00FD021E;
 constexpr uint32_t kSecuritySectorProbeRetryStride = 0x40;
 constexpr uint32_t kSecuritySectorProbeRetryCount = 4;
@@ -106,58 +84,6 @@ std::string HexPreview(const uint8_t* data, size_t length,
     out.append(hex);
   }
   return out;
-}
-
-bool IsParseRelevantRead(uint32_t transfer_length) {
-  return transfer_length > 0 && transfer_length <= 64;
-}
-
-void PackBE32(uint32_t value, uint8_t out[4]) {
-  out[0] = static_cast<uint8_t>((value >> 24) & 0xFF);
-  out[1] = static_cast<uint8_t>((value >> 16) & 0xFF);
-  out[2] = static_cast<uint8_t>((value >> 8) & 0xFF);
-  out[3] = static_cast<uint8_t>(value & 0xFF);
-}
-
-CDB12_ReadOmniDrive BuildReadOmniDriveCdb(
-    uint32_t address, uint32_t transfer_length, OmniDriveDiscType disc_type,
-    bool raw_addressing, bool fua, bool descramble,
-    OmniDriveSubchannel subchannels, bool c2) {
-  CDB12_ReadOmniDrive cdb{};
-  cdb.operation_code = 0xC0;
-
-  cdb.byte1 = static_cast<uint8_t>(static_cast<uint8_t>(disc_type) & 0x03);
-  if (raw_addressing) {
-    cdb.byte1 |= (1u << 2);
-  }
-  if (fua) {
-    cdb.byte1 |= (1u << 3);
-  }
-  if (descramble) {
-    cdb.byte1 |= (1u << 4);
-  }
-
-  PackBE32(static_cast<uint32_t>(static_cast<int32_t>(address)), cdb.address);
-  PackBE32(transfer_length, cdb.transfer_length);
-
-  cdb.byte10 = static_cast<uint8_t>(static_cast<uint8_t>(subchannels) & 0x03);
-  if (c2) {
-    cdb.byte10 |= (1u << 2);
-  }
-
-  cdb.control = 0;
-  return cdb;
-}
-
-CDB12_Read12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua) {
-  CDB12_Read12 cdb{};
-  cdb.operation_code = 0xA8;
-  cdb.byte1 = fua ? static_cast<uint8_t>(1u << 3) : 0;
-  PackBE32(lba, cdb.logical_block_address);
-  PackBE32(transfer_length, cdb.transfer_length);
-  cdb.byte10 = 0;
-  cdb.control = 0;
-  return cdb;
 }
 
 bool StartsWith(const std::string& value, const char* prefix) {
@@ -272,56 +198,6 @@ struct DvdPhysicalFormatInfo {
 };
 
 #if XE_PLATFORM_LINUX
-bool RunLinuxScsiCommand(int fd, const char* command_name, const uint8_t* cdb,
-                         uint8_t cdb_length, int data_direction,
-                         void* data_buffer, uint32_t data_length,
-                         uint32_t timeout_ms = 8000,
-                         uint8_t* out_sense_key = nullptr,
-                         uint8_t* out_asc = nullptr,
-                         uint8_t* out_ascq = nullptr) {
-  uint8_t sense_buffer[32] = {0};
-  sg_io_hdr_t io_hdr = {};
-  io_hdr.interface_id = 'S';
-  io_hdr.dxfer_direction = data_direction;
-  io_hdr.cmd_len = cdb_length;
-  io_hdr.mx_sb_len = sizeof(sense_buffer);
-  io_hdr.dxfer_len = data_length;
-  io_hdr.dxferp = data_buffer;
-  io_hdr.cmdp = const_cast<uint8_t*>(cdb);
-  io_hdr.sbp = sense_buffer;
-  io_hdr.timeout = timeout_ms;
-
-  if (ioctl(fd, SG_IO, &io_hdr) != 0) {
-    XELOGW("DiscOmnidriveDevice: {} failed with SG_IO error: {}", command_name,
-           std::strerror(errno));
-    return false;
-  }
-
-  if (io_hdr.sb_len_wr >= 14 &&
-      (sense_buffer[0] & 0x7F) == 0x70 /* current fixed-format sense */) {
-    if (out_sense_key) {
-      *out_sense_key = sense_buffer[2] & 0x0F;
-    }
-    if (out_asc) {
-      *out_asc = sense_buffer[12];
-    }
-    if (out_ascq) {
-      *out_ascq = sense_buffer[13];
-    }
-  }
-
-  if ((io_hdr.info & SG_INFO_OK_MASK) != SG_INFO_OK || io_hdr.status != 0 ||
-      io_hdr.host_status != 0 || io_hdr.driver_status != 0) {
-    XELOGW(
-        "DiscOmnidriveDevice: {} status=0x{:02X} host=0x{:04X} "
-        "driver=0x{:04X} sense_len={}",
-        command_name, io_hdr.status, io_hdr.host_status, io_hdr.driver_status,
-        io_hdr.sb_len_wr);
-    return false;
-  }
-
-  return true;
-}
 
 bool ReadLinuxCurrentProfile(int fd, uint16_t* out_profile,
                              uint8_t* out_sense_key = nullptr,
@@ -346,11 +222,11 @@ bool ReadLinuxCurrentProfile(int fd, uint16_t* out_profile,
       static_cast<uint8_t>(alloc_length & 0xFF),
       0x00,
   };
-  if (!RunLinuxScsiCommand(fd, "GET CONFIGURATION", cdb_get_configuration,
-                           sizeof(cdb_get_configuration), SG_DXFER_FROM_DEV,
-                           get_configuration_data,
-                           sizeof(get_configuration_data), 8000, out_sense_key,
-                           out_asc, out_ascq)) {
+  if (!DeviceCommunication::RunScsiCommand(
+          fd, "GET CONFIGURATION", cdb_get_configuration,
+          sizeof(cdb_get_configuration), SG_DXFER_FROM_DEV,
+          get_configuration_data, sizeof(get_configuration_data), 8000,
+          out_sense_key, out_asc, out_ascq)) {
     return false;
   }
 
@@ -391,10 +267,11 @@ bool ReadLinuxDvdPhysicalFormatInfo(int fd, DvdPhysicalFormatInfo* out_info) {
       0,
       0,
   };
-  if (!RunLinuxScsiCommand(fd, "READ DISC STRUCTURE (physical format, layer 0)",
-                           cdb_read_disc_structure,
-                           sizeof(cdb_read_disc_structure), SG_DXFER_FROM_DEV,
-                           disc_structure_data, sizeof(disc_structure_data))) {
+  if (!DeviceCommunication::RunScsiCommand(
+          fd, "READ DISC STRUCTURE (physical format, layer 0)",
+          cdb_read_disc_structure, sizeof(cdb_read_disc_structure),
+          SG_DXFER_FROM_DEV, disc_structure_data,
+          sizeof(disc_structure_data))) {
     return false;
   }
 
@@ -457,56 +334,6 @@ struct SptdWithSense {
   UCHAR sense_buffer[32];
 };
 
-bool RunWindowsScsiCommand(HANDLE handle, const char* command_name,
-                           const uint8_t* cdb, uint8_t cdb_length,
-                           UCHAR data_in, void* data_buffer,
-                           uint32_t data_length, uint32_t timeout_seconds = 30,
-                           uint8_t* out_sense_key = nullptr,
-                           uint8_t* out_asc = nullptr,
-                           uint8_t* out_ascq = nullptr) {
-  SptdWithSense sptd = {};
-  sptd.sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
-  sptd.sptd.CdbLength = cdb_length;
-  sptd.sptd.SenseInfoLength = sizeof(sptd.sense_buffer);
-  sptd.sptd.DataIn = data_in;
-  sptd.sptd.DataTransferLength = data_length;
-  sptd.sptd.TimeOutValue = timeout_seconds;
-  sptd.sptd.DataBuffer = data_buffer;
-  sptd.sptd.SenseInfoOffset = offsetof(SptdWithSense, sense_buffer);
-  std::memcpy(sptd.sptd.Cdb, cdb, cdb_length);
-
-  DWORD returned = 0;
-  if (!DeviceIoControl(handle, IOCTL_SCSI_PASS_THROUGH_DIRECT, &sptd,
-                       sizeof(sptd), &sptd, sizeof(sptd), &returned, nullptr)) {
-    XELOGW("DiscOmnidriveDevice: {} failed for {} with error {}", command_name,
-           "SPTI", GetLastError());
-    return false;
-  }
-
-  if (out_sense_key || out_asc || out_ascq) {
-    const uint8_t sense_key = sptd.sense_buffer[2] & 0x0F;
-    const uint8_t asc = sptd.sense_buffer[12];
-    const uint8_t ascq = sptd.sense_buffer[13];
-    if (out_sense_key) {
-      *out_sense_key = sense_key;
-    }
-    if (out_asc) {
-      *out_asc = asc;
-    }
-    if (out_ascq) {
-      *out_ascq = ascq;
-    }
-  }
-
-  if (sptd.sptd.ScsiStatus != 0) {
-    XELOGW("DiscOmnidriveDevice: {} SPTI status=0x{:02X}", command_name,
-           sptd.sptd.ScsiStatus);
-    return false;
-  }
-
-  return true;
-}
-
 bool ReadWindowsCurrentProfile(HANDLE handle, uint16_t* out_profile,
                                uint8_t* out_sense_key = nullptr,
                                uint8_t* out_asc = nullptr,
@@ -530,11 +357,11 @@ bool ReadWindowsCurrentProfile(HANDLE handle, uint16_t* out_profile,
       static_cast<uint8_t>(alloc_length & 0xFF),
       0x00,
   };
-  if (!RunWindowsScsiCommand(handle, "GET CONFIGURATION", cdb_get_configuration,
-                             sizeof(cdb_get_configuration), SCSI_IOCTL_DATA_IN,
-                             get_configuration_data,
-                             sizeof(get_configuration_data), 30, out_sense_key,
-                             out_asc, out_ascq)) {
+  if (!DeviceCommunication::RunScsiCommand(
+          handle, "GET CONFIGURATION", cdb_get_configuration,
+          sizeof(cdb_get_configuration), SCSI_IOCTL_DATA_IN,
+          get_configuration_data, sizeof(get_configuration_data), 30,
+          out_sense_key, out_asc, out_ascq)) {
     return false;
   }
 
@@ -576,7 +403,7 @@ bool ReadWindowsDvdPhysicalFormatInfo(HANDLE handle,
       0,
       0,
   };
-  if (!RunWindowsScsiCommand(
+  if (!DeviceCommunication::RunScsiCommand(
           handle, "READ DISC STRUCTURE (physical format, layer 0)",
           cdb_read_disc_structure, sizeof(cdb_read_disc_structure),
           SCSI_IOCTL_DATA_IN, disc_structure_data,
@@ -624,7 +451,7 @@ DiscOmnidriveDevice::DiscOmnidriveDevice(std::string_view mount_path,
       read_worker_stop_(false),
       transport_read_chunk_cap_(kMaxTransportReadSectors),
       read_cache_bytes_(0),
-      cache_use_tick_(0),
+      cache_insertion_count_(0),
       last_read_valid_(false),
       last_read_end_sector_(0),
 #if XE_PLATFORM_LINUX
@@ -994,13 +821,6 @@ bool DiscOmnidriveDevice::ReadOmniDriveBlocks(
     return true;
   }
 
-  const TransportFailureKind failure_kind =
-      out_failure_kind ? *out_failure_kind : TransportFailureKind::kNone;
-  if (failure_kind == TransportFailureKind::kSizeRelated) {
-    // Expected during adaptive split fallback for oversized requests.
-    return false;
-  }
-
   XELOGE(
       "DiscOmnidriveDevice::ReadOmniDriveBlocks: physical transport read "
       "failed for {}; direct device read is required",
@@ -1293,9 +1113,10 @@ bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
                      [](uint8_t value) { return value != 0; });
 }
 
-void DiscOmnidriveDevice::InsertCacheRange(
-    uint64_t sector_start, uint32_t sector_count,
-    std::span<const uint8_t> data) const {
+void DiscOmnidriveDevice::InsertCacheRange(uint64_t sector_start,
+                                           uint32_t sector_count,
+                                           std::span<const uint8_t> data,
+                                           bool is_demand_read) const {
   if (sector_count == 0 || data.size() != static_cast<size_t>(sector_count) *
                                               physical_sector_size()) {
     return;
@@ -1307,12 +1128,27 @@ void DiscOmnidriveDevice::InsertCacheRange(
   chunk.data.assign(data.begin(), data.end());
 
   std::lock_guard<std::mutex> lock(cache_mutex_);
-  chunk.use_tick = ++cache_use_tick_;
+  chunk.use_tick = is_demand_read ? 1 : 0;
+  chunk.insertion_tick = ++cache_insertion_count_;
+  if (cache_insertion_count_ >= kCacheFrequencyRescaleThreshold) {
+    for (auto& other : read_cache_) {
+      other.insertion_tick /= 2;
+    }
+    cache_insertion_count_ /= 2;
+  }
   read_cache_bytes_ += chunk.data.size();
   read_cache_.emplace_back(std::move(chunk));
   while (read_cache_bytes_ > kReadCacheMaxBytes && !read_cache_.empty()) {
-    read_cache_bytes_ -= read_cache_.front().data.size();
-    read_cache_.pop_front();
+    auto evict_it = std::min_element(
+        read_cache_.begin(), read_cache_.end(),
+        [](const CachedReadRange& a, const CachedReadRange& b) {
+          if (a.use_tick != b.use_tick) {
+            return a.use_tick < b.use_tick;
+          }
+          return a.insertion_tick < b.insertion_tick;
+        });
+    read_cache_bytes_ -= evict_it->data.size();
+    read_cache_.erase(evict_it);
   }
 }
 
@@ -1438,7 +1274,8 @@ bool DiscOmnidriveDevice::ExecutePrefetchRead(uint64_t sector_start,
 
   std::span<uint8_t> prefetch_span{prefetch_buffer.data(),
                                    prefetch_buffer.size()};
-  InsertCacheRange(sector_start, sector_count, prefetch_span);
+  InsertCacheRange(sector_start, sector_count, prefetch_span,
+                   /*is_demand_read=*/false);
   read_telemetry_.prefetch_exec_count.fetch_add(1, std::memory_order_relaxed);
 
   const uint64_t current_end = sector_start + sector_count - 1;
@@ -1633,7 +1470,12 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
       for (uint64_t sector = overlap_start; sector < overlap_end; ++sector) {
         covered[static_cast<size_t>(sector - first_sector)] = 1;
       }
-      chunk.use_tick = ++cache_use_tick_;
+      ++chunk.use_tick;
+      if (chunk.use_tick >= kCacheFrequencyRescaleThreshold) {
+        for (auto& other : read_cache_) {
+          other.use_tick /= 2;
+        }
+      }
     }
   }
 
@@ -1672,7 +1514,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
     InsertCacheRange(sector_start, run_sector_count,
                      std::span<const uint8_t>(
                          run_buffer, static_cast<size_t>(run_sector_count) *
-                                         physical_sector_size()));
+                                         physical_sector_size()),
+                     true);
   }
 
   if (read_failed) {
@@ -1928,9 +1771,10 @@ DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry() const {
   }
 
   const uint8_t cdb_inquiry[6] = {0x12, 0, 0, 0, sizeof(inquiry_data), 0};
-  if (!RunLinuxScsiCommand(physical_transport_fd_, "INQUIRY (standard)",
-                           cdb_inquiry, sizeof(cdb_inquiry), SG_DXFER_FROM_DEV,
-                           inquiry_data, sizeof(inquiry_data))) {
+  if (!DeviceCommunication::RunScsiCommand(
+          physical_transport_fd_, "INQUIRY (standard)", cdb_inquiry,
+          sizeof(cdb_inquiry), SG_DXFER_FROM_DEV, inquiry_data,
+          sizeof(inquiry_data))) {
     XELOGW(
         "DiscOmnidriveDevice::ProbeFirmwareIdentityByInquiry: INQUIRY failed "
         "for {}",
@@ -2038,7 +1882,7 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
 
   const uint8_t cdb_test_unit_ready[6] = {0x00, 0, 0, 0, 0, 0};
   uint8_t tur_sense_key = 0, tur_asc = 0, tur_ascq = 0;
-  const bool tur_ok = RunLinuxScsiCommand(
+  const bool tur_ok = DeviceCommunication::RunScsiCommand(
       physical_transport_fd_, "TEST UNIT READY", cdb_test_unit_ready,
       sizeof(cdb_test_unit_ready), SG_DXFER_NONE, nullptr, 0, 8000,
       &tur_sense_key, &tur_asc, &tur_ascq);
@@ -2069,9 +1913,10 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
 
   uint8_t inquiry_data[36] = {0};
   const uint8_t cdb_inquiry[6] = {0x12, 0, 0, 0, sizeof(inquiry_data), 0};
-  if (!RunLinuxScsiCommand(physical_transport_fd_, "INQUIRY (standard)",
-                           cdb_inquiry, sizeof(cdb_inquiry), SG_DXFER_FROM_DEV,
-                           inquiry_data, sizeof(inquiry_data))) {
+  if (!DeviceCommunication::RunScsiCommand(
+          physical_transport_fd_, "INQUIRY (standard)", cdb_inquiry,
+          sizeof(cdb_inquiry), SG_DXFER_FROM_DEV, inquiry_data,
+          sizeof(inquiry_data))) {
     XELOGW(
         "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
         "noncritical preflight command failed: INQUIRY (standard)");
@@ -2110,10 +1955,10 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
 
   uint8_t read_capacity_data[8] = {0};
   const uint8_t cdb_read_capacity[10] = {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  if (!RunLinuxScsiCommand(physical_transport_fd_, "READ CAPACITY (10)",
-                           cdb_read_capacity, sizeof(cdb_read_capacity),
-                           SG_DXFER_FROM_DEV, read_capacity_data,
-                           sizeof(read_capacity_data))) {
+  if (!DeviceCommunication::RunScsiCommand(
+          physical_transport_fd_, "READ CAPACITY (10)", cdb_read_capacity,
+          sizeof(cdb_read_capacity), SG_DXFER_FROM_DEV, read_capacity_data,
+          sizeof(read_capacity_data))) {
     physical_drive_state_failed_command_ = "READ CAPACITY (10)";
     XELOGE(
         "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: "
@@ -2149,7 +1994,7 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
       0,
       0,
   };
-  const bool read_disc_structure_ok = RunLinuxScsiCommand(
+  const bool read_disc_structure_ok = DeviceCommunication::RunScsiCommand(
       physical_transport_fd_, "READ DISC STRUCTURE (physical format, layer 0)",
       cdb_read_disc_structure, sizeof(cdb_read_disc_structure),
       SG_DXFER_FROM_DEV, disc_structure_data, sizeof(disc_structure_data));
@@ -2401,10 +2246,6 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     return false;
   }
 
-  const bool parse_relevant_read = IsParseRelevantRead(transfer_length);
-  const OmniDriveAddress translated_issue =
-      TranslateAddress(address, raw_addressing);
-
   if (!physical_preflight_attempted() || !physical_preflight_ready()) {
     XELOGE(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: physical preflight "
@@ -2424,32 +2265,9 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     return false;
   }
 
-  const bool frame_extraction_active =
-      disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
-
-  size_t physical_read_length = read_length;
-  if (frame_extraction_active) {
-    const size_t transfer_length_size = static_cast<size_t>(transfer_length);
-    if (transfer_length_size >
-        (std::numeric_limits<size_t>::max)() / kOmniDriveDvdFrameSize) {
-      return false;
-    }
-    physical_read_length = transfer_length_size * kOmniDriveDvdFrameSize;
-  }
-
-  if (physical_read_length > (std::numeric_limits<uint32_t>::max)()) {
+  if (read_length > (std::numeric_limits<uint32_t>::max)()) {
     return false;
   }
-
-  std::vector<uint8_t> frame_buffer;
-  uint8_t* sg_buffer = buffer;
-  if (frame_extraction_active) {
-    frame_buffer.resize(physical_read_length);
-    sg_buffer = frame_buffer.data();
-  }
-
-  const uint32_t sg_transfer_length =
-      static_cast<uint32_t>(physical_read_length);
 
   const bool force_descramble =
       disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
@@ -2457,7 +2275,28 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   if (force_descramble && !descramble) {
     XELOGD(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: forcing "
-        "descramble=true for DVD non-raw read (incoming descramble=false)");
+        "descramble=true for read (incoming descramble=false)");
+  }
+
+  const bool frame_extraction_active =
+      disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
+  size_t physical_read_length = read_length;
+  uint8_t* sg_buffer = buffer;
+  std::vector<uint8_t> frame_buffer;
+
+  if (frame_extraction_active) {
+    const size_t transfer_length_size = static_cast<size_t>(transfer_length);
+    if (transfer_length_size >
+        (std::numeric_limits<size_t>::max)() / kOmniDriveDvdFrameSize) {
+      return false;
+    }
+    physical_read_length = transfer_length_size * kOmniDriveDvdFrameSize;
+    frame_buffer.resize(physical_read_length);
+    sg_buffer = frame_buffer.data();
+  }
+
+  if (physical_read_length > (std::numeric_limits<uint32_t>::max)()) {
+    return false;
   }
 
   CDB12_ReadOmniDrive omnidrive_cdb = BuildReadOmniDriveCdb(
@@ -2465,145 +2304,25 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
       effective_descramble, subchannels, c2);
   const uint8_t* cdb_ptr = reinterpret_cast<const uint8_t*>(&omnidrive_cdb);
   const uint8_t cdb_len = sizeof(omnidrive_cdb);
+  uint8_t sense_key = 0, asc = 0, ascq = 0;
+  bool ioctl_size_related = false;
+  bool success = DeviceCommunication::RunScsiCommand(
+      physical_transport_fd_, "READ_OMNIDRIVE", cdb_ptr, cdb_len,
+      SG_DXFER_FROM_DEV, sg_buffer, static_cast<uint32_t>(physical_read_length),
+      8000, &sense_key, &asc, &ascq, &ioctl_size_related);
 
-  auto run_sg_io = [&](const uint8_t* cdb_ptr, uint8_t cdb_len,
-                       uint8_t* dxfer_buffer, uint32_t dxfer_len,
-                       bool log_failures,
-                       TransportFailureKind* failure_kind = nullptr) -> bool {
-    uint8_t local_sense_buffer[32] = {0};
-    sg_io_hdr_t local_io_hdr = {};
-    local_io_hdr.interface_id = 'S';
-    local_io_hdr.dxfer_direction = SG_DXFER_FROM_DEV;
-    local_io_hdr.cmd_len = cdb_len;
-    local_io_hdr.mx_sb_len = sizeof(local_sense_buffer);
-    local_io_hdr.dxfer_len = dxfer_len;
-    local_io_hdr.dxferp = dxfer_buffer;
-    local_io_hdr.cmdp = const_cast<uint8_t*>(cdb_ptr);
-    local_io_hdr.sbp = local_sense_buffer;
-    local_io_hdr.timeout = 8000;
-
-    if (ioctl(physical_transport_fd_, SG_IO, &local_io_hdr) != 0) {
-      const int ioctl_errno = errno;
-      const bool size_related = ioctl_errno == EINVAL || ioctl_errno == ENOMEM;
-      if (failure_kind) {
-        *failure_kind = size_related ? TransportFailureKind::kSizeRelated
-                                     : TransportFailureKind::kIoError;
-      }
-      if (log_failures && !size_related) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: SG_IO failed: {}",
-            std::strerror(ioctl_errno));
-      }
-      return false;
-    }
-
-    if ((local_io_hdr.info & SG_INFO_OK_MASK) != SG_INFO_OK ||
-        local_io_hdr.status != 0 || local_io_hdr.host_status != 0 ||
-        local_io_hdr.driver_status != 0) {
-      bool size_related = false;
-      if (local_io_hdr.sb_len_wr >= 14 &&
-          (local_sense_buffer[0] & 0x7F) == 0x70) {
-        const uint8_t sense_key = local_sense_buffer[2] & 0x0F;
-        const uint8_t asc = local_sense_buffer[12];
-        // Treat invalid-field reports as adaptive-size failures.
-        size_related = sense_key == 0x05 && (asc == 0x24 || asc == 0x26);
-      }
-      if (failure_kind) {
-        *failure_kind = size_related ? TransportFailureKind::kSizeRelated
-                                     : TransportFailureKind::kIoError;
-      }
-      if (log_failures && !size_related) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: SG_IO "
-            "status=0x{:02X} host=0x{:04X} driver=0x{:04X} sense_len={}",
-            local_io_hdr.status, local_io_hdr.host_status,
-            local_io_hdr.driver_status, local_io_hdr.sb_len_wr);
-      }
-      return false;
-    }
-
-    if (local_io_hdr.resid != 0) {
-      if (failure_kind) {
-        *failure_kind = TransportFailureKind::kIoError;
-      }
-      if (log_failures) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: short transfer "
-            "resid={} for request_len={}",
-            local_io_hdr.resid, dxfer_len);
-      }
-      return false;
-    }
-
-    return true;
-  };
-
-  const bool read12_primary_active = disc_type_ == OmniDriveDiscType::kDVD &&
-                                     !raw_dump_mode_ &&
-                                     !omnidrive_firmware_confirmed_;
-  if (read12_primary_active) {
-    CDB12_Read12 read12_cdb = BuildRead12Cdb(address, transfer_length, fua);
-    const uint8_t* read12_cdb_ptr =
-        reinterpret_cast<const uint8_t*>(&read12_cdb);
-    const uint8_t read12_cdb_len = sizeof(read12_cdb);
-
-    XELOGD(
-        "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-        "command_path=READ12_PRIMARY opcode=0xA8 address={} blocks={} "
-        "raw_dump_mode={} disc_type=DVD",
-        address, transfer_length, raw_dump_mode_);
-    if (translated_issue.lba >= 0) {
-      RecordDiskIssue(translated_issue.sector, transfer_length);
-    }
-    if (run_sg_io(read12_cdb_ptr, read12_cdb_len, buffer,
-                  static_cast<uint32_t>(read_length), false,
-                  out_failure_kind)) {
-      if (parse_relevant_read) {
-        const uint64_t payload_hash = XXH3_64bits(buffer, read_length);
-        XELOGD(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: parse_read "
-            "path=READ12 addr={} blocks={} frame_extraction={} payload_hash="
-            "0x{:016X} preview=[{}]",
-            address, transfer_length, frame_extraction_active ? "on" : "off",
-            payload_hash, HexPreview(buffer, read_length));
-      }
-      XELOGD(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-          "final_path=READ12 opcode=0xA8 address={} blocks={} success=true",
-          address, transfer_length);
-      return true;
-    }
-
-    if (transfer_length > 1) {
-      XELOGW(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-          "command_path=READ12_PRIMARY failed for address={} blocks={}; "
-          "deferring retry to smaller upper-layer chunks",
-          address, transfer_length);
-      return false;
-    }
-
+  bool size_related =
+      ioctl_size_related || (sense_key == 0x05 && (asc == 0x24 || asc == 0x26));
+  if (!success && size_related) {
+    *out_failure_kind = TransportFailureKind::kSizeRelated;
+    return false;
+  }
+  if (!success && !size_related) {
     XELOGW(
-        "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-        "command_path=READ12_PRIMARY failed; falling back to "
-        "READ_OMNIDRIVE opcode=0xC0 frame_extraction(+12 main_data)");
-  }
-
-  XELOGD(
-      "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-      "command_path=READ_OMNIDRIVE opcode=0xC0 address={} blocks={} "
-      "raw_dump_mode={} disc_type={} descramble_in={} descramble_effective={} "
-      "frame_extraction={}",
-      address, transfer_length, raw_dump_mode_,
-      disc_type_ == OmniDriveDiscType::kDVD ? "DVD" : "CD", descramble,
-      effective_descramble, frame_extraction_active ? "active" : "off");
-
-  if (translated_issue.lba >= 0) {
-    RecordDiskIssue(translated_issue.sector, transfer_length);
-  }
-
-  if (!run_sg_io(cdb_ptr, cdb_len, sg_buffer, sg_transfer_length, true,
-                 out_failure_kind)) {
+        "DiscOmnidriveDevice::ReadFromPhysicalTransport: SG_IO "
+        "succeeded={} sense_key={} ASC={} ASCQ={}",
+        success, sense_key, asc, ascq);
+    *out_failure_kind = TransportFailureKind::kIoError;
     return false;
   }
 
@@ -2618,26 +2337,6 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
           kOmniDriveDvdMainDataSize);
     }
   }
-
-  if (parse_relevant_read) {
-    const uint64_t payload_hash = XXH3_64bits(buffer, read_length);
-    const uint64_t raw_hash =
-        frame_extraction_active
-            ? XXH3_64bits(frame_buffer.data(), physical_read_length)
-            : payload_hash;
-    XELOGD(
-        "DiscOmnidriveDevice::ReadFromPhysicalTransport: parse_read "
-        "path=READ_OMNIDRIVE addr={} blocks={} frame_extraction={} "
-        "payload_hash=0x{:016X} raw_hash=0x{:016X} preview=[{}]",
-        address, transfer_length, frame_extraction_active ? "on" : "off",
-        payload_hash, raw_hash, HexPreview(buffer, read_length));
-  }
-
-  XELOGD(
-      "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-      "final_path=READ_OMNIDRIVE opcode=0xC0 frame_extraction={} address={} "
-      "blocks={} success=true",
-      frame_extraction_active ? "active" : "off", address, transfer_length);
 
   return true;
 #elif XE_PLATFORM_WIN32
@@ -2657,9 +2356,18 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     return false;
   }
 
+  HANDLE handle = static_cast<HANDLE>(physical_transport_handle_);
+
+  if (physical_transport_backend_ != PhysicalTransportBackend::kWinSpti) {
+    return false;
+  }
+
   const bool frame_extraction_active =
       disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
   size_t physical_read_length = read_length;
+  uint8_t* spti_buffer = buffer;
+  std::vector<uint8_t> frame_buffer;
+
   if (frame_extraction_active) {
     const size_t transfer_length_size = static_cast<size_t>(transfer_length);
     if (transfer_length_size >
@@ -2670,123 +2378,9 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     if (physical_read_length > (std::numeric_limits<DWORD>::max)()) {
       return false;
     }
-  }
-
-  std::vector<uint8_t> frame_buffer;
-  uint8_t* spti_buffer = buffer;
-  if (frame_extraction_active) {
     frame_buffer.resize(physical_read_length);
     spti_buffer = frame_buffer.data();
   }
-
-  HANDLE handle = static_cast<HANDLE>(physical_transport_handle_);
-
-  const OmniDriveAddress translated_issue =
-      TranslateAddress(address, raw_addressing);
-
-  if (physical_transport_backend_ ==
-      PhysicalTransportBackend::kLinuxStyleFile) {
-    const OmniDriveAddress translated =
-        TranslateAddress(address, raw_addressing);
-    if (translated.lba < 0) {
-      return false;
-    }
-
-    LARGE_INTEGER seek_offset;
-    seek_offset.QuadPart = static_cast<LONGLONG>(translated.offset);
-    if (!SetFilePointerEx(handle, seek_offset, nullptr, FILE_BEGIN)) {
-      XELOGW(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: Wine Linux-style "
-          "seek failed for {}: error {}",
-          host_path_.string(), GetLastError());
-      return false;
-    }
-
-    RecordDiskIssue(translated.sector, transfer_length);
-
-    DWORD bytes_read = 0;
-    if (!ReadFile(handle, buffer, static_cast<DWORD>(read_length), &bytes_read,
-                  nullptr)) {
-      XELOGW(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: Wine Linux-style "
-          "read failed for {}: error {}",
-          host_path_.string(), GetLastError());
-      return false;
-    }
-    if (bytes_read != static_cast<DWORD>(read_length)) {
-      XELOGW(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: Wine Linux-style "
-          "short read {} / {} for {}",
-          bytes_read, read_length, host_path_.string());
-      return false;
-    }
-
-    return true;
-  }
-
-  if (physical_transport_backend_ != PhysicalTransportBackend::kWinSpti) {
-    return false;
-  }
-
-  auto run_spti = [&](const uint8_t* cdb_ptr, uint8_t cdb_len,
-                      uint8_t* data_buffer, ULONG data_length,
-                      bool log_failures,
-                      TransportFailureKind* failure_kind = nullptr) -> bool {
-    SptdWithSense local_sptd = {};
-    local_sptd.sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
-    local_sptd.sptd.CdbLength = cdb_len;
-    local_sptd.sptd.SenseInfoLength = sizeof(local_sptd.sense_buffer);
-    local_sptd.sptd.DataIn = SCSI_IOCTL_DATA_IN;
-    local_sptd.sptd.DataTransferLength = data_length;
-    local_sptd.sptd.TimeOutValue = 30;
-    local_sptd.sptd.DataBuffer = data_buffer;
-    local_sptd.sptd.SenseInfoOffset = offsetof(SptdWithSense, sense_buffer);
-    std::memcpy(local_sptd.sptd.Cdb, cdb_ptr, cdb_len);
-
-    DWORD local_returned = 0;
-    if (!DeviceIoControl(handle, IOCTL_SCSI_PASS_THROUGH_DIRECT, &local_sptd,
-                         sizeof(local_sptd), &local_sptd, sizeof(local_sptd),
-                         &local_returned, nullptr)) {
-      const DWORD io_error = GetLastError();
-      const bool size_related = io_error == ERROR_INVALID_PARAMETER ||
-                                io_error == ERROR_INSUFFICIENT_BUFFER ||
-                                io_error == ERROR_NOT_ENOUGH_MEMORY;
-      if (failure_kind) {
-        *failure_kind = size_related ? TransportFailureKind::kSizeRelated
-                                     : TransportFailureKind::kIoError;
-      }
-      if (log_failures && !size_related) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: SPTI failed for "
-            "{}: error {}",
-            host_path_.string(), io_error);
-      }
-      return false;
-    }
-
-    if (local_sptd.sptd.ScsiStatus != 0) {
-      bool size_related = false;
-      if (local_sptd.sptd.SenseInfoLength >= 14 &&
-          (local_sptd.sense_buffer[0] & 0x7F) == 0x70) {
-        const uint8_t sense_key = local_sptd.sense_buffer[2] & 0x0F;
-        const uint8_t asc = local_sptd.sense_buffer[12];
-        size_related = sense_key == 0x05 && (asc == 0x24 || asc == 0x26);
-      }
-      if (failure_kind) {
-        *failure_kind = size_related ? TransportFailureKind::kSizeRelated
-                                     : TransportFailureKind::kIoError;
-      }
-      if (log_failures && !size_related) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: SPTI "
-            "status=0x{:02X} for {}",
-            local_sptd.sptd.ScsiStatus, host_path_.string());
-      }
-      return false;
-    }
-
-    return true;
-  };
 
   const bool force_descramble =
       disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
@@ -2794,54 +2388,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   if (force_descramble && !descramble) {
     XELOGD(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: forcing "
-        "descramble=true for DVD non-raw read (incoming descramble=false)");
-  }
-
-  const bool use_read12_primary = frame_extraction_active && !raw_addressing;
-  if (use_read12_primary) {
-    CDB12_Read12 read12_cdb = BuildRead12Cdb(address, transfer_length, fua);
-    const uint8_t* read12_cdb_ptr =
-        reinterpret_cast<const uint8_t*>(&read12_cdb);
-    const uint8_t read12_cdb_len = sizeof(read12_cdb);
-
-    XELOGD(
-        "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-        "command_path=READ12_PRIMARY opcode=0xA8 address={} blocks={} "
-        "raw_dump_mode={} disc_type=DVD",
-        address, transfer_length, raw_dump_mode_);
-
-    if (translated_issue.lba >= 0) {
-      RecordDiskIssue(translated_issue.sector, transfer_length);
-    }
-
-    if (run_spti(read12_cdb_ptr, read12_cdb_len, buffer,
-                 static_cast<ULONG>(read_length), false, out_failure_kind)) {
-      XELOGD(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-          "final_path=READ12 opcode=0xA8 address={} blocks={} success=true",
-          address, transfer_length);
-      return true;
-    }
-
-    const TransportFailureKind failure_kind =
-        out_failure_kind ? *out_failure_kind : TransportFailureKind::kNone;
-    if (transfer_length > 1) {
-      if (failure_kind != TransportFailureKind::kSizeRelated) {
-        XELOGW(
-            "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-            "command_path=READ12_PRIMARY failed for address={} blocks={}; "
-            "deferring retry to smaller upper-layer chunks",
-            address, transfer_length);
-      }
-      return false;
-    }
-
-    if (failure_kind != TransportFailureKind::kSizeRelated) {
-      XELOGW(
-          "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-          "command_path=READ12_PRIMARY failed; falling back to "
-          "READ_OMNIDRIVE opcode=0xC0 frame_extraction(+12 main_data)");
-    }
+        "descramble=true for read (incoming descramble=false)");
   }
 
   CDB12_ReadOmniDrive omnidrive_cdb = BuildReadOmniDriveCdb(
@@ -2849,22 +2396,25 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
       effective_descramble, subchannels, c2);
   const uint8_t* cdb_ptr = reinterpret_cast<const uint8_t*>(&omnidrive_cdb);
   const uint8_t cdb_len = sizeof(omnidrive_cdb);
-  XELOGD(
-      "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-      "command_path=READ_OMNIDRIVE opcode=0xC0 address={} blocks={} "
-      "raw_dump_mode={} disc_type={} descramble_in={} descramble_effective={} "
-      "frame_extraction={}",
-      address, transfer_length, raw_dump_mode_,
-      disc_type_ == OmniDriveDiscType::kDVD ? "DVD" : "CD", descramble,
-      effective_descramble, frame_extraction_active ? "active" : "off");
-
-  if (translated_issue.lba >= 0) {
-    RecordDiskIssue(translated_issue.sector, transfer_length);
-  }
-
-  if (!run_spti(cdb_ptr, cdb_len, spti_buffer,
-                static_cast<ULONG>(physical_read_length), true,
-                out_failure_kind)) {
+  uint8_t sense_key = 0, asc = 0, ascq = 0;
+  bool ioctl_size_related = false;
+  if (!DeviceCommunication::RunScsiCommand(
+          handle, "READ_OMNIDRIVE", cdb_ptr, cdb_len, SCSI_IOCTL_DATA_IN,
+          spti_buffer, static_cast<DWORD>(physical_read_length), 30, &sense_key,
+          &asc, &ascq, &ioctl_size_related)) {
+    bool size_related = ioctl_size_related ||
+                        (sense_key == 0x05 && (asc == 0x24 || asc == 0x26));
+    if (size_related) {
+      *out_failure_kind = TransportFailureKind::kSizeRelated;
+    } else {
+      *out_failure_kind = TransportFailureKind::kIoError;
+    }
+    if (!size_related) {
+      XELOGW(
+          "DiscOmnidriveDevice::ReadFromPhysicalTransport: SPTI "
+          "failed for {}",
+          host_path_.string());
+    }
     return false;
   }
 
@@ -2879,12 +2429,6 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
           kOmniDriveDvdMainDataSize);
     }
   }
-
-  XELOGD(
-      "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
-      "final_path=READ_OMNIDRIVE opcode=0xC0 frame_extraction={} address={} "
-      "blocks={} success=true",
-      frame_extraction_active ? "active" : "off", address, transfer_length);
 
   return true;
 #else
