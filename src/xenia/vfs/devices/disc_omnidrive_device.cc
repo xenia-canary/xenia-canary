@@ -727,8 +727,7 @@ void DiscOmnidriveDevice::ReadWorkerMain() {
         return read_worker_stop_ || !read_worker_demand_tasks_.empty() ||
                pending_prefetch_request_.has_value();
       });
-      if (read_worker_stop_ && read_worker_demand_tasks_.empty() &&
-          !pending_prefetch_request_.has_value()) {
+      if (read_worker_stop_) {
         return;
       }
       if (!read_worker_demand_tasks_.empty()) {
@@ -2481,7 +2480,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
       disc_type_ == OmniDriveDiscType::kDVD && !raw_dump_mode_;
   const bool effective_descramble = force_descramble || descramble;
   if (force_descramble && !descramble) {
-    XELOGI(
+    XELOGD(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: forcing "
         "descramble=true for DVD non-raw read (incoming descramble=false)");
   }
@@ -2493,7 +2492,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
         reinterpret_cast<const uint8_t*>(&read12_cdb);
     const uint8_t read12_cdb_len = sizeof(read12_cdb);
 
-    XELOGI(
+    XELOGD(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
         "command_path=READ12_PRIMARY opcode=0xA8 address={} blocks={} "
         "raw_dump_mode={} disc_type=DVD",
@@ -2505,7 +2504,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
 
     if (run_spti(read12_cdb_ptr, read12_cdb_len, buffer,
                  static_cast<ULONG>(read_length), false, out_failure_kind)) {
-      XELOGI(
+      XELOGD(
           "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
           "final_path=READ12 opcode=0xA8 address={} blocks={} success=true",
           address, transfer_length);
@@ -2538,7 +2537,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
       effective_descramble, subchannels, c2);
   const uint8_t* cdb_ptr = reinterpret_cast<const uint8_t*>(&omnidrive_cdb);
   const uint8_t cdb_len = sizeof(omnidrive_cdb);
-  XELOGI(
+  XELOGD(
       "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
       "command_path=READ_OMNIDRIVE opcode=0xC0 address={} blocks={} "
       "raw_dump_mode={} disc_type={} descramble_in={} descramble_effective={} "
@@ -2569,7 +2568,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     }
   }
 
-  XELOGI(
+  XELOGD(
       "DiscOmnidriveDevice::ReadFromPhysicalTransport: "
       "final_path=READ_OMNIDRIVE opcode=0xC0 frame_extraction={} address={} "
       "blocks={} success=true",

@@ -1215,11 +1215,9 @@ void Emulator::Resume() {
 void Emulator::PrepareForQuickExitCleanup() {
   XELOGI("Preparing emulator for quick-exit cleanup.");
 
-  if (graphics_system_ && audio_system_ && kernel_state_) {
-    Pause();
-  }
-
   if (is_title_open()) {
+    // Pausing before TerminateTitle can suspend threads needed by title
+    // termination and deadlock this quick-exit cleanup path.
     X_STATUS terminate_status = TerminateTitle();
     if (XFAILED(terminate_status)) {
       XELOGW("Failed to terminate title during quick-exit cleanup: {:08X}",
