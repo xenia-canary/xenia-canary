@@ -24,12 +24,51 @@ uint XeEdramOffsetBytes(uint2_xe pixel_index, uint base_tiles, bool wrap,
                         uint pitch_tiles, uint msaa_samples, bool is_depth,
                         uint format_ints_log2, uint pixel_sample_index,
                         uint2_xe resolution_scale) {
-  uint2_xe rt_sample_index =
-      pixel_index <<
-      uint2_xe(greater_than_equal_xe(
-          uint_x2_xe(msaa_samples),
-          uint2_xe(kXenosMsaaSamples_4X, kXenosMsaaSamples_2X)));
-  rt_sample_index += (uint_x2_xe(pixel_sample_index) >> uint2_xe(1u, 0u)) & 1u;
+  // Map the pixel and its sample index to canonical sample coordinates.
+  // Views with 1x/2x/4x samples of a single EDRAM allocation have the same
+  // physical samples, just arranged differently in 4x4 sample blocks. This
+  // function, ownership transfer shaders, render target dumping shaders, and
+  // the interlock output code use the following equations.
+  //
+  // u and v as the sample coordinates in the single sampled view:
+  // 4x: u = ((x & ~1) << 1) | (x & 1) | ((s & 1) << 1)
+  //     v = ((y & ~1) << 1) | (y & 1) | (s & 2)
+  // 2x: u = (x & ~2) | (s << 1)
+  //     v = ((y & ~1) << 1) | (y & 1) | (x & 2)
+  //
+  // The bit 0 of 4x sample index is horizontal, and bit 1 is vertical, and
+  // 2x sample 0 is the top one. Some properties of the above equations used by
+  // the layout's users include:
+  // - The offsets of the other samples of a pixel from its sample 0 are
+  //   constant, +2 sample columns for the horizontal (or the only 2x) sample
+  //   bit and +2 sample rows for the vertical one.
+  // - A 64bpp sample is two horizontally adjacent 32bpp sample columns, so a
+  //   32bpp view of a 64bpp allocation has u = 2 * u_64bpp + half, and both
+  //   halves decode to the same sample of two horizontally adjacent pixels in a
+  //   view of any sample count.
+  // - Horizontally adjacent pixels of a multisampled view have no constant
+  //   address stride, the pixel and sample bits are interleaved.
+  //
+  // Titles use the layout when purposedly aliasing memory, such as 5841125E
+  // drawing half-res 4x particles over full-res scenes with swizzle shaders
+  // designed around it and resolve downscaling relying on this sample grouping.
+  //
+  // With resolution scaling, the rearrangement is carried out at guest pixel
+  // granularity, while the host subpixel offset is carried along unchanged.
+  uint2_xe pixel = pixel_index / resolution_scale;
+  uint2_xe subpixel = pixel_index - pixel * resolution_scale;
+  uint2_xe guest_sample;
+  if (msaa_samples >= kXenosMsaaSamples_4X) {
+    uint2_xe sample_offset =
+        (uint_x2_xe(pixel_sample_index) >> uint2_xe(0u, 1u)) & 1u;
+    guest_sample = ((pixel & ~1u) << 1u) | (pixel & 1u) | (sample_offset << 1u);
+  } else if (msaa_samples == kXenosMsaaSamples_2X) {
+    guest_sample.x = (pixel.x & ~2u) | ((pixel_sample_index & 1u) << 1u);
+    guest_sample.y = ((pixel.y & ~1u) << 1u) | (pixel.y & 1u) | (pixel.x & 2u);
+  } else {
+    guest_sample = pixel;
+  }
+  uint2_xe rt_sample_index = guest_sample * resolution_scale + subpixel;
   // For now, while the actual storage of 64bpp render targets in comparison to
   // 32bpp is not known, storing 40x16 64bpp samples per tile for simplicity of
   // addressing in different scenarios.

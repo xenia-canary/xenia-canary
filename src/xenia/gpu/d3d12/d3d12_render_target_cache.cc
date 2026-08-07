@@ -2116,6 +2116,162 @@ void D3D12RenderTargetCache::CommitEdramBufferUAVWrites(
   PixelShaderInterlockFullEdramBarrierPlaced();
 }
 
+// Indices of host samples that transfer sample remap helpers use:
+// - First sample bit of 4x in Direct3D 10.1+ - horizontal sample.
+// - Second sample bit of 4x in Direct3D 10.1+ - vertical sample.
+// - 2x:
+//   - Native 2x - top sample is 1 in Direct3D 10.1+, bottom sample is 0.
+//   - 2x as 4x - top sample is 0, bottom sample is 3.
+
+// Converts the view pixel coordinates in r0.xy and host sample index to
+// canonical guest sample coordinates, u into r1.x and v into r1.y for a
+// multisampled or resolution scaled view. The guest pixel goes through r1.xy
+// and the subpixel offset via r2.xy in case of scaling, with r2.zw being
+// scratch. r0.w and r1.zw remain untouched.
+static void CanonicalizeSample(dxbc::Assembler& a,
+                               xenos::MsaaSamples msaa_samples,
+                               dxbc::Src host_sample, bool msaa_2x_supported,
+                               uint32_t scale_x, uint32_t scale_y,
+                               dxbc::Src& u_out, dxbc::Src& v_out,
+                               bool& scaled_out) {
+  bool scaled = scale_x > 1 || scale_y > 1;
+  scaled_out = scaled;
+  dxbc::Src guest_x(dxbc::Src::R(0, dxbc::Src::kXXXX));
+  dxbc::Src guest_y(dxbc::Src::R(0, dxbc::Src::kYYYY));
+  if (scaled) {
+    // r1.xy = guest pixel, r2.xy = host subpixel offset
+    a.OpUDiv(dxbc::Dest::R(1, 0b0011), dxbc::Dest::R(2, 0b0011),
+             dxbc::Src::R(0, dxbc::Src::kXYXY),
+             dxbc::Src::LU(scale_x, scale_y, scale_x, scale_y));
+    guest_x = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    guest_y = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  }
+  u_out = guest_x;
+  v_out = guest_y;
+  if (msaa_samples >= xenos::MsaaSamples::k4X) {
+    // The guest sample index is the host sample index, bit 0 horizontal
+    // and bit 1 vertical for both.
+    // r2.z = x with bit 1 = sample bit 0
+    a.OpBFI(dxbc::Dest::R(2, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
+            host_sample, guest_x);
+    // r2.w = x >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), guest_x, dxbc::Src::LU(1));
+    // r1.x = u = ((x >> 1) << 2) | ((sample & 1) << 1) | (x & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(30), dxbc::Src::LU(2),
+            dxbc::Src::R(2, dxbc::Src::kWWWW),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ));
+    // r2.z = sample >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b0100), host_sample, dxbc::Src::LU(1));
+    // r2.z = y with bit 1 = sample bit 1
+    a.OpBFI(dxbc::Dest::R(2, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ), guest_y);
+    // r2.w = y >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), guest_y, dxbc::Src::LU(1));
+    // r1.y = v = ((y >> 1) << 2) | ((sample >> 1) << 1) | (y & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(30), dxbc::Src::LU(2),
+            dxbc::Src::R(2, dxbc::Src::kWWWW),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ));
+    u_out = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    v_out = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  } else if (msaa_samples == xenos::MsaaSamples::k2X) {
+    // r2.z = guest sample index (0 = top, 1 = bottom)
+    if (msaa_2x_supported) {
+      a.OpXOr(dxbc::Dest::R(2, 0b0100), host_sample, dxbc::Src::LU(1));
+    } else {
+      a.OpUShR(dxbc::Dest::R(2, 0b0100), host_sample, dxbc::Src::LU(1));
+    }
+    // r2.w = x >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), guest_x, dxbc::Src::LU(1));
+    // r2.w = y with bit 1 = x bit 1
+    a.OpBFI(dxbc::Dest::R(2, 0b1000), dxbc::Src::LU(1), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kWWWW), guest_y);
+    // r1.x = u = (x & ~2) | (sample << 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(1), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ), guest_x);
+    // r2.z = y >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b0100), guest_y, dxbc::Src::LU(1));
+    // r1.y = v = ((y >> 1) << 2) | (x & 2) | (y & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(30), dxbc::Src::LU(2),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ),
+            dxbc::Src::R(2, dxbc::Src::kWWWW));
+    u_out = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    v_out = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  }
+}
+
+// Converts the canonical guest sample coordinates back to view pixels,
+// r1.xy for a multisampled or resolution scaled view and scaled by the subpixel
+// offset in r2.xy, along with host sample index in r1.z. sample_out is
+// unaffected for a single sampled view.
+// Uses r2.zw as scratch and leaves r0.w and r1.w unchanged.
+static void DecanonicalizeSample(dxbc::Assembler& a,
+                                 xenos::MsaaSamples msaa_samples, dxbc::Src u,
+                                 dxbc::Src v, bool scaled,
+                                 bool msaa_2x_supported, uint32_t scale_x,
+                                 uint32_t scale_y, dxbc::Src& x_out,
+                                 dxbc::Src& y_out, dxbc::Src& sample_out) {
+  x_out = u;
+  y_out = v;
+  if (msaa_samples >= xenos::MsaaSamples::k4X) {
+    // The host sample index is the guest sample index.
+    // r2.z = (u >> 1) & 1
+    a.OpUBFE(dxbc::Dest::R(2, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1), u);
+    // r2.w = v & 2
+    a.OpAnd(dxbc::Dest::R(2, 0b1000), v, dxbc::Src::LU(2));
+    // r1.z = sample = ((u >> 1) & 1) | (v & 2)
+    a.OpOr(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(2, dxbc::Src::kZZZZ),
+           dxbc::Src::R(2, dxbc::Src::kWWWW));
+    sample_out = dxbc::Src::R(1, dxbc::Src::kZZZZ);
+    // r2.z = u >> 2
+    a.OpUShR(dxbc::Dest::R(2, 0b0100), u, dxbc::Src::LU(2));
+    // r1.x = x = ((u >> 2) << 1) | (u & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(31), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kZZZZ), u);
+    // r2.w = v >> 2
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), v, dxbc::Src::LU(2));
+    // r1.y = y = ((v >> 2) << 1) | (v & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kWWWW), v);
+    x_out = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    y_out = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  } else if (msaa_samples == xenos::MsaaSamples::k2X) {
+    // r2.z = guest sample = (u >> 1) & 1 (0 = top, 1 = bottom)
+    a.OpUBFE(dxbc::Dest::R(2, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1), u);
+    // r1.z = host sample index
+    if (msaa_2x_supported) {
+      a.OpXOr(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(2, dxbc::Src::kZZZZ),
+              dxbc::Src::LU(1));
+    } else {
+      // The guest sample 1 is the host sample 3 when 2x is emulated as
+      // 4x.
+      a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
+              dxbc::Src::R(2, dxbc::Src::kZZZZ),
+              dxbc::Src::R(2, dxbc::Src::kZZZZ));
+    }
+    sample_out = dxbc::Src::R(1, dxbc::Src::kZZZZ);
+    // r2.w = v >> 1
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), v, dxbc::Src::LU(1));
+    // r1.x = x = (u & ~3) | (v & 2) | (u & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(1), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kWWWW), u);
+    // r2.w = v >> 2
+    a.OpUShR(dxbc::Dest::R(2, 0b1000), v, dxbc::Src::LU(2));
+    // r1.y = y = ((v >> 2) << 1) | (v & 1)
+    a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
+            dxbc::Src::R(2, dxbc::Src::kWWWW), v);
+    x_out = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    y_out = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  }
+  if (scaled) {
+    // Every scaled composition has the guest pixel in r1.xy at this point.
+    // Restore the host pixel from it and the subpixel offset.
+    a.OpUMAd(dxbc::Dest::R(1, 0b0011), dxbc::Src::R(1),
+             dxbc::Src::LU(scale_x, scale_y, 1, 1), dxbc::Src::R(2));
+    x_out = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    y_out = dxbc::Src::R(1, dxbc::Src::kYYYY);
+  }
+}
+
 ID3D12PipelineState* const*
 D3D12RenderTargetCache::GetOrCreateTransferPipelines(TransferShaderKey key) {
   const TransferModeInfo& mode = kTransferModes[size_t(key.mode)];
@@ -2992,281 +3148,48 @@ D3D12RenderTargetCache::GetOrCreateTransferPipelines(TransferShaderKey key) {
   dxbc::Src source_sample(dest_sample);
   uint32_t source_tile_pixel_x_reg = 0;
   uint32_t source_tile_pixel_y_reg = 0;
-
-  // First sample bit at 4x in Direct3D 10.1+ - horizontal sample.
-  // Second sample bit at 4x in Direct3D 10.1+ - vertical sample.
-  // At 2x:
-  // - Native 2x: top is 1 in Direct3D 10.1+, bottom is 0.
-  // - 2x as 4x: top is 0, bottom is 3.
-
-  if (!source_is_64bpp && dest_is_64bpp) {
-    // 32bpp -> 64bpp, need two samples of the source.
-    if (key.source_msaa_samples >= xenos::MsaaSamples::k4X) {
-      // 32bpp -> 64bpp, 4x ->.
-      // Source has 32bpp halves in two adjacent samples.
-      if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-        // 32bpp -> 64bpp, 4x -> 4x.
-        // 1 destination horizontal sample = 2 source horizontal samples.
-        // D p0,0 s0,0 = S p0,0 s0,0 | S p0,0 s1,0
-        // D p0,0 s1,0 = S p1,0 s0,0 | S p1,0 s1,0
-        // D p0,0 s0,1 = S p0,0 s0,1 | S p0,0 s1,1
-        // D p0,0 s1,1 = S p1,0 s0,1 | S p1,0 s1,1
-        // Thus destination horizontal sample -> source horizontal pixel,
-        // vertical samples are 1:1.
-        a.OpAnd(dxbc::Dest::R(1, 0b0100), dest_sample, dxbc::Src::LU(0b10));
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(31), dxbc::Src::LU(1),
-                dxbc::Src::R(0, dxbc::Src::kXXXX),
-                dxbc::Src::V1D(kInputRegisterSampleIndex, dxbc::Src::kXXXX));
-        source_tile_pixel_x_reg = 1;
-      } else if (key.dest_msaa_samples == xenos::MsaaSamples::k2X) {
-        // 32bpp -> 64bpp, 4x -> 2x.
-        // 1 destination horizontal pixel = 2 source horizontal samples.
-        // D p0,0 s0 = S p0,0 s0,0 | S p0,0 s1,0
-        // D p0,0 s1 = S p0,0 s0,1 | S p0,0 s1,1
-        // D p1,0 s0 = S p1,0 s0,0 | S p1,0 s1,0
-        // D p1,0 s1 = S p1,0 s0,1 | S p1,0 s1,1
-        // Pixel index can be reused. Sample 1 (for native 2x) or 0 (for 2x as
-        // 4x) should become samples 01, sample 0 or 3 should become samples 23.
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        if (msaa_2x_supported_) {
-          a.OpXOr(dxbc::Dest::R(1, 0b0100), dest_sample, dxbc::Src::LU(1));
-          a.OpIShL(dxbc::Dest::R(1, 0b0100), source_sample, dxbc::Src::LU(1));
-        } else {
-          a.OpAnd(dxbc::Dest::R(1, 0b0100), dest_sample, dxbc::Src::LU(0b10));
-        }
-      } else {
-        // 32bpp -> 64bpp, 4x -> 1x.
-        // 1 destination horizontal pixel = 2 source horizontal samples.
-        // D p0,0 = S p0,0 s0,0 | S p0,0 s1,0
-        // D p0,1 = S p0,0 s0,1 | S p0,0 s1,1
-        // Horizontal pixel index can be reused. Vertical pixel 1 should
-        // become sample 2.
-        a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                dxbc::Src::R(0, dxbc::Src::kYYYY), dxbc::Src::LU(0));
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        a.OpUShR(dxbc::Dest::R(1, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
-                 dxbc::Src::LU(1));
-        source_tile_pixel_y_reg = 1;
-      }
-    } else {
-      // 32bpp -> 64bpp, 1x/2x ->.
-      // Source has 32bpp halves in two adjacent pixels.
-      if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-        // 32bpp -> 64bpp, 1x/2x -> 4x.
-        // The X part.
-        // 1 destination horizontal sample = 2 source horizontal pixels.
-        a.OpIShL(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(2));
-        a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                dxbc::Src::V1D(kInputRegisterSampleIndex, dxbc::Src::kXXXX),
-                dxbc::Src::R(1, dxbc::Src::kXXXX));
-        source_tile_pixel_x_reg = 1;
-        // Y is handled by common code.
-      } else {
-        // 32bpp -> 64bpp, 1x/2x -> 1x/2x.
-        // The X part.
-        // 1 destination horizontal pixel = 2 source horizontal pixels.
-        a.OpIShL(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(1));
-        source_tile_pixel_x_reg = 1;
-        // Y is handled by common code.
-      }
+  // The transfer remaps the destination sample to the source sample through
+  // the canonical sample coordinates, the layout is described in
+  // XeEdramOffsetBytes in edram.xesli.
+  if (key.source_msaa_samples != key.dest_msaa_samples ||
+      source_is_64bpp != dest_is_64bpp) {
+    // Remap the destination view sample to the source view using the canonical
+    // coordinates (both views are in the source scale space here).
+    dxbc::Src canonical_u(dxbc::Src::R(0, dxbc::Src::kXXXX));
+    dxbc::Src canonical_v(dxbc::Src::R(0, dxbc::Src::kYYYY));
+    bool canonical_scaled;
+    CanonicalizeSample(a, key.dest_msaa_samples, dest_sample,
+                       msaa_2x_supported_, source_scale_x, source_scale_y,
+                       canonical_u, canonical_v, canonical_scaled);
+    if (dest_is_64bpp && !source_is_64bpp) {
+      // The low 32bpp half of the 64bpp destination sample is obtained from the
+      // source pixel at u = 2 * u_64bpp, and the high half comes from the
+      // horizontally adjacent source pixel later.
+      a.OpIShL(dxbc::Dest::R(1, 0b0001), canonical_u, dxbc::Src::LU(1));
+      canonical_u = dxbc::Src::R(1, dxbc::Src::kXXXX);
+    } else if (!dest_is_64bpp && source_is_64bpp) {
+      // The 32bpp destination sample is one half (r0.w) of the 64bpp
+      // source sample at u = u_32bpp >> 1.
+      a.OpAnd(dxbc::Dest::R(0, 0b1000), canonical_u, dxbc::Src::LU(1));
+      a.OpUShR(dxbc::Dest::R(1, 0b0001), canonical_u, dxbc::Src::LU(1));
+      canonical_u = dxbc::Src::R(1, dxbc::Src::kXXXX);
     }
-  } else if (source_is_64bpp && !dest_is_64bpp) {
-    // 64bpp -> 32bpp, also the half to r0.w.
-    if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-      // 64bpp -> 32bpp, -> 4x.
-      // The needed half is in the destination horizontal sample index.
-      if (key.source_msaa_samples >= xenos::MsaaSamples::k4X) {
-        // 64bpp -> 32bpp, 4x -> 4x.
-        // D p0,0 s0,0 = S s0,0 low
-        // D p0,0 s1,0 = S s0,0 high
-        // D p1,0 s0,0 = S s1,0 low
-        // D p1,0 s1,0 = S s1,0 high
-        // Vertical pixel and sample (second bit) addressing is the same.
-        // However, 1 horizontal destination pixel = 1 horizontal source sample.
-        a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(0),
-                dxbc::Src::R(0, dxbc::Src::kXXXX), dest_sample);
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        // 2 destination horizontal samples = 1 source horizontal sample, thus
-        // 2 destination horizontal pixels = 1 source horizontal pixel.
-        a.OpUShR(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(1));
-        source_tile_pixel_x_reg = 1;
-      } else {
-        // 64bpp -> 32bpp, 1x/2x -> 4x.
-        // 2 destination horizontal samples = 1 source horizontal pixel, thus
-        // 1 destination horizontal pixel = 1 source horizontal pixel. Can reuse
-        // horizontal pixel index.
-        // Y is handled by common code.
-      }
-      // Half in r0.w from the destination horizontal sample index.
-      a.OpAnd(dxbc::Dest::R(0, 0b1000), dest_sample, dxbc::Src::LU(1));
-    } else {
-      // 64bpp -> 32bpp, -> 1x/2x.
-      // The needed half is in the destination horizontal pixel index.
-      if (key.source_msaa_samples >= xenos::MsaaSamples::k4X) {
-        // 64bpp -> 32bpp, 4x -> 1x/2x.
-        // (Destination horizontal pixel >> 1) & 1 = source horizontal sample
-        // (first bit).
-        a.OpUBFE(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                 dxbc::Src::R(0, dxbc::Src::kXXXX));
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        if (key.dest_msaa_samples == xenos::MsaaSamples::k2X) {
-          // 64bpp -> 32bpp, 4x -> 2x.
-          // Destination vertical samples (1/0 in the first bit for native 2x or
-          // 0/1 in the second bit for 2x as 4x) = source vertical samples
-          // (second bit).
-          if (msaa_2x_supported_) {
-            a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1),
-                    dxbc::Src::LU(1), dest_sample, source_sample);
-            a.OpXOr(dxbc::Dest::R(1, 0b0100), source_sample,
-                    dxbc::Src::LU(1 << 1));
-          } else {
-            a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1),
-                    dxbc::Src::LU(0), source_sample, dest_sample);
-          }
-        } else {
-          // 64bpp -> 32bpp, 4x -> 1x.
-          // 1 destination vertical pixel = 1 source vertical sample.
-          a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                  dxbc::Src::R(0, dxbc::Src::kYYYY), source_sample);
-          a.OpUShR(dxbc::Dest::R(1, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
-                   dxbc::Src::LU(1));
-          source_tile_pixel_y_reg = 1;
-        }
-        // 2 destination horizontal pixels = 1 source horizontal sample.
-        // 4 destination horizontal pixels = 1 source horizontal pixel.
-        a.OpUShR(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(2));
-        source_tile_pixel_x_reg = 1;
-      } else {
-        // 64bpp -> 32bpp, 1x/2x -> 1x/2x.
-        // The X part.
-        // 2 destination horizontal pixels = 1 destination source pixel.
-        a.OpUShR(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(1));
-        source_tile_pixel_x_reg = 1;
-        // Y is handled by common code.
-      }
-      // Half in r0.w from the destination horizontal pixel index.
-      a.OpAnd(dxbc::Dest::R(0, 0b1000), dxbc::Src::R(0, dxbc::Src::kXXXX),
-              dxbc::Src::LU(1));
-    }
-  } else {
-    // Same bit count.
-    if (key.source_msaa_samples != key.dest_msaa_samples) {
-      if (key.source_msaa_samples >= xenos::MsaaSamples::k4X) {
-        // Same BPP, 4x -> 1x/2x.
-        if (key.dest_msaa_samples == xenos::MsaaSamples::k2X) {
-          // Same BPP, 4x -> 2x.
-          // Horizontal pixels to samples. Vertical sample (1/0 in the first bit
-          // for native 2x or 0/1 in the second bit for 2x as 4x) to second
-          // sample bit.
-          source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-          if (msaa_2x_supported_) {
-            a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(31),
-                    dxbc::Src::LU(1), dest_sample,
-                    dxbc::Src::R(0, dxbc::Src::kXXXX));
-            a.OpXOr(dxbc::Dest::R(1, 0b0100), source_sample,
-                    dxbc::Src::LU(1 << 1));
-          } else {
-            a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1),
-                    dxbc::Src::LU(0), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                    dest_sample);
-          }
-          a.OpUShR(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                   dxbc::Src::LU(1));
-          source_tile_pixel_x_reg = 1;
-        } else {
-          // Same BPP, 4x -> 1x.
-          // Pixels to samples.
-          a.OpAnd(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                  dxbc::Src::LU(1));
-          source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-          a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                  dxbc::Src::R(0, dxbc::Src::kYYYY), source_sample);
-          a.OpUShR(dxbc::Dest::R(1, 0b0011), dxbc::Src::R(0), dxbc::Src::LU(1));
-          source_tile_pixel_x_reg = 1;
-          source_tile_pixel_y_reg = 1;
-        }
-      } else {
-        // Same BPP, 1x/2x -> 1x/2x/4x (as long as they're different).
-        // Only the X part - Y is handled by common code.
-        if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-          // Horizontal samples to pixels.
-          a.OpBFI(dxbc::Dest::R(1, 0b0001), dxbc::Src::LU(31), dxbc::Src::LU(1),
-                  dxbc::Src::R(0, dxbc::Src::kXXXX), dest_sample);
-          source_tile_pixel_x_reg = 1;
-        }
-      }
-    }
-  }
-  // Common source Y and sample index for 1x/2x AA sources, independent of bits
-  // per sample.
-  if (key.source_msaa_samples < xenos::MsaaSamples::k4X &&
-      key.source_msaa_samples != key.dest_msaa_samples) {
-    if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-      // 1x/2x -> 4x.
-      if (key.source_msaa_samples == xenos::MsaaSamples::k2X) {
-        // 2x -> 4x.
-        // Vertical samples (second bit) of 4x destination to vertical sample
-        // (1, 0 for native 2x, or 0, 3 for 2x as 4x) of 2x source.
-        a.OpUShR(dxbc::Dest::R(1, 0b0100), dest_sample, dxbc::Src::LU(1));
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        if (msaa_2x_supported_) {
-          a.OpXOr(dxbc::Dest::R(1, 0b0100), source_sample, dxbc::Src::LU(1));
-        } else {
-          a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                  source_sample, source_sample);
-        }
-      } else {
-        // 1x -> 4x.
-        // Vertical samples (second bit) to Y pixels.
-        a.OpUShR(dxbc::Dest::R(1, 0b0010), dest_sample, dxbc::Src::LU(1));
-        a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
-                dxbc::Src::R(0, dxbc::Src::kYYYY),
-                dxbc::Src::R(1, dxbc::Src::kYYYY));
-        source_tile_pixel_y_reg = 1;
-      }
-    } else {
-      // 1x/2x -> different 1x/2x.
-      if (key.source_msaa_samples == xenos::MsaaSamples::k2X) {
-        // 2x -> 1x.
-        // Vertical pixels of 2x destination to vertical samples (1, 0 for
-        // native 2x, or 0, 3 for 2x as 4x) of 1x source.
-        a.OpAnd(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kYYYY),
-                dxbc::Src::LU(1));
-        source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        if (msaa_2x_supported_) {
-          a.OpXOr(dxbc::Dest::R(1, 0b0100), source_sample, dxbc::Src::LU(1));
-        } else {
-          a.OpBFI(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
-                  source_sample, source_sample);
-        }
-        a.OpUShR(dxbc::Dest::R(1, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
-                 dxbc::Src::LU(1));
-        source_tile_pixel_y_reg = 1;
-      } else {
-        // 1x -> 2x.
-        // Vertical samples (1/0 in the first bit for native 2x or 0/1 in the
-        // second bit for 2x as 4x) of 2x destination to vertical pixels of 1x
-        // source.
-        if (msaa_2x_supported_) {
-          a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
-                  dxbc::Src::R(0, dxbc::Src::kYYYY), dest_sample);
-          a.OpXOr(dxbc::Dest::R(1, 0b0010), dxbc::Src::R(1, dxbc::Src::kYYYY),
-                  dxbc::Src::LU(1));
-        } else {
-          a.OpUShR(dxbc::Dest::R(1, 0b0010), dest_sample, dxbc::Src::LU(1));
-          a.OpBFI(dxbc::Dest::R(1, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
-                  dxbc::Src::R(0, dxbc::Src::kYYYY),
-                  dxbc::Src::R(1, dxbc::Src::kYYYY));
-        }
-        source_tile_pixel_y_reg = 1;
-      }
-    }
+    dxbc::Src source_pixel_x(canonical_u);
+    dxbc::Src source_pixel_y(canonical_v);
+    DecanonicalizeSample(a, key.source_msaa_samples, canonical_u, canonical_v,
+                         canonical_scaled, msaa_2x_supported_, source_scale_x,
+                         source_scale_y, source_pixel_x, source_pixel_y,
+                         source_sample);
+    // Each of the compositions routes u (and along with that the X result)
+    // through r1.x. The Y result lands in r1.y, except when there is a single
+    // sampled unscaled transfer between bit depths. In that case, v goes into
+    // r0.y.
+    source_tile_pixel_x_reg = 1;
+    source_tile_pixel_y_reg =
+        (key.source_msaa_samples == xenos::MsaaSamples::k1X &&
+         key.dest_msaa_samples == xenos::MsaaSamples::k1X && !canonical_scaled)
+            ? 0
+            : 1;
   }
 
   uint32_t source_pixel_width_dwords_log2 =
@@ -3371,14 +3294,12 @@ D3D12RenderTargetCache::GetOrCreateTransferPipelines(TransferShaderKey key) {
                  source_sample);
       }
       if (source_load_is_two_dwords && !i) {
-        // Go to the next sample or pixel along X if need to load two dwords.
-        if (key.source_msaa_samples >= xenos::MsaaSamples::k4X) {
-          a.OpOr(dxbc::Dest::R(1, 0b0100), source_sample, dxbc::Src::LU(1));
-          source_sample = dxbc::Src::R(1, dxbc::Src::kZZZZ);
-        } else {
-          a.OpOr(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(1, dxbc::Src::kXXXX),
-                 dxbc::Src::LU(1));
-        }
+        // The high 32bpp half of a 64bpp destination sample is identical to the
+        // sample of the horizontally adjacent source pixel since each canonical
+        // sample column of a single 64bpp value decodes to the same sample of
+        // two horizontally adjacent pixels, regardless of sample count.
+        a.OpIAdd(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(1, dxbc::Src::kXXXX),
+                 dxbc::Src::LU(source_scale_x));
       }
     }
   } else {
@@ -3405,9 +3326,9 @@ D3D12RenderTargetCache::GetOrCreateTransferPipelines(TransferShaderKey key) {
                dxbc::Src::T(srv_index_color, kTransferSRVRegisterColor));
       }
       if (source_load_is_two_dwords && !i) {
-        // Go to the next pixel along X if need to load two dwords.
-        a.OpOr(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(1, dxbc::Src::kXXXX),
-               dxbc::Src::LU(1));
+        // The high half, same as in the multisampled case above.
+        a.OpIAdd(dxbc::Dest::R(1, 0b0001), dxbc::Src::R(1, dxbc::Src::kXXXX),
+                 dxbc::Src::LU(source_scale_x));
       }
     }
   }
@@ -4099,141 +4020,32 @@ D3D12RenderTargetCache::GetOrCreateTransferPipelines(TransferShaderKey key) {
                       dxbc::Src::R(0, dxbc::Src::kZZZZ),
                       dxbc::Src::LU(xenos::kEdramTileCount - 1));
               // Convert position and sample index from within the destination
-              // tile to within the host depth source tile, like for the guest
-              // render target, but for 32bpp -> 32bpp only.
+              // tile to within the host depth source tile by remapping
+              // through the canonical coordinates. Both views are 32bpp and
+              // use the destination scale.
               dxbc::Src host_depth_source_sample(dest_sample);
               if (key.host_depth_source_msaa_samples != key.dest_msaa_samples) {
-                if (key.host_depth_source_msaa_samples >=
-                    xenos::MsaaSamples::k4X) {
-                  // 4x -> 1x/2x.
-                  if (key.dest_msaa_samples == xenos::MsaaSamples::k2X) {
-                    // 4x -> 2x.
-                    // Horizontal pixels to samples. Vertical sample (1, 0 in
-                    // the first bit for native 2x or 0, 1 in the second bit for
-                    // 2x as 4x) to second sample bit.
-                    host_depth_source_sample =
-                        dxbc::Src::R(0, dxbc::Src::kWWWW);
-                    if (msaa_2x_supported_) {
-                      a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(31),
-                              dxbc::Src::LU(1), dest_sample,
-                              dxbc::Src::R(0, dxbc::Src::kXXXX));
-                      a.OpXOr(dxbc::Dest::R(0, 0b1000),
-                              host_depth_source_sample, dxbc::Src::LU(1 << 1));
-                    } else {
-                      a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1),
-                              dxbc::Src::LU(0),
-                              dxbc::Src::R(0, dxbc::Src::kXXXX), dest_sample);
-                    }
-                    a.OpUShR(dxbc::Dest::R(0, 0b0001),
-                             dxbc::Src::R(0, dxbc::Src::kXXXX),
-                             dxbc::Src::LU(1));
-                  } else {
-                    // 4x -> 1x.
-                    // Pixels to samples.
-                    a.OpAnd(dxbc::Dest::R(0, 0b1000),
-                            dxbc::Src::R(0, dxbc::Src::kXXXX),
-                            dxbc::Src::LU(1));
-                    host_depth_source_sample =
-                        dxbc::Src::R(0, dxbc::Src::kWWWW);
-                    a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1),
-                            dxbc::Src::LU(1), dxbc::Src::R(0, dxbc::Src::kYYYY),
-                            host_depth_source_sample);
-                    a.OpUShR(dxbc::Dest::R(0, 0b0011), dxbc::Src::R(0),
-                             dxbc::Src::LU(1));
-                  }
-                } else {
-                  // 1x/2x -> 1x/2x/4x (as long as they're different).
-                  // Only the X part - Y is handled by common code.
-                  if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-                    // Horizontal samples to pixels.
-                    a.OpBFI(dxbc::Dest::R(0, 0b0001), dxbc::Src::LU(31),
-                            dxbc::Src::LU(1), dxbc::Src::R(0, dxbc::Src::kXXXX),
-                            dest_sample);
-                  }
-                }
-                // Host depth source Y and sample index for 1x/2x AA sources.
-                if (key.host_depth_source_msaa_samples <
-                    xenos::MsaaSamples::k4X) {
-                  if (key.dest_msaa_samples >= xenos::MsaaSamples::k4X) {
-                    // 1x/2x -> 4x.
-                    if (key.host_depth_source_msaa_samples ==
-                        xenos::MsaaSamples::k2X) {
-                      // 2x -> 4x.
-                      // Vertical samples (second bit) of 4x destination to
-                      // vertical sample (1, 0 for native 2x, or 0, 3 for 2x as
-                      // 4x) of 2x source.
-                      a.OpUShR(dxbc::Dest::R(0, 0b1000), dest_sample,
-                               dxbc::Src::LU(1));
-                      host_depth_source_sample =
-                          dxbc::Src::R(0, dxbc::Src::kWWWW);
-                      if (msaa_2x_supported_) {
-                        a.OpXOr(dxbc::Dest::R(0, 0b1000),
-                                host_depth_source_sample, dxbc::Src::LU(1));
-                      } else {
-                        a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1),
-                                dxbc::Src::LU(1), host_depth_source_sample,
-                                host_depth_source_sample);
-                      }
-                    } else {
-                      // 1x -> 4x.
-                      // Vertical samples (second bit) to Y pixels, using r0.w
-                      // (not needed without source MSAA) as a temporary.
-                      a.OpUShR(dxbc::Dest::R(0, 0b1000), dest_sample,
-                               dxbc::Src::LU(1));
-                      a.OpBFI(dxbc::Dest::R(0, 0b0010), dxbc::Src::LU(31),
-                              dxbc::Src::LU(1),
-                              dxbc::Src::R(0, dxbc::Src::kYYYY),
-                              dxbc::Src::R(0, dxbc::Src::kWWWW));
-                    }
-                  } else {
-                    // 1x/2x -> different 1x/2x.
-                    if (key.host_depth_source_msaa_samples ==
-                        xenos::MsaaSamples::k2X) {
-                      // 2x -> 1x.
-                      // Vertical pixels of 2x destination to vertical samples
-                      // (1, 0 for native 2x, or 0, 3 for 2x as 4x) of 1x
-                      // source.
-                      a.OpAnd(dxbc::Dest::R(0, 0b1000),
-                              dxbc::Src::R(0, dxbc::Src::kYYYY),
-                              dxbc::Src::LU(1));
-                      host_depth_source_sample =
-                          dxbc::Src::R(0, dxbc::Src::kWWWW);
-                      if (msaa_2x_supported_) {
-                        a.OpXOr(dxbc::Dest::R(0, 0b1000),
-                                host_depth_source_sample, dxbc::Src::LU(1));
-                      } else {
-                        a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1),
-                                dxbc::Src::LU(1), host_depth_source_sample,
-                                host_depth_source_sample);
-                      }
-                      a.OpUShR(dxbc::Dest::R(0, 0b0010),
-                               dxbc::Src::R(0, dxbc::Src::kYYYY),
-                               dxbc::Src::LU(1));
-                    } else {
-                      // 1x -> 2x.
-                      // Vertical samples (1, 0 in the first bit for native 2x
-                      // or 0, 1 in the second bit for 2x as 4x) of 2x
-                      // destination to vertical pixels of 1x source.
-                      // Using r0.w (not needed without source MSAA) as a
-                      // temporary.
-                      if (msaa_2x_supported_) {
-                        a.OpBFI(dxbc::Dest::R(0, 0b0010), dxbc::Src::LU(31),
-                                dxbc::Src::LU(1),
-                                dxbc::Src::R(0, dxbc::Src::kYYYY), dest_sample);
-                        a.OpXOr(dxbc::Dest::R(0, 0b0010),
-                                dxbc::Src::R(0, dxbc::Src::kYYYY),
-                                dxbc::Src::LU(1));
-                      } else {
-                        a.OpUShR(dxbc::Dest::R(0, 0b1000), dest_sample,
-                                 dxbc::Src::LU(1));
-                        a.OpBFI(dxbc::Dest::R(0, 0b0010), dxbc::Src::LU(31),
-                                dxbc::Src::LU(1),
-                                dxbc::Src::R(0, dxbc::Src::kYYYY),
-                                dxbc::Src::R(0, dxbc::Src::kWWWW));
-                      }
-                    }
-                  }
-                }
+                dxbc::Src host_depth_u(dxbc::Src::R(0, dxbc::Src::kXXXX));
+                dxbc::Src host_depth_v(dxbc::Src::R(0, dxbc::Src::kYYYY));
+                bool host_depth_scaled;
+                CanonicalizeSample(a, key.dest_msaa_samples, dest_sample,
+                                   msaa_2x_supported_, dest_scale_x,
+                                   dest_scale_y, host_depth_u, host_depth_v,
+                                   host_depth_scaled);
+                dxbc::Src host_depth_x(host_depth_u);
+                dxbc::Src host_depth_y(host_depth_v);
+                DecanonicalizeSample(a, key.host_depth_source_msaa_samples,
+                                     host_depth_u, host_depth_v,
+                                     host_depth_scaled, msaa_2x_supported_,
+                                     dest_scale_x, dest_scale_y, host_depth_x,
+                                     host_depth_y, host_depth_source_sample);
+                // With varying sample counts, the remapped coordinates will
+                // always be stored in r1.xy here. The remapping helpers keep
+                // the value of r1.w as the guest depth value, while r1.z, the
+                // host sample index, is read before the pitch takes up r1.x.
+                // Move the coordinates to r0.xy for the common host depth
+                // source addressing.
+                a.OpMov(dxbc::Dest::R(0, 0b0011), dxbc::Src::R(1));
               }
               // r1.x = host depth source pitch in tiles
               a.OpUBFE(dxbc::Dest::R(1, 0b0001),
@@ -6269,66 +6081,100 @@ ID3D12PipelineState* D3D12RenderTargetCache::GetOrCreateDumpPipeline(
   // single-sampled source, LOD from r0.w.
   dxbc::Src source_address_src(dxbc::Src::R(0, 0b11000100));
   if (key.msaa_samples >= xenos::MsaaSamples::k2X) {
+    // r0.xy holds the canonical sample coordinates within the EDRAM layout.
+    // Convert them into the pixel and the sample of the multisampled view
+    // using the canonical layout formulas, at guest pixel granularity when the
+    // layout is scaled.
+    uint32_t layout_scale_x =
+        key.native_layout ? 1 : this->draw_resolution_scale_x();
+    uint32_t layout_scale_y =
+        key.native_layout ? 1 : this->draw_resolution_scale_y();
+    bool layout_scaled = layout_scale_x > 1 || layout_scale_y > 1;
+    if (layout_scaled) {
+      // r0.xy = guest canonical sample coordinates
+      // r1.xy = subpixel within the guest sample
+      a.OpUDiv(dxbc::Dest::R(0, 0b0011), dxbc::Dest::R(1, 0b0011),
+               dxbc::Src::R(0),
+               dxbc::Src::LU(layout_scale_x, layout_scale_y, 1, 1));
+    }
     if (key.msaa_samples >= xenos::MsaaSamples::k4X) {
-      // 4x MSAA source texture sample index - bit 0 for horizontal, bit 1 for
-      // vertical.
-      // Extract the horizontal sample index to r0.w.
-      // r0.x = X sample position within the source texture
-      // r0.y = Y sample position within the source texture
-      // r0.z = sample offset in the EDRAM
-      // r0.w = horizontal sample index within the source pixel
-      a.OpAnd(dxbc::Dest::R(0, 0b1000), dxbc::Src::R(0, dxbc::Src::kXXXX),
-              dxbc::Src::LU(1));
-      // Insert the vertical sample index to r0.w.
-      // r0.x = X sample position within the source texture
-      // r0.y = Y sample position within the source texture
-      // r0.z = sample offset in the EDRAM
+      // The 4x sample index has bit 0 horizontal and bit 1 vertical, same as
+      // the canonical layout.
+      // r0.w = horizontal sample index = (u >> 1) & 1
+      a.OpUBFE(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1), dxbc::Src::LU(1),
+               dxbc::Src::R(0, dxbc::Src::kXXXX));
+      // r1.z = vertical sample index = (v >> 1) & 1
+      a.OpUBFE(dxbc::Dest::R(1, 0b0100), dxbc::Src::LU(1), dxbc::Src::LU(1),
+               dxbc::Src::R(0, dxbc::Src::kYYYY));
       // r0.w = sample index within the source pixel
       a.OpBFI(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1), dxbc::Src::LU(1),
-              dxbc::Src::R(0, dxbc::Src::kYYYY),
+              dxbc::Src::R(1, dxbc::Src::kZZZZ),
               dxbc::Src::R(0, dxbc::Src::kWWWW));
-      // Convert sample to pixel coordinates in the source texture to r0.xy.
-      // r0.x = X pixel position within the source texture
-      // r0.y = Y pixel position within the source texture
-      // r0.z = sample offset in the EDRAM
-      // r0.w = sample index within the source pixel
-      a.OpUShR(dxbc::Dest::R(0, 0b0011), dxbc::Src::R(0), dxbc::Src::LU(1));
+      // Guest pixel per axis = ((c >> 2) << 1) | (c & 1).
+      // r1.z = u >> 2
+      a.OpUShR(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kXXXX),
+               dxbc::Src::LU(2));
+      // r0.x = X guest pixel position
+      a.OpBFI(dxbc::Dest::R(0, 0b0001), dxbc::Src::LU(31), dxbc::Src::LU(1),
+              dxbc::Src::R(1, dxbc::Src::kZZZZ),
+              dxbc::Src::R(0, dxbc::Src::kXXXX));
+      // r1.z = v >> 2
+      a.OpUShR(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kYYYY),
+               dxbc::Src::LU(2));
+      // r0.y = Y guest pixel position
+      a.OpBFI(dxbc::Dest::R(0, 0b0010), dxbc::Src::LU(31), dxbc::Src::LU(1),
+              dxbc::Src::R(1, dxbc::Src::kZZZZ),
+              dxbc::Src::R(0, dxbc::Src::kYYYY));
     } else {
       // 2x MSAA source texture sample index.
       // Extract the vertical sample index to r0.w.
       // r0.x = X pixel position within the source texture
       // r0.y = Y sample position within the source texture
       // r0.z = sample offset in the EDRAM
-      // r0.w = vertical sample index within the destination pixel
-      a.OpAnd(dxbc::Dest::R(0, 0b1000), dxbc::Src::R(0, dxbc::Src::kYYYY),
+      // r0.w = guest vertical sample index = (u >> 1) & 1
+      a.OpUBFE(dxbc::Dest::R(0, 0b1000), dxbc::Src::LU(1), dxbc::Src::LU(1),
+               dxbc::Src::R(0, dxbc::Src::kXXXX));
+      // Guest pixel X = (u & ~2) | (v & 2).
+      // r1.z = v & 2
+      a.OpAnd(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kYYYY),
+              dxbc::Src::LU(2));
+      // r0.x = (u & ~2)
+      a.OpAnd(dxbc::Dest::R(0, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
+              dxbc::Src::LU(~uint32_t(2)));
+      // r0.x = X guest pixel position
+      a.OpOr(dxbc::Dest::R(0, 0b0001), dxbc::Src::R(0, dxbc::Src::kXXXX),
+             dxbc::Src::R(1, dxbc::Src::kZZZZ));
+      // Guest pixel Y = ((v & ~3) >> 1) | (v & 1).
+      // r1.z = v & 1
+      a.OpAnd(dxbc::Dest::R(1, 0b0100), dxbc::Src::R(0, dxbc::Src::kYYYY),
               dxbc::Src::LU(1));
+      // r0.y = v & ~3
+      a.OpAnd(dxbc::Dest::R(0, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
+              dxbc::Src::LU(~uint32_t(3)));
+      // r0.y = (v & ~3) >> 1
+      a.OpUShR(dxbc::Dest::R(0, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
+               dxbc::Src::LU(1));
+      // r0.y = Y guest pixel position
+      a.OpOr(dxbc::Dest::R(0, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
+             dxbc::Src::R(1, dxbc::Src::kZZZZ));
       // Convert the 2x MSAA sample index from the guest to Direct3D 10.1+.
-      // r0.x = X pixel position within the source texture
-      // r0.y = Y sample position within the source texture
-      // r0.z = sample offset in the EDRAM
       // r0.w = sample index within the source pixel
       a.OpMovC(dxbc::Dest::R(0, 0b1000), dxbc::Src::R(0, dxbc::Src::kWWWW),
                dxbc::Src::LU(draw_util::GetD3D10SampleIndexForGuest2xMSAA(
                    1, msaa_2x_supported_)),
                dxbc::Src::LU(draw_util::GetD3D10SampleIndexForGuest2xMSAA(
                    0, msaa_2x_supported_)));
-      // Convert sample Y to pixel Y in the source texture to r0.y.
-      // r0.x = X pixel position within the source texture
-      // r0.y = Y pixel position within the source texture
-      // r0.z = sample offset in the EDRAM
-      // r0.w = sample index within the source pixel
-      a.OpUShR(dxbc::Dest::R(0, 0b0010), dxbc::Src::R(0, dxbc::Src::kYYYY),
-               dxbc::Src::LU(1));
     }
-    if (key.source_scale_native && !key.native_layout &&
-        IsDrawResolutionScaled()) {
-      // Native source dumped to the scaled EDRAM layout. Duplicate the
-      // guest pixels into all the scaled sample slots covering it. Done after
-      // the sample index is extracted since MSAA isn't affected by the scale.
-      a.OpUDiv(dxbc::Dest::R(0, 0b0011), dxbc::Dest::Null(), dxbc::Src::R(0),
-               dxbc::Src::LU(this->draw_resolution_scale_x(),
-                             this->draw_resolution_scale_y(), 1, 1));
+    if (!key.source_scale_native && layout_scaled) {
+      // Scaled source in the scaled layout. Restore the subpixel position.
+      // r0.xy = XY pixel position within the source texture
+      a.OpUMAd(dxbc::Dest::R(0, 0b0011), dxbc::Src::R(0),
+               dxbc::Src::LU(layout_scale_x, layout_scale_y, 1, 1),
+               dxbc::Src::R(1));
     }
+    // With a native source and a scaled layout, the guest pixel position comes
+    // directly from the source texture position, and all the scaled sample
+    // slots covering one guest sample receive its value.
     // Load the source to r1.
     // r0.x = X pixel position within the source texture if stencil is needed
     // r0.y = Y pixel position within the source texture if stencil is needed

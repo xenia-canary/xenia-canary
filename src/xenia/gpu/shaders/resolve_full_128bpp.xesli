@@ -37,12 +37,8 @@ entry_inputs_end_code_begin_compute_xe
   XeResolveLoad2RGBAColors(
       pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
       resolve_info,
-      XeResolveColorCopySourcePixelAddressBytesYHalfPixelOffsetFilling(
-          resolve_info,
-          uint2_xe(max(pixel_index.x,
-                       resolve_info.half_pixel_offset_fill_source.x),
-                   pixel_index.y)),
-      pixel_0, pixel_1);
+      uint2_xe(max(pixel_index.x, resolve_info.half_pixel_offset_fill_source.x),
+               pixel_index.y), pixel_0, pixel_1);
   // Inside the half-pixel offset filling columns, pixel_0 now contains the
   // pixel to stretch, pixel_1 contains the pixel after it. However, this means
   // that the pixel offset is not aligned to 2 anymore. If 1 is the pixel to

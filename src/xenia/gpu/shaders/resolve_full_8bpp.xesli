@@ -37,10 +37,7 @@ entry_inputs_end_code_begin_compute_xe
   float4_xe pixels_0123, pixels_4567;
   XeResolveLoad8ScalarColors(
       pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-      resolve_info,
-      XeResolveColorCopySourcePixelAddressBytesYHalfPixelOffsetFilling(
-          resolve_info, pixel_index),
-      pixels_0123, pixels_4567);
+      resolve_info, pixel_index, pixels_0123, pixels_4567);
   dont_flatten_xe
   if (pixel_index.x == 0u &&
       resolve_info.half_pixel_offset_fill_source.x != 0u) {
