@@ -18,25 +18,11 @@ namespace vfs {
 enum class OmniDriveDiscType : uint8_t;
 enum class OmniDriveSubchannel : uint8_t;
 
-#if !defined(CDB_INTERNAL_TYPES)
-#if XE_PLATFORM_WIN32
-#pragma pack(push, 1)
-#define CDBSTUB(bytes, name) typedef struct CDB##bytes##_##name {
-uint8_t reserved[bytes];
-}
-CDB##bytes##_##name;
-#else
-#define CDBSTUB(bytes, name)                                       \
-  typedef struct __attribute__((__packed__)) CDB##bytes##_##name { \
-    uint8_t reserved[bytes];                                       \
-  } CDB##bytes##_##name;
-#endif
-CDBSTUB(12, Read12)
-CDBSTUB(12, ReadOmniDrive)
-#ifdef XE_PLATFORM_WIN32
-#pragma pack(pop)
-#endif
-#else
+typedef struct {
+  uint8_t reserved[12];
+} CDB12;
+
+#if defined(CDB_INTERNAL_TYPES)
 #if XE_PLATFORM_WIN32
 #pragma pack(push, 1)
 typedef struct CDB12_ReadOmniDrive {
@@ -75,12 +61,12 @@ typedef struct __attribute__((__packed__)) CDB12_Read12 {
 static_assert(sizeof(CDB12_Read12) == 12, "CDB12_Read12 must be 12 bytes");
 #endif  // !defined(CDB_INTERNAL_TYPES)
 
-CDB12_ReadOmniDrive BuildReadOmniDriveCdb(
-    uint32_t address, uint32_t transfer_length, OmniDriveDiscType disc_type,
-    bool raw_addressing, bool fua, bool descramble,
-    OmniDriveSubchannel subchannels, bool c2);
+CDB12 BuildReadOmniDriveCdb(uint32_t address, uint32_t transfer_length,
+                            OmniDriveDiscType disc_type, bool raw_addressing,
+                            bool fua, bool descramble,
+                            OmniDriveSubchannel subchannels, bool c2);
 
-CDB12_Read12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua);
+CDB12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua);
 
 namespace DeviceCommunication {
 #if XE_PLATFORM_LINUX
@@ -100,7 +86,7 @@ bool RunScsiCommand(HANDLE handle, const char* command_name, const uint8_t* cdb,
                     bool* out_size_related = nullptr);
 #endif  // XE_PLATFORM_WIN32
 }  // namespace DeviceCommunication
-}  // namespace xe
+}  // namespace vfs
 }  // namespace xe
 
 #endif  // XENIA_VFS_DEVICES_DISC_SCSI_H_

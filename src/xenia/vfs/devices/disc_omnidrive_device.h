@@ -260,7 +260,8 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
                          uint8_t* buffer) const;
   bool ReadMetadataBytesFromPhysicalTransport(size_t offset,
                                               std::span<uint8_t> buffer) const;
-  bool IsRangeCachedLocked(uint64_t sector_start, uint32_t sector_count) const;
+  bool IsRangeCachedLocked(uint64_t sector_start, uint32_t sector_count,
+                           uint64_t* cached_end = nullptr) const;
   void InsertCacheRange(uint64_t sector_start, uint32_t sector_count,
                         std::span<const uint8_t> data,
                         bool is_demand_read) const;

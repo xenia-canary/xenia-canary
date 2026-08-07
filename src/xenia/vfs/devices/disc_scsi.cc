@@ -7,11 +7,8 @@
  ******************************************************************************
  */
 
-#include "xenia/base/platform.h"
-#define CDB_INTERNAL_TYPES
-#include "xenia/vfs/devices/disc_scsi.h"
-#undef CDB_INTERNAL_TYPES
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -33,6 +30,10 @@
 #include <ntddscsi.h>
 #endif  // XE_PLATFORM_WIN32
 
+#define CDB_INTERNAL_TYPES
+#include "xenia/vfs/devices/disc_scsi.h"
+#undef CDB_INTERNAL_TYPES
+
 namespace xe::vfs {
 
 void PackBE32(uint32_t value, uint8_t out[4]) {
@@ -42,10 +43,10 @@ void PackBE32(uint32_t value, uint8_t out[4]) {
   out[3] = static_cast<uint8_t>(value & 0xFF);
 }
 
-CDB12_ReadOmniDrive BuildReadOmniDriveCdb(
-    uint32_t address, uint32_t transfer_length, OmniDriveDiscType disc_type,
-    bool raw_addressing, bool fua, bool descramble,
-    OmniDriveSubchannel subchannels, bool c2) {
+CDB12 BuildReadOmniDriveCdb(uint32_t address, uint32_t transfer_length,
+                            OmniDriveDiscType disc_type, bool raw_addressing,
+                            bool fua, bool descramble,
+                            OmniDriveSubchannel subchannels, bool c2) {
   CDB12_ReadOmniDrive cdb{};
   cdb.operation_code = 0xC0;
 
@@ -69,10 +70,10 @@ CDB12_ReadOmniDrive BuildReadOmniDriveCdb(
   }
 
   cdb.control = 0;
-  return cdb;
+  return reinterpret_cast<CDB12*>(&cdb)[0];
 }
 
-CDB12_Read12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua) {
+CDB12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua) {
   CDB12_Read12 cdb{};
   cdb.operation_code = 0xA8;
   cdb.byte1 = fua ? static_cast<uint8_t>(1u << 3) : 0;
@@ -80,7 +81,7 @@ CDB12_Read12 BuildRead12Cdb(uint32_t lba, uint32_t transfer_length, bool fua) {
   PackBE32(transfer_length, cdb.transfer_length);
   cdb.byte10 = 0;
   cdb.control = 0;
-  return cdb;
+  return reinterpret_cast<CDB12*>(&cdb)[0];
 }
 
 namespace DeviceCommunication {

@@ -54,9 +54,16 @@ constexpr size_t kOmniDriveDvdMainDataSize = 2048;
 constexpr size_t kGdfSectorSize = 2_KiB;
 constexpr uint64_t kUnixEpochAsFiletime = 10000 * 11644473600000LL;
 constexpr uint64_t kInvalidIssueSector = std::numeric_limits<uint64_t>::max();
-constexpr uint32_t kSequentialPrefetchSectors = 32;
+constexpr uint32_t kSequentialPrefetchSectors =
+    2048;  // A setting of 512 == 1 MiB
 constexpr uint32_t kMaxTransportReadSectors = 256;
 constexpr size_t kReadCacheMaxBytes = 256_MiB;
+// Caps the worst-case cost of the contiguous-run chain-walk in
+// ReadDiskBytesAsync (which re-scans read_cache_ from the start on each
+// hop) so a single triggering chunk can never cost more than
+// O(kMaxPrefetchChainWalkHops * read_cache_.size()) instead of
+// O(read_cache_.size()^2) in pathological, highly-fragmented caches.
+constexpr int kMaxPrefetchChainWalkHops = 64;
 constexpr uint64_t kCacheFrequencyRescaleThreshold = uint64_t{1} << 32;
 constexpr uint32_t kSecuritySectorProbeBaseAddress = 0x00FD021E;
 constexpr uint32_t kSecuritySectorProbeRetryStride = 0x40;
@@ -821,6 +828,13 @@ bool DiscOmnidriveDevice::ReadOmniDriveBlocks(
     return true;
   }
 
+  const TransportFailureKind failure_kind =
+      out_failure_kind ? *out_failure_kind : TransportFailureKind::kNone;
+  if (failure_kind == TransportFailureKind::kSizeRelated) {
+    // Expected during adaptive split fallback for oversized requests.
+    return false;
+  }
+
   XELOGE(
       "DiscOmnidriveDevice::ReadOmniDriveBlocks: physical transport read "
       "failed for {}; direct device read is required",
@@ -1092,7 +1106,8 @@ bool DiscOmnidriveDevice::ReadMetadataBytesFromPhysicalTransport(
 }
 
 bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
-                                              uint32_t sector_count) const {
+                                              uint32_t sector_count,
+                                              uint64_t* cached_end) const {
   if (sector_count == 0) {
     return true;
   }
@@ -1105,11 +1120,14 @@ bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
     if (overlap_start >= overlap_end) {
       continue;
     }
+    if (overlap_end < range_end && cached_end && overlap_end > *cached_end) {
+      *cached_end = overlap_end;
+    }
     for (uint64_t i = overlap_start; i < overlap_end; ++i) {
       coverage[static_cast<size_t>(i - sector_start)] = 1;
     }
   }
-  return std::all_of(coverage.begin(), coverage.end(),
+  return std::any_of(coverage.begin(), coverage.end(),
                      [](uint8_t value) { return value != 0; });
 }
 
@@ -1122,12 +1140,27 @@ void DiscOmnidriveDevice::InsertCacheRange(uint64_t sector_start,
     return;
   }
 
+  std::lock_guard<std::mutex> lock(cache_mutex_);
+
+  uint64_t cached_end = 0;
+  uint64_t range_start_offset = 0;
+  if (IsRangeCachedLocked(sector_start, sector_count, &cached_end)) {
+    if (cached_end <= sector_start ||
+        cached_end >= sector_start + sector_count) {
+      return;
+    }
+    range_start_offset = cached_end - sector_start;
+    sector_count -= range_start_offset;
+    sector_start = cached_end;
+  }
   CachedReadRange chunk;
   chunk.sector_start = sector_start;
   chunk.sector_count = sector_count;
-  chunk.data.assign(data.begin(), data.end());
+  auto begin_itr = data.begin();
+  std::advance(begin_itr, static_cast<size_t>(range_start_offset) *
+                              physical_sector_size());
+  chunk.data.assign(begin_itr, data.end());
 
-  std::lock_guard<std::mutex> lock(cache_mutex_);
   chunk.use_tick = is_demand_read ? 1 : 0;
   chunk.insertion_tick = ++cache_insertion_count_;
   if (cache_insertion_count_ >= kCacheFrequencyRescaleThreshold) {
@@ -1154,7 +1187,8 @@ void DiscOmnidriveDevice::InsertCacheRange(uint64_t sector_start,
 
 void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
     uint64_t current_end_sector) const {
-  const uint64_t prefetch_start = current_end_sector + 1;
+  uint64_t prefetch_start = current_end_sector + 1;
+  uint32_t prefetch_count = kSequentialPrefetchSectors;
 
   if (pending_demand_reads_.load(std::memory_order_relaxed) != 0) {
     const uint64_t deferred = read_telemetry_.prefetch_deferred.fetch_add(
@@ -1171,9 +1205,15 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
 
   {
     std::lock_guard<std::mutex> lock(cache_mutex_);
-    if (IsRangeCachedLocked(prefetch_start, kSequentialPrefetchSectors)) {
-      read_telemetry_.prefetch_hits.fetch_add(1, std::memory_order_relaxed);
-      return;
+    uint64_t cached_end = 0;
+    if (IsRangeCachedLocked(prefetch_start, prefetch_count, &cached_end)) {
+      if (cached_end <= prefetch_start ||
+          cached_end >= prefetch_start + prefetch_count) {
+        read_telemetry_.prefetch_hits.fetch_add(1, std::memory_order_relaxed);
+        return;
+      }
+      prefetch_count = (prefetch_start + prefetch_count) - cached_end;
+      prefetch_start = cached_end;
     }
   }
 
@@ -1200,7 +1240,7 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
       return;
     }
 
-    PendingPrefetchRequest incoming{prefetch_start, kSequentialPrefetchSectors};
+    PendingPrefetchRequest incoming{prefetch_start, prefetch_count};
     if (!pending_prefetch_request_.has_value()) {
       pending_prefetch_request_ = incoming;
     } else {
@@ -1252,6 +1292,14 @@ bool DiscOmnidriveDevice::ExecutePrefetchRead(uint64_t sector_start,
           deferred);
     }
     return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    if (IsRangeCachedLocked(sector_start, sector_count)) {
+      read_telemetry_.prefetch_hits.fetch_add(1, std::memory_order_relaxed);
+      return true;
+    }
   }
 
   if (sector_start > (std::numeric_limits<uint32_t>::max)()) {
@@ -1445,6 +1493,8 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
                                physical_sector_size());
   std::vector<uint8_t> covered(sector_count, 0);
 
+  bool should_trigger_prefetch_extension = false;
+  uint64_t prefetch_extension_end_sector = 0;
   {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     for (auto& chunk : read_cache_) {
@@ -1470,6 +1520,36 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
       for (uint64_t sector = overlap_start; sector < overlap_end; ++sector) {
         covered[static_cast<size_t>(sector - first_sector)] = 1;
       }
+
+      if (chunk.use_tick == 0) {
+        // First-ever hit on a chunk that was originally inserted by a
+        // prefetch (not a demand read). Extend forward across any
+        // adjacent, already-cached chunks to find the true end of the
+        // currently known contiguous prefetched range, then remember the
+        // furthest such end so prefetching can be advanced from there once
+        // cache_mutex_ is released below (TryScheduleSequentialPrefetch
+        // must not be called while still holding cache_mutex_).
+        uint64_t extended_end = chunk_end;
+        bool extended = true;
+        int chain_walk_hops = 0;
+        while (extended && chain_walk_hops < kMaxPrefetchChainWalkHops) {
+          extended = false;
+          for (const auto& other : read_cache_) {
+            if (other.sector_start == extended_end) {
+              extended_end += other.sector_count;
+              extended = true;
+              ++chain_walk_hops;
+              break;
+            }
+          }
+        }
+        if (!should_trigger_prefetch_extension ||
+            extended_end - 1 > prefetch_extension_end_sector) {
+          should_trigger_prefetch_extension = true;
+          prefetch_extension_end_sector = extended_end - 1;
+        }
+      }
+
       ++chunk.use_tick;
       if (chunk.use_tick >= kCacheFrequencyRescaleThreshold) {
         for (auto& other : read_cache_) {
@@ -1477,6 +1557,9 @@ bool DiscOmnidriveDevice::ReadDiskBytesAsync(size_t offset,
         }
       }
     }
+  }
+  if (should_trigger_prefetch_extension) {
+    TryScheduleSequentialPrefetch(prefetch_extension_end_sector);
   }
 
   size_t covered_count = 0;
@@ -2299,7 +2382,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
     return false;
   }
 
-  CDB12_ReadOmniDrive omnidrive_cdb = BuildReadOmniDriveCdb(
+  CDB12 omnidrive_cdb = BuildReadOmniDriveCdb(
       address, transfer_length, disc_type_, raw_addressing, fua,
       effective_descramble, subchannels, c2);
   const uint8_t* cdb_ptr = reinterpret_cast<const uint8_t*>(&omnidrive_cdb);
@@ -2314,7 +2397,9 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   bool size_related =
       ioctl_size_related || (sense_key == 0x05 && (asc == 0x24 || asc == 0x26));
   if (!success && size_related) {
-    *out_failure_kind = TransportFailureKind::kSizeRelated;
+    if (out_failure_kind) {
+      *out_failure_kind = TransportFailureKind::kSizeRelated;
+    }
     return false;
   }
   if (!success && !size_related) {
@@ -2322,7 +2407,9 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: SG_IO "
         "succeeded={} sense_key={} ASC={} ASCQ={}",
         success, sense_key, asc, ascq);
-    *out_failure_kind = TransportFailureKind::kIoError;
+    if (out_failure_kind) {
+      *out_failure_kind = TransportFailureKind::kIoError;
+    }
     return false;
   }
 
@@ -2391,7 +2478,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
         "descramble=true for read (incoming descramble=false)");
   }
 
-  CDB12_ReadOmniDrive omnidrive_cdb = BuildReadOmniDriveCdb(
+  CDB12 omnidrive_cdb = BuildReadOmniDriveCdb(
       address, transfer_length, disc_type_, raw_addressing, fua,
       effective_descramble, subchannels, c2);
   const uint8_t* cdb_ptr = reinterpret_cast<const uint8_t*>(&omnidrive_cdb);
@@ -2404,10 +2491,12 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
           &asc, &ascq, &ioctl_size_related)) {
     bool size_related = ioctl_size_related ||
                         (sense_key == 0x05 && (asc == 0x24 || asc == 0x26));
-    if (size_related) {
-      *out_failure_kind = TransportFailureKind::kSizeRelated;
-    } else {
-      *out_failure_kind = TransportFailureKind::kIoError;
+    if (out_failure_kind) {
+      if (size_related) {
+        *out_failure_kind = TransportFailureKind::kSizeRelated;
+      } else {
+        *out_failure_kind = TransportFailureKind::kIoError;
+      }
     }
     if (!size_related) {
       XELOGW(
