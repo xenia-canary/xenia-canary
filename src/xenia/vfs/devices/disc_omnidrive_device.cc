@@ -83,6 +83,11 @@ constexpr size_t kReadCacheMaxBytes = 128 * 1024 * 1024;
 constexpr uint32_t kSecuritySectorProbeBaseAddress = 0x00FD021E;
 constexpr uint32_t kSecuritySectorProbeRetryStride = 0x40;
 constexpr uint32_t kSecuritySectorProbeRetryCount = 4;
+constexpr uint8_t kSenseKeyNotReady = 0x02;
+constexpr uint8_t kAscMediumNotPresent = 0x3A;
+constexpr uint8_t kAscqMediumNotPresent = 0x00;
+constexpr uint16_t kDvdRomProfile = 0x0010;
+constexpr uint8_t kDvdBookTypeRom = 0x00;
 
 std::string HexPreview(const uint8_t* data, size_t length,
                        size_t max_bytes = 16) {
@@ -259,6 +264,13 @@ bool IsPlausibleLinuxScsiPath(const std::filesystem::path& path) {
          node == "dvd";
 }
 
+struct DvdPhysicalFormatInfo {
+  uint8_t book_type = 0xFF;
+  uint8_t layer_type = 0;
+  uint8_t nlayers = 0;
+  uint8_t bca = 0;
+};
+
 #if XE_PLATFORM_LINUX
 bool RunLinuxScsiCommand(int fd, const char* command_name, const uint8_t* cdb,
                          uint8_t cdb_length, int data_direction,
@@ -311,6 +323,97 @@ bool RunLinuxScsiCommand(int fd, const char* command_name, const uint8_t* cdb,
   return true;
 }
 
+bool ReadLinuxCurrentProfile(int fd, uint16_t* out_profile,
+                             uint8_t* out_sense_key = nullptr,
+                             uint8_t* out_asc = nullptr,
+                             uint8_t* out_ascq = nullptr) {
+  if (!out_profile) {
+    return false;
+  }
+
+  uint8_t get_configuration_data[16] = {0};
+  const uint16_t alloc_length =
+      static_cast<uint16_t>(sizeof(get_configuration_data));
+  const uint8_t cdb_get_configuration[10] = {
+      0x46,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      static_cast<uint8_t>((alloc_length >> 8) & 0xFF),
+      static_cast<uint8_t>(alloc_length & 0xFF),
+      0x00,
+  };
+  if (!RunLinuxScsiCommand(fd, "GET CONFIGURATION", cdb_get_configuration,
+                           sizeof(cdb_get_configuration), SG_DXFER_FROM_DEV,
+                           get_configuration_data,
+                           sizeof(get_configuration_data), 8000, out_sense_key,
+                           out_asc, out_ascq)) {
+    return false;
+  }
+
+  const uint32_t payload_length =
+      (static_cast<uint32_t>(get_configuration_data[0]) << 24) |
+      (static_cast<uint32_t>(get_configuration_data[1]) << 16) |
+      (static_cast<uint32_t>(get_configuration_data[2]) << 8) |
+      static_cast<uint32_t>(get_configuration_data[3]);
+  const size_t total_response_length = static_cast<size_t>(payload_length) + 4;
+  if (total_response_length < 8) {
+    return false;
+  }
+
+  *out_profile = (static_cast<uint16_t>(get_configuration_data[6]) << 8) |
+                 static_cast<uint16_t>(get_configuration_data[7]);
+  return true;
+}
+
+bool ReadLinuxDvdPhysicalFormatInfo(int fd, DvdPhysicalFormatInfo* out_info) {
+  if (!out_info) {
+    return false;
+  }
+
+  uint8_t disc_structure_data[256] = {0};
+  const uint16_t alloc_length =
+      static_cast<uint16_t>(sizeof(disc_structure_data));
+  const uint8_t cdb_read_disc_structure[12] = {
+      0xAD,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0x00,
+      static_cast<uint8_t>((alloc_length >> 8) & 0xFF),
+      static_cast<uint8_t>(alloc_length & 0xFF),
+      0,
+      0,
+  };
+  if (!RunLinuxScsiCommand(fd, "READ DISC STRUCTURE (physical format, layer 0)",
+                           cdb_read_disc_structure,
+                           sizeof(cdb_read_disc_structure), SG_DXFER_FROM_DEV,
+                           disc_structure_data, sizeof(disc_structure_data))) {
+    return false;
+  }
+
+  const uint16_t payload_length = static_cast<uint16_t>(
+      (static_cast<uint16_t>(disc_structure_data[0]) << 8) |
+      static_cast<uint16_t>(disc_structure_data[1]));
+  const size_t total_response_length = static_cast<size_t>(payload_length) + 2;
+  if (total_response_length < 21) {
+    return false;
+  }
+
+  const uint8_t* base = disc_structure_data + 4;
+  out_info->book_type = base[0] >> 4;
+  out_info->layer_type = base[2] & 0x0F;
+  out_info->nlayers = static_cast<uint8_t>((base[2] >> 5) & 0x03);
+  out_info->bca = static_cast<uint8_t>((base[16] >> 7) & 0x01);
+  return true;
+}
+
 #endif  // XE_PLATFORM_LINUX
 
 #if XE_PLATFORM_WIN32
@@ -353,6 +456,149 @@ struct SptdWithSense {
   ULONG filler;
   UCHAR sense_buffer[32];
 };
+
+bool RunWindowsScsiCommand(HANDLE handle, const char* command_name,
+                           const uint8_t* cdb, uint8_t cdb_length,
+                           UCHAR data_in, void* data_buffer,
+                           uint32_t data_length, uint32_t timeout_seconds = 30,
+                           uint8_t* out_sense_key = nullptr,
+                           uint8_t* out_asc = nullptr,
+                           uint8_t* out_ascq = nullptr) {
+  SptdWithSense sptd = {};
+  sptd.sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
+  sptd.sptd.CdbLength = cdb_length;
+  sptd.sptd.SenseInfoLength = sizeof(sptd.sense_buffer);
+  sptd.sptd.DataIn = data_in;
+  sptd.sptd.DataTransferLength = data_length;
+  sptd.sptd.TimeOutValue = timeout_seconds;
+  sptd.sptd.DataBuffer = data_buffer;
+  sptd.sptd.SenseInfoOffset = offsetof(SptdWithSense, sense_buffer);
+  std::memcpy(sptd.sptd.Cdb, cdb, cdb_length);
+
+  DWORD returned = 0;
+  if (!DeviceIoControl(handle, IOCTL_SCSI_PASS_THROUGH_DIRECT, &sptd,
+                       sizeof(sptd), &sptd, sizeof(sptd), &returned, nullptr)) {
+    XELOGW("DiscOmnidriveDevice: {} failed for {} with error {}", command_name,
+           "SPTI", GetLastError());
+    return false;
+  }
+
+  if (out_sense_key || out_asc || out_ascq) {
+    const uint8_t sense_key = sptd.sense_buffer[2] & 0x0F;
+    const uint8_t asc = sptd.sense_buffer[12];
+    const uint8_t ascq = sptd.sense_buffer[13];
+    if (out_sense_key) {
+      *out_sense_key = sense_key;
+    }
+    if (out_asc) {
+      *out_asc = asc;
+    }
+    if (out_ascq) {
+      *out_ascq = ascq;
+    }
+  }
+
+  if (sptd.sptd.ScsiStatus != 0) {
+    XELOGW("DiscOmnidriveDevice: {} SPTI status=0x{:02X}", command_name,
+           sptd.sptd.ScsiStatus);
+    return false;
+  }
+
+  return true;
+}
+
+bool ReadWindowsCurrentProfile(HANDLE handle, uint16_t* out_profile,
+                               uint8_t* out_sense_key = nullptr,
+                               uint8_t* out_asc = nullptr,
+                               uint8_t* out_ascq = nullptr) {
+  if (!out_profile) {
+    return false;
+  }
+
+  uint8_t get_configuration_data[16] = {0};
+  const uint16_t alloc_length =
+      static_cast<uint16_t>(sizeof(get_configuration_data));
+  const uint8_t cdb_get_configuration[10] = {
+      0x46,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      static_cast<uint8_t>((alloc_length >> 8) & 0xFF),
+      static_cast<uint8_t>(alloc_length & 0xFF),
+      0x00,
+  };
+  if (!RunWindowsScsiCommand(handle, "GET CONFIGURATION", cdb_get_configuration,
+                             sizeof(cdb_get_configuration), SCSI_IOCTL_DATA_IN,
+                             get_configuration_data,
+                             sizeof(get_configuration_data), 30, out_sense_key,
+                             out_asc, out_ascq)) {
+    return false;
+  }
+
+  const uint32_t payload_length =
+      (static_cast<uint32_t>(get_configuration_data[0]) << 24) |
+      (static_cast<uint32_t>(get_configuration_data[1]) << 16) |
+      (static_cast<uint32_t>(get_configuration_data[2]) << 8) |
+      static_cast<uint32_t>(get_configuration_data[3]);
+  const size_t total_response_length = static_cast<size_t>(payload_length) + 4;
+  if (total_response_length < 8) {
+    return false;
+  }
+
+  *out_profile = (static_cast<uint16_t>(get_configuration_data[6]) << 8) |
+                 static_cast<uint16_t>(get_configuration_data[7]);
+  return true;
+}
+
+bool ReadWindowsDvdPhysicalFormatInfo(HANDLE handle,
+                                      DvdPhysicalFormatInfo* out_info) {
+  if (!out_info) {
+    return false;
+  }
+
+  uint8_t disc_structure_data[256] = {0};
+  const uint16_t alloc_length =
+      static_cast<uint16_t>(sizeof(disc_structure_data));
+  const uint8_t cdb_read_disc_structure[12] = {
+      0xAD,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0x00,
+      static_cast<uint8_t>((alloc_length >> 8) & 0xFF),
+      static_cast<uint8_t>(alloc_length & 0xFF),
+      0,
+      0,
+  };
+  if (!RunWindowsScsiCommand(
+          handle, "READ DISC STRUCTURE (physical format, layer 0)",
+          cdb_read_disc_structure, sizeof(cdb_read_disc_structure),
+          SCSI_IOCTL_DATA_IN, disc_structure_data,
+          sizeof(disc_structure_data))) {
+    return false;
+  }
+
+  const uint16_t payload_length = static_cast<uint16_t>(
+      (static_cast<uint16_t>(disc_structure_data[0]) << 8) |
+      static_cast<uint16_t>(disc_structure_data[1]));
+  const size_t total_response_length = static_cast<size_t>(payload_length) + 2;
+  if (total_response_length < 21) {
+    return false;
+  }
+
+  const uint8_t* base = disc_structure_data + 4;
+  out_info->book_type = base[0] >> 4;
+  out_info->layer_type = base[2] & 0x0F;
+  out_info->nlayers = static_cast<uint8_t>((base[2] >> 5) & 0x03);
+  out_info->bca = static_cast<uint8_t>((base[16] >> 7) & 0x01);
+  return true;
+}
 #endif  // XE_PLATFORM_WIN32
 
 }  // namespace
@@ -565,26 +811,95 @@ bool DiscOmnidriveDevice::is_media_available() const {
     if (!sector_payload) {
       return false;
     }
-    if (!IsSecuritySectorSane(*sector_payload)) {
+    if (!IsSecuritySectorSane(std::span<const uint8_t>(
+            sector_payload->data(), sector_payload->size()))) {
       xe::app::ShowSecuritySectorSanityWarningOnce();
     }
     return true;
   };
 
-  if (omnidrive_firmware_confirmed_ && media_inserted_) {
-    return verify_security_sector();
-  }
-  if (!has_physical_transport_) {
-    if (!const_cast<DiscOmnidriveDevice*>(this)
-             ->InitializePhysicalTransport()) {
-      return false;
-    }
-  }
-
-  InitializePhysicalDriveStateOnce();
-  if (!(omnidrive_firmware_confirmed_ && media_inserted_)) {
+  if (!has_physical_transport_ || !physical_preflight_attempted() ||
+      !physical_preflight_ready()) {
     return false;
   }
+  if (!omnidrive_firmware_confirmed_) {
+    return false;
+  }
+
+  uint16_t current_profile = 0;
+  DvdPhysicalFormatInfo physical_info;
+  uint8_t sense_key = 0;
+  uint8_t asc = 0;
+  uint8_t ascq = 0;
+
+#if XE_PLATFORM_LINUX
+  if (physical_transport_fd_ < 0) {
+    const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = false;
+    return false;
+  }
+
+  if (!ReadLinuxCurrentProfile(physical_transport_fd_, &current_profile,
+                               &sense_key, &asc, &ascq)) {
+    const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = false;
+    if (sense_key == kSenseKeyNotReady && asc == kAscMediumNotPresent &&
+        ascq == kAscqMediumNotPresent) {
+      return false;
+    }
+    XELOGW(
+        "DiscOmnidriveDevice::is_media_available: GET CONFIGURATION failed "
+        "for {} (sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X})",
+        host_path_.string(), sense_key, asc, ascq);
+    return false;
+  }
+
+  const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = true;
+
+  if (!ReadLinuxDvdPhysicalFormatInfo(physical_transport_fd_, &physical_info)) {
+    xe::app::ShowSecuritySectorSanityWarningOnce();
+    return false;
+  }
+#elif XE_PLATFORM_WIN32
+  if (physical_transport_handle_ == INVALID_HANDLE_VALUE ||
+      physical_transport_backend_ != PhysicalTransportBackend::kWinSpti) {
+    const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = false;
+    return false;
+  }
+
+  HANDLE handle = static_cast<HANDLE>(physical_transport_handle_);
+  if (!ReadWindowsCurrentProfile(handle, &current_profile, &sense_key, &asc,
+                                 &ascq)) {
+    const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = false;
+    if (sense_key == kSenseKeyNotReady && asc == kAscMediumNotPresent &&
+        ascq == kAscqMediumNotPresent) {
+      return false;
+    }
+    XELOGW(
+        "DiscOmnidriveDevice::is_media_available: GET CONFIGURATION failed "
+        "for {} (sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X})",
+        host_path_.string(), sense_key, asc, ascq);
+    return false;
+  }
+
+  const_cast<DiscOmnidriveDevice*>(this)->media_inserted_ = true;
+
+  if (!ReadWindowsDvdPhysicalFormatInfo(handle, &physical_info)) {
+    xe::app::ShowSecuritySectorSanityWarningOnce();
+    return false;
+  }
+#endif
+
+  XELOGI(
+      "DiscOmnidriveDevice::is_media_available: profile=0x{:04X} "
+      "book_type=0x{:X} layer_type=0x{:X} nlayers={} bca={}",
+      current_profile, physical_info.book_type, physical_info.layer_type,
+      physical_info.nlayers, physical_info.bca);
+
+  if (current_profile != kDvdRomProfile ||
+      physical_info.book_type != kDvdBookTypeRom) {
+    xe::app::ShowSecuritySectorSanityWarningOnce();
+    return false;
+  }
+
   return verify_security_sector();
 }
 
@@ -1716,8 +2031,6 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
   physical_drive_state_failed_command_ = "none";
   total_sector_units_ = 0;
   total_sector_units_available_ = false;
-  total_sector_units_ = 0;
-  total_sector_units_available_ = false;
 
   if (!has_physical_transport_ || physical_transport_fd_ < 0) {
     return false;
@@ -1856,11 +2169,10 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
       (static_cast<uint16_t>(disc_structure_data[0]) << 8) |
       static_cast<uint16_t>(disc_structure_data[1]));
   const size_t total_response_length = static_cast<size_t>(payload_length) + 2;
-  if (total_response_length < 12 ||
-      total_response_length > sizeof(disc_structure_data)) {
+  if (total_response_length < 12) {
     XELOGW(
         "DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux: READ "
-        "DISC STRUCTURE returned unsupported payload length {}",
+        "DISC STRUCTURE returned too-short payload length {}",
         total_response_length);
     physical_drive_state_ready_ = true;
     XELOGI(
@@ -2093,7 +2405,7 @@ bool DiscOmnidriveDevice::ReadFromPhysicalTransport(
   const OmniDriveAddress translated_issue =
       TranslateAddress(address, raw_addressing);
 
-  if (!InitializePhysicalDriveStateOnce()) {
+  if (!physical_preflight_attempted() || !physical_preflight_ready()) {
     XELOGE(
         "DiscOmnidriveDevice::ReadFromPhysicalTransport: physical preflight "
         "not ready for {} (failed_command={})",

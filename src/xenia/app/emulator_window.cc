@@ -287,7 +287,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
-  emulator_window_.app_context_.QuitFromUIThread();
+  emulator_window_.QuitFromUIThread();
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnFileDrop(ui::FileDropEvent& e) {
@@ -783,7 +783,7 @@ bool EmulatorWindow::Initialize() {
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
-                         [this]() { window_->RequestClose(); }));
+                         std::bind(&EmulatorWindow::QuitFromUIThread, this)));
   }
   main_menu->AddChild(std::move(file_menu));
 
@@ -1271,6 +1271,13 @@ void EmulatorWindow::FileOpen() {
 }
 
 void EmulatorWindow::FileClose() { emulator_->TerminateTitle(); }
+
+void EmulatorWindow::QuitFromUIThread() {
+  if (emulator_ && emulator_->is_title_open()) {
+    emulator_->TerminateTitle();
+  }
+  app_context_.QuitFromUIThread();
+}
 
 void EmulatorWindow::InstallContent() {
   std::vector<std::filesystem::path> paths;

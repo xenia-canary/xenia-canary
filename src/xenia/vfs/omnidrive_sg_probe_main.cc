@@ -957,10 +957,21 @@ int omnidrive_sg_probe_main(const std::vector<std::string>& args) {
 
   DiscOmnidriveDevice device("", options.device_path, options.disc_type,
                              options.raw_dump_mode);
-  if (!device.Initialize()) {
-    XELOGE("Initialize failed for {}", options.device_path);
+  if (!device.ProbeOnly()) {
+    XELOGE("ProbeOnly preflight/transport failed for {}", options.device_path);
     LogFailureHints(options.device_path);
-    std::fprintf(stderr, "FAIL: initialize failed for %s.\n",
+    std::fprintf(stderr, "FAIL: probe preflight/transport failed for %s.\n",
+                 options.device_path.c_str());
+    return static_cast<int>(ProbeExitCode::kInitializeFailure);
+  }
+  if (!device.is_media_available()) {
+    XELOGE(
+        "Media checks failed for {} (presence/profile/physical/security path)",
+        options.device_path);
+    LogFailureHints(options.device_path);
+    std::fprintf(stderr,
+                 "FAIL: media checks failed for %s "
+                 "(presence/profile/physical/security path).\n",
                  options.device_path.c_str());
     return static_cast<int>(ProbeExitCode::kInitializeFailure);
   }

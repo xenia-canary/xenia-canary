@@ -116,3 +116,4 @@ node_modules/.bin/
 /cache0
 /devkit
 recent.toml
+docs/*.pdf
