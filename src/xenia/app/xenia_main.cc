@@ -560,6 +560,10 @@ bool EmulatorApp::OnInitialize() {
 void EmulatorApp::OnDestroy() {
   ShutdownEmulatorThreadFromUIThread();
 
+  if (emulator_) {
+    emulator_->PrepareForQuickExitCleanup();
+  }
+
   if (cvars::discord) {
     discord::DiscordPresence::Shutdown();
   }

@@ -299,6 +299,7 @@ class Emulator {
 
   void Pause();
   void Resume();
+  void PrepareForQuickExitCleanup();
   bool is_paused() const { return paused_; }
   bool SaveToFile(const std::filesystem::path& path);
   bool RestoreFromFile(const std::filesystem::path& path);
