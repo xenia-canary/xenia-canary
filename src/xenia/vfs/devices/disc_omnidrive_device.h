@@ -29,6 +29,9 @@
 #include <vector>
 
 #include "xenia/base/platform.h"
+#if XE_PLATFORM_WIN32
+#include "xenia/base/platform_win.h"
+#endif  // XE_PLATFORM_WIN32
 #include "xenia/vfs/optical_drive_device.h"
 
 namespace xe {
@@ -313,9 +316,15 @@ class DiscOmnidriveDevice : public OpticalDriveDevice {
     kWinSpti,
   };
 
+  bool TryAcquireWindowsExclusiveAccess();
+  void ReleaseWindowsExclusiveAccess();
+
   void* physical_transport_handle_;
   bool running_under_wine_;
   PhysicalTransportBackend physical_transport_backend_;
+  mutable bool windows_exclusive_access_attempted_;
+  mutable bool windows_exclusive_access_held_;
+  mutable DWORD windows_exclusive_access_last_error_;
 #endif  // XE_PLATFORM_WIN32
 
   std::string name_;

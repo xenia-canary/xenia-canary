@@ -23,8 +23,9 @@
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 
-#include <ntddscsi.h>
 #include <winioctl.h>
+#include <ntddcdrm.h>
+#include <ntddscsi.h>
 
 namespace xe {
   extern bool IsRunningUnderWine();
@@ -382,7 +383,10 @@ DiscOmnidriveDevice::DiscOmnidriveDevice(std::string_view mount_path,
       physical_transport_handle_(INVALID_HANDLE_VALUE),
       has_physical_transport_(false),
       running_under_wine_(false),
-      physical_transport_backend_(PhysicalTransportBackend::kNone)
+      physical_transport_backend_(PhysicalTransportBackend::kNone),
+      windows_exclusive_access_attempted_(false),
+      windows_exclusive_access_held_(false),
+      windows_exclusive_access_last_error_(0)
 #endif  // XE_PLATFORM_WIN32
 {}
 
@@ -398,6 +402,9 @@ DiscOmnidriveDevice::~DiscOmnidriveDevice() {
 
 #if XE_PLATFORM_WIN32
   if (physical_transport_handle_ != INVALID_HANDLE_VALUE) {
+    if (windows_exclusive_access_held_) {
+      ReleaseWindowsExclusiveAccess();
+    }
     CloseHandle(static_cast<HANDLE>(physical_transport_handle_));
     physical_transport_handle_ = INVALID_HANDLE_VALUE;
   }
@@ -1490,6 +1497,12 @@ bool DiscOmnidriveDevice::InitializePhysicalTransport() {
   physical_transport_handle_ = handle;
   has_physical_transport_ = true;
   physical_transport_backend_ = PhysicalTransportBackend::kWinSpti;
+  if (!TryAcquireWindowsExclusiveAccess()) {
+    XELOGW(
+        "DiscOmnidriveDevice::InitializePhysicalTransport: continuing in "
+        "shared mode for {} (exclusive lock unavailable)",
+        host_path_.string());
+  }
   XELOGI("DiscOmnidriveDevice: enabled Windows SPTI transport for {}",
          host_path_.string());
   return true;
@@ -1878,6 +1891,83 @@ bool DiscOmnidriveDevice::InitializePhysicalDriveStateOnceLinux() const {
 #endif  // XE_PLATFORM_LINUX
 
 #if XE_PLATFORM_WIN32
+bool DiscOmnidriveDevice::TryAcquireWindowsExclusiveAccess() {
+  if (physical_transport_handle_ == INVALID_HANDLE_VALUE ||
+      physical_transport_backend_ != PhysicalTransportBackend::kWinSpti) {
+    return false;
+  }
+
+  if (windows_exclusive_access_held_) {
+    windows_exclusive_access_attempted_ = true;
+    windows_exclusive_access_last_error_ = 0;
+    return true;
+  }
+
+  windows_exclusive_access_attempted_ = true;
+
+  CDROM_EXCLUSIVE_LOCK lock_request = {};
+  lock_request.Access.RequestType = ExclusiveAccessLockDevice;
+  lock_request.Access.Flags = CDROM_LOCK_IGNORE_VOLUME;
+
+  constexpr const char kCallerName[] = "XeniaOmniDrive";
+  const size_t max_caller_chars = sizeof(lock_request.CallerName);
+  const size_t caller_chars_to_copy =
+      std::min(sizeof(kCallerName) - 1, max_caller_chars - 1);
+  std::memset(lock_request.CallerName, 0, max_caller_chars);
+  std::memcpy(lock_request.CallerName, kCallerName, caller_chars_to_copy);
+
+  DWORD bytes_returned = 0;
+  const bool lock_ok = DeviceIoControl(
+      static_cast<HANDLE>(physical_transport_handle_),
+      IOCTL_CDROM_EXCLUSIVE_ACCESS, &lock_request, sizeof(lock_request),
+      nullptr, 0, &bytes_returned, nullptr);
+  if (lock_ok) {
+    windows_exclusive_access_held_ = true;
+    windows_exclusive_access_last_error_ = 0;
+    XELOGI(
+        "DiscOmnidriveDevice::TryAcquireWindowsExclusiveAccess: acquired "
+        "exclusive access for {}",
+        host_path_.string());
+    return true;
+  }
+
+  windows_exclusive_access_held_ = false;
+  windows_exclusive_access_last_error_ = GetLastError();
+  XELOGW(
+      "DiscOmnidriveDevice::TryAcquireWindowsExclusiveAccess: failed to "
+      "acquire exclusive access for {}: error {}",
+      host_path_.string(), windows_exclusive_access_last_error_);
+  return false;
+}
+
+void DiscOmnidriveDevice::ReleaseWindowsExclusiveAccess() {
+  if (!windows_exclusive_access_held_ ||
+      physical_transport_handle_ == INVALID_HANDLE_VALUE ||
+      physical_transport_backend_ != PhysicalTransportBackend::kWinSpti) {
+    return;
+  }
+
+  CDROM_EXCLUSIVE_ACCESS unlock_request = {};
+  unlock_request.RequestType = ExclusiveAccessUnlockDevice;
+  unlock_request.Flags = 0;
+
+  DWORD bytes_returned = 0;
+  if (!DeviceIoControl(static_cast<HANDLE>(physical_transport_handle_),
+                       IOCTL_CDROM_EXCLUSIVE_ACCESS, &unlock_request,
+                       sizeof(unlock_request), nullptr, 0, &bytes_returned,
+                       nullptr)) {
+    windows_exclusive_access_last_error_ = GetLastError();
+    XELOGW(
+        "DiscOmnidriveDevice::ReleaseWindowsExclusiveAccess: failed to "
+        "release exclusive access for {}: error {}",
+        host_path_.string(), windows_exclusive_access_last_error_);
+  } else {
+    windows_exclusive_access_last_error_ = 0;
+  }
+
+  windows_exclusive_access_held_ = false;
+}
+
 // NOTE: unverified/uncompiled on this Linux-only build environment. Mirrors
 // InitializePhysicalDriveStateOnceLinux()'s TEST UNIT READY + INQUIRY
 // preflight using the same SPTI plumbing already used by
