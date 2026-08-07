@@ -54,14 +54,119 @@ void DxbcShaderTranslator::StartPixelShader_LoadROVParameters() {
   in_position_used_ |= 0b0011;
   a_.OpFToU(dxbc::Dest::R(system_temp_rov_params_, 0b0011),
             dxbc::Src::V1D(in_reg_ps_position_));
-  // Convert the position from pixels to samples.
+  // Convert the position from pixels to canonical sample 0 coordinates,
+  // meaning the coordinates of the pixel's sample 0 in the single sampled
+  // view of the EDRAM data. The layout is described in XeEdramOffsetBytes
+  // (see edram.xesli). What matters here is that the offsets of the other
+  // samples from sample 0 are constant, so the sample loops just add them, and
+  // that with resolution scaling the rearrangement happens at guest pixel
+  // granularity.
   // system_temp_rov_params_.x = X sample 0 position
   // system_temp_rov_params_.y = Y sample 0 position
-  a_.OpIShL(
-      dxbc::Dest::R(system_temp_rov_params_, 0b0011),
-      dxbc::Src::R(system_temp_rov_params_),
-      LoadSystemConstant(SystemConstants::Index::kSampleCountLog2,
-                         offsetof(SystemConstants, sample_count_log2), 0b0100));
+  {
+    uint32_t scale_x = draw_resolution_scale_x_;
+    uint32_t scale_y = draw_resolution_scale_y_;
+    bool resolution_scaled = scale_x > 1 || scale_y > 1;
+    uint32_t guest_pixel_temp = UINT32_MAX;
+    if (resolution_scaled) {
+      guest_pixel_temp = PushSystemTemp();
+    }
+    dxbc::Src guest_x(
+        resolution_scaled
+            ? dxbc::Src::R(guest_pixel_temp, dxbc::Src::kXXXX)
+            : dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX));
+    dxbc::Src guest_y(
+        resolution_scaled
+            ? dxbc::Src::R(guest_pixel_temp, dxbc::Src::kYYYY)
+            : dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY));
+    auto emit_guest_pixel_split = [&]() {
+      if (!resolution_scaled) {
+        return;
+      }
+      // guest_pixel_temp.xy = guest pixel
+      // guest_pixel_temp.zw = host subpixel offset
+      a_.OpUDiv(dxbc::Dest::R(guest_pixel_temp, 0b0011),
+                dxbc::Dest::R(guest_pixel_temp, 0b1100),
+                dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXYXY),
+                dxbc::Src::LU(scale_x, scale_y, scale_x, scale_y));
+    };
+    auto emit_host_pixel_restore = [&]() {
+      if (!resolution_scaled) {
+        return;
+      }
+      a_.OpUMAd(dxbc::Dest::R(system_temp_rov_params_, 0b0011),
+                dxbc::Src::R(system_temp_rov_params_),
+                dxbc::Src::LU(scale_x, scale_y, 1, 1),
+                dxbc::Src::R(guest_pixel_temp, 0b1110));
+    };
+    // Check if 4x MSAA is enabled.
+    a_.OpIf(true,
+            LoadSystemConstant(SystemConstants::Index::kSampleCountLog2,
+                               offsetof(SystemConstants, sample_count_log2),
+                               dxbc::Src::kXXXX));
+    {
+      emit_guest_pixel_split();
+      // system_temp_rov_params_.z = X >> 1
+      a_.OpUShR(dxbc::Dest::R(system_temp_rov_params_, 0b0100), guest_x,
+                dxbc::Src::LU(1));
+      // system_temp_rov_params_.w = X & 1
+      a_.OpAnd(dxbc::Dest::R(system_temp_rov_params_, 0b1000), guest_x,
+               dxbc::Src::LU(1));
+      // system_temp_rov_params_.x = ((X >> 1) << 2) | (X & 1)
+      a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+               dxbc::Src::LU(30), dxbc::Src::LU(2),
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kZZZZ),
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kWWWW));
+      // system_temp_rov_params_.z = Y >> 1
+      a_.OpUShR(dxbc::Dest::R(system_temp_rov_params_, 0b0100), guest_y,
+                dxbc::Src::LU(1));
+      // system_temp_rov_params_.w = Y & 1
+      a_.OpAnd(dxbc::Dest::R(system_temp_rov_params_, 0b1000), guest_y,
+               dxbc::Src::LU(1));
+      // system_temp_rov_params_.y = ((Y >> 1) << 2) | (Y & 1)
+      a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
+               dxbc::Src::LU(30), dxbc::Src::LU(2),
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kZZZZ),
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kWWWW));
+      emit_host_pixel_restore();
+    }
+    a_.OpElse();
+    {
+      // Check if 2x MSAA is enabled.
+      a_.OpIf(true,
+              LoadSystemConstant(SystemConstants::Index::kSampleCountLog2,
+                                 offsetof(SystemConstants, sample_count_log2),
+                                 dxbc::Src::kYYYY));
+      {
+        emit_guest_pixel_split();
+        // system_temp_rov_params_.z = X >> 1
+        a_.OpUShR(dxbc::Dest::R(system_temp_rov_params_, 0b0100), guest_x,
+                  dxbc::Src::LU(1));
+        // system_temp_rov_params_.z = Y with bit 1 = X bit 1
+        a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0100),
+                 dxbc::Src::LU(1), dxbc::Src::LU(1),
+                 dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kZZZZ),
+                 guest_y);
+        // system_temp_rov_params_.w = Y >> 1
+        a_.OpUShR(dxbc::Dest::R(system_temp_rov_params_, 0b1000), guest_y,
+                  dxbc::Src::LU(1));
+        // system_temp_rov_params_.y = ((Y >> 1) << 2) | (X & 2) | (Y & 1)
+        a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
+                 dxbc::Src::LU(30), dxbc::Src::LU(2),
+                 dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kWWWW),
+                 dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kZZZZ));
+        // system_temp_rov_params_.x = X & ~2
+        a_.OpAnd(dxbc::Dest::R(system_temp_rov_params_, 0b0001), guest_x,
+                 dxbc::Src::LU(~uint32_t(2)));
+        emit_host_pixel_restore();
+      }
+      a_.OpEndIf();
+    }
+    a_.OpEndIf();
+    if (resolution_scaled) {
+      PopSystemTemp();
+    }
+  }
   // For cases of both color and depth:
   //   Get 40 x 16 x resolution scale 32bpp half-tile or 40x16 64bpp tile index
   //   to system_temp_rov_params_.zw, and put the sample index within such a
@@ -362,19 +467,11 @@ void DxbcShaderTranslator::StartPixelShader_LoadROVParameters() {
                                    offsetof(SystemConstants, sample_count_log2),
                                    dxbc::Src::kXXXX));
   {
-    // Copy the 4x AA coverage to system_temp_rov_params_.x, making top-right
-    // the sample [2] and bottom-left the sample [1] (the opposite of Direct3D
-    // 12), because on the Xbox 360, 2x MSAA doubles the storage height, 4x MSAA
-    // doubles the storage width.
-    // Flip samples in bits 0:1 to bits 29:30.
-    a_.OpBFRev(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
-               dxbc::Src::VCoverage());
-    a_.OpUShR(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
-              dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-              dxbc::Src::LU(29));
-    a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001), dxbc::Src::LU(2),
-             dxbc::Src::LU(1),
-             dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+    // Copy the 4x AA coverage to system_temp_rov_params_.x. The guest sample
+    // numbering matches Direct3D 10.1+, bit 0 horizontal and bit 1 vertical,
+    // just like the canonical layout where the horizontal sample bit of a 4x
+    // view selects the horizontally adjacent sample column pair.
+    a_.OpMov(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
              dxbc::Src::VCoverage());
   }
   // Handle 1 or 2 samples.
@@ -592,7 +689,8 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
         case 1:
           // - 2x MSAA: Bottom sample -> bottom-right (3) with Direct3D 11's
           //   ForcedSampleCount 4.
-          // - 4x MSAA: Bottom-left Xenia sample -> Direct3D 11 sample 2.
+          // - 4x MSAA: Top-right guest sample (the horizontal sample bit is
+          //   bit 0) -> Direct3D 11 sample 1.
           // Check if 4x MSAA is used.
           a_.OpIf(true, LoadSystemConstant(
                             SystemConstants::Index::kSampleCountLog2,
@@ -605,12 +703,12 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
           // temp.w if late = saturated sample 1 depth at 4x MSAA
           a_.OpMAd(
               sample_depth_stencil_dest, z_ddx_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[2][0] *
+              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[1][0] *
                             (1.0f / 16.0f)),
               temp_z_src);
           a_.OpMAd(
               sample_depth_stencil_dest, z_ddy_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[2][1] *
+              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[1][1] *
                             (1.0f / 16.0f)),
               sample_depth_stencil_src, true);
           a_.OpElse();
@@ -632,16 +730,15 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
           a_.OpEndIf();
           break;
         default: {
-          // Xenia samples 2 and 3 (top-right and bottom-right) -> Direct3D 11
-          // samples 1 and 3.
+          // Guest samples 2 and 3, bottom left and bottom right with the
+          // vertical sample bit being bit 1, map to Direct3D 11 samples 2
+          // and 3.
           // temp.x if early = ddx(z)
           // temp.y if early = ddy(z)
           // temp.z = biased depth in the center
           // temp.w if late = saturated sample 2 or 3 depth
           const int8_t* sample_position =
-              draw_util::kD3D10StandardSamplePositions4x[i ^
-                                                         (((i & 1) ^ (i >> 1)) *
-                                                          0b11)];
+              draw_util::kD3D10StandardSamplePositions4x[i];
           a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
                    dxbc::Src::LF(sample_position[0] * (1.0f / 16.0f)),
                    temp_z_src);
@@ -1096,15 +1193,30 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
     // Close the sample conditional.
     a_.OpEndIf();
 
-    // Go to the next sample (samples are at +0, +(80*scale_x), +1,
-    // +(80*scale_x+1), so need to do +(80*scale_x), -(80*scale_x-1),
-    // +(80*scale_x) and -(80*scale_x+1) after each sample).
-    uint32_t tile_width =
-        xenos::kEdramTileWidthSamples * draw_resolution_scale_x_;
-    a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
-              dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
-              dxbc::Src::LI((i & 1) ? -int32_t(tile_width) + 2 - i
-                                    : int32_t(tile_width)));
+    // Go to the next sample. The canonical layout puts the samples of a
+    // pixel at +0, +(2*scale_x), +(2*scale_y rows) and +(2*scale_x +
+    // 2*scale_y rows) dwords. So the deltas after each sample are
+    // +(2*scale_x), +(2*scale_y rows - 2*scale_x), +(2*scale_x), and after
+    // the last sample -(2*scale_x + 2*scale_y rows) to restore the sample 0
+    // address.
+    {
+      uint32_t tile_width =
+          xenos::kEdramTileWidthSamples * draw_resolution_scale_x_;
+      int32_t sample_column_delta = int32_t(2 * draw_resolution_scale_x_);
+      int32_t sample_row_delta =
+          int32_t(2 * draw_resolution_scale_y_ * tile_width);
+      int32_t sample_delta;
+      if (!(i & 1)) {
+        sample_delta = sample_column_delta;
+      } else if (i == 1) {
+        sample_delta = sample_row_delta - sample_column_delta;
+      } else {
+        sample_delta = -(sample_row_delta + sample_column_delta);
+      }
+      a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
+                dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
+                dxbc::Src::LI(sample_delta));
+    }
   }
 
   if (ROV_IsDepthStencilEarly()) {
@@ -2263,14 +2375,16 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
       }
       // Close the write check.
       a_.OpEndIf();
-      // Go to the next sample (samples are at +0, +(80*scale_x), +1,
-      // +(80*scale_x+1), so need to do +(80*scale_x), -(80*scale_x-1),
-      // +(80*scale_x) and -(80*scale_x+1) after each sample).
+      // Go to the next sample, with the same deltas as in the depth sample
+      // loop above, just without restoring the sample 0 address at the end.
       if (i < 3) {
+        int32_t sample_column_delta = int32_t(2 * draw_resolution_scale_x_);
+        int32_t sample_row_delta =
+            int32_t(2 * draw_resolution_scale_y_ * tile_width);
         a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
                   dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
-                  dxbc::Src::LI((i & 1) ? -int32_t(tile_width) + 2 - i
-                                        : int32_t(tile_width)));
+                  dxbc::Src::LI((i & 1) ? sample_row_delta - sample_column_delta
+                                        : sample_column_delta));
       }
     }
   } else {
@@ -3262,29 +3376,31 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
       // Close the sample covered check.
       a_.OpEndIf();
 
-      // Go to the next sample (samples are at +0, +(80*scale_x), +dwpp,
-      // +(80*scale_x+dwpp), so need to do +(80*scale_x), -(80*scale_x-dwpp),
-      // +(80*scale_x) and -(80*scale_x+dwpp) after each sample).
-      // Though no need to do this for the last sample as for the next render
-      // target, the address will be recalculated.
+      // Go to the next sample, the same walk as in the depth sample loop,
+      // except the deltas are in sample columns here and a 64bpp sample
+      // column is 2 dwords wide, while a row is 80*scale_x dwords either way.
+      // No need to do this for the last sample as for the next render target,
+      // the address will be recalculated.
       if (j < 3) {
-        if (j & 1) {
-          // temp.z = whether the render target is 64bpp.
-          a_.OpAnd(temp_z_dest, rt_format_flags_src,
-                   dxbc::Src::LU(RenderTargetCache::kPSIColorFormatFlag_64bpp));
-          // temp.z = offset from the current sample to the next.
-          a_.OpMovC(temp_z_dest, temp_z_src,
-                    dxbc::Src::LI(-int32_t(tile_width) + 2 * (2 - int32_t(j))),
-                    dxbc::Src::LI(-int32_t(tile_width) + (2 - int32_t(j))));
-          // temp.z = free.
-          a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
-                    dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
-                    temp_z_src);
-        } else {
-          a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
-                    dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
-                    dxbc::Src::LU(tile_width));
-        }
+        int32_t sample_row_delta =
+            int32_t(2 * draw_resolution_scale_y_ * tile_width);
+        int32_t sample_column_delta_32bpp =
+            int32_t(2 * draw_resolution_scale_x_);
+        int32_t sample_column_delta_64bpp = 2 * sample_column_delta_32bpp;
+        // temp.z = whether the render target is 64bpp.
+        a_.OpAnd(temp_z_dest, rt_format_flags_src,
+                 dxbc::Src::LU(RenderTargetCache::kPSIColorFormatFlag_64bpp));
+        // temp.z = offset from the current sample to the next.
+        a_.OpMovC(
+            temp_z_dest, temp_z_src,
+            dxbc::Src::LI((j & 1) ? sample_row_delta - sample_column_delta_64bpp
+                                  : sample_column_delta_64bpp),
+            dxbc::Src::LI((j & 1) ? sample_row_delta - sample_column_delta_32bpp
+                                  : sample_column_delta_32bpp));
+        // temp.z = free.
+        a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
+                  dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
+                  temp_z_src);
       }
     }
 

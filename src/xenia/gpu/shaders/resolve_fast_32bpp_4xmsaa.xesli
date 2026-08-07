@@ -8,7 +8,7 @@
  */
 
 #include "endian.xesli"
-#define XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT 16
+#define XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT 4
 #include "resolve.xesli"
 
 byte_buffer_align16_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0, space0)
@@ -33,45 +33,40 @@ entry_inputs_end_code_begin_compute_xe
     return;
   }
   uint2_xe pixel_index = in_global_thread_id_xe.xy << uint2_xe(3u, 0u);
-  uint source_address = XeEdramOffsetBytes(
-      uint2_xe(pixel_index.x,
-               max(pixel_index.y,
-                   resolve_info.half_pixel_offset_fill_source.y)) +
-          resolve_info.edram_offset_scaled,
-      resolve_info.edram_base_tiles, true, resolve_info.edram_pitch_tiles,
-      kXenosMsaaSamples_4X, resolve_info.edram_is_depth, 0u,
-      XeResolveFirstSampleIndex(resolve_info.sample_select),
-      resolve_info.resolution_scale);
-  // For 32bpp 4xMSAA, samples 0 and 1 are at consecutive int positions
-  // (horizontally adjacent in the sample grid). Each Load4 reads 4 consecutive
-  // samples spanning 2 pixels. Samples 0/1 (sample_select 0/1) produce a
-  // 16-byte-aligned address, but samples 2/3 (sample_select 2/3) add a +4 byte
-  // offset (the horizontal sample offset in the EDRAM tile). Align the load
-  // address down to 16 bytes and select the correct pair via swizzle: .xz for
-  // aligned (samples 0/1 at positions 0,2 within the uint4), .yw for
-  // offset-by-4 (samples 2/3 at positions 1,3 within the uint4).
-  uint source_address_aligned = source_address & ~15u;
+  // There's no fixed stride between horizontally adjacent pixels of a
+  // multisampled source, load each pixel from its respective address.
   uint4_xe pixels_0123, pixels_4567;
-  dont_flatten_xe
-  if ((source_address & 15u) == 0u) {
-    pixels_0123.xy = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned).xz;
-    pixels_0123.zw = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x10u).xz;
-    pixels_4567.xy = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x20u).xz;
-    pixels_4567.zw = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x30u).xz;
-  } else {
-    pixels_0123.xy = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned).yw;
-    pixels_0123.zw = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x10u).yw;
-    pixels_4567.xy = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x20u).yw;
-    pixels_4567.zw = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                   source_address_aligned + 0x30u).yw;
-  }
+  pixels_0123.x = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(resolve_info, pixel_index));
+  pixels_0123.y = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(1u, 0u)));
+  pixels_0123.z = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(2u, 0u)));
+  pixels_0123.w = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(3u, 0u)));
+  pixels_4567.x = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(4u, 0u)));
+  pixels_4567.y = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(5u, 0u)));
+  pixels_4567.z = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(6u, 0u)));
+  pixels_4567.w = byte_buffer_align4_load4_xe(
+      xe_resolve_edram,
+      XeResolveCopySourceFirstSampleAddressBytes(
+          resolve_info, pixel_index + uint2_xe(7u, 0u)));
   dont_flatten_xe
   if (pixel_index.x == 0u &&
       resolve_info.half_pixel_offset_fill_source.x != 0u) {

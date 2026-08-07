@@ -1684,11 +1684,11 @@ spv::Id SpirvShaderTranslator::LoadMsaaSamplesFromFlags() {
 void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
   // On the Xbox 360, 2x MSAA doubles the storage height, 4x MSAA doubles the
   // storage width.
-  // Vulkan standard 2x samples are bottom, top.
-  // Vulkan standard 4x samples are TL, TR, BL, BR.
-  // Remap to T, B for 2x, and to TL, BL, TR, BR for 4x.
-  // 2x corresponds to 1, 0 with native 2x MSAA on Vulkan, 0, 3 with 2x as 4x.
-  // 4x corresponds to 0, 2, 1, 3 on Vulkan.
+  // The guest 4x sample numbering is the Vulkan one, bit 0 horizontal and
+  // bit 1 vertical, so 4x coverage passes through as is. Guest 2x puts
+  // sample 0 at the top while Vulkan counts from the bottom, so the guest
+  // samples map to Vulkan 1, 0 with native 2x MSAA and to 0, 3 with 2x
+  // emulated as 4x.
 
   spv::Id const_uint_1 = builder_->makeUintConstant(1);
   spv::Id const_uint_2 = builder_->makeUintConstant(2);
@@ -1751,18 +1751,10 @@ void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
   }
   builder_->createBranch(&block_msaa_merge);
 
-  // 4x MSAA.
+  // At 4x the guest and the Vulkan sample numbering match, so pass the
+  // coverage through.
   builder_->setBuildPoint(&block_msaa_4x);
-  // Flip samples in bits 0:1 by reversing the whole coverage mask and inserting
-  // the reversing bits.
-  spv::Id sample_mask_4x = builder_->createQuadOp(
-      spv::OpBitFieldInsert, type_uint_, input_sample_mask_value,
-      builder_->createBinOp(
-          spv::OpShiftRightLogical, type_uint_,
-          builder_->createUnaryOp(spv::OpBitReverse, type_uint_,
-                                  input_sample_mask_value),
-          builder_->makeUintConstant(32 - 1 - 2)),
-      const_uint_1, const_uint_2);
+  spv::Id sample_mask_4x = input_sample_mask_value;
   builder_->createBranch(&block_msaa_merge);
 
   // Select the result depending on the MSAA sample count.
@@ -1780,32 +1772,87 @@ void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
 }
 
 void SpirvShaderTranslator::FSI_LoadEdramOffsets(spv::Id msaa_samples) {
-  // Convert the floating-point pixel coordinates to integer sample 0
-  // coordinates.
+  // Convert the floating-point pixel coordinates to the canonical sample 0
+  // coordinates, meaning the coordinates of the pixel's sample 0 in the
+  // single sampled view of the EDRAM data. The layout is described in
+  // XeEdramOffsetBytes (see edram.xesli). What matters here is that the offsets
+  // of the other samples from sample 0 are constant, FSI_AddSampleOffset
+  // adds them, and that with resolution scaling the rearrangement happens at
+  // guest pixel granularity.
   assert_true(input_fragment_coordinates_ != spv::NoResult);
-  spv::Id axes_have_two_msaa_samples[2];
-  spv::Id sample_coordinates[2];
   spv::Id const_uint_1 = builder_->makeUintConstant(1);
+  spv::Id const_uint_2 = builder_->makeUintConstant(2);
+  spv::Id msaa_is_4x = builder_->createBinOp(
+      spv::OpUGreaterThanEqual, type_bool_, msaa_samples,
+      builder_->makeUintConstant(uint32_t(xenos::MsaaSamples::k4X)));
+  spv::Id msaa_is_2x_or_4x = builder_->createBinOp(
+      spv::OpUGreaterThanEqual, type_bool_, msaa_samples,
+      builder_->makeUintConstant(uint32_t(xenos::MsaaSamples::k2X)));
+  const uint32_t resolution_scale[2] = {draw_resolution_scale_x_,
+                                        draw_resolution_scale_y_};
+  spv::Id guest_pixel[2], guest_subpixel[2];
   for (uint32_t i = 0; i < 2; ++i) {
-    spv::Id axis_has_two_msaa_samples = builder_->createBinOp(
-        spv::OpUGreaterThanEqual, type_bool_, msaa_samples,
-        builder_->makeUintConstant(
-            uint32_t(i ? xenos::MsaaSamples::k2X : xenos::MsaaSamples::k4X)));
-    axes_have_two_msaa_samples[i] = axis_has_two_msaa_samples;
     id_vector_temp_.clear();
     id_vector_temp_.push_back(builder_->makeIntConstant(int32_t(i)));
-    sample_coordinates[i] = builder_->createBinOp(
-        spv::OpShiftLeftLogical, type_uint_,
-        builder_->createUnaryOp(
-            spv::OpConvertFToU, type_uint_,
-            builder_->createLoad(
-                builder_->createAccessChain(spv::StorageClassInput,
-                                            input_fragment_coordinates_,
-                                            id_vector_temp_),
-                spv::NoPrecision)),
-        builder_->createTriOp(spv::OpSelect, type_uint_,
-                              axis_has_two_msaa_samples, const_uint_1,
-                              const_uint_0_));
+    spv::Id host_pixel = builder_->createUnaryOp(
+        spv::OpConvertFToU, type_uint_,
+        builder_->createLoad(builder_->createAccessChain(
+                                 spv::StorageClassInput,
+                                 input_fragment_coordinates_, id_vector_temp_),
+                             spv::NoPrecision));
+    if (resolution_scale[i] > 1) {
+      spv::Id const_scale = builder_->makeUintConstant(resolution_scale[i]);
+      guest_pixel[i] = builder_->createBinOp(spv::OpUDiv, type_uint_,
+                                             host_pixel, const_scale);
+      guest_subpixel[i] = builder_->createBinOp(spv::OpUMod, type_uint_,
+                                                host_pixel, const_scale);
+    } else {
+      guest_pixel[i] = host_pixel;
+      guest_subpixel[i] = spv::NoResult;
+    }
+  }
+  // (((x or y) >> 1) << 2) | ((x or y) & 1), the sample 0 part of the
+  // rearrangement shared by the 4x u and v and the 2x v.
+  auto expand_pixel_low_bit = [&](spv::Id pixel_x_or_y) {
+    return builder_->createQuadOp(
+        spv::OpBitFieldInsert, type_uint_,
+        builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, pixel_x_or_y,
+                              const_uint_1),
+        builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
+                              pixel_x_or_y, const_uint_1),
+        const_uint_2, builder_->makeUintConstant(30));
+  };
+  // u0 is ((x >> 1) << 2) | (x & 1) at 4x, x & ~2 at 2x and plain x at 1x.
+  spv::Id sample_u = builder_->createTriOp(
+      spv::OpSelect, type_uint_, msaa_is_4x,
+      expand_pixel_low_bit(guest_pixel[0]),
+      builder_->createTriOp(
+          spv::OpSelect, type_uint_, msaa_is_2x_or_4x,
+          builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, guest_pixel[0],
+                                builder_->makeUintConstant(~uint32_t(2))),
+          guest_pixel[0]));
+  // v0 is ((y >> 1) << 2) | (y & 1) at 2x and 4x, with x bit 1 in bit 1 at
+  // 2x only. At 1x it's plain y.
+  spv::Id sample_v = builder_->createTriOp(
+      spv::OpSelect, type_uint_, msaa_is_2x_or_4x,
+      builder_->createBinOp(
+          spv::OpBitwiseOr, type_uint_, expand_pixel_low_bit(guest_pixel[1]),
+          builder_->createTriOp(
+              spv::OpSelect, type_uint_, msaa_is_4x, const_uint_0_,
+              builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                    guest_pixel[0], const_uint_2))),
+      guest_pixel[1]);
+  // Restore the host pixel granularity.
+  spv::Id sample_coordinates[2] = {sample_u, sample_v};
+  for (uint32_t i = 0; i < 2; ++i) {
+    if (resolution_scale[i] > 1) {
+      sample_coordinates[i] = builder_->createBinOp(
+          spv::OpIAdd, type_uint_,
+          builder_->createBinOp(
+              spv::OpIMul, type_uint_, sample_coordinates[i],
+              builder_->makeUintConstant(resolution_scale[i])),
+          guest_subpixel[i]);
+    }
   }
 
   // Get 40 x 16 x resolution scale 32bpp half-tile or 40x16 64bpp tile index.
@@ -1928,24 +1975,26 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
   if (!sample_index) {
     return sample_0_address;
   }
-  spv::Id sample_offset;
-  // Apply resolution scaling to tile width.
+  // In the canonical layout, the horizontal (or the only 2x) sample bit is
+  // +2 sample columns from sample 0, 2 dwords wide each for 64bpp, and the
+  // vertical sample bit is +2 sample rows, all at the guest scale.
   uint32_t tile_width =
       xenos::kEdramTileWidthSamples * draw_resolution_scale_x_;
-  if (sample_index == 1) {
-    sample_offset = builder_->makeIntConstant(tile_width);
+  uint32_t sample_row_offset =
+      2 * draw_resolution_scale_y_ * tile_width * (sample_index >> 1);
+  uint32_t sample_column_offset_32bpp =
+      2 * draw_resolution_scale_x_ * (sample_index & 1);
+  spv::Id sample_offset;
+  if ((sample_index & 1) && is_64bpp != spv::NoResult) {
+    sample_offset = builder_->createTriOp(
+        spv::OpSelect, type_int_, is_64bpp,
+        builder_->makeIntConstant(
+            int32_t(sample_row_offset + 2 * sample_column_offset_32bpp)),
+        builder_->makeIntConstant(
+            int32_t(sample_row_offset + sample_column_offset_32bpp)));
   } else {
-    spv::Id sample_offset_32bpp = builder_->makeIntConstant(
-        tile_width * (sample_index & 1) + (sample_index >> 1));
-    if (is_64bpp != spv::NoResult) {
-      sample_offset = builder_->createTriOp(
-          spv::OpSelect, type_int_, is_64bpp,
-          builder_->makeIntConstant(tile_width * (sample_index & 1) +
-                                    2 * (sample_index >> 1)),
-          sample_offset_32bpp);
-    } else {
-      sample_offset = sample_offset_32bpp;
-    }
+    sample_offset = builder_->makeIntConstant(
+        int32_t(sample_row_offset + sample_column_offset_32bpp));
   }
   return builder_->createBinOp(spv::OpIAdd, type_int_, sample_0_address,
                                sample_offset);
@@ -2311,14 +2360,15 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
         }
       } break;
       case 1: {
-        // For guest 2x: bottom-right sample (bottom - 0 in Vulkan - for native
-        // 2x, bottom-right - 3 in Vulkan - for 2x as 4x).
-        // For guest 4x: bottom-left sample (2 in Vulkan).
+        // For guest 2x this is the bottom sample, Vulkan 0 for native 2x and
+        // Vulkan 3 for 2x as 4x.
+        // For guest 4x this is the top-right sample since the horizontal
+        // sample bit is bit 0, Vulkan 1.
         for (uint32_t j = 0; j < 2; ++j) {
           sample_location[j] = builder_->createTriOp(
               spv::OpSelect, type_float_, msaa_is_4x,
               builder_->makeFloatConstant(
-                  draw_util::kD3D10StandardSamplePositions4x[2][j] *
+                  draw_util::kD3D10StandardSamplePositions4x[1][j] *
                   (1.0f / 16.0f)),
               builder_->makeFloatConstant(
                   (native_2x_msaa_no_attachments_
@@ -2328,10 +2378,10 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
         }
       } break;
       default: {
-        // Xenia samples 2 and 3 (top-right and bottom-right) -> Vulkan samples
-        // 1 and 3.
-        const int8_t* sample_location_int = draw_util::
-            kD3D10StandardSamplePositions4x[i ^ (((i & 1) ^ (i >> 1)) * 0b11)];
+        // Guest samples 2 and 3, bottom-left and bottom-right with the
+        // vertical sample bit being bit 1, map to Vulkan samples 2 and 3.
+        const int8_t* sample_location_int =
+            draw_util::kD3D10StandardSamplePositions4x[i];
         for (uint32_t j = 0; j < 2; ++j) {
           sample_location[j] = builder_->makeFloatConstant(
               sample_location_int[j] * (1.0f / 16.0f));

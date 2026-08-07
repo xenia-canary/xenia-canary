@@ -8,7 +8,7 @@
  */
 
 #include "endian.xesli"
-#define XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT 16
+#define XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT 4
 #include "resolve.xesli"
 
 byte_buffer_align16_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0, space0)
@@ -33,19 +33,36 @@ entry_inputs_end_code_begin_compute_xe
   if (pixel_index.x >= resolve_info.width_div_8_scaled << 3u) {
     return;
   }
-  uint source_address = XeEdramOffsetBytes(
-      uint2_xe(pixel_index.x,
-               max(pixel_index.y,
-                   resolve_info.half_pixel_offset_fill_source.y)) +
-          resolve_info.edram_offset_scaled,
-      resolve_info.edram_base_tiles, true, resolve_info.edram_pitch_tiles,
-      resolve_info.edram_msaa_samples, false, 1u,
-      XeResolveFirstSampleIndex(resolve_info.sample_select),
-      resolve_info.resolution_scale);
-  uint4_xe pixels_01 = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                     source_address);
-  uint4_xe pixels_23 = byte_buffer_align16_load16_xe(xe_resolve_edram,
-                                                     source_address + 16u);
+  uint4_xe pixels_01, pixels_23;
+  dont_flatten_xe
+  if (resolve_info.edram_msaa_samples == kXenosMsaaSamples_1X) {
+    // With 1x MSAA the pixels are the canonical samples, thus the scanline is
+    // contiguous and a single vectorized load suffices.
+    uint source_address =
+        XeResolveCopySourceFirstSampleAddressBytes(resolve_info, pixel_index);
+    pixels_01 = byte_buffer_align4_load16u_xe(xe_resolve_edram,
+                                              source_address);
+    pixels_23 = byte_buffer_align4_load16u_xe(xe_resolve_edram,
+                                              source_address + 16u);
+  } else {
+    // With MSAA there's no fixed stride between horizontally adjacent pixels,
+    // load each pixel from its respective address.
+    pixels_01.xy = byte_buffer_align4_load8u_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(resolve_info, pixel_index));
+    pixels_01.zw = byte_buffer_align4_load8u_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(1u, 0u)));
+    pixels_23.xy = byte_buffer_align4_load8u_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(2u, 0u)));
+    pixels_23.zw = byte_buffer_align4_load8u_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(3u, 0u)));
+  }
   dont_flatten_xe
   if (pixel_index.x == 0u &&
       resolve_info.half_pixel_offset_fill_source.x != 0u) {
