@@ -1237,13 +1237,21 @@ void Emulator::PrepareForQuickExitCleanup() {
   for (const std::string_view mounted_path :
        {"\\Device\\Cdrom0", "\\Device\\Package_0",
         "\\Device\\Harddisk0\\Partition1", "\\Device\\LauncherData"}) {
-    uint32_t unregistered_count = 0;
-    while (file_system_->UnregisterDevice(mounted_path)) {
-      ++unregistered_count;
+    uint32_t failure_count = 0;
+    while (!file_system_->UnregisterDevice(mounted_path) &&
+           failure_count < 20) {
+      ++failure_count;
     }
-    if (unregistered_count != 0) {
-      XELOGI("Quick-exit cleanup unregistered {} device(s) at {}.",
-             unregistered_count, mounted_path);
+    if (failure_count != 0 && failure_count < 20) {
+      XELOGI(
+          "Quick-exit cleanup failed to unregister device at {} {} time(s), "
+          "but ultimately succeeded.",
+          mounted_path, failure_count);
+    } else if (failure_count >= 20) {
+      XELOGE(
+          "Quick-exit cleanup failed to unregister device at {} after {} "
+          "attempts.",
+          mounted_path, failure_count);
     }
   }
 }
