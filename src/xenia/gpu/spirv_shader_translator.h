@@ -1118,6 +1118,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // `base + index * stride` in dwords from the last vfetch_full as it may be
   // needed by vfetch_mini - int.
   spv::Id var_main_vfetch_address_;
+  // Exclusive end (base + size) in dwords of the last vfetch_full's buffer, for
+  // clamping out-of-bounds words to 0 in both it and its vfetch_mini - int.
+  spv::Id var_main_vfetch_bound_;
   // float.
   spv::Id var_main_tfetch_lod_;
   // float3.

@@ -43,11 +43,33 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
   EnsureBuildPointAvailable();
 
   uint32_t fetch_constant_word_0_index = instr.operands[1].storage_index << 1;
+  uint32_t fetch_constant_word_1_index = fetch_constant_word_0_index + 1;
+
+  // Load the second fetch constant word up front. It holds the endianness
+  // (bits 0:1) for the swap below and the buffer size in words (bits 2:25)
+  // used for bound checking here.
+  id_vector_temp_.clear();
+  // The only element of the fetch constant buffer.
+  id_vector_temp_.push_back(const_int_0_);
+  // Vector index.
+  id_vector_temp_.push_back(
+      builder_->makeIntConstant(int(fetch_constant_word_1_index >> 2)));
+  // Component index.
+  id_vector_temp_.push_back(
+      builder_->makeIntConstant(int(fetch_constant_word_1_index & 3)));
+  spv::Id fetch_constant_word_1 = builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_fetch_constants_, id_vector_temp_),
+      spv::NoPrecision);
 
   spv::Id address;
+  // Exclusive end of the fetch buffer in dwords (base + size). Words at or past
+  // it read as 0, like the hardware clamping out-of-bounds lanes.
+  spv::Id fetch_end;
   if (instr.is_mini_fetch) {
-    // `base + index * stride` loaded by vfetch_full.
+    // `base + index * stride` and the end bound loaded by vfetch_full.
     address = builder_->createLoad(var_main_vfetch_address_, spv::NoPrecision);
+    fetch_end = builder_->createLoad(var_main_vfetch_bound_, spv::NoPrecision);
   } else {
     // Get the base address in dwords from the bits 2:31 of the first fetch
     // constant word.
@@ -73,6 +95,20 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
         builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
                               fetch_constant_word_0,
                               builder_->makeUintConstant(2)));
+    // address is the base now. The exclusive end is base + size (size in words
+    // in bits 2:25 of the second word). Store it for the subsequent
+    // vfetch_mini, which reuses this fetch constant.
+    fetch_end = builder_->createBinOp(
+        spv::OpIAdd, type_int_, address,
+        builder_->createUnaryOp(
+            spv::OpBitcast, type_int_,
+            builder_->createBinOp(
+                spv::OpBitwiseAnd, type_uint_,
+                builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
+                                      fetch_constant_word_1,
+                                      builder_->makeUintConstant(2)),
+                builder_->makeUintConstant((uint32_t(1) << 24) - 1))));
+    builder_->createStore(fetch_end, var_main_vfetch_bound_);
     if (instr.attributes.stride) {
       // Convert the index to an integer by flooring or by rounding to the
       // nearest (as floor(index + 0.5) because rounding to the nearest even
@@ -129,12 +165,15 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
                                 builder_->makeIntConstant(int(word_offset)));
     }
     word_composite_indices[word_index] = word_count;
-    // FIXME(Triang3l): Bound checking is not done here, but haven't encountered
-    // any games relying on out-of-bounds access. On Adreno 200 on Android (LG
-    // P705), however, words (not full elements) out of glBufferData bounds
-    // contain 0.
-    word_composite_constituents[word_count++] =
-        LoadUint32FromSharedMemory(word_address);
+    // Words at or past the end of the fetch buffer read as 0, matching the
+    // hardware's bounds clamping. Games rely on this. An overallocated draw
+    // expects the vertices it never wrote to collapse into degenerate
+    // primitives.
+    spv::Id loaded_word = LoadUint32FromSharedMemory(word_address);
+    spv::Id word_in_bounds = builder_->createBinOp(spv::OpULessThan, type_bool_,
+                                                   word_address, fetch_end);
+    word_composite_constituents[word_count++] = builder_->createTriOp(
+        spv::OpSelect, type_uint_, word_in_bounds, loaded_word, const_uint_0_);
   }
   spv::Id words;
   if (word_count > 1) {
@@ -151,21 +190,7 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
   }
 
   // Endian swap the words, getting the endianness from bits 0:1 of the second
-  // fetch constant word.
-  uint32_t fetch_constant_word_1_index = fetch_constant_word_0_index + 1;
-  id_vector_temp_.clear();
-  // The only element of the fetch constant buffer.
-  id_vector_temp_.push_back(const_int_0_);
-  // Vector index.
-  id_vector_temp_.push_back(
-      builder_->makeIntConstant(int(fetch_constant_word_1_index >> 2)));
-  // Component index.
-  id_vector_temp_.push_back(
-      builder_->makeIntConstant(int(fetch_constant_word_1_index & 3)));
-  spv::Id fetch_constant_word_1 = builder_->createLoad(
-      builder_->createAccessChain(spv::StorageClassUniform,
-                                  uniform_fetch_constants_, id_vector_temp_),
-      spv::NoPrecision);
+  // fetch constant word (loaded above).
   words = EndianSwap32Uint(
       words, builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
                                    fetch_constant_word_1,
