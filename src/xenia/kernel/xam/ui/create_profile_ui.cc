@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/ui/create_profile_ui.h"
+#include "xenia/base/locale.h"
 #include "xenia/emulator.h"
 
 namespace xe {
@@ -17,7 +18,7 @@ namespace ui {
 
 void CreateProfileUI::OnDraw(ImGuiIO& io) {
   if (!has_opened_) {
-    ImGui::OpenPopup("Create Profile");
+    ImGui::OpenPopup(XE_LOCALIZE("Create Profile").c_str());
     has_opened_ = true;
   }
 
@@ -25,10 +26,10 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
       emulator_->kernel_state()->xam_state()->profile_manager();
 
   bool dialog_open = true;
-  if (!ImGui::BeginPopupModal("Create Profile", &dialog_open,
-                              ImGuiWindowFlags_NoCollapse |
-                                  ImGuiWindowFlags_AlwaysAutoResize |
-                                  ImGuiWindowFlags_HorizontalScrollbar)) {
+  if (!ImGui::BeginPopupModal(
+          XE_LOCALIZE("Create Profile").c_str(), &dialog_open,
+          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize |
+              ImGuiWindowFlags_HorizontalScrollbar)) {
     Close();
     return;
   }
@@ -37,14 +38,15 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
     ImGui::SetKeyboardFocusHere();
   }
 
-  ImGui::TextUnformatted("Gamertag:");
+  ImGui::TextUnformatted(XE_LOCALIZE("Gamertag:").c_str());
   const bool enter_pressed =
       ImGui::InputText("##Gamertag", gamertag_, sizeof(gamertag_),
                        ImGuiInputTextFlags_EnterReturnsTrue);
   valid_gamertag_ = profile_manager->IsGamertagValid(std::string(gamertag_));
 
   ImGui::BeginDisabled(!valid_gamertag_);
-  if (ImGui::Button("Create") || (enter_pressed && valid_gamertag_)) {
+  if (ImGui::Button(XE_LOCALIZE("Create").c_str()) ||
+      (enter_pressed && valid_gamertag_)) {
     bool autologin = (profile_manager->GetAccountCount() == 0);
     if (profile_manager->CreateProfile(std::string(gamertag_), autologin,
                                        migration_) &&
@@ -57,7 +59,7 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
   ImGui::EndDisabled();
   ImGui::SameLine();
 
-  if (ImGui::Button("Cancel")) {
+  if (ImGui::Button(XE_LOCALIZE("Cancel").c_str())) {
     std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
     dialog_open = false;
   }

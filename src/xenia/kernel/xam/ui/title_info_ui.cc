@@ -10,6 +10,7 @@
 #include "xenia/kernel/xam/ui/title_info_ui.h"
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
 
+#include "xenia/base/locale.h"
 #include "xenia/base/system.h"
 
 namespace xe {
@@ -25,7 +26,8 @@ TitleListUI::TitleListUI(xe::ui::ImGuiDrawer* imgui_drawer,
       profile_(profile),
       profile_manager_(kernel_state()->xam_state()->profile_manager()),
       dialog_name_(
-          fmt::format("{}'s Games List###{}", profile->name(), GetWindowId())) {
+          fmt::format(fmt::runtime(XE_LOCALIZE("{}'s Games List###{}")),
+                      profile->name(), GetWindowId())) {
   LoadProfileTitleList(imgui_drawer, profile);
 }
 
@@ -88,11 +90,12 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
         std::chrono::system_clock::time_point(
             entry.last_played.time_since_epoch()));
 
-    ImGui::TextUnformatted(fmt::format("Last played: {:%Y-%m-%d %H:%M}",
-                                       *std::localtime(&time_date))
-                               .c_str());
+    ImGui::TextUnformatted(
+        fmt::format(fmt::runtime(XE_LOCALIZE("Last played: {:%Y-%m-%d %H:%M}")),
+                    *std::localtime(&time_date))
+            .c_str());
   } else {
-    ImGui::TextUnformatted("Last played: Unknown");
+    ImGui::TextUnformatted(XE_LOCALIZE("Last played: Unknown").c_str());
   }
   ImGui::TableNextColumn();
 
@@ -112,7 +115,8 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
   }
 
   if (ImGui::BeginPopupContextItem(
-          fmt::format("Title Menu {:08X}", entry.id).c_str())) {
+          fmt::format(fmt::runtime(XE_LOCALIZE("Title Menu {:08X}")), entry.id)
+              .c_str())) {
     selected_title_ = entry.id;
 
     const auto savefile_path = profile_manager_->GetProfileContentPath(
@@ -124,18 +128,18 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
     const auto tu_path = profile_manager_->GetProfileContentPath(
         0, entry.id, XContentType::kInstaller);
 
-    if (ImGui::MenuItem("Open savefile directory", nullptr, nullptr,
-                        std::filesystem::exists(savefile_path))) {
+    if (ImGui::MenuItem(XE_LOCALIZE("Open savefile directory").c_str(), nullptr,
+                        nullptr, std::filesystem::exists(savefile_path))) {
       std::thread path_open(LaunchFileExplorer, savefile_path);
       path_open.detach();
     }
-    if (ImGui::MenuItem("Open DLC directory", nullptr, nullptr,
-                        std::filesystem::exists(dlc_path))) {
+    if (ImGui::MenuItem(XE_LOCALIZE("Open DLC directory").c_str(), nullptr,
+                        nullptr, std::filesystem::exists(dlc_path))) {
       std::thread path_open(LaunchFileExplorer, dlc_path);
       path_open.detach();
     }
-    if (ImGui::MenuItem("Open Title Update directory", nullptr, nullptr,
-                        std::filesystem::exists(tu_path))) {
+    if (ImGui::MenuItem(XE_LOCALIZE("Open Title Update directory").c_str(),
+                        nullptr, nullptr, std::filesystem::exists(tu_path))) {
       std::thread path_open(LaunchFileExplorer, tu_path);
       path_open.detach();
     }
@@ -146,7 +150,8 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
         kernel_state()->xam_state()->user_tracker()->GetUserTitleInfo(
             profile_->xuid(), entry.id);
 
-    if (ImGui::MenuItem("Refresh title stats", nullptr, nullptr, true)) {
+    if (ImGui::MenuItem(XE_LOCALIZE("Refresh title stats").c_str(), nullptr,
+                        nullptr, true)) {
       kernel_state()->xam_state()->user_tracker()->RefreshTitleSummary(
           profile_->xuid(), entry.id);
 
@@ -156,7 +161,7 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
     }
 
     if (title_info) {
-      if (ImGui::MenuItem("Delete title", nullptr, nullptr,
+      if (ImGui::MenuItem(XE_LOCALIZE("Delete title").c_str(), nullptr, nullptr,
                           !title_info->unlocked_achievements_count)) {
         kernel_state()->xam_state()->user_tracker()->RemoveTitleFromPlayedList(
             profile_->xuid(), entry.id);
@@ -188,7 +193,7 @@ void TitleListUI::OnDraw(ImGuiIO& io) {
 
   if (!info_.empty()) {
     if (info_.size() > 10) {
-      ImGui::Text("Search: ");
+      ImGui::Text("%s", XE_LOCALIZE("Search: ").c_str());
       ImGui::SameLine();
       ImGui::InputText("##Search", title_name_filter_, title_name_filter_size);
       ImGui::Separator();
@@ -213,7 +218,8 @@ void TitleListUI::OnDraw(ImGuiIO& io) {
     }
   } else {
     // Align text to the center
-    std::string no_entries_message = "There are no titles, so far.";
+    std::string no_entries_message =
+        XE_LOCALIZE("There are no titles, so far.");
 
     ImGui::PushFont(imgui_drawer()->GetTitleFont());
     float windowWidth = ImGui::GetContentRegionAvail().x;

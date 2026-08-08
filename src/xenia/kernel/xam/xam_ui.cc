@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xam/xam_ui.h"
 #include "xenia/app/emulator_window.h"
+#include "xenia/base/locale.h"
 #include "xenia/base/png_utils.h"
 #include "xenia/base/system.h"
 #include "xenia/hid/input_system.h"
@@ -289,7 +290,7 @@ void KeyboardInputDialog::OnDraw(ImGuiIO& io) {
                          ImGuiInputTextFlags_EnterReturnsTrue);
     // Context menu for paste functionality
     if (ImGui::BeginPopupContextItem("input_context_menu")) {
-      if (ImGui::MenuItem("Paste")) {
+      if (ImGui::MenuItem(XE_LOCALIZE("Paste").c_str())) {
         if (ImGui::GetClipboardText() != nullptr) {
           std::string clipboard_text = ImGui::GetClipboardText();
           xe::string_util::copy_truncating(text_buffer_.data(), clipboard_text,
@@ -305,14 +306,14 @@ void KeyboardInputDialog::OnDraw(ImGuiIO& io) {
       ImGui::CloseCurrentPopup();
       Close();
     }
-    if (ImGui::Button("OK")) {
+    if (ImGui::Button(XE_LOCALIZE("OK").c_str())) {
       text_ = std::string(text_buffer_.data(), text_buffer_.size());
       cancelled_ = false;
       ImGui::CloseCurrentPopup();
       Close();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(XE_LOCALIZE("Cancel").c_str())) {
       text_ = "";
       cancelled_ = true;
       ImGui::CloseCurrentPopup();
@@ -910,13 +911,19 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
     ImGui::BeginGroup();
     {
       ImGui::TextUnformatted(
-          fmt::format("User: {}\n", account->GetGamertagString()).c_str());
-      ImGui::TextUnformatted(fmt::format("XUID: {:016X}  \n", xuid).c_str());
+          fmt::format(fmt::runtime(XE_LOCALIZE("User: {}\n")),
+                      account->GetGamertagString())
+              .c_str());
+      ImGui::TextUnformatted(
+          fmt::format(fmt::runtime(XE_LOCALIZE("XUID: {:016X}  \n")), xuid)
+              .c_str());
       if (user_index != XUserIndexAny) {
         ImGui::TextUnformatted(
-            fmt::format("Assigned to slot: {}\n", user_index + 1).c_str());
+            fmt::format(fmt::runtime(XE_LOCALIZE("Assigned to slot: {}\n")),
+                        user_index + 1)
+                .c_str());
       } else {
-        ImGui::TextUnformatted(fmt::format("Profile is not signed in").c_str());
+        ImGui::TextUnformatted(XE_LOCALIZE("Profile is not signed in").c_str());
       }
     }
     ImGui::EndGroup();

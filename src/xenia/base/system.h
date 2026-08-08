@@ -27,6 +27,15 @@ void ShutdownAndroidSystem();
 void LaunchWebBrowser(const std::string_view url);
 void LaunchFileExplorer(const std::filesystem::path& path);
 
+// Launches a new instance of the current executable with the exact same
+// command line it was started with. Does NOT terminate the current process -
+// callers should follow a successful call with their normal clean shutdown
+// path (so config is saved, resources are released, etc. as usual). Returns
+// false (without launching anything) if this isn't supported on the current
+// platform - callers should fall back to asking the user to restart
+// manually in that case.
+bool RestartApplication();
+
 bool SetProcessPriorityClass(const uint32_t priority_class);
 
 // Determine if the Xbox Gamebar is enabled via the Windows registry

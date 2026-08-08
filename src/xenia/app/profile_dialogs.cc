@@ -8,6 +8,7 @@
  */
 #include "xenia/app/profile_dialogs.h"
 #include "xenia/app/emulator_window.h"
+#include "xenia/base/locale.h"
 #include "xenia/base/png_utils.h"
 #include "xenia/base/system.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -40,7 +41,7 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowBgAlpha(1.0f);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("No Profiles Found", &dialog_open,
+  if (!ImGui::Begin(XE_LOCALIZE("No Profiles Found").c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -49,9 +50,9 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
     return;
   }
 
-  const std::string message =
+  const std::string message = XE_LOCALIZE(
       "There is no profile available! You will not be able to save without "
-      "one.\n\nWould you like to create one?";
+      "one.\n\nWould you like to create one?");
 
   ImGui::TextUnformatted(message.c_str());
 
@@ -65,24 +66,24 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
     ImGui::SetKeyboardFocusHere();
   }
   if (content_files.empty()) {
-    if (ImGui::Button("Create Profile")) {
+    if (ImGui::Button(XE_LOCALIZE("Create Profile").c_str())) {
       new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                            emulator_window_->emulator());
     }
   } else {
-    if (ImGui::Button("Create profile & migrate data")) {
+    if (ImGui::Button(XE_LOCALIZE("Create profile & migrate data").c_str())) {
       new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                            emulator_window_->emulator(), true);
     }
   }
 
   ImGui::SameLine();
-  if (ImGui::Button("Open profile menu")) {
+  if (ImGui::Button(XE_LOCALIZE("Open profile menu").c_str())) {
     emulator_window_->ToggleProfilesConfigDialog();
   }
 
   ImGui::SameLine();
-  if (ImGui::Button("Close") || !dialog_open) {
+  if (ImGui::Button(XE_LOCALIZE("Close").c_str()) || !dialog_open) {
     emulator_window_->SetHotkeysState(true);
     ImGui::End();
     Close();
@@ -163,7 +164,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowBgAlpha(0.8f);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("Profiles Menu", &dialog_open,
+  if (!ImGui::Begin(XE_LOCALIZE("Profiles Menu").c_str(), &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -182,7 +183,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
   }
 
   if (profiles->empty()) {
-    ImGui::TextUnformatted("No profiles found!");
+    ImGui::TextUnformatted(XE_LOCALIZE("No profiles found!").c_str());
     ImGui::Spacing();
     ImGui::Separator();
   }
@@ -202,10 +203,10 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
                                   : nullptr;
 
     auto context_menu_fun = [=, this]() -> bool {
-      if (ImGui::BeginPopupContextItem("Profile Menu")) {
+      if (ImGui::BeginPopupContextItem(XE_LOCALIZE("Profile Menu").c_str())) {
         //*selected_xuid = xuid;
         if (user_index == XUserIndexAny) {
-          if (ImGui::MenuItem("Login")) {
+          if (ImGui::MenuItem(XE_LOCALIZE("Login").c_str())) {
             profile_manager->Login(xuid);
             if (!profile_manager->GetProfile(xuid)
                      ->GetProfileIcon(kernel::xam::XTileType::kGamerTile)
@@ -213,9 +214,11 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
               LoadProfileIcon(xuid);
             }
           }
-          if (ImGui::BeginMenu("Login to slot:")) {
+          if (ImGui::BeginMenu(XE_LOCALIZE("Login to slot:").c_str())) {
             for (uint8_t i = 1; i <= XUserMaxUserCount; i++) {
-              if (ImGui::MenuItem(fmt::format("slot {}", i).c_str())) {
+              if (ImGui::MenuItem(
+                      fmt::format(fmt::runtime(XE_LOCALIZE("slot {}")), i)
+                          .c_str())) {
                 uint64_t current_slot_xuid = 0;
 
                 if (const auto current_profile = profile_manager->GetProfile(
@@ -236,13 +239,13 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndMenu();
           }
         } else {
-          if (ImGui::MenuItem("Logout")) {
+          if (ImGui::MenuItem(XE_LOCALIZE("Logout").c_str())) {
             profile_manager->Logout(user_index);
             LoadProfileIcon(xuid);
           }
         }
 
-        if (ImGui::MenuItem("Modify")) {
+        if (ImGui::MenuItem(XE_LOCALIZE("Modify").c_str())) {
           new kernel::xam::ui::GamercardUI(
               emulator_window_->window(), emulator_window_->imgui_drawer(),
               emulator_window_->emulator()->kernel_state(), xuid);
@@ -250,14 +253,14 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
         const bool is_signedin = profile_manager->GetProfile(xuid) != nullptr;
         ImGui::BeginDisabled(!is_signedin);
-        if (ImGui::MenuItem("Show Played Titles")) {
+        if (ImGui::MenuItem(XE_LOCALIZE("Show Played Titles").c_str())) {
           new kernel::xam::ui::TitleListUI(
               emulator_window_->imgui_drawer(), next_window_position,
               profile_manager->GetProfile(user_index));
         }
         ImGui::EndDisabled();
 
-        if (ImGui::MenuItem("Show Content Directory")) {
+        if (ImGui::MenuItem(XE_LOCALIZE("Show Content Directory").c_str())) {
           const auto path = profile_manager->GetProfileContentPath(
               xuid, emulator_window_->emulator()->kernel_state()->title_id());
 
@@ -271,18 +274,19 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
         if (!emulator_window_->emulator()->is_title_open()) {
           ImGui::Separator();
-          if (ImGui::BeginMenu("Delete Profile")) {
+          if (ImGui::BeginMenu(XE_LOCALIZE("Delete Profile").c_str())) {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted(
                 fmt::format(
-                    "You're about to delete profile: {} (XUID: {:016X}). "
-                    "This will remove all data assigned to this profile "
-                    "including savefiles. Are you sure?",
+                    fmt::runtime(XE_LOCALIZE(
+                        "You're about to delete profile: {} (XUID: "
+                        "{:016X}). This will remove all data assigned to "
+                        "this profile including savefiles. Are you sure?")),
                     account.GetGamertagString(), xuid)
                     .c_str());
             ImGui::EndTooltip();
 
-            if (ImGui::MenuItem("Yes, delete it!")) {
+            if (ImGui::MenuItem(XE_LOCALIZE("Yes, delete it!").c_str())) {
               profile_manager->DeleteProfile(xuid);
               ImGui::EndMenu();
               ImGui::EndPopup();
@@ -312,7 +316,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
   ImGui::Spacing();
 
-  if (ImGui::Button("Create Profile")) {
+  if (ImGui::Button(XE_LOCALIZE("Create Profile").c_str())) {
     new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                          emulator_window_->emulator());
   }

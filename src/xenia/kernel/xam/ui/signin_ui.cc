@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/ui/signin_ui.h"
+#include "xenia/base/locale.h"
 
 namespace xe {
 namespace kernel {
@@ -21,7 +22,7 @@ SigninUI::SigninUI(xe::ui::ImGuiDrawer* imgui_drawer,
       profile_manager_(profile_manager),
       last_user_(last_used_slot),
       users_needed_(users_needed),
-      title_("Sign In") {}
+      title_(XE_LOCALIZE("Sign In")) {}
 
 void SigninUI::OnDraw(ImGuiIO& io) {
   bool first_draw = false;
@@ -131,15 +132,15 @@ void SigninUI::OnDraw(ImGuiIO& io) {
 
     ImGui::Spacing();
 
-    if (ImGui::Button("Create Profile")) {
+    if (ImGui::Button(XE_LOCALIZE("Create Profile").c_str())) {
       creating_profile_ = true;
-      ImGui::OpenPopup("Create Profile");
+      ImGui::OpenPopup(XE_LOCALIZE("Create Profile").c_str());
       first_draw = true;
     }
     ImGui::Spacing();
 
     if (creating_profile_) {
-      if (ImGui::BeginPopupModal("Create Profile", nullptr,
+      if (ImGui::BeginPopupModal(XE_LOCALIZE("Create Profile").c_str(), nullptr,
                                  ImGuiWindowFlags_NoCollapse |
                                      ImGuiWindowFlags_AlwaysAutoResize |
                                      ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -147,14 +148,14 @@ void SigninUI::OnDraw(ImGuiIO& io) {
           ImGui::SetKeyboardFocusHere();
         }
 
-        ImGui::TextUnformatted("Gamertag:");
+        ImGui::TextUnformatted(XE_LOCALIZE("Gamertag:").c_str());
         if (ImGui::InputText("##Gamertag", gamertag_, sizeof(gamertag_))) {
           valid_gamertag_ =
               profile_manager_->IsGamertagValid(std::string(gamertag_));
         }
 
         ImGui::BeginDisabled(!valid_gamertag_);
-        if (ImGui::Button("Create")) {
+        if (ImGui::Button(XE_LOCALIZE("Create").c_str())) {
           profile_manager_->CreateProfile(std::string(gamertag_), false);
           std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
           ImGui::CloseCurrentPopup();
@@ -164,7 +165,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
         ImGui::EndDisabled();
         ImGui::SameLine();
 
-        if (ImGui::Button("Cancel")) {
+        if (ImGui::Button(XE_LOCALIZE("Cancel").c_str())) {
           std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
           ImGui::CloseCurrentPopup();
           creating_profile_ = false;
@@ -176,7 +177,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
       }
     }
 
-    if (ImGui::Button("OK")) {
+    if (ImGui::Button(XE_LOCALIZE("OK").c_str())) {
       std::map<uint8_t, uint64_t> profile_map;
       for (uint32_t i = 0; i < users_needed_; i++) {
         uint8_t slot = chosen_slots_[i];
@@ -192,7 +193,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
     }
     ImGui::SameLine();
 
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(XE_LOCALIZE("Cancel").c_str())) {
       ImGui::CloseCurrentPopup();
       Close();
     }
