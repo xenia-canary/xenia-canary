@@ -13,6 +13,7 @@
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xevent.h"
 #include "xenia/kernel/xsocket.h"
@@ -123,6 +124,30 @@ struct XWSAOVERLAPPED {
   };
   xe::be<uint32_t> event_handle;
 };
+
+#pragma pack(push, 4)
+struct X_PERFORMANCE_COUNTERS {
+  xe::be<uint32_t> unk1;  // 0x0, sz:0x4
+  xe::be<uint32_t> unk2;  // 0x4, sz:0x4
+  xe::be<uint32_t> unk3;  // 0x8, sz:0x4
+  xe::be<uint64_t>
+      unk4;  // 0xC, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
+  xe::be<uint64_t>
+      unk5;  // 0x14, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
+};
+static_assert_size(X_PERFORMANCE_COUNTERS, 0x1C);
+#pragma pack(pop)
+
+struct X_HTTP_OBJECT {
+  xe::be<uint32_t> caller_type;  // 0x0, sz:0x4, 1 - title
+  xe::be<uint32_t> unk1;         // 0x4, sz:0x4
+  xe::be<uint32_t> unk2;         // 0x8, sz:0x4
+  xe::be<uint32_t>
+      unk3;  // 0xc, sz:0x4, set to 0 by xeNetDll_XHttpGetPerfCounters &
+             // NetDll_XHttpResetPerfCounters
+  X_PERFORMANCE_COUNTERS perf;  // 0x10, sz:0x1c
+};
+static_assert_size(X_HTTP_OBJECT, 0x2C);
 
 void LoadSockaddr(const uint8_t* ptr, sockaddr* out_addr) {
   out_addr->sa_family = xe::load_and_swap<uint16_t>(ptr + 0);
@@ -691,6 +716,26 @@ dword_result_t XampXAuthGetTitleBuffer_entry() {
   return 0;
 }
 DECLARE_XAM_EXPORT1(XampXAuthGetTitleBuffer, kNetworking, kStub);
+
+dword_result_t NetDll_XHttpStartup_entry(dword_t caller, dword_t reserved,
+                                         dword_t reserved_ptr,
+                                         const ppc_context_t& ctx) {
+  if (caller == 2) {
+    // uses XamAllocEx(0x20b00000, 0x5000000, sizeof(X_HTTP_OBJECT), &object);
+    XThread::SetLastError(0xE);
+    return 0;
+  }
+  uint32_t address = xboxkrnl::xeAllocatePoolTypeWithTag(
+      ctx, sizeof(X_HTTP_OBJECT), 0x48545450, 1);
+  X_HTTP_OBJECT* object =
+      kernel_state()->memory()->TranslateVirtual<X_HTTP_OBJECT*>(address);
+  object->caller_type = caller.value();
+  object->unk1 = 1;
+
+  XThread::SetLastError(0);
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpStartup, kNetworking, kStub);
 
 dword_result_t NetDll_socket_entry(dword_t caller, dword_t af, dword_t type,
                                    dword_t protocol) {
