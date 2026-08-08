@@ -59,6 +59,9 @@ DEFINE_int32(
     "the number of threads explicitly (up to the number of logical CPU cores), "
     "0 to disable multithreaded pipeline creation.",
     "Vulkan");
+
+DECLARE_bool(spirv_disable_rounding_mode_rte);
+
 namespace xe {
 namespace gpu {
 namespace vulkan {
@@ -88,11 +91,11 @@ bool VulkanPipelineCache::Initialize() {
   signed_zero_inf_nan_preserve_float32_ =
       features.signed_zero_inf_nan_preserve_float32;
   denorm_flush_to_zero_float32_ = features.denorm_flush_to_zero_float32;
-  rounding_mode_rte_float32_ = features.rounding_mode_rte_float32;
+  rounding_mode_rte_float32_ = features.rounding_mode_rte_float32 &&
+                               !cvars::spirv_disable_rounding_mode_rte;
 
   shader_translator_ = std::make_unique<SpirvShaderTranslator>(
-      features,
-      render_target_cache_.msaa_2x_attachments_supported(),
+      features, render_target_cache_.msaa_2x_attachments_supported(),
       render_target_cache_.msaa_2x_no_attachments_supported(),
       edram_fragment_shader_interlock,
       render_target_cache_.draw_resolution_scale_x(),
