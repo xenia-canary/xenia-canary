@@ -13,6 +13,7 @@
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xevent.h"
 #include "xenia/kernel/xsocket.h"
@@ -123,6 +124,30 @@ struct XWSAOVERLAPPED {
   };
   xe::be<uint32_t> event_handle;
 };
+
+#pragma pack(push, 4)
+struct X_PERFORMANCE_COUNTERS {
+  xe::be<uint32_t> unk1;  // 0x0, sz:0x4
+  xe::be<uint32_t> unk2;  // 0x4, sz:0x4
+  xe::be<uint32_t> unk3;  // 0x8, sz:0x4
+  xe::be<uint64_t>
+      unk4;  // 0xC, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
+  xe::be<uint64_t>
+      unk5;  // 0x14, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
+};
+static_assert_size(X_PERFORMANCE_COUNTERS, 0x1C);
+#pragma pack(pop)
+
+struct X_HTTP_OBJECT {
+  xe::be<uint32_t> caller_type;  // 0x0, sz:0x4, 1 - title
+  xe::be<uint32_t> refcount;     // 0x4, sz:0x4
+  xe::be<uint32_t> unk2;         // 0x8, sz:0x4
+  xe::be<uint32_t>
+      unk3;  // 0xc, sz:0x4, set to 0 by xeNetDll_XHttpGetPerfCounters &
+             // NetDll_XHttpResetPerfCounters
+  X_PERFORMANCE_COUNTERS perf;  // 0x10, sz:0x1c
+};
+static_assert_size(X_HTTP_OBJECT, 0x2C);
 
 void LoadSockaddr(const uint8_t* ptr, sockaddr* out_addr) {
   out_addr->sa_family = xe::load_and_swap<uint16_t>(ptr + 0);
@@ -691,6 +716,42 @@ dword_result_t XampXAuthGetTitleBuffer_entry() {
   return 0;
 }
 DECLARE_XAM_EXPORT1(XampXAuthGetTitleBuffer, kNetworking, kStub);
+
+dword_result_t NetDll_XHttpStartup_entry(dword_t caller, dword_t reserved,
+                                         dword_t reserved_ptr,
+                                         const ppc_context_t& ctx) {
+  // All created X_HTTP_OBJECTs' pointers are saved into a global array where
+  // other http functions use the xnc to recall them from. ex)
+  // X_HTTP_OBJECT_PTR_ARRAY[xnc]
+  // if caller == 2 use XamAllocEx(0x20b00000, 0x5000000, sizeof(X_HTTP_OBJECT),
+  // &object); if it returns error use XThread::SetLastError(0xE). Use
+  // xboxkrnl::xeAllocatePoolTypeWithTag if caller != 2 with tag = 0x48545450,
+  // and pool_selector = 1 Increase global count of existing xhttp objects when
+  // made. Sets new X_HTTP_OBJECT caller_type = caller, refcount = 1, unk3 = 0,
+  // & zeros object->perf calls NetDll_WSAStartup here where if the error
+  // returned is 0x2726, then it calls NetDll_WSACleanup and remove the
+  // X_HTTP_OBJECT from array and call XamFree or ExFreePool to remove it from
+  // memory. Use the returned error in SetLastError
+
+  XThread::SetLastError(X_ERROR_SUCCESS);
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpStartup, kNetworking, kStub);
+
+dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t user_agent,
+                                      dword_t access_type,
+                                      lpstring_t proxy_name,
+                                      lpstring_t proxy_bypass, dword_t flags) {
+  // retrieves xhttp directly from array X_HTTP_OBJECT_PTR_ARRAY[xnc]
+  if ((access_type != 0 && access_type != 1 && access_type != 3) ||
+      proxy_bypass) {
+    XThread::SetLastError(X_ERROR_INVALID_PARAMETER);
+  }
+
+  XThread::SetLastError(X_ERROR_NOT_SUPPORTED);  // Until properly implemented
+  return 0;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpOpen, kNetworking, kStub);
 
 dword_result_t NetDll_socket_entry(dword_t caller, dword_t af, dword_t type,
                                    dword_t protocol) {
