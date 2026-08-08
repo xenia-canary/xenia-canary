@@ -548,6 +548,12 @@ class PrimitiveProcessor {
       uint32_t fan_index_count) {
     return fan_index_count > 2 ? (fan_index_count - 2) * 3 : 0;
   }
+  // Triangle strip to triangle list conversion.
+  // A strip with N vertices produces (N-2) triangles, each needing 3 indices.
+  static constexpr uint32_t GetTriangleStripListIndexCount(
+      uint32_t strip_index_count) {
+    return strip_index_count > 2 ? (strip_index_count - 2) * 3 : 0;
+  }
   template <typename Index, typename IndexTransform>
   static void TriangleFanToList(Index* dest, const Index* source,
                                 uint32_t source_index_count,
