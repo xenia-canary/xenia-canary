@@ -1469,6 +1469,14 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             z_stacked = builder_->createNoContractionBinOp(
                 spv::OpFAdd, type_float_, z_stacked, z_offset);
           }
+          // Clamp the layer index to a valid range so an Inf or NaN coordinate
+          // does not select an undefined array layer.
+          z_stacked = builder_->createTriBuiltinCall(
+              type_float_, ext_inst_glsl_std_450_, GLSLstd450NClamp, z_stacked,
+              const_float_0_,
+              builder_->createNoContractionBinOp(
+                  spv::OpFSub, type_float_, z_size,
+                  builder_->makeFloatConstant(1.0f)));
           builder_->createBranch(&block_dimension_merge);
           // Select one of the two.
           builder_->setBuildPoint(&block_dimension_merge);
