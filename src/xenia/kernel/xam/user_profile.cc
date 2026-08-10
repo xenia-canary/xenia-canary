@@ -181,6 +181,23 @@ bool UserProfile::WriteGpd(const uint32_t title_id) {
   return true;
 }
 
+bool UserProfile::RemoveGpd(const uint32_t title_id) {
+  auto it = games_gpd_.find(title_id);
+  if (it == games_gpd_.end()) {
+    return false;
+  }
+
+  const std::string mounted_path =
+      fmt::format("User_{:016X}:\\{:08X}.gpd", xuid_, title_id);
+
+  if (!kernel_state()->file_system()->DeletePath(mounted_path)) {
+    return false;
+  }
+
+  games_gpd_.erase(it);
+  return true;
+}
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
