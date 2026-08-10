@@ -8,6 +8,8 @@
  */
 
 #include "xenia/kernel/xam/ui/title_info_ui.h"
+
+#include "xenia/emulator.h"
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
 
 #include "xenia/base/system.h"
@@ -142,6 +144,8 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
 
     ImGui::Separator();
 
+    ImGui::BeginDisabled(kernel_state()->emulator()->is_title_open());
+
     const auto title_info =
         kernel_state()->xam_state()->user_tracker()->GetUserTitleInfo(
             profile_->xuid(), entry.id);
@@ -156,12 +160,28 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
     }
 
     if (title_info) {
-      if (ImGui::MenuItem("Delete title", nullptr, nullptr,
-                          !title_info->unlocked_achievements_count)) {
-        kernel_state()->xam_state()->user_tracker()->RemoveTitleFromPlayedList(
-            profile_->xuid(), entry.id);
+      if (ImGui::BeginMenu("Delete title")) {
+        if (entry.unlocked_achievements_count != 0) {
+          ImGui::BeginTooltip();
+          ImGui::TextUnformatted(
+              fmt::format(
+                  "This will erase all unlocked achievements and potentially "
+                  "erase progress for this title. Are you sure?")
+                  .c_str());
+          ImGui::EndTooltip();
+        }
+
+        if (ImGui::MenuItem("Yes, delete it!")) {
+          kernel_state()
+              ->xam_state()
+              ->user_tracker()
+              ->RemoveTitleFromPlayedList(profile_->xuid(), entry.id);
+        }
+        ImGui::EndMenu();
       }
     }
+
+    ImGui::EndDisabled();
 
     ImGui::EndPopup();
   }
