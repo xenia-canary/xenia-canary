@@ -689,8 +689,12 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
 // undo the host sampler's normalization - the guest wants e.g. [0, 255], not
 // [0, 1]. 6 bits per output component: bits 0:3 = width - 1, bit 4 = signed,
 // bit 5 = unsigned-biased. The scale lands after swizzling, so each output lane
-// walks the guest swizzle back to its source component's width; constant (0/1)
-// lanes, gamma, and non-fixed formats have nothing to rescale and stay 0.
+// walks the guest swizzle back to its source component's width. component_bits
+// only describes the stored width, so the source component is clamped to the
+// last stored channel the same way the host swizzle expands the formats.
+// (k_16 has a 16 bit width in all four components, k_5_6_5 gives blue in W.)
+// Constant (0/1) lanes, gamma, and non-fixed formats have nothing to rescale
+// and stay 0.
 uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
                                            uint32_t num_format,
                                            uint32_t guest_swizzle,
@@ -703,11 +707,19 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
     return 0;
   }
 
+  uint32_t last_stored_component = 0;
+  for (uint32_t i = 1; i < 4; ++i) {
+    if (format_info.component_bits[i]) {
+      last_stored_component = i;
+    }
+  }
+
   for (uint32_t i = 0; i < 4; ++i) {
     uint32_t source_component = (guest_swizzle >> (i * 3)) & 0b111;
     if (source_component >= xenos::XE_GPU_TEXTURE_SWIZZLE_0) {
       continue;
     }
+    source_component = std::min(source_component, last_stored_component);
 
     xenos::TextureSign sign =
         xenos::TextureSign((swizzled_signs >> (i * 2)) & 0b11);
