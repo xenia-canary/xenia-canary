@@ -726,28 +726,6 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
                  kXenosColorRenderTargetFormat_8_8_8_8_GAMMA;
     }
 
-    bool XeResolveDestStoresPWLGamma(XeResolveInfo resolve_info) {
-      // Resolve constants don't carry a destination gamma bit. Treat an
-      // unsigned 8_8_8_8 destination as PWL gamma storage.
-      bool dest_number_is_unorm =
-          resolve_info.dest_num_format ==
-          kXenosSurfaceNumberFormat_UnsignedRepeatingFraction;
-      bool dest_is_8888 =
-          resolve_info.dest_format == kXenosFormat_8_8_8_8 ||
-          resolve_info.dest_format == kXenosFormat_8_8_8_8_A ||
-          resolve_info.dest_format ==
-              kXenosFormat_8_8_8_8_AS_16_16_16_16;
-      return dest_number_is_unorm && dest_is_8888;
-    }
-
-    void XeResolvePWLGammaToLinearRGB(inout_param_xe(float4_xe, pixel)) {
-      pixel.rgb = XePWLGammaToLinear3(pixel.rgb);
-    }
-
-    void XeResolveLinearToPWLGammaRGB(inout_param_xe(float4_xe, pixel)) {
-      pixel.rgb = XeLinearToPWLGamma3(pixel.rgb);
-    }
-
     void XeResolveDecodePWLGammaSource(
         XeResolveInfo resolve_info, inout_param_xe(float4_xe, pixel)) {
       // Source gamma is RGB only. 8_8_8_8_GAMMA still stores alpha as ordinary
@@ -759,7 +737,7 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       // the same model that maintains float 2_10_10_10 bits, which makes it
       // not a gamma source here either.
       dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
-        XeResolvePWLGammaToLinearRGB(pixel);
+        pixel.rgb = XePWLGammaToLinear3(pixel.rgb);
       }
     }
 
