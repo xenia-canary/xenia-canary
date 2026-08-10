@@ -29,26 +29,6 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
-    resolve_check_number_format, true,
-    "Require the destination number format to match before using fast color "
-    "resolves.\n"
-    "Fast resolves copy the exact EDRAM bits. If a title resolves unsigned "
-    "color data to a signed or integer destination, enabling this forces full "
-    "resolves in the shader so the destination gets repacked instead.",
-    "GPU");
-
-DEFINE_bool(
-    gamma_decode_pwl_resolve, true,
-    "During 8_8_8_8_GAMMA MSAA color resolves, average the samples in linear "
-    "space instead of averaging the encoded PWL gamma values directly.\n"
-    "This is separate from gamma_render_target_as_unorm16. It only applies "
-    "when a full shader resolve reads an 8_8_8_8_GAMMA EDRAM color source. "
-    "Compatible 8_8_8_8 destinations are written back as PWL gamma.\n"
-    "Leave enabled for games that otherwise look overexposed after gamma "
-    "MSAA resolves. Disable only if it causes a title-specific regression.",
-    "GPU");
-
-DEFINE_bool(
     depth_bias_shader_offset, false,
     "Route decal host render target draws with polygon offset through shader "
     "depth. This avoids Z-fighting in games that rely on tiny depth bias "
@@ -1349,8 +1329,7 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
     color_edram_info.format = uint32_t(color_info.color_format);
     color_edram_info.format_is_64bpp = is_64bpp;
     color_edram_info.fill_half_pixel_offset = uint32_t(fill_half_pixel_offset);
-    color_edram_info.decode_pwl_gamma =
-        cvars::gamma_decode_pwl_resolve ? 1u : 0u;
+    color_edram_info.decode_pwl_gamma = 1;
     if ((fixed_rg16_truncated_to_minus_1_to_1 &&
          color_info.color_format == xenos::ColorRenderTargetFormat::k_16_16) ||
         (fixed_rgba16_truncated_to_minus_1_to_1 &&
@@ -1433,9 +1412,8 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
   // full shader conversion. Any title keeping the encoding will re-alias as
   // 8_8_8_8 before resolving, so any gamma source is always being decoded.
   bool gamma_decoded_source =
-      !is_depth && color_edram_info.decode_pwl_gamma &&
-      xenos::ColorRenderTargetFormat(color_edram_info.format) ==
-          xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA;
+      !is_depth && xenos::ColorRenderTargetFormat(color_edram_info.format) ==
+                       xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA;
   if (is_depth ||
       (!gamma_decoded_source && !copy_dest_info.copy_dest_exp_bias &&
        xenos::IsSingleCopySampleSelected(
@@ -1443,10 +1421,9 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
        xenos::IsColorResolveFormatBitwiseEquivalent(
            xenos::ColorRenderTargetFormat(color_edram_info.format),
            xenos::ColorFormat(copy_dest_info.copy_dest_format)) &&
-       (!cvars::resolve_check_number_format ||
-        ColorResolveNumberFormatMatches(
-            xenos::ColorFormat(copy_dest_info.copy_dest_format),
-            copy_dest_info.copy_dest_number)))) {
+       ColorResolveNumberFormatMatches(
+           xenos::ColorFormat(copy_dest_info.copy_dest_format),
+           copy_dest_info.copy_dest_number))) {
     if (edram_info.msaa_samples >= xenos::MsaaSamples::k4X) {
       shader = source_is_64bpp ? ResolveCopyShaderIndex::kFast64bpp4xMSAA
                                : ResolveCopyShaderIndex::kFast32bpp4xMSAA;
