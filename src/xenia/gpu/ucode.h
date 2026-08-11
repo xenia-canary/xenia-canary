@@ -942,10 +942,13 @@ static_assert_size(FetchInstruction, sizeof(uint32_t) * 3);
 // - All temporary registers are vec4s.
 // - Most scalar ALU operations work with one or two components of the source
 //   register or the float constant passed as the third operand of the whole
-//   co-issued ALU operation, denoted by `a` (the left-hand operand) and `b`
-//   (the right-hand operand).
+//   ALU instruction, denoted by `a` (the left-hand operand) and `b` (the
+//   right-hand operand).
 //   `a` is the [(3 + src3_swizzle[6:7]) & 3] component (W - alpha).
-//   `b` is the [(0 + src3_swizzle[0:1]) & 3] component (X - red).
+//   For single-source two-component scalar operations, `b` is the
+//   [(0 + src3_swizzle[0:1]) & 3] component (X - red), or the
+//   [(2 + src3_swizzle[4:5]) & 3] component (Z - blue) if the vector operation
+//   uses source 3.
 // - mulsc, addsc, subsc scalar ALU operations accept two operands - a float
 //   constant with the `a` (W) swizzle (addressed by the third operand index and
 //   addressing mode) being the left-hand operand, and a temporary register with
@@ -1330,11 +1333,12 @@ enum class AluScalarOpcode : uint32_t {
 struct AluScalarOpcodeInfo {
   const char* name;
   // 0 - no operands.
-  // 1 - one single-component (W) or two-component (WX) r# or c#.
+  // 1 - one single-component (W) or two-component (WX, or WZ if the vector
+  //     operation uses source 3) r# or c#.
   // 2 - c#.w and r#.x.
   uint32_t operand_count;
-  // If operand_count is 1, whether both W and X of the operand are used rather
-  // than only W.
+  // If operand_count is 1, whether two components of the operand are used
+  // rather than only W.
   bool single_operand_is_two_component;
   // Note that all scalar instructions except for retain_prev modify the
   // previous scalar register, so they must be executed even if they don't write
