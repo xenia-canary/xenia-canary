@@ -9,7 +9,9 @@
 
 #include "xenia/cpu/backend/x64/x64_backend.h"
 
+#include <array>
 #include <cstddef>
+
 #include "third_party/capstone/include/capstone/capstone.h"
 #include "third_party/capstone/include/capstone/x86.h"
 
@@ -44,6 +46,55 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace x64 {
+
+// For positive normal inputs, the VMX reciprocal-square-root estimate ignores
+// the low 9 mantissa bits. The remaining 14 mantissa bits and the low exponent
+// bit fully determine the estimated mantissa and its exponent adjustment.
+// Precompute the exact result of the existing coefficient interpolation for
+// those 32768 cases; special values and denormals still use the original path.
+static uint32_t ComputeNormalVRsqrteTableValue(
+    uint32_t input, const uint32_t* coefficient_table) {
+  const uint32_t mantissa = input & 0x7FFFFF;
+  const uint32_t coefficient_index =
+      (((input >> 23) & 1) << 4) | (mantissa >> 19);
+  const uint32_t coefficient = coefficient_table[coefficient_index];
+
+  uint32_t estimate = ((coefficient << 10) & 0x3FFFC00) -
+                      (((mantissa >> 9) & 1023) * (coefficient >> 16));
+  int32_t output_exponent_adjustment = 0;
+  if (!(estimate & 0x02000000)) {
+    const uint32_t normalized_estimate = estimate & 0x1FFFFFF;
+    uint32_t leading_zero_count = 0;
+    for (uint32_t bit = 0x80000000; !(normalized_estimate & bit); bit >>= 1) {
+      ++leading_zero_count;
+    }
+    output_exponent_adjustment += 6 - int32_t(leading_zero_count);
+    estimate <<= leading_zero_count - 6;
+  }
+  if ((estimate & 5) && (estimate & 2)) {
+    estimate += 4;
+  }
+
+  return (0x3F800000 + uint32_t(output_exponent_adjustment) * 0x00800000) |
+         ((estimate >> 2) & 0x7FFFFF);
+}
+
+static const uint32_t* GetNormalVRsqrteTable(
+    const uint32_t* coefficient_table) {
+  alignas(64) static const std::array<uint32_t, 1 << 15> table =
+      [coefficient_table]() {
+        std::array<uint32_t, 1 << 15> table;
+        for (uint32_t index = 0; index < table.size(); ++index) {
+          const uint32_t exponent_parity = index >> 14;
+          const uint32_t mantissa = (index & 0x3FFF) << 9;
+          const uint32_t canonical_exponent = 126 + exponent_parity;
+          table[index] = ComputeNormalVRsqrteTableValue(
+              (canonical_exponent << 23) | mantissa, coefficient_table);
+        }
+        return table;
+      }();
+  return table.data();
+}
 
 class X64HelperEmitter : public X64Emitter {
  public:
@@ -1060,8 +1111,13 @@ void* X64HelperEmitter::EmitScalarVRsqrteHelper() {
   Xbyak::Label L18, L2, L35, L4, L9, L8, L10, L11, L12, L13, L1;
   Xbyak::Label LC1, _LCPI3_1;
   Xbyak::Label handle_denormal_input;
+  Xbyak::Label handle_non_positive_normal;
   Xbyak::Label specialcheck_1, convert_to_signed_inf_and_ret,
       handle_oddball_denormal;
+
+  const uint32_t* normal_table =
+      GetNormalVRsqrteTable(reinterpret_cast<const uint32_t*>(
+          backend()->LookupXMMConstantAddress(XMMVRsqrteTableStart)));
 
   auto emulate_lzcnt_helper_unary_reg = [this](auto& reg, auto& scratch_reg) {
     inLocalLabel();
@@ -1076,6 +1132,24 @@ void* X64HelperEmitter::EmitScalarVRsqrteHelper() {
   };
 
   vmovd(r8d, xmm0);
+  lea(eax, ptr[r8 - 0x00800000]);
+  cmp(eax, 0x7EFFFFFF);
+  ja(handle_non_positive_normal, CodeGenerator::T_NEAR);
+
+  mov(edx, r8d);
+  shr(edx, 9);
+  and_(edx, 0x7FFF);
+  mov(r9, reinterpret_cast<uintptr_t>(normal_table));
+  mov(ecx, ptr[r9 + rdx * 4]);
+
+  shr(r8d, 24);
+  sub(r8d, 63);
+  shl(r8d, 23);
+  sub(ecx, r8d);
+  vmovd(xmm0, ecx);
+  ret();
+
+  L(handle_non_positive_normal);
   vmovaps(xmm1, xmm0);
   mov(ecx, r8d);
   // extract mantissa

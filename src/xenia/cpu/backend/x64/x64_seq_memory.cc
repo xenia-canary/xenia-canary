@@ -354,33 +354,57 @@ struct LVR_V128 : Sequence<LVR_V128, I<OPCODE_LVR, V128Op, I64Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_LVR, LVR_V128);
 
+// Stores ecx bytes from xmm0 to [rax] without touching adjacent bytes.
+static void EmitPartialVectorStore(X64Emitter& e) {
+  Xbyak::Label skip_8, skip_4, skip_2, done;
+
+  e.vmovq(e.r8, e.xmm0);
+  e.test(e.ecx, 8);
+  e.jz(skip_8);
+  e.mov(e.qword[e.rax], e.r8);
+  e.add(e.rax, 8);
+  e.vpextrq(e.r8, e.xmm0, 1);
+  e.L(skip_8);
+
+  e.test(e.ecx, 4);
+  e.jz(skip_4);
+  e.mov(e.dword[e.rax], e.r8d);
+  e.add(e.rax, 4);
+  e.shr(e.r8, 32);
+  e.L(skip_4);
+
+  e.test(e.ecx, 2);
+  e.jz(skip_2);
+  e.mov(e.word[e.rax], e.r8w);
+  e.add(e.rax, 2);
+  e.shr(e.r8, 16);
+  e.L(skip_2);
+
+  e.test(e.ecx, 1);
+  e.jz(done);
+  e.mov(e.byte[e.rax], e.r8b);
+  e.L(done);
+}
+
 struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
-    e.StashXmm(0, src2);
-
-    // Store bytes offset..15 from the source vector. Xenia's host vector byte
-    // layout is word-swapped from guest byte order, so convert source byte
-    // indexes with ^ 3 before reading the stashed XMM value.
     e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
     e.mov(e.ecx, 15);
     e.and_(e.ecx, e.eax);
-    e.mov(e.edx, 15);
-    e.not_(e.rdx);
-    e.and_(e.rax, e.rdx);
 
-    Xbyak::Label loop, done;
-    e.mov(e.edx, e.ecx);
-    e.L(loop);
-    e.cmp(e.edx, 16);
-    e.jge(done);
-    e.mov(e.r8d, e.edx);
-    e.sub(e.r8d, e.ecx);
-    e.xor_(e.r8d, 3);
-    e.movzx(e.r9d, e.byte[e.rsp + X64Emitter::kStashOffset + e.r8]);
-    e.mov(e.byte[e.rax + e.rdx], e.r9b);
-    e.inc(e.edx);
-    e.jmp(loop);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
+    e.vpshufb(e.xmm0, src2, e.GetXmmConstPtr(XMMLVLShuffle));
+
+    Xbyak::Label partial, done;
+    e.test(e.ecx, e.ecx);
+    e.jnz(partial);
+    e.vmovdqa(e.ptr[e.rax], e.xmm0);
+    e.jmp(done);
+
+    e.L(partial);
+    e.neg(e.ecx);
+    e.add(e.ecx, 16);
+    EmitPartialVectorStore(e);
     e.L(done);
   }
 };
@@ -390,30 +414,25 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     Xbyak::Label skipper{};
     e.mov(e.ecx, 15);
-    e.mov(e.edx, e.ecx);
     e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
     e.and_(e.ecx, e.eax);
-    e.jz(skipper);
-    e.not_(e.rdx);
-    e.and_(e.rax, e.rdx);
+    e.jz(skipper, X64Emitter::T_NEAR);
+    e.and_(e.rax, -16);
+
+    e.mov(e.edx, 16);
+    e.sub(e.edx, e.ecx);
+    e.vmovd(e.xmm1, e.edx);
+    if (e.IsFeatureEnabled(kX64EmitAVX2)) {
+      e.vpbroadcastb(e.xmm1, e.xmm1);
+    } else {
+      e.vpshufb(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMZero));
+    }
+    e.vpaddb(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMSTVLShuffle));
+    e.vpxor(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMSwapWordMask));
 
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
-    e.StashXmm(0, src2);
-
-    // Store bytes 0..offset-1 from the tail of the source vector.
-    Xbyak::Label loop;
-    e.xor_(e.edx, e.edx);
-    e.L(loop);
-    e.cmp(e.edx, e.ecx);
-    e.jge(skipper);
-    e.mov(e.r8d, 16);
-    e.sub(e.r8d, e.ecx);
-    e.add(e.r8d, e.edx);
-    e.xor_(e.r8d, 3);
-    e.movzx(e.r9d, e.byte[e.rsp + X64Emitter::kStashOffset + e.r8]);
-    e.mov(e.byte[e.rax + e.rdx], e.r9b);
-    e.inc(e.edx);
-    e.jmp(loop);
+    e.vpshufb(e.xmm0, src2, e.xmm1);
+    EmitPartialVectorStore(e);
     e.L(skipper);
   }
 };

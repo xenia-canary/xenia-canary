@@ -785,16 +785,10 @@ int InstrEmit_vlogefp128(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_vmaddfp_(PPCHIRBuilder& f, uint32_t vd, uint32_t va, uint32_t vb,
                        uint32_t vc) {
-  /*
-      chrispy: testing on POWER8 revealed that altivec vmaddfp unconditionally
-     flushes denormal inputs to 0, regardless of NJM setting
-  */
-  Value* a = f.VectorDenormFlush(f.LoadVR(va));
-  Value* b = f.VectorDenormFlush(f.LoadVR(vb));
-  Value* c = f.VectorDenormFlush(f.LoadVR(vc));
+  // POWER8 testing showed that vmaddfp flushes denormal inputs to zero
+  // regardless of NJM.
   // (VD) <- ((VA) * (VC)) + (VB)
-  Value* v = f.MulAdd(a, c, b);
-  // todo: do denormal results also unconditionally become 0?
+  Value* v = f.MulAdd(f.LoadVR(va), f.LoadVR(vc), f.LoadVR(vb));
   f.StoreVR(vd, v);
   return 0;
 }
@@ -810,16 +804,9 @@ int InstrEmit_vmaddfp128(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_vmaddcfp128(PPCHIRBuilder& f, const InstrData& i) {
-  /*
-    see vmaddfp about these denormflushes
-  */
-  Value* a = f.VectorDenormFlush(f.LoadVR(VX128_VA128));
-  Value* b = f.VectorDenormFlush(f.LoadVR(VX128_VB128));
-  Value* d = f.VectorDenormFlush(f.LoadVR(VX128_VD128));
   // (VD) <- ((VA) * (VD)) + (VB)
-  Value* v = f.MulAdd(a, d, b);
-  f.StoreVR(VX128_VD128, v);
-  return 0;
+  return InstrEmit_vmaddfp_(f, VX128_VD128, VX128_VA128, VX128_VB128,
+                            VX128_VD128);
 }
 
 int InstrEmit_vmaxfp_(PPCHIRBuilder& f, uint32_t vd, uint32_t va, uint32_t vb) {
@@ -1067,9 +1054,8 @@ int InstrEmit_vmsumuhs(PPCHIRBuilder& f, const InstrData& i) {
 int InstrEmit_vmsum3fp128(PPCHIRBuilder& f, const InstrData& i) {
   // Dot product XYZ.
   // (VD.xyzw) = (VA.x * VB.x) + (VA.y * VB.y) + (VA.z * VB.z)
-  Value* v = f.DotProduct3(f.LoadVR(VX128_VA128), f.LoadVR(VX128_VB128));
   // chrispy: denormal outputs for Dot product are unconditionally made 0
-  v = f.VectorDenormFlush(v);
+  Value* v = f.DotProduct3(f.LoadVR(VX128_VA128), f.LoadVR(VX128_VB128));
   f.StoreVR(VX128_VD128, v);
   return 0;
 }
@@ -1078,7 +1064,6 @@ int InstrEmit_vmsum4fp128(PPCHIRBuilder& f, const InstrData& i) {
   // Dot product XYZW.
   // (VD.xyzw) = (VA.x * VB.x) + (VA.y * VB.y) + (VA.z * VB.z) + (VA.w * VB.w)
   Value* v = f.DotProduct4(f.LoadVR(VX128_VA128), f.LoadVR(VX128_VB128));
-  v = f.VectorDenormFlush(v);
   f.StoreVR(VX128_VD128, v);
   return 0;
 }
@@ -1138,16 +1123,7 @@ int InstrEmit_vnmsubfp_(PPCHIRBuilder& f, uint32_t vd, uint32_t va, uint32_t vb,
   // NOTE2: we could make vnmsub a new opcode, and then do it in double
   // precision, rounding after the neg
 
-  /*
-  chrispy: this is untested, but i believe this has the same DAZ behavior for
-  inputs as vmadd
-  */
-
-  Value* a = f.VectorDenormFlush(f.LoadVR(va));
-  Value* b = f.VectorDenormFlush(f.LoadVR(vb));
-  Value* c = f.VectorDenormFlush(f.LoadVR(vc));
-
-  Value* v = f.Neg(f.MulSub(a, c, b));
+  Value* v = f.Neg(f.MulSub(f.LoadVR(va), f.LoadVR(vc), f.LoadVR(vb)));
   f.StoreVR(vd, v);
   return 0;
 }
@@ -1465,12 +1441,22 @@ int InstrEmit_vsldoi_(PPCHIRBuilder& f, uint32_t vd, uint32_t va, uint32_t vb,
     f.StoreVR(vd, f.LoadVR(vb));
     return 0;
   }
-  // TODO(benvanik): optimize for the rotation case:
-  // vsldoi128 vr63,vr63,vr63,4
-  // (ABCD ABCD) << 4b = (BCDA)
-  // (VA << SH) OR (VB >> (16 - SH))
-  Value* control = f.LoadConstantVec128(__vsldoi_table[sh]);
-  Value* v = f.Permute(control, f.LoadVR(va), f.LoadVR(vb), INT8_TYPE);
+  Value* v;
+  if (!(sh & 3)) {
+    // Word-aligned shifts can use the cheaper 32-bit permute.
+    uint32_t control = 0;
+    uint32_t source_word = sh >> 2;
+    for (uint32_t output_word = 0; output_word < 4;
+         ++output_word, ++source_word) {
+      control |= ((source_word & 3) | ((source_word & 4) ? 4 : 0))
+                 << (output_word * 8);
+    }
+    v = f.Permute(f.LoadConstantUint32(control), f.LoadVR(va), f.LoadVR(vb),
+                  INT32_TYPE);
+  } else {
+    Value* control = f.LoadConstantVec128(__vsldoi_table[sh]);
+    v = f.Permute(control, f.LoadVR(va), f.LoadVR(vb), INT8_TYPE);
+  }
   f.StoreVR(vd, v);
   return 0;
 }
