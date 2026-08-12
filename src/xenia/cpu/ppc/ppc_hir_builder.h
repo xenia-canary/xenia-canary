@@ -10,6 +10,8 @@
 #ifndef XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 #define XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 
+#include <initializer_list>
+
 #include "xenia/base/string_buffer.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/hir/hir_builder.h"
@@ -59,7 +61,12 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void UpdateCR6(Value* src_value);
   Value* LoadFPSCR();
   void StoreFPSCR(Value* value);
-  void UpdateFPSCR(Value* result, bool update_cr1);
+  // For instructions that cannot raise an exception.
+  void ClearFPSCRExceptions(bool update_cr1);
+  // Derives VX from the operands and the result. Only the recording forms pay
+  // for it; Rc=0 clears the exception bits as ClearFPSCRExceptions does.
+  void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
+                   bool update_cr1);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);
@@ -87,6 +94,7 @@ class PPCHIRBuilder : public hir::HIRBuilder {
  private:
   void MaybeBreakOnInstruction(uint32_t address);
   void AnnotateLabel(uint32_t address, Label* label);
+  void StoreFPSCRSummary(Value* vx, bool update_cr1);
 
   PPCFrontend* frontend_;
 
