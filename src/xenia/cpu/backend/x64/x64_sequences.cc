@@ -3310,7 +3310,7 @@ bool SelectSequence(X64Emitter* e, const Instr* i, const Instr** new_tail) {
 
     auto it = sequence_table.find(key);
     if (it != sequence_table.end()) {
-      if (it->second(*e, i, InstrKey(i))) {
+      if (it->second(*e, i, key)) {
         *new_tail = i->next;
         return true;
       }

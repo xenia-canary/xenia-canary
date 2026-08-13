@@ -556,7 +556,13 @@ struct ExportRegistrerHelper {
         if (TAGS & xe::cpu::ExportTag::kLog &&
             (!(TAGS & xe::cpu::ExportTag::kHighFrequency) ||
              cvars::log_high_frequency_kernel_calls)) {
-          PrintKernelCall(export_entry, params);
+          const LogLevel needed_level =
+              (export_entry->tags & xe::cpu::ExportTag::kImportant)
+                  ? LogLevel::Info
+                  : LogLevel::Debug;
+          if (logging::ShouldLog(needed_level, LogSrc::Kernel)) {
+            PrintKernelCall(export_entry, params);
+          }
         }
         if constexpr (std::is_void<R>::value) {
           KernelTrampoline(fn, std::forward<std::tuple<Ps...>>(params),
