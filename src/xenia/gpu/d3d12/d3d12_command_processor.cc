@@ -2079,7 +2079,8 @@ void D3D12CommandProcessor::WriteFetchFromMem(uint32_t start_index,
       ((start_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) / 6);
   uint32_t last_fetch =  // i think last_fetch should be inclusive if its modulo
                          // is nz...
-      (((start_index + num_registers) - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) /
+      (((start_index + num_registers - 1) -
+        XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) /
        6);
   texture_cache_->TextureFetchConstantsWritten(first_fetch, last_fetch);
 
