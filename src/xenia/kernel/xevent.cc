@@ -38,10 +38,10 @@ void XEvent::InitializeNative(void* native_ptr,
   assert_false(event_);
 
   switch (header->type) {
-    case X_DISPATCHER_FLAGS::DISPATCHER_MANUAL_RESET_EVENT:
+    case X_OBJECT_TYPES::EventNotificationObject:
       manual_reset_ = true;
       break;
-    case X_DISPATCHER_FLAGS::DISPATCHER_AUTO_RESET_EVENT:
+    case X_OBJECT_TYPES::EventSynchronizationObject:
       manual_reset_ = false;
       break;
     default:
