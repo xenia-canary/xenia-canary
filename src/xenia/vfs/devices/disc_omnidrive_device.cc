@@ -1105,9 +1105,9 @@ bool DiscOmnidriveDevice::ReadMetadataBytesFromPhysicalTransport(
   return ReadDiskBytesAsync(offset, buffer);
 }
 
-bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
-                                              uint32_t sector_count,
-                                              uint64_t* cached_end) const {
+bool DiscOmnidriveDevice::IsRangeCachedLocked(
+    uint64_t sector_start, uint32_t sector_count,
+    std::vector<std::tuple<uint64_t, uint32_t>>* uncached_segments) const {
   if (sector_count == 0) {
     return true;
   }
@@ -1120,14 +1120,29 @@ bool DiscOmnidriveDevice::IsRangeCachedLocked(uint64_t sector_start,
     if (overlap_start >= overlap_end) {
       continue;
     }
-    if (overlap_end < range_end && cached_end && overlap_end > *cached_end) {
-      *cached_end = overlap_end;
-    }
     for (uint64_t i = overlap_start; i < overlap_end; ++i) {
       coverage[static_cast<size_t>(i - sector_start)] = 1;
     }
   }
-  return std::any_of(coverage.begin(), coverage.end(),
+  if (uncached_segments) {
+    bool last_was_cached = true;
+    uint64_t uncached_start = sector_start;
+    for (uint32_t i = 0; i < sector_count; i++) {
+      bool value = coverage[i];
+      if (value == 0 && last_was_cached) {
+        last_was_cached = false;
+        uncached_start = sector_start + i;
+      }
+      if (value == 1 && !last_was_cached) {
+        uncached_segments->emplace_back(uncached_start,
+                                        i - static_cast<uint32_t>(uncached_start - sector_start));
+      }
+    }
+    if (!last_was_cached) {
+      uncached_segments->emplace_back(uncached_start, sector_count);
+    }
+  }
+  return std::all_of(coverage.begin(), coverage.end(),
                      [](uint8_t value) { return value != 0; });
 }
 
@@ -1142,46 +1157,47 @@ void DiscOmnidriveDevice::InsertCacheRange(uint64_t sector_start,
 
   std::lock_guard<std::mutex> lock(cache_mutex_);
 
-  uint64_t cached_end = 0;
-  uint64_t range_start_offset = 0;
-  if (IsRangeCachedLocked(sector_start, sector_count, &cached_end)) {
-    if (cached_end <= sector_start ||
-        cached_end >= sector_start + sector_count) {
-      return;
-    }
-    range_start_offset = cached_end - sector_start;
-    sector_count -= range_start_offset;
-    sector_start = cached_end;
+  std::vector<std::tuple<uint64_t, uint32_t>> uncached_segments;
+  bool cached =
+      IsRangeCachedLocked(sector_start, sector_count, &uncached_segments);
+  if (!cached) {
+    uncached_segments.emplace_back(sector_start, sector_count);
   }
-  CachedReadRange chunk;
-  chunk.sector_start = sector_start;
-  chunk.sector_count = sector_count;
-  auto begin_itr = data.begin();
-  std::advance(begin_itr, static_cast<size_t>(range_start_offset) *
+  for (const std::tuple<uint64_t, uint32_t>& segment : uncached_segments) {
+    CachedReadRange chunk;
+    chunk.sector_start = std::get<0>(segment);
+    chunk.sector_count = std::get<1>(segment);
+    auto begin_itr = data.begin();
+    auto end_itr = data.end();
+    std::advance(begin_itr,
+                 (chunk.sector_start - sector_start) * physical_sector_size());
+    std::advance(end_itr, (chunk.sector_start + chunk.sector_count -
+                           sector_start - sector_count) *
                               physical_sector_size());
-  chunk.data.assign(begin_itr, data.end());
+    chunk.data.assign(begin_itr, end_itr);
 
-  chunk.use_tick = is_demand_read ? 1 : 0;
-  chunk.insertion_tick = ++cache_insertion_count_;
-  if (cache_insertion_count_ >= kCacheFrequencyRescaleThreshold) {
-    for (auto& other : read_cache_) {
-      other.insertion_tick /= 2;
+    chunk.use_tick = is_demand_read ? 1 : 0;
+    chunk.insertion_tick = ++cache_insertion_count_;
+    if (cache_insertion_count_ >= kCacheFrequencyRescaleThreshold) {
+      for (auto& other : read_cache_) {
+        other.insertion_tick /= 2;
+      }
+      cache_insertion_count_ /= 2;
     }
-    cache_insertion_count_ /= 2;
-  }
-  read_cache_bytes_ += chunk.data.size();
-  read_cache_.emplace_back(std::move(chunk));
-  while (read_cache_bytes_ > kReadCacheMaxBytes && !read_cache_.empty()) {
-    auto evict_it = std::min_element(
-        read_cache_.begin(), read_cache_.end(),
-        [](const CachedReadRange& a, const CachedReadRange& b) {
-          if (a.use_tick != b.use_tick) {
-            return a.use_tick < b.use_tick;
-          }
-          return a.insertion_tick < b.insertion_tick;
-        });
-    read_cache_bytes_ -= evict_it->data.size();
-    read_cache_.erase(evict_it);
+    read_cache_bytes_ += chunk.data.size();
+    read_cache_.emplace_back(std::move(chunk));
+    while (read_cache_bytes_ > kReadCacheMaxBytes && !read_cache_.empty()) {
+      auto evict_it = std::min_element(
+          read_cache_.begin(), read_cache_.end(),
+          [](const CachedReadRange& a, const CachedReadRange& b) {
+            if (a.use_tick != b.use_tick) {
+              return a.use_tick < b.use_tick;
+            }
+            return a.insertion_tick < b.insertion_tick;
+          });
+      read_cache_bytes_ -= evict_it->data.size();
+      read_cache_.erase(evict_it);
+    }
   }
 }
 
@@ -1203,68 +1219,74 @@ void DiscOmnidriveDevice::TryScheduleSequentialPrefetch(
     return;
   }
 
+  std::vector<std::tuple<uint64_t, uint32_t>> uncached_segments;
   {
     std::lock_guard<std::mutex> lock(cache_mutex_);
-    uint64_t cached_end = 0;
-    if (IsRangeCachedLocked(prefetch_start, prefetch_count, &cached_end)) {
-      if (cached_end <= prefetch_start ||
-          cached_end >= prefetch_start + prefetch_count) {
+
+    if (IsRangeCachedLocked(prefetch_start, prefetch_count,
+                            &uncached_segments)) {
+      if (uncached_segments.empty()) {
         read_telemetry_.prefetch_hits.fetch_add(1, std::memory_order_relaxed);
         return;
       }
-      prefetch_count = (prefetch_start + prefetch_count) - cached_end;
-      prefetch_start = cached_end;
+    } else if (uncached_segments.empty()) {
+      uncached_segments.emplace_back(prefetch_start, prefetch_count);
     }
   }
 
-  read_telemetry_.prefetch_requests.fetch_add(1, std::memory_order_relaxed);
+  read_telemetry_.prefetch_requests.fetch_add(uncached_segments.size(),
+                                              std::memory_order_relaxed);
   if (!EnsureReadWorkerStarted()) {
-    read_telemetry_.prefetch_misses.fetch_add(1, std::memory_order_relaxed);
+    read_telemetry_.prefetch_misses.fetch_add(uncached_segments.size(),
+                                              std::memory_order_relaxed);
     return;
   }
-  {
-    std::lock_guard<std::mutex> lock(read_worker_mutex_);
-    const uint64_t pending_demand =
-        pending_demand_reads_.load(std::memory_order_relaxed);
-    if (pending_demand != 0 || !read_worker_demand_tasks_.empty()) {
-      const uint64_t deferred = read_telemetry_.prefetch_deferred.fetch_add(
-                                    1, std::memory_order_relaxed) +
-                                1;
-      if (deferred == 1 || (deferred % 128) == 0) {
-        XELOGD(
-            "DiscOmnidriveDevice::TryScheduleSequentialPrefetch: deferred "
-            "prefetch due to worker pressure (pending={} demand_queued={} "
-            "deferred={})",
-            pending_demand, read_worker_demand_tasks_.size(), deferred);
+  std::lock_guard<std::mutex> lock(read_worker_mutex_);
+  for (std::tuple<uint64_t, uint32_t>& segment : uncached_segments) {
+    {
+      const uint64_t pending_demand =
+          pending_demand_reads_.load(std::memory_order_relaxed);
+      if (pending_demand != 0 || !read_worker_demand_tasks_.empty()) {
+        const uint64_t deferred = read_telemetry_.prefetch_deferred.fetch_add(
+                                      1, std::memory_order_relaxed) +
+                                  1;
+        if (deferred == 1 || (deferred % 128) == 0) {
+          XELOGD(
+              "DiscOmnidriveDevice::TryScheduleSequentialPrefetch: deferred "
+              "prefetch due to worker pressure (pending={} demand_queued={} "
+              "deferred={})",
+              pending_demand, read_worker_demand_tasks_.size(), deferred);
+        }
+        return;
       }
-      return;
-    }
 
-    PendingPrefetchRequest incoming{prefetch_start, prefetch_count};
-    if (!pending_prefetch_request_.has_value()) {
-      pending_prefetch_request_ = incoming;
-    } else {
-      PendingPrefetchRequest& pending = *pending_prefetch_request_;
-      const uint64_t pending_end =
-          pending.sector_start + pending.sector_count - 1;
-      const uint64_t incoming_end =
-          incoming.sector_start + incoming.sector_count - 1;
-      if (incoming.sector_start == pending_end + 1) {
-        pending.sector_count += incoming.sector_count;
-        read_telemetry_.prefetch_coalesced.fetch_add(1,
-                                                     std::memory_order_relaxed);
-      } else if (incoming.sector_start > pending_end + 1) {
+      PendingPrefetchRequest incoming{std::get<0>(segment),
+                                      std::get<1>(segment)};
+      if (!pending_prefetch_request_.has_value()) {
         pending_prefetch_request_ = incoming;
-        read_telemetry_.prefetch_superseded.fetch_add(
-            1, std::memory_order_relaxed);
-      } else if (incoming_end > pending_end) {
-        pending.sector_count =
-            static_cast<uint32_t>(incoming_end - pending.sector_start + 1);
-        read_telemetry_.prefetch_coalesced.fetch_add(1,
-                                                     std::memory_order_relaxed);
       } else {
-        read_telemetry_.prefetch_superseded.fetch_add(
-            1, std::memory_order_relaxed);
+        PendingPrefetchRequest& pending = *pending_prefetch_request_;
+        const uint64_t pending_end =
+            pending.sector_start + pending.sector_count - 1;
+        const uint64_t incoming_end =
+            incoming.sector_start + incoming.sector_count - 1;
+        if (incoming.sector_start == pending_end + 1) {
+          pending.sector_count += incoming.sector_count;
+          read_telemetry_.prefetch_coalesced.fetch_add(
+              1, std::memory_order_relaxed);
+        } else if (incoming.sector_start > pending_end + 1) {
+          pending_prefetch_request_ = incoming;
+          read_telemetry_.prefetch_superseded.fetch_add(
+              1, std::memory_order_relaxed);
+        } else if (incoming_end > pending_end) {
+          pending.sector_count =
+              static_cast<uint32_t>(incoming_end - pending.sector_start + 1);
+          read_telemetry_.prefetch_coalesced.fetch_add(
+              1, std::memory_order_relaxed);
+        } else {
+          read_telemetry_.prefetch_superseded.fetch_add(
+              1, std::memory_order_relaxed);
+        }
       }
     }
   }
