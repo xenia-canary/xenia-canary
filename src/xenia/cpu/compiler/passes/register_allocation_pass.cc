@@ -346,9 +346,8 @@ bool RegisterAllocationPass::SpillOneRegister(HIRBuilder* builder, Block* block,
   DumpUsage("SpillOneRegister (pre)");
   // Pick the one with the furthest next use.
   assert_true(!usage_set->upcoming_uses.empty());
-  auto furthest_usage =
-      std::max_element(usage_set->upcoming_uses.begin(),
-                       usage_set->upcoming_uses.end(), &RegisterUsage::Compare);
+  auto furthest_usage = std::ranges::max_element(usage_set->upcoming_uses,
+                                                 &RegisterUsage::Compare);
   assert_true(furthest_usage->value->def->block == block);
   assert_true(furthest_usage->use->instr->block == block);
   auto spill_value = furthest_usage->value;

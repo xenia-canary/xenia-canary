@@ -204,8 +204,8 @@ X_STATUS AudioMediaPlayer::Play(uint32_t playlist_handle, uint32_t song_handle,
     return X_STATUS_SUCCESS;
   }
 
-  auto song_itr = std::find_if(
-      active_playlist_->songs.cbegin(), active_playlist_->songs.cend(),
+  auto song_itr = std::ranges::find_if(
+      std::as_const(active_playlist_->songs),
       [song_handle](const std::unique_ptr<XmpApp::Song>& song) {
         return song->handle == song_handle;
       });
@@ -344,11 +344,11 @@ X_STATUS AudioMediaPlayer::Next() {
     Stop(false, false);
   }
 
-  auto itr = std::find_if(active_playlist_->songs.cbegin(),
-                          active_playlist_->songs.cend(),
-                          [this](const std::unique_ptr<XmpApp::Song>& song) {
-                            return song->handle == current_song_handle_;
-                          });
+  auto itr =
+      std::ranges::find_if(std::as_const(active_playlist_->songs),
+                           [this](const std::unique_ptr<XmpApp::Song>& song) {
+                             return song->handle == current_song_handle_;
+                           });
 
   // There is no song with such ID?
   if (itr == active_playlist_->songs.cend()) {
@@ -377,11 +377,11 @@ X_STATUS AudioMediaPlayer::Previous() {
     Stop(false, false);
   }
 
-  auto itr = std::find_if(active_playlist_->songs.cbegin(),
-                          active_playlist_->songs.cend(),
-                          [this](const std::unique_ptr<XmpApp::Song>& song) {
-                            return song->handle == current_song_handle_;
-                          });
+  auto itr =
+      std::ranges::find_if(std::as_const(active_playlist_->songs),
+                           [this](const std::unique_ptr<XmpApp::Song>& song) {
+                             return song->handle == current_song_handle_;
+                           });
 
   // We're at the first entry, we need to go to the end.
   if (itr == active_playlist_->songs.cbegin()) {
@@ -440,7 +440,7 @@ void AudioMediaPlayer::AddPlaylist(uint32_t handle,
 
   if (playback_mode_ == XmpApp::PlaybackMode::kShuffle) {
     auto rng = std::default_random_engine{};
-    std::shuffle(playlist->songs.begin(), playlist->songs.end(), rng);
+    std::ranges::shuffle(playlist->songs, rng);
   }
 
   playlists_.insert({handle, std::move(playlist)});
@@ -477,11 +477,11 @@ bool AudioMediaPlayer::IsLastSongInPlaylist() const {
     return false;
   }
 
-  auto itr = std::find_if(active_playlist_->songs.cbegin(),
-                          active_playlist_->songs.cend(),
-                          [this](const std::unique_ptr<XmpApp::Song>& song) {
-                            return song->handle == current_song_handle_;
-                          });
+  auto itr =
+      std::ranges::find_if(std::as_const(active_playlist_->songs),
+                           [this](const std::unique_ptr<XmpApp::Song>& song) {
+                             return song->handle == current_song_handle_;
+                           });
   itr = std::next(itr);
   return itr == active_playlist_->songs.cend();
 }

@@ -1297,14 +1297,14 @@ void DebugWindow::DrawBreakpointsPane() {
                                           offsetof(cpu::Export, name));
     bool has_any_call_filter = std::strlen(state.kernel_call_filter) > 0;
     if (has_any_call_filter) {
-      std::sort(call_rankings.begin(), call_rankings.end(),
-                [](std::pair<size_t, int>& a, std::pair<size_t, int>& b) {
-                  if (a.second == b.second) {
-                    return a.first > b.first;
-                  } else {
-                    return a.second > b.second;
-                  }
-                });
+      std::ranges::sort(call_rankings, [](std::pair<size_t, int>& a,
+                                          std::pair<size_t, int>& b) {
+        if (a.second == b.second) {
+          return a.first > b.first;
+        } else {
+          return a.second > b.second;
+        }
+      });
     }
     for (size_t i = 0; i < call_rankings.size(); ++i) {
       if (has_any_call_filter && !call_rankings[i].second) {

@@ -1225,20 +1225,22 @@ VkSwapchainKHR VulkanPresenter::PaintContext::CreateSwapchainForVulkanSurface(
   // variable refresh rate may be used where it's available.
   // Note: If the priorities here are changes, update the cvar descriptions.
   if (cvars::vulkan_allow_present_mode_immediate &&
-      std::find(present_modes.cbegin(), present_modes.cend(),
-                VK_PRESENT_MODE_IMMEDIATE_KHR) != present_modes.cend()) {
+      std::ranges::find(std::as_const(present_modes),
+                        VK_PRESENT_MODE_IMMEDIATE_KHR) !=
+          present_modes.cend()) {
     // Allowing tearing to reduce latency, and possibly variable refresh rate
     // (though on Windows with borderless fullscreen, GDI copying is used
     // instead of independent flip, so it's not supported there).
     swapchain_create_info.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   } else if (cvars::vulkan_allow_present_mode_mailbox &&
-             std::find(present_modes.cbegin(), present_modes.cend(),
-                       VK_PRESENT_MODE_MAILBOX_KHR) != present_modes.cend()) {
+             std::ranges::find(std::as_const(present_modes),
+                               VK_PRESENT_MODE_MAILBOX_KHR) !=
+                 present_modes.cend()) {
     // Allowing dropping frames to reduce latency, but no tearing.
     swapchain_create_info.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
   } else if (cvars::vulkan_allow_present_mode_fifo_relaxed &&
-             std::find(present_modes.cbegin(), present_modes.cend(),
-                       VK_PRESENT_MODE_FIFO_RELAXED_KHR) !=
+             std::ranges::find(std::as_const(present_modes),
+                               VK_PRESENT_MODE_FIFO_RELAXED_KHR) !=
                  present_modes.cend()) {
     // Limiting the frame rate, but lets too long frames cause tearing not to
     // make the latency even worse.

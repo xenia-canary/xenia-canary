@@ -315,7 +315,7 @@ void D3D12ZPDQueryPool::FlushResolveBatch(
   // pending flags, and clears the index list.
   auto build_ranges = [this](std::vector<uint32_t>& indices,
                              std::vector<uint8_t>& pending) {
-    std::sort(indices.begin(), indices.end());
+    std::ranges::sort(indices);
     resolve_batch_ranges_.clear();
     uint32_t range_start = 0;
     uint32_t range_count = 0;

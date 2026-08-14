@@ -278,9 +278,9 @@ void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
   }
 
   // Find if xuid is already logged in. We might want to logout.
-  auto it = std::find_if(
-      logged_profiles_.begin(), logged_profiles_.end(),
-      [xuid](const auto& entry) { return entry.second->xuid() == xuid; });
+  auto it = std::ranges::find_if(logged_profiles_, [xuid](const auto& entry) {
+    return entry.second->xuid() == xuid;
+  });
   if (it != logged_profiles_.end()) {
     Logout(it->first);
   }

@@ -1398,9 +1398,8 @@ void Emulator::AddGameConfigLoadCallback(GameConfigLoadCallback* callback) {
   assert_true(!display_window_ ||
               display_window_->app_context().IsInUIThread());
   // Check if already added.
-  if (std::find(game_config_load_callbacks_.cbegin(),
-                game_config_load_callbacks_.cend(),
-                callback) != game_config_load_callbacks_.cend()) {
+  if (std::ranges::find(std::as_const(game_config_load_callbacks_), callback) !=
+      game_config_load_callbacks_.cend()) {
     return;
   }
   game_config_load_callbacks_.push_back(callback);
@@ -1411,8 +1410,8 @@ void Emulator::RemoveGameConfigLoadCallback(GameConfigLoadCallback* callback) {
   // Game config load callbacks handling is entirely in the UI thread.
   assert_true(!display_window_ ||
               display_window_->app_context().IsInUIThread());
-  auto it = std::find(game_config_load_callbacks_.cbegin(),
-                      game_config_load_callbacks_.cend(), callback);
+  auto it =
+      std::ranges::find(std::as_const(game_config_load_callbacks_), callback);
   if (it == game_config_load_callbacks_.cend()) {
     return;
   }

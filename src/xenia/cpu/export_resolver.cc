@@ -28,9 +28,9 @@ ExportResolver::Table::Table(const std::string_view module_name,
       exports_by_name_.push_back(export_entry);
     }
   }
-  std::sort(
-      exports_by_name_.begin(), exports_by_name_.end(),
-      [](Export* a, Export* b) { return std::strcmp(a->name, b->name) < 0; });
+  std::ranges::sort(exports_by_name_, [](Export* a, Export* b) {
+    return std::strcmp(a->name, b->name) < 0;
+  });
 }
 
 ExportResolver::ExportResolver() = default;
@@ -49,9 +49,9 @@ void ExportResolver::RegisterTable(
       all_exports_by_name_.push_back(export_entry);
     }
   }
-  std::sort(
-      all_exports_by_name_.begin(), all_exports_by_name_.end(),
-      [](Export* a, Export* b) { return std::strcmp(a->name, b->name) < 0; });
+  std::ranges::sort(all_exports_by_name_, [](Export* a, Export* b) {
+    return std::strcmp(a->name, b->name) < 0;
+  });
 }
 
 Export* ExportResolver::GetExportByOrdinal(const std::string_view module_name,

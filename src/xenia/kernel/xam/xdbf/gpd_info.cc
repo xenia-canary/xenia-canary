@@ -199,8 +199,8 @@ uint32_t GpdInfo::FindFreeLocation(const uint32_t entry_size) {
 
   uint32_t offset = free_entries_.back().offset;
 
-  auto itr = std::find_if(
-      free_entries_.begin(), free_entries_.end(),
+  auto itr = std::ranges::find_if(
+      free_entries_,
       [entry_size](XdbfFileLoc entry) { return entry.size == entry_size; });
 
   // We have exact match, so just get offset and remove entry
@@ -212,9 +212,9 @@ uint32_t GpdInfo::FindFreeLocation(const uint32_t entry_size) {
   }
 
   // Check for any entry that matches size.
-  itr = std::find_if(
-      free_entries_.begin(), free_entries_.end(),
-      [entry_size](XdbfFileLoc entry) { return entry.size > entry_size; });
+  itr = std::ranges::find_if(free_entries_, [entry_size](XdbfFileLoc entry) {
+    return entry.size > entry_size;
+  });
 
   // There is an requirement that there is always at least one entry, so no need
   // to check for valid entry.
@@ -239,11 +239,10 @@ void GpdInfo::DeleteEntry(const Entry* entry) {
   // Don't really remove entry. Just remove entry in the entry table.
   MarkSpaceAsFree(entry->info.offset, entry->info.size);
 
-  auto itr =
-      std::find_if(entries_.begin(), entries_.end(), [entry](Entry first) {
-        return entry->info.section == first.info.section &&
-               first.info.id == entry->info.id;
-      });
+  auto itr = std::ranges::find_if(entries_, [entry](Entry first) {
+    return entry->info.section == first.info.section &&
+           first.info.id == entry->info.id;
+  });
 
   if (itr != entries_.end()) {
     entries_.erase(itr);
@@ -258,13 +257,13 @@ std::vector<const Entry*> GpdInfo::GetSortedEntries() const {
     sorted_entries.push_back(&entry);
   }
 
-  std::sort(sorted_entries.begin(), sorted_entries.end(),
-            [](const Entry* first, const Entry* second) {
-              if (first->info.section == second->info.section) {
-                return first->info.id < second->info.id;
-              }
-              return first->info.section < second->info.section;
-            });
+  std::ranges::sort(sorted_entries,
+                    [](const Entry* first, const Entry* second) {
+                      if (first->info.section == second->info.section) {
+                        return first->info.id < second->info.id;
+                      }
+                      return first->info.section < second->info.section;
+                    });
 
   return sorted_entries;
 }

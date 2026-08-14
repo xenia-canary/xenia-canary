@@ -9,6 +9,8 @@
 
 #include "xenia/vfs/entry.h"
 
+#include <utility>
+
 #include "xenia/base/filesystem.h"
 #include "xenia/base/string.h"
 #include "xenia/vfs/device.h"
@@ -49,10 +51,10 @@ bool Entry::is_read_only() const { return device_->is_read_only(); }
 
 Entry* Entry::GetChild(const std::string_view name) {
   auto global_lock = global_critical_region_.Acquire();
-  auto it = std::find_if(children_.cbegin(), children_.cend(),
-                         [&](const auto& child) {
-                           return xe::utf8::equal_case(child->name(), name);
-                         });
+  auto it =
+      std::ranges::find_if(std::as_const(children_), [&](const auto& child) {
+        return xe::utf8::equal_case(child->name(), name);
+      });
   if (it == children_.cend()) {
     return nullptr;
   }

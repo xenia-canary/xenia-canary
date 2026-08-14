@@ -304,10 +304,10 @@ std::vector<TitleInfo> UserTracker::GetPlayedTitles(uint64_t xuid) const {
     played_titles.push_back(info);
   }
 
-  std::sort(played_titles.begin(), played_titles.end(),
-            [](const TitleInfo& first, const TitleInfo& second) {
-              return first.last_played > second.last_played;
-            });
+  std::ranges::sort(played_titles,
+                    [](const TitleInfo& first, const TitleInfo& second) {
+                      return first.last_played > second.last_played;
+                    });
 
   return played_titles;
 }
@@ -489,11 +489,10 @@ void UserTracker::AddProperty(const uint64_t xuid, const Property* property) {
     }
   }
 
-  auto entry = std::find_if(user->properties_.begin(), user->properties_.end(),
-                            [property_id](const Property& property_data) {
-                              return property_data.GetPropertyId().value ==
-                                     property_id.value;
-                            });
+  auto entry = std::ranges::find_if(
+      user->properties_, [property_id](const Property& property_data) {
+        return property_data.GetPropertyId().value == property_id.value;
+      });
 
   if (entry != user->properties_.end()) {
     *entry = *property;
@@ -513,11 +512,11 @@ X_STATUS UserTracker::GetProperty(const uint64_t xuid, uint32_t* property_size,
   *property_size = 0;
   const auto& property_id = property->property_id;
 
-  const auto entry =
-      std::find_if(user->properties_.cbegin(), user->properties_.cend(),
-                   [property_id](const Property& property_data) {
-                     return property_data.GetPropertyId().value == property_id;
-                   });
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_),
+      [property_id](const Property& property_data) {
+        return property_data.GetPropertyId().value == property_id;
+      });
 
   if (entry == user->properties_.cend()) {
     return X_E_INVALIDARG;
@@ -541,11 +540,10 @@ const Property* UserTracker::GetProperty(const uint64_t xuid,
     return nullptr;
   }
 
-  const auto entry =
-      std::find_if(user->properties_.cbegin(), user->properties_.cend(),
-                   [id](const Property& property_data) {
-                     return property_data.GetPropertyId().value == id;
-                   });
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_), [id](const Property& property_data) {
+        return property_data.GetPropertyId().value == id;
+      });
 
   if (entry == user->properties_.cend()) {
     return nullptr;
@@ -624,12 +622,11 @@ void UserTracker::UpdateContext(uint64_t xuid, uint32_t id, uint32_t value) {
     return;
   }
 
-  const auto entry =
-      std::find_if(user->properties_.begin(), user->properties_.end(),
-                   [id](const Property& property_data) {
-                     return property_data.IsContext() &&
-                            property_data.GetPropertyId().value == id;
-                   });
+  const auto entry = std::ranges::find_if(
+      user->properties_, [id](const Property& property_data) {
+        return property_data.IsContext() &&
+               property_data.GetPropertyId().value == id;
+      });
 
   if (entry != user->properties_.cend()) {
     *entry = Property(id, value);
@@ -655,9 +652,8 @@ std::optional<uint32_t> UserTracker::GetUserContext(uint64_t xuid,
     return std::nullopt;
   }
 
-  const auto entry = std::find_if(
-      user->properties_.cbegin(), user->properties_.cend(),
-      [id](const Property& property_data) {
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_), [id](const Property& property_data) {
         return property_data.get_type() == X_USER_DATA_TYPE::CONTEXT &&
                property_data.GetPropertyId().value == id;
       });

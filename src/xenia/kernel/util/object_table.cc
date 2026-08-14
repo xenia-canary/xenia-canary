@@ -227,8 +227,7 @@ X_STATUS ObjectTable::RemoveHandle(X_HANDLE handle) {
     entry->handle_ref_count = 0;
 
     // Walk the object's handles and remove this one.
-    auto handle_entry =
-        std::find(object->handles().begin(), object->handles().end(), handle);
+    auto handle_entry = std::ranges::find(object->handles(), handle);
     if (handle_entry != object->handles().end()) {
       object->handles().erase(handle_entry);
     }

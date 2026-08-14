@@ -793,7 +793,7 @@ GTKMenuItem::GTKMenuItem(Type type, const std::string& text,
   std::string label = text;
   // TODO(dougvj) Would we ever need to escape underscores?
   // Replace & with _ for gtk to see the memonic
-  std::replace(label.begin(), label.end(), '&', '_');
+  std::ranges::replace(label, '&', '_');
   const auto* gtk_label = label.c_str();
   switch (type) {
     case MenuItem::Type::kNormal:

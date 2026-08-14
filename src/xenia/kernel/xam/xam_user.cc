@@ -772,9 +772,8 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  const bool is_valid_hex_string =
-      std::all_of(tile_key.cbegin(), tile_key.cend(),
-                  [](unsigned char c) { return std::isxdigit(c); });
+  const bool is_valid_hex_string = std::ranges::all_of(
+      tile_key, [](unsigned char c) { return std::isxdigit(c); });
 
   if (!is_valid_hex_string) {
     return X_ERROR_INVALID_PARAMETER;
