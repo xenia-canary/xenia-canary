@@ -903,7 +903,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           size_needed_components |= 0b0001;
           break;
         case xenos::FetchOpDimension::k2D:
-          if (instr.attributes.unnormalized_coordinates) {
+          // A tfetch1D promoted by its source swizzle may still use a 1D fetch
+          // constant. Its size interpretation is selected below at runtime.
+          if (instr.dimension == xenos::FetchOpDimension::k1D ||
+              instr.attributes.unnormalized_coordinates) {
             size_needed_components |= 0b0011;
           }
           break;
@@ -1001,6 +1004,38 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             size[1] = builder_->createTriOp(
                 spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_2,
                 width_height_bit_count, width_height_bit_count);
+          }
+          if (instr.dimension == xenos::FetchOpDimension::k1D) {
+            assert_true((size_needed_components & 0b11) == 0b11);
+            id_vector_temp_.clear();
+            id_vector_temp_.push_back(const_int_0_);
+            id_vector_temp_.push_back(builder_->makeIntConstant(
+                int((fetch_constant_word_0_index + 5) >> 2)));
+            id_vector_temp_.push_back(builder_->makeIntConstant(
+                int((fetch_constant_word_0_index + 5) & 3)));
+            spv::Id fetch_constant_word_5 = builder_->createLoad(
+                builder_->createAccessChain(spv::StorageClassUniform,
+                                            uniform_fetch_constants_,
+                                            id_vector_temp_),
+                spv::NoPrecision);
+            spv::Id data_is_1d = builder_->createBinOp(
+                spv::OpIEqual, type_bool_,
+                builder_->createTriOp(spv::OpBitFieldUExtract, type_uint_,
+                                      fetch_constant_word_5,
+                                      builder_->makeUintConstant(9),
+                                      builder_->makeUintConstant(2)),
+                builder_->makeUintConstant(
+                    static_cast<unsigned int>(xenos::DataDimension::k1D)));
+            spv::Id width_1d_minus_1 = builder_->createTriOp(
+                spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_2,
+                const_uint_0_,
+                builder_->makeUintConstant(xenos::kTexture1DMaxWidthLog2));
+            size[0] =
+                builder_->createTriOp(spv::OpSelect, type_uint_, data_is_1d,
+                                      width_1d_minus_1, size[0]);
+            size[1] = builder_->createTriOp(spv::OpSelect, type_uint_,
+                                            data_is_1d, const_uint_0_, size[1]);
+            size_1d_width_minus_1_uint = width_1d_minus_1;
           }
           assert_zero(size_needed_components & 0b100);
         } break;
@@ -1341,12 +1376,15 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           spv::Id row_width_float = builder_->makeFloatConstant(
               float(xenos::kTexture2DCubeMaxWidthHeight));
 
-          // num_rows = ceil(original_width / row_width)
-          spv::Id num_rows = builder_->createUnaryBuiltinCall(
-              type_float_, ext_inst_glsl_std_450_, GLSLstd450Ceil,
-              builder_->createNoContractionBinOp(spv::OpFDiv, type_float_,
-                                                 original_width_float,
-                                                 row_width_float));
+          // Keep this in sync with the texture cache's materialized row cap.
+          spv::Id num_rows = builder_->createBinBuiltinCall(
+              type_float_, ext_inst_glsl_std_450_, GLSLstd450NMin,
+              builder_->createUnaryBuiltinCall(
+                  type_float_, ext_inst_glsl_std_450_, GLSLstd450Ceil,
+                  builder_->createNoContractionBinOp(spv::OpFDiv, type_float_,
+                                                     original_width_float,
+                                                     row_width_float)),
+              builder_->makeFloatConstant(float(xenos::kTexture1DWideMaxRows)));
 
           // linear_x = coord * original_width (denormalize to texel space)
           spv::Id linear_x = builder_->createNoContractionBinOp(

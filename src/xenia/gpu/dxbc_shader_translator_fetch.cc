@@ -885,7 +885,10 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         size_needed_components |= 0b0001;
         break;
       case xenos::FetchOpDimension::k2D:
-        if (instr.attributes.unnormalized_coordinates) {
+        // A tfetch1D promoted by its source swizzle may still use a 1D fetch
+        // constant. Its size interpretation is selected below at runtime.
+        if (instr.dimension == xenos::FetchOpDimension::k1D ||
+            instr.attributes.unnormalized_coordinates) {
           size_needed_components |= 0b0011;
         }
         break;
@@ -937,6 +940,26 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         a_.OpUBFE(dxbc::Dest::R(size_and_is_3d_temp, size_needed_components),
                   dxbc::Src::LU(13, 13, 0, 0), dxbc::Src::LU(0, 13, 0, 0),
                   RequestTextureFetchConstantWord(tfetch_index, 2));
+        if (instr.dimension == xenos::FetchOpDimension::k1D) {
+          assert_true((size_needed_components & 0b0011) == 0b0011);
+          size_1d_width_minus_1_temp = PushSystemTemp();
+          a_.OpUBFE(dxbc::Dest::R(size_1d_width_minus_1_temp, 0b0001),
+                    dxbc::Src::LU(xenos::kTexture1DMaxWidthLog2),
+                    dxbc::Src::LU(0),
+                    RequestTextureFetchConstantWord(tfetch_index, 2));
+          a_.OpMov(dxbc::Dest::R(size_1d_width_minus_1_temp, 0b0010),
+                   dxbc::Src::LU(0));
+          a_.OpUBFE(dxbc::Dest::R(size_and_is_3d_temp, 0b1000),
+                    dxbc::Src::LU(2), dxbc::Src::LU(9),
+                    RequestTextureFetchConstantWord(tfetch_index, 5));
+          a_.OpIEq(dxbc::Dest::R(size_and_is_3d_temp, 0b1000),
+                   dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW),
+                   dxbc::Src::LU(uint32_t(xenos::DataDimension::k1D)));
+          a_.OpMovC(dxbc::Dest::R(size_and_is_3d_temp, 0b0011),
+                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW),
+                    dxbc::Src::R(size_1d_width_minus_1_temp),
+                    dxbc::Src::R(size_and_is_3d_temp));
+        }
         break;
       case xenos::FetchOpDimension::k3DOrStacked:
         // tfetch3D is used for both stacked and 3D - first, check if 3D.
@@ -1262,7 +1285,7 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         }
       }
     }
-    switch (coordinate_dimension) {
+    switch (instr.dimension) {
       case xenos::FetchOpDimension::k1D: {
         // Check if the fetch constant's actual dimension is k1D (word 5, bits
         // 9-10). If not, skip wide 1D handling as size bits differ per
@@ -1315,6 +1338,9 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
                    dxbc::Src::LF(float(xenos::kTexture2DCubeMaxWidthHeight)));
           a_.OpRoundPI(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
                        dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ));
+          a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                   dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                   dxbc::Src::LF(float(xenos::kTexture1DWideMaxRows)));
           // coord.y = (row_index + 0.5) / num_rows - sample at the center of
           // the row, not its edge. At the edge, linear filtering would blend
           // 50/50 with the previous row (texels 8192 apart), and even point
@@ -1333,15 +1359,23 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         a_.OpElse();
         {
           // Normal 1D texture - pad to 2D array coordinates.
-          a_.OpMov(dxbc::Dest::R(coord_and_sampler_temp, 0b0110),
-                   dxbc::Src::LF(0.0f));
+          a_.OpMov(
+              dxbc::Dest::R(coord_and_sampler_temp,
+                            coordinate_dimension == xenos::FetchOpDimension::k1D
+                                ? 0b0110
+                                : 0b0100),
+              dxbc::Src::LF(0.0f));
         }
         a_.OpEndIf();
         a_.OpElse();
         {
-          // Non-1D texture bound to 1D fetch - just pad coordinates.
-          a_.OpMov(dxbc::Dest::R(coord_and_sampler_temp, 0b0110),
-                   dxbc::Src::LF(0.0f));
+          // Keep Y when the source swizzle promoted the fetch to 2D.
+          a_.OpMov(
+              dxbc::Dest::R(coord_and_sampler_temp,
+                            coordinate_dimension == xenos::FetchOpDimension::k1D
+                                ? 0b0110
+                                : 0b0100),
+              dxbc::Src::LF(0.0f));
         }
         a_.OpEndIf();
       } break;

@@ -1013,6 +1013,7 @@ void TextureCache::BindingInfoFromFetchConstant(
       uint32_t total_width = width_minus_1 + 1;
       uint32_t row_width = xenos::kTexture2DCubeMaxWidthHeight;
       uint32_t num_rows = (total_width + row_width - 1) / row_width;
+      num_rows = std::min(num_rows, xenos::kTexture1DWideMaxRows);
       width_minus_1 = row_width - 1;
       height_minus_1 = num_rows - 1;
       // Disable mipmaps for wide 1D textures. The shader's coordinate remapping
