@@ -225,9 +225,8 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
     }
 
     // Remove duplicates
-    enumerated_content.erase(
-        std::unique(enumerated_content.begin(), enumerated_content.end()),
-        enumerated_content.end());
+    enumerated_content.erase(std::ranges::unique(enumerated_content).begin(),
+                             enumerated_content.end());
   }
 
   if (!device_info || device_info->device_id == DummyDeviceId::ODD) {

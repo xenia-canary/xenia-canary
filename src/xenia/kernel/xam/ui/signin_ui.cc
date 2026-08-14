@@ -156,7 +156,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
         ImGui::BeginDisabled(!valid_gamertag_);
         if (ImGui::Button("Create")) {
           profile_manager_->CreateProfile(std::string(gamertag_), false);
-          std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+          std::ranges::fill(gamertag_, '\0');
           ImGui::CloseCurrentPopup();
           creating_profile_ = false;
           ReloadProfiles(false);
@@ -165,7 +165,7 @@ void SigninUI::OnDraw(ImGuiIO& io) {
         ImGui::SameLine();
 
         if (ImGui::Button("Cancel")) {
-          std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+          std::ranges::fill(gamertag_, '\0');
           ImGui::CloseCurrentPopup();
           creating_profile_ = false;
         }

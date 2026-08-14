@@ -2333,11 +2333,11 @@ void EmulatorWindow::AddRecentlyLaunchedTitle(
   }
 
   // Check if game is already on list and pop it to front
-  auto entry_index = std::find_if(recently_launched_titles_.cbegin(),
-                                  recently_launched_titles_.cend(),
-                                  [&title_name](const RecentTitleEntry& entry) {
-                                    return entry.title_name == title_name;
-                                  });
+  auto entry_index =
+      std::ranges::find_if(std::as_const(recently_launched_titles_),
+                           [&title_name](const RecentTitleEntry& entry) {
+                             return entry.title_name == title_name;
+                           });
   if (entry_index != recently_launched_titles_.cend()) {
     recently_launched_titles_.erase(entry_index);
   }

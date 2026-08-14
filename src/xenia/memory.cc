@@ -137,9 +137,8 @@ void RandomizeMemory(void* range_start, uint32_t size) {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, std::numeric_limits<uint8_t>::max());
 
-    std::generate(static_cast<char*>(range_start),
-                  static_cast<char*>(range_start) + size,
-                  [&]() { return dis(gen); });
+    std::generate_n(static_cast<char*>(range_start), size,
+                    [&]() { return dis(gen); });
   } else {
     std::memset(range_start, cvars::scribble_heap_value, size);
   }
@@ -662,8 +661,7 @@ void Memory::UnregisterPhysicalMemoryInvalidationCallback(
           callback_handle);
   {
     auto lock = global_critical_region_.Acquire();
-    auto it = std::find(physical_memory_invalidation_callbacks_.begin(),
-                        physical_memory_invalidation_callbacks_.end(), entry);
+    auto it = std::ranges::find(physical_memory_invalidation_callbacks_, entry);
     assert_true(it != physical_memory_invalidation_callbacks_.end());
     if (it != physical_memory_invalidation_callbacks_.end()) {
       physical_memory_invalidation_callbacks_.erase(it);

@@ -210,11 +210,11 @@ std::vector<PatchFileEntry> PatchDB::GetTitlePatches(
     const uint32_t title_id, const std::optional<uint64_t> hash) {
   std::vector<PatchFileEntry> title_patches;
 
-  std::copy_if(
-      loaded_patches_.cbegin(), loaded_patches_.cend(),
-      std::back_inserter(title_patches), [=](const PatchFileEntry entry) {
-        bool hash_exist = std::find(entry.hashes.cbegin(), entry.hashes.cend(),
-                                    hash) != entry.hashes.cend();
+  std::ranges::copy_if(
+      std::as_const(loaded_patches_), std::back_inserter(title_patches),
+      [=](const PatchFileEntry entry) {
+        bool hash_exist =
+            std::ranges::find(entry.hashes, hash) != entry.hashes.cend();
 
         return entry.title_id == title_id && hash_exist;
       });

@@ -516,8 +516,8 @@ std::filesystem::path ContentManager::ResolveGameUserContentPath(
 }
 
 bool ContentManager::IsContentOpen(const XCONTENT_AGGREGATE_DATA& data) const {
-  return std::any_of(
-      open_packages_.cbegin(), open_packages_.cend(),
+  return std::ranges::any_of(
+      open_packages_,
       [data](std::pair<string_key_insensitive, ContentPackage*> content) {
         return data == content.second->GetPackageContentData();
       });

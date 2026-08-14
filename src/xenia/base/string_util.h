@@ -159,7 +159,7 @@ inline std::string trim(const std::string& value) {
 
 inline std::string remove_eol(const std::string& value) {
   std::string result = value;
-  result.erase(std::remove(result.begin(), result.end(), '\n'), result.cend());
+  result.erase(std::ranges::remove(result, '\n').begin(), result.cend());
   return result;
 }
 

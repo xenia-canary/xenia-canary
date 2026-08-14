@@ -152,7 +152,7 @@ void SharedMemory::UnregisterGlobalWatch(GlobalWatchHandle handle) {
 
   {
     auto global_lock = global_critical_region_.Acquire();
-    auto it = std::find(global_watches_.begin(), global_watches_.end(), watch);
+    auto it = std::ranges::find(global_watches_, watch);
     assert_false(it == global_watches_.end());
     if (it != global_watches_.end()) {
       global_watches_.erase(it);

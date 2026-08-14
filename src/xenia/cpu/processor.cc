@@ -182,11 +182,11 @@ bool Processor::AddModule(std::unique_ptr<Module> module) {
 void Processor::RemoveModule(const std::string_view name) {
   auto global_lock = global_critical_region_.Acquire();
 
-  auto itr =
-      std::find_if(modules_.cbegin(), modules_.cend(),
-                   [name](std::unique_ptr<xe::cpu::Module> const& module) {
-                     return module->name() == name;
-                   });
+  auto itr = std::ranges::find_if(
+      std::as_const(modules_),
+      [name](std::unique_ptr<xe::cpu::Module> const& module) {
+        return module->name() == name;
+      });
 
   if (itr != modules_.cend()) {
     const std::vector<uint32_t> addressed_functions =
@@ -566,7 +566,7 @@ void Processor::RemoveBreakpoint(Breakpoint* breakpoint) {
   }
 
   // Remove from breakpoint map.
-  auto it = std::find(breakpoints_.begin(), breakpoints_.end(), breakpoint);
+  auto it = std::ranges::find(breakpoints_, breakpoint);
   breakpoints_.erase(it);
 }
 

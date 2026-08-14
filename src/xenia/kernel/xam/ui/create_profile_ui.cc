@@ -51,14 +51,14 @@ void CreateProfileUI::OnDraw(ImGuiIO& io) {
         migration_) {
       emulator_->DataMigration(0xB13EBABEBABEBABE);
     }
-    std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+    std::ranges::fill(gamertag_, '\0');
     dialog_open = false;
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
 
   if (ImGui::Button("Cancel")) {
-    std::fill(std::begin(gamertag_), std::end(gamertag_), '\0');
+    std::ranges::fill(gamertag_, '\0');
     dialog_open = false;
   }
 
