@@ -180,6 +180,8 @@ class PipelineCache {
     kBlendFactor,
     kInvBlendFactor,
     kSrcAlphaSat,
+    kAlphaFactor,
+    kInvAlphaFactor,
   };
 
   // Update PipelineDescription::kVersion if anything is changed!
@@ -237,7 +239,7 @@ class PipelineCache {
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
 
     inline bool operator==(const PipelineDescription& other) const;
-    static constexpr uint32_t kVersion = 0x20260716;
+    static constexpr uint32_t kVersion = 0x20260815;
   });
 
   XEPACKEDSTRUCT(PipelineStoredDescription, {

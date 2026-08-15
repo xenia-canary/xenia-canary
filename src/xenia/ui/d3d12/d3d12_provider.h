@@ -114,6 +114,9 @@ class D3D12Provider : public GraphicsProvider {
   bool AreRasterizerOrderedViewsSupported() const {
     return rasterizer_ordered_views_supported_;
   }
+  bool IsAlphaBlendFactorSupported() const {
+    return alpha_blend_factor_supported_;
+  }
   D3D12_RESOURCE_BINDING_TIER GetResourceBindingTier() const {
     return resource_binding_tier_;
   }
@@ -210,6 +213,7 @@ class D3D12Provider : public GraphicsProvider {
   uint32_t virtual_address_bits_per_resource_;
   bool ps_specified_stencil_reference_supported_;
   bool rasterizer_ordered_views_supported_;
+  bool alpha_blend_factor_supported_;
   bool unaligned_block_textures_supported_;
 };
 
