@@ -1520,6 +1520,21 @@ bool PipelineCache::GetCurrentStateDescription(
             bound_depth_and_color_render_target_formats[0]);
         depth_stencil_bound_and_used = true;
       }
+      const bool depth_only_stencil_test =
+          !pixel_shader &&
+          regs.Get<reg::RB_MODECONTROL>().edram_mode ==
+              xenos::EdramMode::kDepthOnly &&
+          normalized_depth_control.stencil_enable &&
+          !normalized_depth_control.z_write_enable;
+      // Depth-only stencil passes may use the depth result only to update a
+      // mask. Compare D24FS8 at the guest's float24 precision so host float32
+      // precision doesn't change which stencil samples pass.
+      description_out.depth_float24_convert =
+          !pixel_shader && normalized_depth_control.z_enable &&
+          regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+              xenos::DepthRenderTargetFormat::kD24FS8 &&
+          (render_target_cache_.depth_float24_convert_in_pixel_shader() ||
+           depth_only_stencil_test);
     } else {
       description_out.depth_func = xenos::CompareFunction::kAlways;
     }
@@ -3010,7 +3025,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
     state_desc.PS.pShaderBytecode = depth_only_pixel_shader_.data();
     state_desc.PS.BytecodeLength = depth_only_pixel_shader_.size();
   } else {
-    if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+    if (description.depth_float24_convert &&
         (description.depth_func != xenos::CompareFunction::kAlways ||
          description.depth_write) &&
         description.depth_format == xenos::DepthRenderTargetFormat::kD24FS8) {

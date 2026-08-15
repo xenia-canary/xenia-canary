@@ -223,6 +223,8 @@ class PipelineCache {
     uint32_t stencil_read_mask : 8;                   // 27
     // Native draw (scale threshold), keeps slope-scale unscaled.
     uint32_t resolution_scale_native : 1;  // 28
+    // Whether the depth-only pixel shader converts D24FS8 depth to float24.
+    uint32_t depth_float24_convert : 1;  // 29
 
     uint32_t stencil_write_mask : 8;                   // 8
     xenos::StencilOp stencil_front_fail_op : 3;        // 11
@@ -237,7 +239,7 @@ class PipelineCache {
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
 
     inline bool operator==(const PipelineDescription& other) const;
-    static constexpr uint32_t kVersion = 0x20260716;
+    static constexpr uint32_t kVersion = 0x20260815;
   });
 
   XEPACKEDSTRUCT(PipelineStoredDescription, {
