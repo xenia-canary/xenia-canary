@@ -65,8 +65,13 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void ClearFPSCRExceptions(bool update_cr1);
   // Derives VX from the operands and the result. Only the recording forms pay
   // for it; Rc=0 clears the exception bits as ClearFPSCRExceptions does.
+  // `suppress`, when given, is a condition that clears everything raised.
   void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
-                   bool update_cr1);
+                   bool update_cr1, Value* suppress = nullptr);
+  // The single-precision quirk: a denormalized operand answers with the
+  // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
+  Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
+  Value* ApplySingleDenormalOperand(Value* quirk, Value* result);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);
