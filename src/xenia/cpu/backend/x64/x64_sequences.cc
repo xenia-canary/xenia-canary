@@ -1963,6 +1963,118 @@ EMITTER_OPCODE_TABLE(OPCODE_DIV, DIV_I8, DIV_I16, DIV_I32, DIV_I64, DIV_F32,
 // - 132 -> $1 = $1 * $3 + $2
 // - 213 -> $1 = $2 * $1 + $3
 // - 231 -> $1 = $2 * $3 + $1
+//
+// PPC multiply-add NaN semantics. Hardware returns the first NaN operand in
+// A, B, C order (the HIR operands are A, C, B, so the walk is src1, src3,
+// src2), quieted, rather than whatever the host FMA picked, and leaves its sign
+// alone even for the negated forms.
+//
+// Every scalar form takes the fixup; of the packed ones only the negated
+// vnmsubfp does. Putting it on vmaddfp as well costs ~8.5fps, and vmaddfp is
+// the only multiply-add hot enough to notice.
+//
+// The fixup is only reached when the result is already NaN, which covers every
+// case needing one: a NaN operand always yields a NaN result, and an invalid
+// operation with no NaN operand needs the PPC default rather than x86's.
+
+// Packed single. Branchless, since every lane may need a different answer. The
+// sources are stashed first so xmm0-2 can be clobbered even when they hold
+// materialized constants.
+static void EmitFmaPpcNanFixup_V128(X64Emitter& e, const Xmm& dest,
+                                    const Xmm& result, const Xmm& src1,
+                                    const Xmm& src2, const Xmm& src3) {
+  e.StashXmm(0, src1);
+  e.StashXmm(1, src2);
+  e.StashXmm(2, src3);
+  auto stash = [&e](int index) {
+    return e.ptr[e.rsp + X64Emitter::kStashOffset + index * 16];
+  };
+  // Lowest priority first, so an earlier operand overwrites a later one:
+  // src2 (C), then src3 (B), then src1 (A).
+  const int order[3] = {1, 2, 0};
+
+  e.vmovaps(e.xmm0, e.GetXmmConstPtr(XMMQNaN));
+  for (int step = 0; step < 3; ++step) {
+    e.vmovaps(e.xmm1, stash(order[step]));
+    e.vcmpunordps(e.xmm2, e.xmm1, e.xmm1);
+    e.vorps(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMQuietBit));
+    e.vblendvps(e.xmm0, e.xmm0, e.xmm1, e.xmm2);
+  }
+  // Lanes whose result is not NaN keep the arithmetic answer.
+  e.vcmpunordps(e.xmm2, result, result);
+  e.vblendvps(dest, result, e.xmm0, e.xmm2);
+}
+
+// Scalar double. One lane, so a branch chain beats the blend sequence.
+static void EmitFmaPpcNanFixup_F64(X64Emitter& e, const Xmm& dest,
+                                   const Xmm& src1, const Xmm& src2,
+                                   const Xmm& src3, Xbyak::Label& done) {
+  const Xmm order[3] = {src1, src3, src2};  // A, B, C
+  for (int step = 0; step < 3; ++step) {
+    Xbyak::Label not_nan;
+    e.vucomisd(order[step], order[step]);
+    e.jnp(not_nan);
+    e.vmovq(e.rax, order[step]);
+    e.mov(e.rdx, 1ull << 51);  // ensure quiet
+    e.or_(e.rax, e.rdx);
+    e.vmovq(dest, e.rax);
+    e.jmp(done, e.T_NEAR);
+    e.L(not_nan);
+  }
+  // No NaN operand, so this is an invalid operation.
+  e.mov(e.rax, 0x7FF8000000000000ull);
+  e.vmovq(dest, e.rax);
+  e.jmp(done, e.T_NEAR);
+}
+
+// Negates the arithmetic result in xmm3 when the opcode asks for it, then
+// routes a NaN result to the fixup.
+template <typename ARGS>
+static void EmitPpcFmaResult_F64(X64Emitter& e, const ARGS& i, bool negate) {
+  if (negate) {
+    // Not the vfnmadd/vfnmsub forms: those negate the operands, which differs
+    // from negating the result when the addends are zeros of opposite sign.
+    e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPD));
+  }
+  // Tail code is emitted at the end of the whole function, so the label has to
+  // outlive this sequence.
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& fixup =
+      e.AddToTail([&done, i](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        Xmm s3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+        EmitFmaPpcNanFixup_F64(e, i.dest, s1, s2, s3, done);
+      });
+  e.vucomisd(e.xmm3, e.xmm3);
+  e.jp(fixup, e.T_NEAR);
+  e.vmovapd(i.dest, e.xmm3);
+  e.L(done);
+}
+
+template <typename ARGS>
+static void EmitNegatedFma_V128(X64Emitter& e, const ARGS& i) {
+  e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& fixup =
+      e.AddToTail([&done, i](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        // Re-derive rather than capture: the hot path's NaN test clobbers
+        // xmm0, which is where a constant operand would have been placed.
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        Xmm s3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+        EmitFmaPpcNanFixup_V128(e, i.dest, e.xmm3, s1, s2, s3);
+        e.jmp(done, e.T_NEAR);
+      });
+  e.vcmpunordps(e.xmm0, e.xmm3, e.xmm3);
+  e.vptest(e.xmm0, e.xmm0);
+  e.jnz(fixup, e.T_NEAR);
+  e.vmovaps(i.dest, e.xmm3);
+  e.L(done);
+}
+
 struct MUL_ADD_F32
     : Sequence<MUL_ADD_F32, I<OPCODE_MUL_ADD, F32Op, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
@@ -1983,12 +2095,13 @@ struct MUL_ADD_F64
       // todo: this is garbage
       e.vmovapd(e.xmm3, src1);
       e.vfmadd213sd(e.xmm3, src2, src3);
-      e.vmovapd(i.dest, e.xmm3);
     } else {
       // todo: might need to use x87 in this case...
       e.vmulsd(e.xmm3, src1, src2);
-      e.vaddsd(i.dest, e.xmm3, src3);
+      e.vaddsd(e.xmm3, e.xmm3, src3);
     }
+    EmitPpcFmaResult_F64(e, i,
+                         (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
   }
 };
 struct MUL_ADD_V128
@@ -2000,15 +2113,25 @@ struct MUL_ADD_V128
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+    const bool negate = (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0;
     if (e.IsFeatureEnabled(kX64EmitFMA)) {
       // todo: this is garbage
       e.vmovaps(e.xmm3, src1);
       e.vfmadd213ps(e.xmm3, src2, src3);
-      e.vmovaps(i.dest, e.xmm3);
+      if (!negate) {
+        e.vmovaps(i.dest, e.xmm3);
+      }
     } else {
       // todo: might need to use x87 in this case...
       e.vmulps(e.xmm3, src1, src2);
-      e.vaddps(i.dest, e.xmm3, src3);
+      if (negate) {
+        e.vaddps(e.xmm3, e.xmm3, src3);
+      } else {
+        e.vaddps(i.dest, e.xmm3, src3);
+      }
+    }
+    if (negate) {
+      EmitNegatedFma_V128(e, i);
     }
   }
 };
@@ -2039,12 +2162,13 @@ struct MUL_SUB_F64
       // todo: this is garbage
       e.vmovapd(e.xmm3, src1);
       e.vfmsub213sd(e.xmm3, src2, src3);
-      e.vmovapd(i.dest, e.xmm3);
     } else {
       // todo: might need to use x87 in this case...
       e.vmulsd(e.xmm3, src1, src2);
-      e.vsubsd(i.dest, e.xmm3, src3);
+      e.vsubsd(e.xmm3, e.xmm3, src3);
     }
+    EmitPpcFmaResult_F64(e, i,
+                         (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
   }
 };
 struct MUL_SUB_V128
@@ -2056,15 +2180,25 @@ struct MUL_SUB_V128
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+    const bool negate = (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0;
     if (e.IsFeatureEnabled(kX64EmitFMA)) {
       // todo: this is garbage
       e.vmovaps(e.xmm3, src1);
       e.vfmsub213ps(e.xmm3, src2, src3);
-      e.vmovaps(i.dest, e.xmm3);
+      if (!negate) {
+        e.vmovaps(i.dest, e.xmm3);
+      }
     } else {
       // todo: might need to use x87 in this case...
       e.vmulps(e.xmm3, src1, src2);
-      e.vsubps(i.dest, e.xmm3, src3);
+      if (negate) {
+        e.vsubps(e.xmm3, e.xmm3, src3);
+      } else {
+        e.vsubps(i.dest, e.xmm3, src3);
+      }
+    }
+    if (negate) {
+      EmitNegatedFma_V128(e, i);
     }
   }
 };
