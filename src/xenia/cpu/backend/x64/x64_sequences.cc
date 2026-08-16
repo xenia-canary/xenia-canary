@@ -1342,6 +1342,44 @@ struct DID_SATURATE
 };
 EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
 
+// An invalid operation with no NaN operand answers with the default QNaN, and
+// x86's is negative where PPC's is positive. Only a NaN result can need the
+// fixup, so the test stays off the result's dependency chain and the work goes
+// to a tail block. The arithmetic lands in xmm2 because dest may share a
+// register with a source, and the tail needs the operands to tell a propagated
+// NaN from a generated one.
+template <typename ARGS, typename FN>
+static void EmitBinaryFpWithPpcDefaultNan_F64(X64Emitter& e, const ARGS& i,
+                                              FN&& emit_op) {
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& invalid =
+      e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label propagate;
+        // Re-derive rather than capture: a constant operand lives in xmm0 or
+        // xmm1, which the hot path is free to reuse.
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        e.vucomisd(s1, s1);
+        e.jp(propagate);
+        e.vucomisd(s2, s2);
+        e.jp(propagate);
+        e.mov(e.rax, 0x7FF8000000000000ull);
+        e.vmovq(i.dest, e.rax);
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(propagate);
+        e.vmovapd(i.dest, e.xmm2);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+  Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+  emit_op(e, e.xmm2, src1, src2);
+  e.vucomisd(e.xmm2, e.xmm2);
+  e.jp(invalid, X64Emitter::T_NEAR);
+  e.vmovapd(i.dest, e.xmm2);
+  e.L(done);
+}
+
 // ============================================================================
 // OPCODE_ADD
 // ============================================================================
@@ -1393,10 +1431,10 @@ struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
 struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vaddsd(i.dest, src1, src2);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vaddsd(dest, s1, s2);
+        });
   }
 };
 struct ADD_V128 : Sequence<ADD_V128, I<OPCODE_ADD, V128Op, V128Op, V128Op>> {
@@ -1516,9 +1554,10 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!i.instr->flags);
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vsubsd(i.dest, src1, src2);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vsubsd(dest, s1, s2);
+        });
   }
 };
 struct SUB_V128 : Sequence<SUB_V128, I<OPCODE_SUB, V128Op, V128Op, V128Op>> {
@@ -1662,10 +1701,10 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!i.instr->flags);
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vmulsd(i.dest, src1, src2);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vmulsd(dest, s1, s2);
+        });
   }
 };
 struct MUL_V128 : Sequence<MUL_V128, I<OPCODE_MUL, V128Op, V128Op, V128Op>> {
@@ -1946,10 +1985,10 @@ struct DIV_F64 : Sequence<DIV_F64, I<OPCODE_DIV, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!i.instr->flags);
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vdivsd(i.dest, src1, src2);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vdivsd(dest, s1, s2);
+        });
   }
 };
 struct DIV_V128 : Sequence<DIV_V128, I<OPCODE_DIV, V128Op, V128Op, V128Op>> {
