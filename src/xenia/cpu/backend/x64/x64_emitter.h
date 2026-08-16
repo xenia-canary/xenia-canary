@@ -175,6 +175,7 @@ enum XmmConst {
   XMMSTVRSwapMask,  // swapwordmask with bit 7 set
   XMMVSRShlByteshuf,
   XMMVSRMask,
+  XMMQuietBit,  // 0x00400000
   XMMVRsqrteTableStart,
   XMMVRsqrteTableBase =
       XMMVRsqrteTableStart +
