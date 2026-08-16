@@ -79,22 +79,21 @@ test_fctiwz_10:
   #_ REGISTER_OUT f0 0xfff0000000000000
   #_ REGISTER_OUT f1 0xFFFFFFFF80000000
 
-# TODO(DrChat): Xenia doesn't handle NaNs yet.
-# # QNaN
-# test_fctiwz_11:
-#   #_ REGISTER_IN f0 0xfff8000000000000
-#   fctiwz f1, f0
-#   blr
-#   #_ REGISTER_OUT f0 0xfff8000000000000
-#   #_ REGISTER_OUT f1 0xFFFFFFFF80000000
-# 
-# # SNaN
-# test_fctiwz_12:
-#   #_ REGISTER_IN f0 0xfff4000000000000
-#   fctiwz f1, f0
-#   blr
-#   #_ REGISTER_OUT f0 0xfff4000000000000
-#   #_ REGISTER_OUT f1 0xFFFFFFFF80000000
+# QNaN
+test_fctiwz_11:
+  #_ REGISTER_IN f0 0xfff8000000000000
+  fctiwz f1, f0
+  blr
+  #_ REGISTER_OUT f0 0xfff8000000000000
+  #_ REGISTER_OUT f1 0xFFFFFFFF80000000
+
+# SNaN
+test_fctiwz_12:
+  #_ REGISTER_IN f0 0xfff4000000000000
+  fctiwz f1, f0
+  blr
+  #_ REGISTER_OUT f0 0xfff4000000000000
+  #_ REGISTER_OUT f1 0xFFFFFFFF80000000
 
 # +0
 test_fctidz_1:
@@ -176,19 +175,18 @@ test_fctidz_10:
   #_ REGISTER_OUT f0 0xfff0000000000000
   #_ REGISTER_OUT f1 0x8000000000000000
 
-# TODO(DrChat): Xenia doesn't handle NaNs yet.
-# # QNaN
-# test_fctidz_11:
-#   #_ REGISTER_IN f0 0xfff8000000000000
-#   fctidz f1, f0
-#   blr
-#   #_ REGISTER_OUT f0 0xfff8000000000000
-#   #_ REGISTER_OUT f1 0x8000000000000000
-# 
-# # SNaN
-# test_fctidz_12:
-#   #_ REGISTER_IN f0 0xfff4000000000000
-#   fctidz f1, f0
-#   blr
-#   #_ REGISTER_OUT f0 0xfff4000000000000
-#   #_ REGISTER_OUT f1 0x8000000000000000
+# QNaN
+test_fctidz_11:
+  #_ REGISTER_IN f0 0xfff8000000000000
+  fctidz f1, f0
+  blr
+  #_ REGISTER_OUT f0 0xfff8000000000000
+  #_ REGISTER_OUT f1 0x8000000000000000
+
+# SNaN
+test_fctidz_12:
+  #_ REGISTER_IN f0 0xfff4000000000000
+  fctidz f1, f0
+  blr
+  #_ REGISTER_OUT f0 0xfff4000000000000
+  #_ REGISTER_OUT f1 0x8000000000000000
