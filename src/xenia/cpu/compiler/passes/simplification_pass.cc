@@ -71,8 +71,12 @@ static bool SameValueOrEqualConstant(hir::Value* x, hir::Value* y) {
     return true;
   }
 
-  if (x->IsConstant() && y->IsConstant()) {
-    return x->AsUint64() == y->AsUint64();
+  // By type: AsUint64 only reads integers, so float constants such as the
+  // conversion limits in UpdateFPSCRForConvertToInteger all read as 0 and
+  // would wrongly match.
+  if (x->IsConstant() && y->IsConstant() && x->type == y->type &&
+      x->type != VEC128_TYPE) {
+    return x->IsConstantEQ(y);
   }
 
   return false;
