@@ -35,8 +35,9 @@
 #pragma clang diagnostic pop
 #endif
 
-DEFINE_path(target_trace_file, "", "Specifies the trace file to load.", "GPU");
-DEFINE_path(trace_dump_path, "", "Output path for dumped files.", "GPU");
+DEFINE_path(target_trace_file, "", "Specifies the trace file to load.",
+            "GPU.Debug");
+DEFINE_path(trace_dump_path, "", "Output path for dumped files.", "GPU.Debug");
 
 namespace xe {
 namespace gpu {

@@ -10,13 +10,13 @@
 #include "xenia/gpu/gpu_flags.h"
 
 DEFINE_path(trace_gpu_prefix, "scratch/gpu/",
-            "Prefix path for GPU trace files.", "GPU");
-DEFINE_bool(trace_gpu_stream, false, "Trace all GPU packets.", "GPU");
+            "Prefix path for GPU trace files.", "GPU.Debug");
+DEFINE_bool(trace_gpu_stream, false, "Trace all GPU packets.", "GPU.Debug");
 
 DEFINE_path(
     dump_shaders, "",
     "For shader debugging, path to dump GPU shaders to as they are compiled.",
-    "GPU");
+    "GPU.Debug");
 
 DEFINE_bool(vsync, true, "Enable VSYNC.", "GPU");
 
@@ -43,7 +43,7 @@ DEFINE_bool(
     "Disable filtering between cube map faces near edges where possible "
     "(Vulkan with VK_EXT_non_seamless_cube_map) to reproduce the Direct3D 9 "
     "behavior.",
-    "GPU");
+    "GPU.Debug");
 
 // Extremely bright screen borders in 4D5307E6.
 // Reading between texels with half-pixel offset in 58410954.
@@ -57,7 +57,7 @@ DEFINE_bool(
     "textures, for instance, when they are read between texels rather than "
     "at texel centers, or the leftmost/topmost pixels may not be fully covered "
     "when MSAA is used with fullscreen passes.",
-    "GPU");
+    "GPU.Debug");
 
 DEFINE_int32(occlusion_query_fake_lower_threshold, 80,
              "Lower end of the fake sample count value written on "
@@ -104,7 +104,7 @@ DEFINE_int32(anisotropic_override, -1,
 DEFINE_bool(no_discard_stencil_in_transfer_pipelines, false,
             "Skip stencil bit discard in render target transfer pipelines. "
             "May improve performance on some GPUs.",
-            "GPU");
+            "GPU.Debug");
 
 DEFINE_bool(gpu_3d_to_2d_texture, true,
             "Handle shaders that sample 3D textures as 2D by creating a 2D "

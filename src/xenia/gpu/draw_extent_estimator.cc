@@ -34,7 +34,7 @@ DEFINE_bool(
     "this prevents corruption of other render targets located after the "
     "current ones in the EDRAM by lossy range ownership transfers done for "
     "those draws.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_bool(
     execute_unclipped_draw_vs_on_cpu_with_scissor, false,
     "Don't restrict the usage of execute_unclipped_draw_vs_on_cpu to only "
@@ -45,7 +45,7 @@ DEFINE_bool(
     "Enabling this may cause excessive processing of vertices on the CPU, as "
     "some games draw rectangles (for their UI, for instance) without clipping, "
     "but with a proper scissor rectangle.",
-    "GPU");
+    "GPU.Debug");
 
 namespace xe {
 namespace gpu {
