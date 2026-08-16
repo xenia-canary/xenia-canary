@@ -32,18 +32,18 @@ DEFINE_bool(
     "Only does anything in debug builds, if set will log every write to a gpu "
     "register done by a guest. Does not log writes that are done by the CP on "
     "its own, just ones the guest makes or instructs it to make.",
-    "GPU");
+    "Logging");
 
 DEFINE_bool(disassemble_pm4, false,
             "Only does anything in debug builds, if set will disassemble and "
             "log all PM4 packets sent to the CP.",
-            "GPU");
+            "Logging");
 
 DEFINE_bool(
     log_ringbuffer_kickoff_initiator_bts, false,
     "Only does anything in debug builds, if set will log the pseudo-stacktrace "
     "of the guest thread that wrote the new read position.",
-    "GPU");
+    "Logging");
 
 DEFINE_bool(clear_memory_page_state, false,
             "Refresh state of memory pages to enable gpu written data. (Use "
