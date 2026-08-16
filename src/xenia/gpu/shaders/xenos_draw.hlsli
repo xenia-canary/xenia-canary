@@ -50,7 +50,7 @@ cbuffer xe_system_cbuffer : register(b0) {
 
   float4 xe_edram_blend_constant;
 
-  uint4 xe_texture_integer_scale_bits[8];
+  uint4 xe_texture_fixed_point_info[8];
 };
 
 struct XeHSControlPointInputIndexed {

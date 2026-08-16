@@ -123,17 +123,24 @@ TextureCache::TextureCache(const RegisterFile& register_file,
   assert_true(draw_resolution_scale_y >= 1);
   assert_true(draw_resolution_scale_y <= kMaxDrawResolutionScaleAlongAxis);
 
+  constexpr uint32_t kResolvePageDwordCount =
+      SharedMemory::kBufferSize / 4096 / 32;
   if (draw_resolution_scale_x > 1 || draw_resolution_scale_y > 1) {
-    constexpr uint32_t kScaledResolvePageDwordCount =
-        SharedMemory::kBufferSize / 4096 / 32;
     scaled_resolve_pages_ =
-        std::unique_ptr<uint32_t[]>(new uint32_t[kScaledResolvePageDwordCount]);
+        std::unique_ptr<uint32_t[]>(new uint32_t[kResolvePageDwordCount]);
     std::memset(scaled_resolve_pages_.get(), 0,
-                kScaledResolvePageDwordCount * sizeof(uint32_t));
+                kResolvePageDwordCount * sizeof(uint32_t));
     std::memset(scaled_resolve_pages_l2_, 0, sizeof(scaled_resolve_pages_l2_));
     scaled_resolve_global_watch_handle_ = shared_memory.RegisterGlobalWatch(
         ScaledResolveGlobalWatchCallbackThunk, this);
   }
+  depth_resolve_pages_ =
+      std::unique_ptr<uint32_t[]>(new uint32_t[kResolvePageDwordCount]);
+  std::memset(depth_resolve_pages_.get(), 0,
+              kResolvePageDwordCount * sizeof(uint32_t));
+  std::memset(depth_resolve_pages_l2_, 0, sizeof(depth_resolve_pages_l2_));
+  depth_resolve_global_watch_handle_ = shared_memory.RegisterGlobalWatch(
+      DepthResolveGlobalWatchCallbackThunk, this);
 }
 
 TextureCache::~TextureCache() {
@@ -141,6 +148,9 @@ TextureCache::~TextureCache() {
 
   if (scaled_resolve_global_watch_handle_) {
     shared_memory().UnregisterGlobalWatch(scaled_resolve_global_watch_handle_);
+  }
+  if (depth_resolve_global_watch_handle_) {
+    shared_memory().UnregisterGlobalWatch(depth_resolve_global_watch_handle_);
   }
 }
 
@@ -267,27 +277,31 @@ void TextureCache::BeginFrame() {
 
 void TextureCache::MarkRangeAsResolved(uint32_t start_unscaled,
                                        uint32_t length_unscaled,
-                                       bool resolution_scaled) {
+                                       bool resolution_scaled, bool is_depth) {
   if (length_unscaled == 0) {
     return;
   }
   start_unscaled &= 0x1FFFFFFF;
   length_unscaled = std::min(length_unscaled, 0x20000000 - start_unscaled);
 
-  if (IsDrawResolutionScaled()) {
-    uint32_t page_first = start_unscaled >> 12;
-    uint32_t page_last = (start_unscaled + length_unscaled - 1) >> 12;
-    uint32_t block_first = page_first >> 5;
-    uint32_t block_last = page_last >> 5;
-    auto global_lock = global_critical_region_.Acquire();
-    for (uint32_t i = block_first; i <= block_last; ++i) {
-      uint32_t add_bits = UINT32_MAX;
-      if (i == block_first) {
-        add_bits &= ~((UINT32_C(1) << (page_first & 31)) - 1);
-      }
-      if (i == block_last && (page_last & 31) != 31) {
-        add_bits &= (UINT32_C(1) << ((page_last & 31) + 1)) - 1;
-      }
+  // Invalidate textures and clear provenance left by previous writes before
+  // recording the provenance of this resolve.
+  shared_memory().RangeWrittenByGpu(start_unscaled, length_unscaled);
+
+  uint32_t page_first = start_unscaled >> 12;
+  uint32_t page_last = (start_unscaled + length_unscaled - 1) >> 12;
+  uint32_t block_first = page_first >> 5;
+  uint32_t block_last = page_last >> 5;
+  auto global_lock = global_critical_region_.Acquire();
+  for (uint32_t i = block_first; i <= block_last; ++i) {
+    uint32_t add_bits = UINT32_MAX;
+    if (i == block_first) {
+      add_bits &= ~((UINT32_C(1) << (page_first & 31)) - 1);
+    }
+    if (i == block_last && (page_last & 31) != 31) {
+      add_bits &= (UINT32_C(1) << ((page_last & 31) + 1)) - 1;
+    }
+    if (IsDrawResolutionScaled()) {
       if (resolution_scaled) {
         scaled_resolve_pages_[i] |= add_bits;
         scaled_resolve_pages_l2_[i >> 6] |= UINT64_C(1) << (i & 63);
@@ -300,11 +314,16 @@ void TextureCache::MarkRangeAsResolved(uint32_t start_unscaled,
         }
       }
     }
+    if (is_depth) {
+      depth_resolve_pages_[i] |= add_bits;
+      depth_resolve_pages_l2_[i >> 6] |= UINT64_C(1) << (i & 63);
+    } else {
+      depth_resolve_pages_[i] &= ~add_bits;
+      if (!depth_resolve_pages_[i]) {
+        depth_resolve_pages_l2_[i >> 6] &= ~(UINT64_C(1) << (i & 63));
+      }
+    }
   }
-
-  // Invalidate textures. Toggling individual textures between scaled and
-  // unscaled also relies on invalidation through shared memory.
-  shared_memory().RangeWrittenByGpu(start_unscaled, length_unscaled);
 }
 
 uint32_t TextureCache::GuestToHostSwizzle(uint32_t guest_swizzle,
@@ -366,6 +385,8 @@ void TextureCache::RequestTextures(uint32_t used_texture_mask) {
         GuestToHostSwizzle(fetch.swizzle, GetHostFormatSwizzle(binding.key));
     binding.integer_scale_bits = GetIntegerScaleBits(
         fetch.format, fetch.num_format, fetch.swizzle, binding.swizzled_signs);
+    binding.normalized_fixed_point =
+        !fetch.num_format && FormatInfo::Get(fetch.format)->fixed;
 
     // Check if need to load the unsigned and the signed versions of the texture
     // (if the format is emulated with different host bit representations for
@@ -624,21 +645,35 @@ void TextureCache::DestroyAllTextures(bool from_destructor) {
 }
 
 TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
+  texture_util::TextureGuestLayout resolve_guest_layout = key.GetGuestLayout();
+
   // Check if the texture is a scaled resolve texture.
   if (IsDrawResolutionScaled() && key.tiled &&
       IsScaledResolveSupportedForFormat(key)) {
-    texture_util::TextureGuestLayout scaled_resolve_guest_layout =
-        key.GetGuestLayout();
-    if ((scaled_resolve_guest_layout.base.level_data_extent_bytes &&
+    if ((resolve_guest_layout.base.level_data_extent_bytes &&
          IsRangeScaledResolved(
              key.base_page << 12,
-             scaled_resolve_guest_layout.base.level_data_extent_bytes)) ||
-        (scaled_resolve_guest_layout.mips_total_extent_bytes &&
-         IsRangeScaledResolved(
-             key.mip_page << 12,
-             scaled_resolve_guest_layout.mips_total_extent_bytes))) {
+             resolve_guest_layout.base.level_data_extent_bytes)) ||
+        (resolve_guest_layout.mips_total_extent_bytes &&
+         IsRangeScaledResolved(key.mip_page << 12,
+                               resolve_guest_layout.mips_total_extent_bytes))) {
       key.scaled_resolve = 1;
     }
+  }
+  bool has_depth_resolve_range = false;
+  bool fully_depth_resolved = true;
+  if (resolve_guest_layout.base.level_data_extent_bytes) {
+    has_depth_resolve_range = true;
+    fully_depth_resolved &= IsRangeFullyDepthResolved(
+        key.base_page << 12, resolve_guest_layout.base.level_data_extent_bytes);
+  }
+  if (resolve_guest_layout.mips_total_extent_bytes) {
+    has_depth_resolve_range = true;
+    fully_depth_resolved &= IsRangeFullyDepthResolved(
+        key.mip_page << 12, resolve_guest_layout.mips_total_extent_bytes);
+  }
+  if (has_depth_resolve_range && fully_depth_resolved) {
+    key.depth_resolve = 1;
   }
 
   uint32_t host_width = key.GetWidth();
@@ -1146,6 +1181,35 @@ bool TextureCache::IsRangeScaledResolved(uint32_t start_unscaled,
   return false;
 }
 
+bool TextureCache::IsRangeFullyDepthResolved(uint32_t start_unscaled,
+                                             uint32_t length_unscaled) {
+  start_unscaled = std::min(start_unscaled, SharedMemory::kBufferSize);
+  length_unscaled =
+      std::min(length_unscaled, SharedMemory::kBufferSize - start_unscaled);
+  if (!length_unscaled) {
+    return false;
+  }
+
+  uint32_t page_first = start_unscaled >> 12;
+  uint32_t page_last = (start_unscaled + length_unscaled - 1) >> 12;
+  uint32_t block_first = page_first >> 5;
+  uint32_t block_last = page_last >> 5;
+  auto global_lock = global_critical_region_.Acquire();
+  for (uint32_t i = block_first; i <= block_last; ++i) {
+    uint32_t check_bits = UINT32_MAX;
+    if (i == block_first) {
+      check_bits &= ~((UINT32_C(1) << (page_first & 31)) - 1);
+    }
+    if (i == block_last && (page_last & 31) != 31) {
+      check_bits &= (UINT32_C(1) << ((page_last & 31) + 1)) - 1;
+    }
+    if ((depth_resolve_pages_[i] & check_bits) != check_bits) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void TextureCache::ScaledResolveGlobalWatchCallbackThunk(
     const global_unique_lock_type& global_lock, void* context,
     uint32_t address_first, uint32_t address_last, bool invalidated_by_gpu) {
@@ -1196,6 +1260,54 @@ void TextureCache::ScaledResolveGlobalWatchCallback(
       scaled_resolve_pages_[resolve_block_index] &= resolve_keep_bits;
       if (scaled_resolve_pages_[resolve_block_index] == 0) {
         scaled_resolve_pages_l2_[i] &=
+            ~(UINT64_C(1) << resolve_block_relative_index);
+      }
+    }
+  }
+}
+
+void TextureCache::DepthResolveGlobalWatchCallbackThunk(
+    const global_unique_lock_type& global_lock, void* context,
+    uint32_t address_first, uint32_t address_last, bool invalidated_by_gpu) {
+  TextureCache* texture_cache = reinterpret_cast<TextureCache*>(context);
+  texture_cache->DepthResolveGlobalWatchCallback(
+      global_lock, address_first, address_last, invalidated_by_gpu);
+}
+
+void TextureCache::DepthResolveGlobalWatchCallback(
+    const global_unique_lock_type& global_lock, uint32_t address_first,
+    uint32_t address_last, [[maybe_unused]] bool invalidated_by_gpu) {
+  uint32_t resolve_page_first = address_first >> 12;
+  uint32_t resolve_page_last = address_last >> 12;
+  uint32_t resolve_block_first = resolve_page_first >> 5;
+  uint32_t resolve_block_last = resolve_page_last >> 5;
+  uint32_t resolve_l2_block_first = resolve_block_first >> 6;
+  uint32_t resolve_l2_block_last = resolve_block_last >> 6;
+  for (uint32_t i = resolve_l2_block_first; i <= resolve_l2_block_last; ++i) {
+    uint64_t resolve_l2_block = depth_resolve_pages_l2_[i];
+    if (i == resolve_l2_block_first) {
+      resolve_l2_block &= ~((UINT64_C(1) << (resolve_block_first & 63)) - 1);
+    }
+    if (i == resolve_l2_block_last && (resolve_block_last & 63) != 63) {
+      resolve_l2_block &= (UINT64_C(1) << ((resolve_block_last & 63) + 1)) - 1;
+    }
+    uint32_t resolve_block_relative_index;
+    while (
+        xe::bit_scan_forward(resolve_l2_block, &resolve_block_relative_index)) {
+      resolve_l2_block &= ~(UINT64_C(1) << resolve_block_relative_index);
+      uint32_t resolve_block_index = (i << 6) + resolve_block_relative_index;
+      uint32_t resolve_keep_bits = 0;
+      if (resolve_block_index == resolve_block_first) {
+        resolve_keep_bits |= (UINT32_C(1) << (resolve_page_first & 31)) - 1;
+      }
+      if (resolve_block_index == resolve_block_last &&
+          (resolve_page_last & 31) != 31) {
+        resolve_keep_bits |=
+            ~((UINT32_C(1) << ((resolve_page_last & 31) + 1)) - 1);
+      }
+      depth_resolve_pages_[resolve_block_index] &= resolve_keep_bits;
+      if (depth_resolve_pages_[resolve_block_index] == 0) {
+        depth_resolve_pages_l2_[i] &=
             ~(UINT64_C(1) << resolve_block_relative_index);
       }
     }

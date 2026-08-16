@@ -1483,7 +1483,8 @@ bool D3D12RenderTargetCache::Resolve(const Memory& memory,
         // Invalidate textures and mark the range as scaled if needed.
         texture_cache.MarkRangeAsResolved(resolve_info.copy_dest_extent_start,
                                           resolve_info.copy_dest_extent_length,
-                                          copy_dest_scaled);
+                                          copy_dest_scaled,
+                                          resolve_info.IsCopyingDepth());
         written_address_out = resolve_info.copy_dest_extent_start;
         written_length_out = resolve_info.copy_dest_extent_length;
         if (written_scaled_out) {

@@ -16,6 +16,7 @@
 #include "xenia/gpu/dxbc_shader_translator.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/render_target_cache.h"
+#include "xenia/gpu/texture_cache.h"
 
 namespace xe {
 namespace gpu {
@@ -2239,9 +2240,8 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         a_.OpBreak();
         a_.OpEndSwitch();
       }
-      // num_format is applied after signedness. A fixed-point format's host
-      // view returns normalized values, so for an integer num_format restore
-      // the guest integer range here.
+      // num_format is applied after signedness. Convert the host sample to the
+      // precision and range of the guest fixed-point fetch result.
       uint32_t integer_scale_bits_temp = PushSystemTemp();
       uint32_t integer_scale_temp = PushSystemTemp();
       uint32_t integer_scale_flags_temp = PushSystemTemp();
@@ -2254,11 +2254,41 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
       dxbc::Dest integer_scale_flags_dest(dxbc::Dest::R(
           integer_scale_flags_temp, used_result_nonzero_components));
       dxbc::Src integer_scale_flags_src(dxbc::Src::R(integer_scale_flags_temp));
-      dxbc::Src integer_scale_bits_packed = LoadSystemConstant(
-          SystemConstants::Index::kTextureIntegerScaleBits,
-          offsetof(SystemConstants, texture_integer_scale_bits) +
+      dxbc::Src fixed_point_info = LoadSystemConstant(
+          SystemConstants::Index::kTextureFixedPointInfo,
+          offsetof(SystemConstants, texture_fixed_point_info) +
               sizeof(uint32_t) * tfetch_index,
           dxbc::Src::kXXXX);
+      // The tested shaders use explicit point filter overrides. kUseFetchConst
+      // is intentionally excluded because its runtime sampler state has not
+      // been validated for this observed behavior.
+      if (instr.attributes.mag_filter == xenos::TextureFilter::kPoint &&
+          instr.attributes.min_filter == xenos::TextureFilter::kPoint &&
+          instr.attributes.mip_filter == xenos::TextureFilter::kPoint &&
+          instr.attributes.aniso_filter == xenos::AnisoFilter::kDisabled) {
+        // Observed guest behavior in 4D5309C9, 4D530AA4, and 4D530AB5:
+        // normalized fixed-point samples from depth/stencil resolves behave as
+        // if rounded to 16 fractional bits. Keep threshold comparisons against
+        // values such as 128 / 255 on the expected side of the boundary.
+        a_.OpAnd(
+            dxbc::Dest::R(integer_scale_bits_temp, 0b0001), fixed_point_info,
+            dxbc::Src::LU(kTextureFixedPointInfoDepthResolveNormalizedFlag));
+        a_.OpIf(true, integer_scale_bits_src.SelectFromSwizzled(0));
+        a_.OpMul(
+            dxbc::Dest::R(system_temp_result_, used_result_nonzero_components),
+            dxbc::Src::R(system_temp_result_), dxbc::Src::LF(65536.0f));
+        a_.OpRoundNE(
+            dxbc::Dest::R(system_temp_result_, used_result_nonzero_components),
+            dxbc::Src::R(system_temp_result_));
+        a_.OpMul(
+            dxbc::Dest::R(system_temp_result_, used_result_nonzero_components),
+            dxbc::Src::R(system_temp_result_), dxbc::Src::LF(1.0f / 65536.0f));
+        a_.OpEndIf();
+      }
+      a_.OpAnd(dxbc::Dest::R(integer_scale_bits_temp, 0b0001), fixed_point_info,
+               dxbc::Src::LU(kTextureFixedPointInfoIntegerScaleMask));
+      dxbc::Src integer_scale_bits_packed =
+          integer_scale_bits_src.SelectFromSwizzled(0);
       // Uniform early out. Zero means leave the sample alone. Only integer
       // num_format on fixed textures has scale bits.
       a_.OpIf(true, integer_scale_bits_packed);

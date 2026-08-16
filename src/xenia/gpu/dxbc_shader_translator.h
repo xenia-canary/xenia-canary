@@ -114,7 +114,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // If anything in this is structure is changed in a way not compatible with
     // the previous layout, invalidate the pipeline storages by increasing this
     // version number (0xYYYYMMDD)!
-    static constexpr uint32_t kVersion = 0x20260803;
+    static constexpr uint32_t kVersion = 0x20260816;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -413,13 +413,14 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // The constant blend factor for the respective modes.
     float edram_blend_constant[4];
 
-    // Integer num_format on fixed textures. Each dword packs the scale needed
-    // to turn normalized host samples back into guest integer values.
+    // Fixed-point texture fetch conversion information. Each dword packs the
+    // scale needed to turn normalized host samples back into guest integer
+    // values, plus flags for normalized depth/stencil resolve samples.
     // bits 0:3 = component_bits - 1
     // bit 4 = signed
     // bit 5 = unsigned-biased
     // Zero means no scale.
-    uint32_t texture_integer_scale_bits[32];
+    uint32_t texture_fixed_point_info[32];
 
    private:
     friend class DxbcShaderTranslator;
@@ -474,7 +475,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
 
       kEdramBlendConstant,
 
-      kTextureIntegerScaleBits,
+      kTextureFixedPointInfo,
 
       kCount,
     };

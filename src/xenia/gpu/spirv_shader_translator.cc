@@ -333,9 +333,8 @@ void SpirvShaderTranslator::StartTranslation() {
        type_float4_array_4},
       {"edram_blend_constant", offsetof(SystemConstants, edram_blend_constant),
        type_float4_},
-      {"texture_integer_scale_bits",
-       offsetof(SystemConstants, texture_integer_scale_bits),
-       type_uint4_array_8},
+      {"texture_fixed_point_info",
+       offsetof(SystemConstants, texture_fixed_point_info), type_uint4_array_8},
   };
   id_vector_temp_.clear();
   id_vector_temp_.reserve(xe::countof(system_constants));

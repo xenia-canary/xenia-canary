@@ -29,6 +29,15 @@
 namespace xe {
 namespace gpu {
 
+// Per-texture fixed-point fetch conversion information.
+// Bits 0:23 contain four 6-bit integer scale descriptions.
+// Bit 24 requests 16-fractional-bit rounding of normalized samples from a
+// depth/stencil resolve.
+constexpr uint32_t kTextureFixedPointInfoIntegerScaleMask =
+    (UINT32_C(1) << 24) - 1;
+constexpr uint32_t kTextureFixedPointInfoDepthResolveNormalizedFlag =
+    UINT32_C(1) << 24;
+
 // Manages host copies of guest textures, performing untiling, format and endian
 // conversion of textures stored in the shared memory, and also handling
 // invalidation.
@@ -101,9 +110,10 @@ class TextureCache {
   // overlapping it. resolution_scaled is whether the data went to the scaled
   // resolve address space, or to shared memory, such as resolves done at
   // native resolution when a scale threshold is set. The latter clears the
-  // scaled state of the range.
+  // scaled state of the range. is_depth is whether the resolved source is a
+  // depth/stencil render target.
   void MarkRangeAsResolved(uint32_t start_unscaled, uint32_t length_unscaled,
-                           bool resolution_scaled);
+                           bool resolution_scaled, bool is_depth);
   // Ensures the memory backing the range in the scaled resolve address space is
   // allocated and returns whether it is.
   virtual bool EnsureScaledResolveMemoryCommitted(
@@ -143,10 +153,20 @@ class TextureCache {
         GetValidTextureBinding(fetch_constant_index);
     return binding ? binding->swizzled_signs : kSwizzledSignsUnsigned;
   }
-  uint32_t GetActiveIntegerScaleBits(uint32_t fetch_constant_index) const {
+  uint32_t GetActiveTextureFixedPointInfo(uint32_t fetch_constant_index) const {
     const TextureBinding* binding =
         GetValidTextureBinding(fetch_constant_index);
-    return binding ? binding->integer_scale_bits : 0;
+    if (!binding) {
+      return 0;
+    }
+    uint32_t fixed_point_info = binding->integer_scale_bits;
+    if (binding->normalized_fixed_point &&
+        ((binding->texture && binding->texture->key().depth_resolve) ||
+         (binding->texture_signed &&
+          binding->texture_signed->key().depth_resolve))) {
+      fixed_point_info |= kTextureFixedPointInfoDepthResolveNormalizedFlag;
+    }
+    return fixed_point_info;
   }
   bool IsActiveTextureResolutionScaled(uint32_t fetch_constant_index) const {
     const TextureBinding* binding =
@@ -201,8 +221,10 @@ class TextureCache {
 
     // Whether this texture is a resolution-scaled resolve target.
     uint32_t scaled_resolve : 1;  // 97
+    // Whether all the texture data was written by depth/stencil resolves.
+    uint32_t depth_resolve : 1;  // 98
     // Least important in ==, so placed last.
-    uint32_t is_valid : 1;  // 98
+    uint32_t is_valid : 1;  // 99
 
     TextureKey() { MakeInvalid(); }
     TextureKey(const TextureKey& key) {
@@ -529,6 +551,8 @@ class TextureCache {
     // Packed TextureSign values, 2 bit per each component, with guest-side
     // destination swizzle from the fetch constant applied to them.
     uint8_t swizzled_signs;
+    // Whether the texture fetch uses a normalized fixed-point format.
+    bool normalized_fixed_point;
     // Unsigned version of the texture (or signed if they have the same data).
     Texture* texture;
     // Signed version of the texture if the data in the signed version is
@@ -641,6 +665,9 @@ class TextureCache {
   // Checks if there are any pages that contain scaled resolve data within the
   // range.
   bool IsRangeScaledResolved(uint32_t start_unscaled, uint32_t length_unscaled);
+  // Checks if every page in the range contains depth/stencil resolve data.
+  bool IsRangeFullyDepthResolved(uint32_t start_unscaled,
+                                 uint32_t length_unscaled);
 
   // Whether the mips of a scaled resolve texture must be generated on the host
   // (the guest did not resolve them into scaled memory itself).
@@ -667,6 +694,14 @@ class TextureCache {
   void ScaledResolveGlobalWatchCallback(
       const global_unique_lock_type& global_lock, uint32_t address_first,
       uint32_t address_last, bool invalidated_by_gpu);
+  // Global shared memory invalidation callback for depth/stencil resolve
+  // provenance.
+  static void DepthResolveGlobalWatchCallbackThunk(
+      const global_unique_lock_type& global_lock, void* context,
+      uint32_t address_first, uint32_t address_last, bool invalidated_by_gpu);
+  void DepthResolveGlobalWatchCallback(
+      const global_unique_lock_type& global_lock, uint32_t address_first,
+      uint32_t address_last, bool invalidated_by_gpu);
 
   const RegisterFile& register_file_;
   SharedMemory& shared_memory_;
@@ -686,8 +721,14 @@ class TextureCache {
   // level 2 bits.
   uint64_t scaled_resolve_pages_l2_[SharedMemory::kBufferSize >> (12 + 5 + 6)];
 
+  // Bit vector storing whether each 4 KB physical memory page contains data
+  // written by a depth/stencil resolve, and its second-level rejection vector.
+  std::unique_ptr<uint32_t[]> depth_resolve_pages_;
+  uint64_t depth_resolve_pages_l2_[SharedMemory::kBufferSize >> (12 + 5 + 6)];
+
   // Global watch for scaled resolve data invalidation.
   SharedMemory::GlobalWatchHandle scaled_resolve_global_watch_handle_ = nullptr;
+  SharedMemory::GlobalWatchHandle depth_resolve_global_watch_handle_ = nullptr;
 
   uint64_t current_submission_index_ = 0;
   uint64_t current_submission_time_ = 0;

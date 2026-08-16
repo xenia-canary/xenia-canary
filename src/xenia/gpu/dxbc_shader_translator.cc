@@ -2195,7 +2195,7 @@ constexpr DxbcShaderTranslator::SystemConstantRdef
         {"xe_edram_blend_constant", ShaderRdefTypeIndex::kFloat4,
          sizeof(float) * 4},
 
-        {"xe_texture_integer_scale_bits", ShaderRdefTypeIndex::kUint4Array8,
+        {"xe_texture_fixed_point_info", ShaderRdefTypeIndex::kUint4Array8,
          sizeof(uint32_t) * 32},
 };
 

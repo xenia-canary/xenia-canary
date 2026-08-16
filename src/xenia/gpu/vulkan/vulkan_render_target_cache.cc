@@ -1400,7 +1400,8 @@ bool VulkanRenderTargetCache::Resolve(
           // went.
           texture_cache.MarkRangeAsResolved(
               resolve_info.copy_dest_extent_start,
-              resolve_info.copy_dest_extent_length, scaled_buffer_ready);
+              resolve_info.copy_dest_extent_length, scaled_buffer_ready,
+              resolve_info.IsCopyingDepth());
           written_address_out = resolve_info.copy_dest_extent_start;
           written_length_out = resolve_info.copy_dest_extent_length;
           if (written_scaled_out) {

@@ -19,6 +19,7 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/spirv_compatibility.h"
+#include "xenia/gpu/texture_cache.h"
 
 namespace xe {
 namespace gpu {
@@ -2543,21 +2544,80 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
           }
         }
 
-        // num_format is applied after signs/gamma. Fixed textures sample as
-        // normalized host values, so integer num_format scales them back to
-        // guest integer units here.
+        // num_format is applied after signs/gamma. Convert the host sample to
+        // the precision and range of the guest fixed-point fetch result.
         id_vector_temp_.clear();
         id_vector_temp_.push_back(
-            builder_->makeIntConstant(kSystemConstantTextureIntegerScaleBits));
+            builder_->makeIntConstant(kSystemConstantTextureFixedPointInfo));
         id_vector_temp_.push_back(
             builder_->makeIntConstant(int32_t(fetch_constant_index >> 2)));
         id_vector_temp_.push_back(
             builder_->makeIntConstant(int32_t(fetch_constant_index & 3)));
-        spv::Id integer_scale_bits_packed = builder_->createLoad(
+        spv::Id fixed_point_info = builder_->createLoad(
             builder_->createAccessChain(spv::StorageClassUniform,
                                         uniform_system_constants_,
                                         id_vector_temp_),
             spv::NoPrecision);
+        // The tested shaders use explicit point filter overrides.
+        // kUseFetchConst is intentionally excluded because its runtime sampler
+        // state has not been validated for this observed behavior.
+        if (instr.attributes.mag_filter == xenos::TextureFilter::kPoint &&
+            instr.attributes.min_filter == xenos::TextureFilter::kPoint &&
+            instr.attributes.mip_filter == xenos::TextureFilter::kPoint &&
+            instr.attributes.aniso_filter == xenos::AnisoFilter::kDisabled) {
+          // Observed guest behavior in 4D5309C9, 4D530AA4, and 4D530AB5:
+          // normalized fixed-point samples from depth/stencil resolves behave
+          // as if rounded to 16 fractional bits. Keep threshold comparisons
+          // against values such as 128 / 255 on the expected side of the
+          // boundary.
+          spv::Id depth_resolve_normalized = builder_->createBinOp(
+              spv::OpINotEqual, type_bool_,
+              builder_->createBinOp(
+                  spv::OpBitwiseAnd, type_uint_, fixed_point_info,
+                  builder_->makeUintConstant(
+                      kTextureFixedPointInfoDepthResolveNormalizedFlag)),
+              const_uint_0_);
+          SpirvBuilder::IfBuilder if_depth_resolve_normalized(
+              depth_resolve_normalized, spv::SelectionControlMaskNone,
+              *builder_);
+          spv::Id rounded_result[4] = {};
+          {
+            uint32_t result_remaining_components =
+                used_result_nonzero_components;
+            uint32_t result_component_index;
+            while (xe::bit_scan_forward(result_remaining_components,
+                                        &result_component_index)) {
+              result_remaining_components &=
+                  ~(UINT32_C(1) << result_component_index);
+              rounded_result[result_component_index] =
+                  builder_->createNoContractionBinOp(
+                      spv::OpFMul, type_float_,
+                      builder_->createUnaryBuiltinCall(
+                          type_float_, ext_inst_glsl_std_450_,
+                          GLSLstd450RoundEven,
+                          builder_->createNoContractionBinOp(
+                              spv::OpFMul, type_float_,
+                              result[result_component_index],
+                              builder_->makeFloatConstant(65536.0f))),
+                      builder_->makeFloatConstant(1.0f / 65536.0f));
+            }
+          }
+          if_depth_resolve_normalized.makeEndIf();
+          uint32_t result_remaining_components = used_result_nonzero_components;
+          uint32_t result_component_index;
+          while (xe::bit_scan_forward(result_remaining_components,
+                                      &result_component_index)) {
+            result_remaining_components &=
+                ~(UINT32_C(1) << result_component_index);
+            result[result_component_index] =
+                if_depth_resolve_normalized.createMergePhi(
+                    rounded_result[result_component_index],
+                    result[result_component_index]);
+          }
+        }
+        spv::Id integer_scale_bits_packed = builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_, fixed_point_info,
+            builder_->makeUintConstant(kTextureFixedPointInfoIntegerScaleMask));
         {
           // Uniform early out. Zero means leave the sample alone. Only integer
           // num_format on fixed textures has scale bits.
