@@ -1123,7 +1123,10 @@ int InstrEmit_vnmsubfp_(PPCHIRBuilder& f, uint32_t vd, uint32_t va, uint32_t vb,
   // NOTE2: we could make vnmsub a new opcode, and then do it in double
   // precision, rounding after the neg
 
-  Value* v = f.Neg(f.MulSub(f.LoadVR(va), f.LoadVR(vc), f.LoadVR(vb)));
+  // The negation belongs to the opcode: hardware leaves a NaN result's sign
+  // alone, so negating afterwards would flip every NaN this produces.
+  Value* v = f.MulSub(f.LoadVR(va), f.LoadVR(vc), f.LoadVR(vb),
+                      /*negate_result=*/true);
   f.StoreVR(vd, v);
   return 0;
 }

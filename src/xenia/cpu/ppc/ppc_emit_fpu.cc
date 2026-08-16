@@ -237,7 +237,9 @@ int InstrEmit_fnmaddx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Neg(f.MulAdd(a, c, b));
+  // The negation belongs to the opcode: hardware leaves a NaN result's sign
+  // alone, so negating afterwards would flip every NaN this produces.
+  Value* v = f.MulAdd(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
   return 0;
@@ -248,7 +250,7 @@ int InstrEmit_fnmaddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Neg(f.MulAdd(a, c, b));
+  Value* v = f.MulAdd(a, c, b, /*negate_result=*/true);
   v = f.ToSingle(v);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
@@ -260,7 +262,7 @@ int InstrEmit_fnmsubx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Neg(f.MulSub(a, c, b));
+  Value* v = f.MulSub(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
   return 0;
@@ -271,7 +273,7 @@ int InstrEmit_fnmsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Neg(f.MulSub(a, c, b));
+  Value* v = f.MulSub(a, c, b, /*negate_result=*/true);
   v = f.ToSingle(v);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
