@@ -487,9 +487,15 @@ void PPCHIRBuilder::ClearFPSCRExceptions(bool update_cr1) {
   StoreFPSCRSummary(LoadConstantInt8(0), update_cr1);
 }
 
+// Magnitude of a double, for classifying it without a compare against a NaN.
+static Value* FpMagnitude(PPCHIRBuilder& f, Value* value) {
+  return f.And(f.Cast(value, INT64_TYPE),
+               f.LoadConstantUint64(0x7FFFFFFFFFFFFFFFull));
+}
+
 void PPCHIRBuilder::UpdateFPSCR(Value* result,
                                 std::initializer_list<Value*> operands,
-                                bool update_cr1) {
+                                bool update_cr1, Value* suppress) {
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
@@ -508,8 +514,40 @@ void PPCHIRBuilder::UpdateFPSCR(Value* result,
     any_snan = any_snan ? Or(any_snan, is_snan) : is_snan;
   }
   Value* vx = And(IsNan(result), Or(any_snan, IsFalse(any_nan)));
+  if (suppress) {
+    vx = And(vx, IsFalse(suppress));
+  }
 
   StoreFPSCRSummary(vx, true);
+}
+
+// A denormalized double operand makes the single-precision arithmetic answer
+// with the default QNaN and raise nothing at all. Divide and square root do not
+// do it, and a NaN or infinite operand takes precedence, so this asks for every
+// operand finite and at least one of them denormal.
+Value* PPCHIRBuilder::SingleDenormalOperand(
+    std::initializer_list<Value*> operands) {
+  Value* any_denormal = nullptr;
+  Value* any_nonfinite = nullptr;
+  for (Value* operand : operands) {
+    Value* magnitude = FpMagnitude(*this, operand);
+    // Subtracting one wraps a zero operand up to the top, which is what keeps
+    // zero from reading as denormal.
+    Value* is_denormal = CompareULT(Sub(magnitude, LoadConstantUint64(1)),
+                                    LoadConstantUint64(0x000FFFFFFFFFFFFFull));
+    Value* is_nonfinite =
+        CompareUGE(magnitude, LoadConstantUint64(0x7FF0000000000000ull));
+    any_denormal = any_denormal ? Or(any_denormal, is_denormal) : is_denormal;
+    any_nonfinite =
+        any_nonfinite ? Or(any_nonfinite, is_nonfinite) : is_nonfinite;
+  }
+  return And(any_denormal, IsFalse(any_nonfinite));
+}
+
+Value* PPCHIRBuilder::ApplySingleDenormalOperand(Value* quirk, Value* result) {
+  return Select(quirk,
+                Cast(LoadConstantUint64(0x7FF8000000000000ull), FLOAT64_TYPE),
+                result);
 }
 
 void PPCHIRBuilder::CopyFPSCRToCR1() {

@@ -50,8 +50,10 @@ int InstrEmit_faddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.ToSingle(f.Add(a, b));
+  Value* denormal = f.SingleDenormalOperand({a, b});
+  v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal);
   return 0;
 }
 
@@ -110,8 +112,10 @@ int InstrEmit_fmulsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* c = f.LoadFPR(i.A.FRC);
   Value* v = f.ToSingle(f.Mul(a, c));
+  Value* denormal = f.SingleDenormalOperand({a, c});
+  v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c}, i.A.Rc, denormal);
   return 0;
 }
 
@@ -153,8 +157,10 @@ int InstrEmit_fsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* a = f.LoadFPR(i.A.FRA);
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.ToSingle(f.Sub(a, b));
+  Value* denormal = f.SingleDenormalOperand({a, b});
+  v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal);
   return 0;
 }
 
@@ -195,11 +201,14 @@ static int InstrEmit_fmadd(PPCHIRBuilder& f, const InstrData& i, bool single) {
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulAdd(a, c, b);
+  Value* denormal = nullptr;
   if (single) {
     v = f.ToSingle(v);
+    denormal = f.SingleDenormalOperand({a, c, b});
+    v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
   return 0;
 }
 
@@ -217,11 +226,14 @@ static int InstrEmit_fmsub(PPCHIRBuilder& f, const InstrData& i, bool single) {
   Value* c = f.LoadFPR(i.A.FRC);
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulSub(a, c, b);
+  Value* denormal = nullptr;
   if (single) {
     v = f.ToSingle(v);
+    denormal = f.SingleDenormalOperand({a, c, b});
+    v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
   return 0;
 }
 int InstrEmit_fmsubx(PPCHIRBuilder& f, const InstrData& i) {
@@ -252,8 +264,10 @@ int InstrEmit_fnmaddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulAdd(a, c, b, /*negate_result=*/true);
   v = f.ToSingle(v);
+  Value* denormal = f.SingleDenormalOperand({a, c, b});
+  v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
   return 0;
 }
 
@@ -275,8 +289,10 @@ int InstrEmit_fnmsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulSub(a, c, b, /*negate_result=*/true);
   v = f.ToSingle(v);
+  Value* denormal = f.SingleDenormalOperand({a, c, b});
+  v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
   return 0;
 }
 
