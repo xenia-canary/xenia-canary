@@ -609,6 +609,9 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
 
     e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
     e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+    // Hardware returns that operand quieted. Lanes with no NaN are dropped by
+    // the blend below, so this needs no mask of its own.
+    e.vorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
 
     e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
     e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
@@ -675,6 +678,9 @@ struct MIN_V128 : Sequence<MIN_V128, I<OPCODE_MIN, V128Op, V128Op, V128Op>> {
 
     e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
     e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+    // Hardware returns that operand quieted. Lanes with no NaN are dropped by
+    // the blend below, so this needs no mask of its own.
+    e.vorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
 
     e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
     e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
