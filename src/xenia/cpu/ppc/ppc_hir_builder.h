@@ -72,6 +72,10 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
   Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
   Value* ApplySingleDenormalOperand(Value* quirk, Value* result);
+  // For the conversions to integer, which are invalid for a NaN or a value
+  // the target cannot hold.
+  void UpdateFPSCRForConvertToInteger(Value* b, hir::RoundMode round_mode,
+                                      bool to_int64, bool update_cr1);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);

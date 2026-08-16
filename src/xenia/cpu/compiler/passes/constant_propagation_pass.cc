@@ -209,7 +209,9 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_ROUND:
-          if (i->src1.value->IsConstant()) {
+          // The dynamic mode is whatever the host carries at run time, which
+          // is not knowable here.
+          if (i->src1.value->IsConstant() && i->flags != ROUND_DYNAMIC) {
             v->set_from(i->src1.value);
             v->Round(RoundMode(i->flags));
             i->UnlinkAndNOP();
