@@ -82,18 +82,20 @@ int InstrEmit_fdivsx(PPCHIRBuilder& f, const InstrData& i) {
 #if XE_PLATFORM_LINUX
   // TODO(has207): verify if this is needed on Windows
   // On Linux, fdivs needs to use A format fields instead of X format
-  Value* a = f.LoadFPR(i.A.FRA);
-  Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.ToSingle(f.Div(a, b));
-  f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  uint32_t fra = i.A.FRA, frb = i.A.FRB, frt = i.A.FRT;
+  bool rc = i.A.Rc;
 #else
-  Value* a = f.LoadFPR(i.X.RA);
-  Value* b = f.LoadFPR(i.X.RB);
-  Value* v = f.ToSingle(f.Div(a, b));
-  f.StoreFPR(i.X.RT, v);
-  f.UpdateFPSCR(v, {a, b}, i.X.Rc);
+  uint32_t fra = i.X.RA, frb = i.X.RB, frt = i.X.RT;
+  bool rc = i.X.Rc;
 #endif
+  Value* a = f.LoadFPR(fra);
+  Value* b = f.LoadFPR(frb);
+  Value* v = f.Div(a, b);
+  // A denormalized operand keeps the double quotient, unrounded.
+  Value* denormal = f.SingleDenormalOperand({a, b});
+  v = f.Select(denormal, v, f.ToSingle(v));
+  f.StoreFPR(frt, v);
+  f.UpdateFPSCR(v, {a, b}, rc);
   return 0;
 }
 
@@ -178,9 +180,14 @@ static int InstrEmit_fsqrt(PPCHIRBuilder& f, const InstrData& i, bool single) {
   // frD <- sqrt(frB)
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.Sqrt(b);
-  if (single) {
-    v = f.ToSingle(v);
+  if (!single) {
+    f.StoreFPR(i.A.FRT, v);
+    f.UpdateFPSCR(v, {b}, i.A.Rc);
+    return 0;
   }
+  // A denormalized operand keeps the double root, unrounded.
+  Value* denormal = f.SingleDenormalOperand({b});
+  v = f.Select(denormal, v, f.ToSingle(v));
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {b}, i.A.Rc);
   return 0;
