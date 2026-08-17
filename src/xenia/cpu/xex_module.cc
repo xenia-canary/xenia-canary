@@ -888,6 +888,21 @@ int XexModule::ReadPEHeaders() {
 
 void XexModule::ReadSecurityInfo() {
   switch (xex_format_) {
+    case kFormatXex25: {
+      const xex25_security_info* xex25_sec_info =
+          reinterpret_cast<const xex25_security_info*>(
+              GetSecurityInfo(xex_header()));
+
+      security_info_.rsa_signature = xex25_sec_info->rsa_signature;
+      security_info_.aes_key = xex25_sec_info->aes_key;
+      security_info_.image_size = xex25_sec_info->image_size;
+      security_info_.image_flags = xex25_sec_info->image_flags;
+      security_info_.export_table = xex25_sec_info->export_table;
+      security_info_.load_address = xex25_sec_info->load_address;
+      security_info_.page_descriptor_count =
+          xex25_sec_info->page_descriptor_count;
+      security_info_.page_descriptors = xex25_sec_info->page_descriptors;
+    } break;
     case kFormatXex1: {
       const xex1_security_info* xex1_sec_info =
           reinterpret_cast<const xex1_security_info*>(
@@ -938,9 +953,9 @@ bool XexModule::Load(const std::string_view name, const std::string_view path,
       XELOGE("XEX- format not supported");
       return false;
       break;
-    case kXEXPSignature:
-      XELOGE("XEX% format not supported");
-      return false;
+    case kXEX25Signature:
+      xex_format_ = kFormatXex25;
+      XELOGE("Loading XEX%");
       break;
     case kXEX1Signature:
       xex_format_ = kFormatXex1;
