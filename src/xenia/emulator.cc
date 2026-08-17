@@ -373,7 +373,7 @@ const std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
     case FileSignatureType::XEX0:
     case FileSignatureType::XEXQ:
     case FileSignatureType::XEXH:
-    case FileSignatureType::XEXP:
+    case FileSignatureType::XEX25:
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {
@@ -499,8 +499,8 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
       return FileSignatureType::XEXQ;
     case xe::cpu::kXEXHSignature:
       return FileSignatureType::XEXH;
-    case xe::cpu::kXEXPSignature:
-      return FileSignatureType::XEXP;
+    case xe::cpu::kXEX25Signature:
+      return FileSignatureType::XEX25;
     case xe::cpu::kXEX1Signature:
       return FileSignatureType::XEX1;
     case xe::cpu::kXEX2Signature:
@@ -560,7 +560,7 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     case FileSignatureType::XEX0:
     case FileSignatureType::XEXQ:
     case FileSignatureType::XEXH:
-    case FileSignatureType::XEXP:
+    case FileSignatureType::XEX25:
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {

@@ -134,7 +134,7 @@ X_STATUS UserModule::LoadFromMemory(const void* addr, const size_t length) {
   magic.value = xe::load<fourcc_t>(addr);
   if (magic == xe::cpu::kXEX2Signature || magic == xe::cpu::kXEX1Signature ||
       magic == xe::cpu::kXEXQSignature || magic == xe::cpu::kXEXHSignature ||
-      magic == xe::cpu::kXEXPSignature || magic == xe::cpu::kXEX0Signature) {
+      magic == xe::cpu::kXEX25Signature || magic == xe::cpu::kXEX0Signature) {
     module_format_ = kModuleFormatXex;
   } else if (magic == xe::cpu::kElfSignature) {
     module_format_ = kModuleFormatElf;
