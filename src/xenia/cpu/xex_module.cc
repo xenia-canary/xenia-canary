@@ -942,29 +942,30 @@ bool XexModule::Load(const std::string_view name, const std::string_view path,
 
   switch (src_header->magic) {
     case kXEX0Signature:
-      XELOGE("XEX0 format not supported");
+      XELOGI("XEX0 format not supported");
       return false;
       break;
     case kXEXQSignature:
-      XELOGE("XEX? format not supported");
+      XELOGI("XEX? format not supported");
       return false;
       break;
     case kXEXHSignature:
-      XELOGE("XEX- format not supported");
+      XELOGI("XEX- format not supported");
       return false;
       break;
     case kXEX25Signature:
       xex_format_ = kFormatXex25;
-      XELOGE("Loading XEX%");
+      XELOGI("Loading XEX%");
       break;
     case kXEX1Signature:
       xex_format_ = kFormatXex1;
+      XELOGI("Loading XEX1");
       break;
     case kXEX2Signature:
       xex_format_ = kFormatXex2;
       break;
     default:
-      XELOGE("XEX format not supported");
+      XELOGI("XEX format not supported");
       return false;
   }
 
