@@ -955,10 +955,11 @@ bool XexModule::Load(const std::string_view name, const std::string_view path,
       break;
     case kXEX25Signature:
       xex_format_ = kFormatXex25;
-      XELOGE("Loading XEX%");
+      XELOGI("Loading XEX%");
       break;
     case kXEX1Signature:
       xex_format_ = kFormatXex1;
+      XELOGI("Loading XEX1");
       break;
     case kXEX2Signature:
       xex_format_ = kFormatXex2;
