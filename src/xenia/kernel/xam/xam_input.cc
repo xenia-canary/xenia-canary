@@ -22,7 +22,9 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+using xe::hid::X_CONTEXT_TYPES;
 using xe::hid::X_INPUT_CAPABILITIES;
+using xe::hid::X_INPUT_CAPABILITIES_EX;
 using xe::hid::X_INPUT_FLAG;
 using xe::hid::X_INPUT_KEYSTROKE;
 using xe::hid::X_INPUT_STATE;
@@ -51,7 +53,7 @@ DECLARE_XAM_EXPORT1(XamEnableInactivityProcessing, kInput, kStub);
 
 dword_result_t XamInputGetCapabilitiesEx_entry(
     dword_t unk, dword_t user_index, dword_t flags,
-    pointer_t<X_INPUT_CAPABILITIES> caps) {
+    pointer_t<X_INPUT_CAPABILITIES_EX> caps) {
   if (unk > 1) {
     return X_ERROR_NOT_SUPPORTED;
   }
@@ -93,9 +95,14 @@ DECLARE_XAM_EXPORT1(XamInputGetCapabilitiesEx, kInput, kSketchy);
 // https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.reference.xinputgetcapabilities(v=vs.85).aspx
 dword_result_t XamInputGetCapabilities_entry(
     dword_t user_index, dword_t flags, pointer_t<X_INPUT_CAPABILITIES> caps) {
-  // chrispy: actually, it appears that caps is never checked for null, it is
-  // memset at the start regardless
-  return XamInputGetCapabilitiesEx_entry(1, user_index, flags, caps);
+  X_HRESULT result;
+  memset(caps, 0x0, sizeof(X_INPUT_CAPABILITIES));
+  X_INPUT_CAPABILITIES_EX caps_ex = {};
+  result = XamInputGetCapabilitiesEx_entry(1, user_index, flags, &caps_ex);
+  if (!result) {
+    std::memcpy(caps, &caps_ex, sizeof(X_INPUT_CAPABILITIES));
+  }
+  return result;
 }
 DECLARE_XAM_EXPORT1(XamInputGetCapabilities, kInput, kSketchy);
 
@@ -146,7 +153,8 @@ DECLARE_XAM_EXPORT2(XamInputGetState, kInput, kImplemented, kHighFrequency);
 dword_result_t XamInputSetState_entry(
     dword_t user_index,
     dword_t flags, /* flags, as far as i can see, is not used*/
-    pointer_t<X_INPUT_VIBRATION> vibration) {
+    pointer_t<X_INPUT_VIBRATION> vibration, dword_t unk4, dword_t unk5,
+    dword_t unk6) {
   if (user_index >= XUserMaxUserCount) {
     return X_E_DEVICE_NOT_CONNECTED;
   }
@@ -161,33 +169,14 @@ dword_result_t XamInputSetState_entry(
 DECLARE_XAM_EXPORT1(XamInputSetState, kInput, kImplemented);
 
 // https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.reference.xinputgetkeystroke(v=vs.85).aspx
-dword_result_t XamInputGetKeystroke_entry(
-    dword_t user_index, dword_t flags, pointer_t<X_INPUT_KEYSTROKE> keystroke) {
-  // https://github.com/CodeAsm/ffplay360/blob/master/Common/AtgXime.cpp
-  // user index = index or XUSER_INDEX_ANY
-  // flags = XINPUT_FLAG_GAMEPAD (| _ANYUSER | _ANYDEVICE)
-
-  if (!keystroke) {
-    return X_ERROR_BAD_ARGUMENTS;
-  }
-
-  uint32_t actual_user_index = user_index;
-  if ((actual_user_index & XUserIndexAny) == XUserIndexAny ||
-      (flags & X_INPUT_FLAG::X_INPUT_FLAG_ANY_USER)) {
-    // Always pin user to 0.
-    actual_user_index = 0;
-  }
-
-  auto input_system = kernel_state()->emulator()->input_system();
-  auto lock = input_system->lock();
-  return input_system->GetKeystroke(user_index, flags, keystroke);
-}
-DECLARE_XAM_EXPORT1(XamInputGetKeystroke, kInput, kImplemented);
-
 // Same as non-ex, just takes a pointer to user index.
 dword_result_t XamInputGetKeystrokeEx_entry(
     lpdword_t user_index_ptr, dword_t flags,
     pointer_t<X_INPUT_KEYSTROKE> keystroke) {
+  // https://github.com/CodeAsm/ffplay360/blob/master/Common/AtgXime.cpp
+  // user index = index or XUSER_INDEX_ANY
+  // flags = XINPUT_FLAG_GAMEPAD (| _ANYUSER | _ANYDEVICE)
+
   if (!keystroke) {
     return X_ERROR_BAD_ARGUMENTS;
   }
@@ -231,6 +220,13 @@ dword_result_t XamInputGetKeystrokeEx_entry(
 }
 DECLARE_XAM_EXPORT1(XamInputGetKeystrokeEx, kInput, kImplemented);
 
+dword_result_t XamInputGetKeystroke_entry(
+    dword_t user_index, dword_t flags, pointer_t<X_INPUT_KEYSTROKE> keystroke) {
+  uint32_t actual_user_index = user_index;
+  return XamInputGetKeystrokeEx_entry(&actual_user_index, flags, keystroke);
+}
+DECLARE_XAM_EXPORT1(XamInputGetKeystroke, kInput, kImplemented);
+
 X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
                                                  dword_t device_type,
                                                  lpdword_t out_ptr) {
@@ -241,7 +237,7 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
   if (kernel_state()->xam_state()->IsUserSignedIn(user_index) ||
       (user_index & XUserIndexAny) == XUserIndexAny) {
     if (device_type == 4 && cvars::allow_mic_initialization) {  // Microphone
-      *out_ptr = 6 << 28;
+      *out_ptr = X_CONTEXT_TYPES::Gamepad;
     } else {
       *out_ptr = (uint32_t)user_index;
     }

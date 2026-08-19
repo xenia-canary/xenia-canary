@@ -107,6 +107,16 @@ struct X_INPUT_CAPABILITIES {
 static_assert_size(X_INPUT_CAPABILITIES,
                    sizeof(X_INPUT_GAMEPAD) + sizeof(X_INPUT_VIBRATION) + 4);
 
+struct X_INPUT_CAPABILITIES_EX : X_INPUT_CAPABILITIES {
+  uint8_t unk[0xC];
+};
+static_assert_size(X_INPUT_CAPABILITIES_EX, sizeof(X_INPUT_CAPABILITIES) + 0xC);
+
+enum X_CONTEXT_TYPES : uint32_t {
+  Wheel = 0x50000000,
+  Gamepad = 0x60000000,
+};
+
 // https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.reference.xinput_keystroke(v=vs.85).aspx
 struct X_INPUT_KEYSTROKE {
   be<uint16_t> virtual_key;
