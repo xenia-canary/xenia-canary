@@ -890,12 +890,13 @@ void Value::Permute(Value* src1, Value* src2, TypeName type) {
       }
     }
 
-    // Blend: select from shuf1 where mask bit is set, shuf2 otherwise
+    // Blend the same way the backends do: vpblendw takes its *second* source
+    // where the mask bit is set, so a set bit selects shuf2.
     for (int i = 0; i < 8; i++) {
       if (mask & (1 << i)) {
-        constant.v128.u16[i] = shuf1.u16[i];
-      } else {
         constant.v128.u16[i] = shuf2.u16[i];
+      } else {
+        constant.v128.u16[i] = shuf1.u16[i];
       }
     }
 
