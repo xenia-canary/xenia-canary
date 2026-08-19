@@ -133,7 +133,6 @@ struct X_UNICODE_STRING {
 };
 static_assert_size(X_UNICODE_STRING, 8);
 
-// https://github.com/CodeAsm/ffplay360/blob/master/Common/XTLOnPC.h
 struct X_VIDEO_MODE {
   be<uint32_t> display_width;
   be<uint32_t> display_height;

@@ -53,7 +53,6 @@ dword_result_t XamNotifyCreateListenerInternal_entry(qword_t mask,
 }
 DECLARE_XAM_EXPORT1(XamNotifyCreateListenerInternal, kNone, kImplemented);
 
-// https://github.com/CodeAsm/ffplay360/blob/master/Common/AtgSignIn.cpp
 dword_result_t XNotifyGetNext_entry(dword_t handle, dword_t match_id,
                                     lpdword_t id_ptr, lpdword_t param_ptr) {
   if (param_ptr) {
