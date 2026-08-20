@@ -458,21 +458,23 @@ struct VECTOR_COMPARE_SGE_V128
                 break;
             }
           } else {
+            // Not xmm0: EmitAssociativeBinaryXmmOp materializes a constant
+            // operand there, and both compares read it.
             switch (i.instr->flags) {
               case INT8_TYPE:
-                e.vpcmpeqb(e.xmm0, src1, src2);
+                e.vpcmpeqb(e.xmm1, src1, src2);
                 e.vpcmpgtb(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case INT16_TYPE:
-                e.vpcmpeqw(e.xmm0, src1, src2);
+                e.vpcmpeqw(e.xmm1, src1, src2);
                 e.vpcmpgtw(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case INT32_TYPE:
-                e.vpcmpeqd(e.xmm0, src1, src2);
+                e.vpcmpeqd(e.xmm1, src1, src2);
                 e.vpcmpgtd(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case FLOAT32_TYPE:
                 e.ChangeMxcsrMode(MXCSRMode::Vmx);
@@ -3026,7 +3028,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
           auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
+          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
 
 #if XE_PLATFORM_WIN32
           // Windows x64 ABI: __m128i is passed by implicit pointer
@@ -3044,7 +3046,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         } else {
           // unsigned -> unsigned
           auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
+          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
 
 #if XE_PLATFORM_WIN32
           // Windows x64 ABI: __m128i is passed by implicit pointer
