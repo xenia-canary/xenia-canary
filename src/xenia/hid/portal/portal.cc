@@ -31,11 +31,18 @@ X_STATUS Portal::Read(std::span<uint8_t> data, uint32_t& bytes_read,
   X_STATUS status = ReadInternal(data, read_count);
 
   if (XSUCCEEDED(status)) {
-    // Empty asynchronous polls complete successfully with no data. Signal
-    // state only when a packet was actually returned to the guest.
-    state = read_count > 0 ? 1 : 0;
+    if (UsesAsyncReads()) {
+      // Empty asynchronous polls complete successfully with no data. Signal
+      // state only when a packet was actually returned to the guest.
+      state = read_count > 0 ? 1 : 0;
+    } else {
+      // Preserve the original HID state behavior for legacy portals.
+      state = previous_status_ == status;
+    }
     bytes_read = read_count;
   }
+
+  previous_status_ = status;
 
   if (status == X_ERROR_DEVICE_NOT_CONNECTED) {
     CloseDevice();

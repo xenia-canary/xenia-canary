@@ -44,10 +44,13 @@ class Portal {
  private:
   virtual void OpenDevice() = 0;
   virtual void CloseDevice() = 0;
+  virtual bool UsesAsyncReads() const = 0;
 
   virtual X_STATUS ReadInternal(std::span<uint8_t> data,
                                 int32_t& read_count) = 0;
   virtual X_STATUS WriteInternal(std::span<uint8_t> data) = 0;
+
+  X_STATUS previous_status_ = 0;
 };
 
 }  // namespace hid
