@@ -13,12 +13,16 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <sstream>
 
+#include "xenia/base/cvar.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string.h"
@@ -31,6 +35,19 @@
 
 #include "xenia/base/main_android.h"
 #endif
+
+#if XE_PLATFORM_GNU_LINUX
+#ifndef MFD_EXEC
+#define MFD_EXEC 0x0010U
+#endif
+
+DEFINE_bool(use_shm_open, false,
+            "Back guest memory and the code cache with a /dev/shm file instead "
+            "of memfd.\n"
+            "Exposes both as named files that other processes can open to "
+            "inspect guest memory or JIT output while a title runs.",
+            "Linux");
+#endif  // XE_PLATFORM_GNU_LINUX
 
 namespace xe {
 namespace memory {
@@ -294,11 +311,38 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
   }
   oflag |= O_CREAT;
   auto full_path = "/" / path;
+#if XE_PLATFORM_GNU_LINUX
+  // memfd is unaffected by noexec /dev/shm and needs no cleanup on exit.
+  if (!cvars::use_shm_open) {
+    const bool needs_exec = access == PageAccess::kExecuteReadOnly ||
+                            access == PageAccess::kExecuteReadWrite;
+    int memfd =
+        memfd_create(path.c_str(), MFD_CLOEXEC | (needs_exec ? MFD_EXEC : 0u));
+    if (memfd < 0 && needs_exec && errno == EINVAL) {
+      memfd = memfd_create(path.c_str(), MFD_CLOEXEC);
+    }
+    if (memfd >= 0) {
+      if (ftruncate(memfd, length) < 0) {
+        XELOGE("ftruncate(memfd {}, 0x{:X}) failed: {} ({})", path.string(),
+               length, strerror(errno), errno);
+        close(memfd);
+        return kFileMappingHandleInvalid;
+      }
+      return memfd;
+    }
+    XELOGW("memfd_create({}) failed: {} ({}), falling back to shm_open",
+           path.string(), strerror(errno), errno);
+  }
+#endif  // XE_PLATFORM_GNU_LINUX
   int ret = shm_open(full_path.c_str(), oflag, 0777);
   if (ret < 0) {
+    XELOGE("shm_open({}) failed: {} ({})", full_path.string(), strerror(errno),
+           errno);
     return kFileMappingHandleInvalid;
   }
   if (ftruncate(ret, length) < 0) {
+    XELOGE("ftruncate({}, 0x{:X}) failed: {} ({})", full_path.string(), length,
+           strerror(errno), errno);
     close(ret);
     shm_unlink(full_path.c_str());
     return kFileMappingHandleInvalid;
@@ -318,15 +362,19 @@ void CloseFileMappingHandle(FileMappingHandle handle,
   close(handle);
 #if !XE_PLATFORM_ANDROID
   auto full_path = "/" / path;
-  shm_unlink(full_path.c_str());
-  // Remove from tracking
+  // Only shm_open handles are tracked and need unlinking.
+  bool tracked = false;
   {
     std::lock_guard guard(g_shm_file_names_mutex);
     auto it = std::find(g_shm_file_names.begin(), g_shm_file_names.end(),
                         full_path.string());
     if (it != g_shm_file_names.end()) {
       g_shm_file_names.erase(it);
+      tracked = true;
     }
+  }
+  if (tracked) {
+    shm_unlink(full_path.c_str());
   }
 #endif
 }
