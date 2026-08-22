@@ -22,7 +22,7 @@
 #include "xenia/gpu/xenos.h"
 
 DEFINE_bool(
-    debug_msaa_4x_as_2x, false,
+    debug_msaa_2x_as_4x, false,
     "Use 4x MSAA with 2 samples instead of native 2x MSAA when available. "
     "For scalability testing on host GPU APIs where 2x is not mandatory. MSAA "
     "will be of a similar or worse quality and use more memory.",
