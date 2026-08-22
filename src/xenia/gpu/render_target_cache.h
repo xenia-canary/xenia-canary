@@ -28,7 +28,7 @@
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/xenos.h"
 
-DECLARE_bool(debug_msaa_4x_as_2x);
+DECLARE_bool(debug_msaa_2x_as_4x);
 DECLARE_bool(depth_transfer_not_equal_test);
 DECLARE_bool(depth_float24_round);
 DECLARE_bool(depth_float24_convert_in_pixel_shader);
