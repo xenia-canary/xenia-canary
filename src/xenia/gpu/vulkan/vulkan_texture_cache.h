@@ -48,7 +48,7 @@ class VulkanTextureCache final : public TextureCache {
       // clamp mode).
       uint32_t force_bc_w_to_max : 1;  // 23
       // Maximum mip level is in the texture resource itself, but mip_base_map
-      // can be used to limit fetching to mip_min_level.
+      // limits fetching to mip_min_level (level 0 when the base is available).
     };
 
     SamplerParameters() : value(0) { static_assert_size(*this, sizeof(value)); }

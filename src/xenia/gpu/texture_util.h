@@ -29,8 +29,8 @@ namespace texture_util {
 // tiling.
 
 // Extracts the size from the fetch constant, and also cleans up addresses and
-// mip range based on real presence of the base level and mips. Returns 6 faces
-// for cube textures.
+// mip range based on the base and mip addresses and guest mip levels. Returns 6
+// faces for cube textures.
 void GetSubresourcesFromFetchConstant(
     const xenos::xe_gpu_texture_fetch_t& fetch, uint32_t* width_minus_1_out,
     uint32_t* height_minus_1_out, uint32_t* depth_or_array_size_minus_1_out,

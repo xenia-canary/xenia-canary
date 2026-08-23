@@ -796,12 +796,10 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
     parameters.border_color = xenos::BorderColor::k_ABGR_Black;
   }
 
-  uint32_t mip_min_level, mip_max_level;
+  uint32_t base_page, mip_min_level, mip_max_level;
   texture_util::GetSubresourcesFromFetchConstant(
-      fetch, nullptr, nullptr, nullptr, nullptr, nullptr, &mip_min_level,
+      fetch, nullptr, nullptr, nullptr, &base_page, nullptr, &mip_min_level,
       &mip_max_level);
-  parameters.mip_min_level = mip_min_level;
-  bool has_mips = mip_max_level > mip_min_level;
   xenos::TextureFilter mag_filter =
       binding.mag_filter == xenos::TextureFilter::kUseFetchConst
           ? fetch.mag_filter
@@ -820,6 +818,11 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
       mip_filter == xenos::TextureFilter::kPoint ||
       mip_filter == xenos::TextureFilter::kLinear;
   bool mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
+  if (mip_base_map && base_page != 0) {
+    mip_min_level = 0;
+  }
+  parameters.mip_min_level = mip_min_level;
+  bool has_mips = mip_max_level > mip_min_level;
   // high cache miss count here, prefetch fetch earlier
   xenos::AnisoFilter aniso_filter =
       binding.aniso_filter == xenos::AnisoFilter::kUseFetchConst

@@ -698,10 +698,13 @@ VulkanTextureCache::SamplerParameters VulkanTextureCache::GetSamplerParameters(
           : binding.aniso_filter;
   parameters.mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
 
-  uint32_t mip_min_level, mip_max_level;
+  uint32_t base_page, mip_min_level, mip_max_level;
   texture_util::GetSubresourcesFromFetchConstant(
-      fetch, nullptr, nullptr, nullptr, nullptr, nullptr, &mip_min_level,
+      fetch, nullptr, nullptr, nullptr, &base_page, nullptr, &mip_min_level,
       &mip_max_level);
+  if (parameters.mip_base_map && base_page != 0) {
+    mip_min_level = 0;
+  }
   parameters.mip_min_level = mip_min_level;
   bool has_mips = mip_max_level > mip_min_level;
   // Apply anisotropic override, but only for mipmapped textures

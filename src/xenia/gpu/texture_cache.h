@@ -48,10 +48,10 @@ namespace gpu {
 //   However, the max level is not ignored because any mip count can be
 //   specified when creating a texture, and another texture may be placed after
 //   the last one.
-// - If the texture has a mip address, but the base address is 0 or the same as
-//   the mip address, a mipmapped texture is created, but min/max LOD is clamped
-//   to the lower bound of 1 - the game is expected to do that anyway until the
-//   largest LOD is loaded.
+// - If the texture has a mip address, but the base address is 0, a mipmapped
+//   texture is created with the minimum LOD clamped to 1.
+// - If the base and mip addresses are the same with a nonzero minimum mip
+//   level, level 0 is already excluded, so the base upload is skipped.
 // TODO(Triang3l): Attach the largest LOD to existing textures with a valid
 // mip_address but no base ever used yet (no base_address) to save memory
 // because textures are streamed this way anyway.
