@@ -83,6 +83,10 @@ class GTKWindow : public Window {
   GtkWidget* box_ = nullptr;
   GtkWidget* drawing_area_ = nullptr;
 
+  // Cleared in the destructor, so paint requests that RequestPaintImpl has
+  // deferred to the UI thread don't access a destroyed window.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+
   uint32_t batched_size_update_depth_ = 0;
   bool batched_size_update_contained_configure_ = false;
   bool batched_size_update_contained_draw_ = false;

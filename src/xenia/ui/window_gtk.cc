@@ -37,6 +37,7 @@ GTKWindow::GTKWindow(WindowedAppContext& app_context,
              desired_logical_height) {}
 
 GTKWindow::~GTKWindow() {
+  *alive_ = false;
   EnterDestructor();
   if (window_) {
     // Set window_ to null to ignore events from now on since this ui::GTKWindow
@@ -295,7 +296,15 @@ std::unique_ptr<Surface> GTKWindow::CreateSurfaceImpl(
   return nullptr;
 }
 
-void GTKWindow::RequestPaintImpl() { gtk_widget_queue_draw(drawing_area_); }
+void GTKWindow::RequestPaintImpl() {
+  // RequestPaint may be called from any thread, but GTK is not thread-safe -
+  // queued from another thread, the redraw may never be scheduled.
+  app_context().CallInUIThread([this, alive = alive_]() {
+    if (*alive && drawing_area_) {
+      gtk_widget_queue_draw(drawing_area_);
+    }
+  });
+}
 
 void GTKWindow::HandleSizeUpdate(
     WindowDestructionReceiver& destruction_receiver) {
