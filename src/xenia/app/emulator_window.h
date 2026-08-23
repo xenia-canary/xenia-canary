@@ -262,6 +262,7 @@ class EmulatorWindow {
   void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);
   void OnMouseUp(const ui::MouseEvent& e);
+  void QuitFromUIThread();
   void FileOpen();
   void FileClose();
   void InstallContent();

@@ -32,6 +32,16 @@ DEFINE_bool(
 
 namespace xe {
 
+#if XE_PLATFORM_WIN32
+bool IsRunningUnderWine() {
+  HMODULE ntdll_module = GetModuleHandleW(L"ntdll.dll");
+  if (!ntdll_module) {
+    return false;
+  }
+  return GetProcAddress(ntdll_module, "wine_get_version") != nullptr;
+}
+#endif
+
 static void RequestWin32HighResolutionTimer() {
   HMODULE ntdll_module = GetModuleHandleW(L"ntdll.dll");
   if (!ntdll_module) {

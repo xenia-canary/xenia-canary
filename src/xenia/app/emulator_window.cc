@@ -287,7 +287,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
-  emulator_window_.app_context_.QuitFromUIThread();
+  emulator_window_.QuitFromUIThread();
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnFileDrop(ui::FileDropEvent& e) {
@@ -783,7 +783,7 @@ bool EmulatorWindow::Initialize() {
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
-                         [this]() { window_->RequestClose(); }));
+                         std::bind(&EmulatorWindow::QuitFromUIThread, this)));
   }
   main_menu->AddChild(std::move(file_menu));
 
@@ -1271,6 +1271,13 @@ void EmulatorWindow::FileOpen() {
 }
 
 void EmulatorWindow::FileClose() { emulator_->TerminateTitle(); }
+
+void EmulatorWindow::QuitFromUIThread() {
+  if (emulator_ && emulator_->is_title_open()) {
+    emulator_->TerminateTitle();
+  }
+  app_context_.QuitFromUIThread();
+}
 
 void EmulatorWindow::InstallContent() {
   std::vector<std::filesystem::path> paths;
@@ -2177,7 +2184,13 @@ std::string EmulatorWindow::CanonicalizeFileExtension(
 xe::X_STATUS EmulatorWindow::RunTitle(
     const std::filesystem::path& path_to_file) {
   std::error_code ec = {};
-  bool titleExists = std::filesystem::exists(path_to_file, ec);
+  // Optical device paths (e.g. \\.\D: on Windows, /dev/sg0 on Linux/Wine)
+  // are not regular filesystem paths — std::filesystem::exists returns false
+  // for them. Skip the existence check for those and let the device open
+  // logic downstream validate them.
+  const bool is_optical_device = Emulator::IsPathOpticalDevice(path_to_file);
+  bool titleExists =
+      is_optical_device || std::filesystem::exists(path_to_file, ec);
 
   if (path_to_file.empty() || !titleExists) {
     std::string log_msg =
@@ -2214,7 +2227,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(
 
   // Prevent crashing the emulator by not loading a game if a game is already
   // loaded.
-  auto abs_path = std::filesystem::absolute(path_to_file);
+  auto abs_path = (Emulator::IsPathOpticalDevice(path_to_file)
+                       ? path_to_file
+                       : std::filesystem::absolute(path_to_file));
 
   auto extension = CanonicalizeFileExtension(abs_path);
 

@@ -421,22 +421,22 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
 
   if (display_window && imgui_drawer) {
+    auto* app_context = &display_window->app_context();
     display_window->app_context().CallInUIThreadSynchronous(
-        [imgui_drawer, title, message]() {
+        [app_context, imgui_drawer, title, message]() {
           auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
               imgui_drawer, title.c_str(), message.c_str());
 
-          std::jthread([dialog]() {
+          std::jthread([app_context, dialog]() {
             while (!dialog->IsClosing()) {
               std::this_thread::yield();
             }
 
-            config::SaveConfig();
-            xe::FlushLog();
-
-            std::quick_exit(0);
+            app_context->RequestDeferredQuit();
           }).detach();
         });
+  } else if (display_window) {
+    display_window->app_context().RequestDeferredQuit();
   }
 
   // This function does not return.
@@ -453,22 +453,22 @@ void XamLoaderTerminateTitle_entry() {
   auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
 
   if (display_window && imgui_drawer) {
+    auto* app_context = &display_window->app_context();
     display_window->app_context().CallInUIThreadSynchronous(
-        [imgui_drawer, title, message]() {
+        [app_context, imgui_drawer, title, message]() {
           auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
               imgui_drawer, title.c_str(), message.c_str());
 
-          std::jthread([dialog]() {
+          std::jthread([app_context, dialog]() {
             while (!dialog->IsClosing()) {
               std::this_thread::yield();
             }
 
-            config::SaveConfig();
-            xe::FlushLog();
-
-            std::quick_exit(0);
+            app_context->RequestDeferredQuit();
           }).detach();
         });
+  } else if (display_window) {
+    display_window->app_context().RequestDeferredQuit();
   }
 
   // This function does not return.

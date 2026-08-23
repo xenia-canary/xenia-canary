@@ -101,6 +101,8 @@ class Emulator {
                     const std::filesystem::path& cache_root);
   ~Emulator();
 
+  static bool IsPathOpticalDevice(const std::filesystem::path& path);
+
   // Full command line used when launching the process.
   const std::filesystem::path& command_line() const { return command_line_; }
 
@@ -297,6 +299,7 @@ class Emulator {
 
   void Pause();
   void Resume();
+  void PrepareForQuickExitCleanup();
   bool is_paused() const { return paused_; }
   bool SaveToFile(const std::filesystem::path& path);
   bool RestoreFromFile(const std::filesystem::path& path);

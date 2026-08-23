@@ -560,6 +560,10 @@ bool EmulatorApp::OnInitialize() {
 void EmulatorApp::OnDestroy() {
   ShutdownEmulatorThreadFromUIThread();
 
+  if (emulator_) {
+    emulator_->PrepareForQuickExitCleanup();
+  }
+
   if (cvars::discord) {
     discord::DiscordPresence::Shutdown();
   }
@@ -745,7 +749,11 @@ void EmulatorApp::EmulatorThread() {
 
   if (!path.empty()) {
     // Normalize the path and make absolute.
-    auto abs_path = std::filesystem::absolute(path);
+    // Normalize the path and make absolute — unless it's a device path
+    // (e.g. \\.\cdrom0, \\.\D:), which std::filesystem::absolute mangles.
+    auto abs_path = Emulator::IsPathOpticalDevice(path)
+                        ? path
+                        : std::filesystem::absolute(path);
 
     result = app_context().CallInUIThread(
         [this, abs_path]() { return emulator_window_->RunTitle(abs_path); });

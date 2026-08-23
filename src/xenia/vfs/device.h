@@ -29,6 +29,7 @@ class Device {
 
   const std::string& mount_path() const { return mount_path_; }
   virtual bool is_read_only() const { return true; }
+  virtual bool has_physical_backend() const { return false; }
 
   virtual void Dump(StringBuffer* string_buffer) = 0;
   virtual Entry* ResolvePath(const std::string_view path) = 0;

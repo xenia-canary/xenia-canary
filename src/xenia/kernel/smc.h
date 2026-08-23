@@ -30,7 +30,7 @@ enum X_DVD_DISC_STATE {
 
 enum class X_DVD_TRAY_STATE : uint8_t {
   OPEN,
-  UNKNOWN,
+  DISK_IN_TRAY,
   CLOSED,
   OPENING,
   CLOSING
