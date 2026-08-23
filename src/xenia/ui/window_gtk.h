@@ -83,6 +83,8 @@ class GTKWindow : public Window {
   GtkWidget* box_ = nullptr;
   GtkWidget* drawing_area_ = nullptr;
 
+  const std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+
   uint32_t batched_size_update_depth_ = 0;
   bool batched_size_update_contained_configure_ = false;
   bool batched_size_update_contained_draw_ = false;
