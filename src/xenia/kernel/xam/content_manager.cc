@@ -32,6 +32,42 @@ static const char* kSpaFilename = "spa.bin";
 
 static int content_device_id_ = 0;
 
+class ResolvedContentPackage {
+ public:
+  ResolvedContentPackage(KernelState* kernel_state,
+                         const std::filesystem::path& package_path)
+      : kernel_state_(kernel_state),
+        device_path_(fmt::format("\\Device\\ResolvedContent\\{:08X}",
+                                 ++content_device_id_)) {
+    auto fs = kernel_state_->file_system();
+    auto device = std::make_unique<vfs::HostPathDevice>(device_path_,
+                                                        package_path, false);
+    if (device->Initialize() && fs->RegisterDevice(std::move(device))) {
+      mounted_ = fs->ResolvePath(device_path_) != nullptr;
+      if (!mounted_) {
+        fs->UnregisterDevice(device_path_);
+      }
+    }
+  }
+
+  ~ResolvedContentPackage() {
+    if (mounted_) {
+      kernel_state_->file_system()->UnregisterDevice(device_path_);
+    }
+  }
+
+  bool mounted() const { return mounted_; }
+
+  std::string ResolvePath(const std::string_view path) const {
+    return xe::utf8::join_guest_paths(device_path_, path);
+  }
+
+ private:
+  KernelState* kernel_state_;
+  std::string device_path_;
+  bool mounted_ = false;
+};
+
 ContentPackage::ContentPackage(KernelState* kernel_state,
                                const std::string_view root_name,
                                const XCONTENT_AGGREGATE_DATA& data,
@@ -289,6 +325,51 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
   auto package = std::make_unique<ContentPackage>(kernel_state_, root_name,
                                                   data, package_path);
   return package;
+}
+
+std::optional<std::string> ContentManager::ResolvePackagePayloadPath(
+    const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data) {
+  const std::string file_name = xe::string_util::trim(data.file_name());
+  if (file_name.empty()) {
+    return std::nullopt;
+  }
+
+  auto global_lock = global_critical_region_.Acquire();
+  const std::filesystem::path package_path = ResolvePackagePath(xuid, data);
+  const std::filesystem::path payload_path =
+      package_path / xe::to_path(file_name);
+
+  std::error_code error_code;
+  if (!std::filesystem::is_regular_file(payload_path, error_code) ||
+      error_code) {
+    return std::nullopt;
+  }
+
+  auto fs = kernel_state_->file_system();
+  const std::string package_key = xe::path_to_utf8(package_path);
+  auto existing_package = resolved_packages_.find(package_key);
+  if (existing_package != resolved_packages_.end()) {
+    const std::string guest_path =
+        existing_package->second->ResolvePath(file_name);
+    if (fs->ResolvePath(guest_path)) {
+      return guest_path;
+    }
+    resolved_packages_.erase(existing_package);
+  }
+
+  auto package =
+      std::make_unique<ResolvedContentPackage>(kernel_state_, package_path);
+  if (!package->mounted()) {
+    return std::nullopt;
+  }
+
+  const std::string guest_path = package->ResolvePath(file_name);
+  if (!fs->ResolvePath(guest_path)) {
+    return std::nullopt;
+  }
+
+  resolved_packages_.emplace(package_key, std::move(package));
+  return guest_path;
 }
 
 bool ContentManager::ContentExists(const uint64_t xuid,

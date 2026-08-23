@@ -11,6 +11,7 @@
 #define XENIA_KERNEL_XAM_CONTENT_MANAGER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -32,6 +33,8 @@ class KernelState;
 namespace xe {
 namespace kernel {
 namespace xam {
+
+class ResolvedContentPackage;
 
 // If set in XCONTENT_AGGREGATE_DATA, will be substituted with the running
 // titles ID
@@ -235,6 +238,9 @@ class ContentManager {
       const std::string_view root_name, const uint64_t xuid,
       const XCONTENT_AGGREGATE_DATA& data, const uint32_t disc_number = -1);
 
+  std::optional<std::string> ResolvePackagePayloadPath(
+      const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data);
+
   bool ContentExists(const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data);
   X_RESULT WriteContentHeaderFile(const uint64_t xuid,
                                   XCONTENT_AGGREGATE_DATA data);
@@ -287,6 +293,8 @@ class ContentManager {
   // TODO(benvanik): remove use of global lock, it's bad here!
   xe::global_critical_region global_critical_region_;
   std::unordered_map<string_key_insensitive, ContentPackage*> open_packages_;
+  std::unordered_map<std::string, std::unique_ptr<ResolvedContentPackage>>
+      resolved_packages_;
 };
 
 }  // namespace xam
