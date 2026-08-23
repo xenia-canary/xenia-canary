@@ -8,6 +8,7 @@
  */
 
 #include "xenia/vfs/devices/host_path_file.h"
+#include "xenia/vfs/devices/host_path_device.h"
 
 #include "xenia/vfs/devices/host_path_entry.h"
 
