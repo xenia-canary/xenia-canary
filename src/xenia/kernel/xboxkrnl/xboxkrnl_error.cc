@@ -637,7 +637,7 @@ constexpr uint32_t error_table_0xC0000202[] = {
     0x000004D0,              // 0xC000023D
     0x000004D1,              // 0xC000023E
     0x000004D2,              // 0xC000023F
-    X_ERROR_NOT_LOGGED_ON,   // 0xC0000240
+    X_ERROR_ABORTED,         // 0xC0000240
     0x000004D4,              // 0xC0000241
     0,                       //
     0x000004C8,              // 0xC0000243
