@@ -11,37 +11,17 @@
 #define XENIA_KERNEL_XAM_XAM_AVATAR_H_
 
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/xam/avatar.h"
 #include "xenia/xbox.h"
 
 namespace xe {
 namespace kernel {
 namespace xam {
 
-struct X_ASSET_ID {   // X_GUID
-  uint64_t data;      // 0x0 sz:0x8
-  uint32_t data2;     // 0x8 sz:0x4
-  uint32_t title_id;  // 0xC sz:0x4
-};
-static_assert_size(X_ASSET_ID, 0x10);
-
-// More Research Needed
 struct X_AVATAR_METADATA {
-  // body type exists between 0x120 and 0x130
-  uint8_t data1[0x4];
-  uint32_t weight;           // 0x4 sz:0x4
-  uint32_t height;           // 0x8 sz:0x4
-  uint8_t data3[0xF0];       // 0xC sz:0xF0
-  uint32_t skin_color;       // 0xFC sz:0x4
-  uint8_t data4[0x4];        // 0x100 sz:0x4
-  uint32_t lipstick_color;   // 0x104 sz:0x4
-  uint8_t data5[0x8];        // 0x108 sz:0x4
-  uint32_t eyeshadow_color;  // 0x110 sz:0x4
-  uint8_t data6[0x2D4];
+  uint8_t manifest[kMaxUserDataSize];
 };
 static_assert_size(X_AVATAR_METADATA, 0x3E8);
-
-// https://github.com/hetelek/Velocity/blob/master/XboxInternals/AvatarAsset/AvatarAssetDefinintions.h
-enum X_AVATAR_BODY_TYPE : uint8_t { Unknown, Male, Female, All };
 
 // v2 assets its int32_t
 enum X_BINARY_ASSET_TYPE : uint32_t {
@@ -136,25 +116,59 @@ enum X_SKELETON_VERSION : uint8_t {
   NxeAndNatal,
 };
 
-#pragma pack(push, 1)
-struct X_ASSET_METADATA {
-  uint8_t metadata_version;
-  X_AVATAR_BODY_TYPE gender;
-  X_BINARY_ASSET_TYPE type;
-  uint32_t asset_type_details;
-  X_ASSET_SUBCATEGORY category;
-  X_SKELETON_VERSION skeleton_version;
+struct X_AVATAR_ASSETS {
+  xe::be<uint32_t> skeleton_ptr;   // X_AVATAR_SKELETON*
+  xe::be<uint32_t> carryable_ptr;  // X_AVATAR_CARRYABLE*
+  xe::be<uint32_t> component_count;
+  xe::be<uint32_t> component_info_ptr;    // X_AVATAR_COMPONENT_INFO*
+  xe::be<uint32_t> component_models_ptr;  // X_AVATAR_MODEL*
 };
-static_assert_size(X_ASSET_METADATA, 15);
-#pragma pack(pop)
+static_assert_size(X_AVATAR_ASSETS, 0x14);
 
-struct X_RGB_COLOR {
-  uint8_t blue;
-  uint8_t green;
-  uint8_t red;
-  uint8_t alpha;
+struct X_AVATAR_MODEL {
+  xe::be<uint32_t> cpu_memory_buffer_size;
+  xe::be<uint32_t> gpu_memory_buffer_size;
+  xe::be<uint32_t> total_texture_data_size;
+  xe::be<uint32_t> global_vertex_buffer_size;
+  xe::be<uint32_t> global_index_buffer_size;
+  xe::be<uint32_t> batch_count;
+  xe::be<uint32_t> texture_count;
+  xe::be<uint32_t> xpu_memory_buffer_ptr;     // uint8_t*
+  xe::be<uint32_t> gpu_memory_buffer_ptr;     // uint8_t*
+  xe::be<uint32_t> global_vertex_buffer_ptr;  // uint8_t*
+  xe::be<uint32_t> global_index_buffer_ptr;   // uint8_t*
+  xe::be<uint32_t> batches_ptr;               // X_AVATAR_TRIANGLE_BATCH
+  xe::be<uint32_t> textures_ptr;              // X_AVATAR_TEXTURE
 };
-static_assert_size(X_RGB_COLOR, 4);
+static_assert_size(X_AVATAR_MODEL, 0x34);
+
+struct X_AVATAR_SKELETON {
+  xe::be<uint32_t> count;
+  xe::be<uint32_t> joints_ptr;  // AVATAR_SKELETON_JOINT*
+};
+static_assert_size(X_AVATAR_SKELETON, 0x8);
+
+struct X_AVATAR_COMPONENT_INFO {
+  X_AVATAR_ASSET_ID model_asset_id;
+  xe::be<uint16_t> component_mask;  // X_AVATAR_COMPONENT_MASK
+  xe::be<uint32_t> reserved[3];
+};
+static_assert_size(X_AVATAR_COMPONENT_INFO, 0x20);
+
+struct X_AVATAR_CARRYABLE {
+  xe::be<uint32_t> skeleton_ptr;  // X_AVATAR_SKELETON*
+  X_AVATAR_COMPONENT_INFO component_info;
+  X_AVATAR_MODEL component_model;
+  xe::be<uint32_t> animation_asset_ptr;  // X_AVATAR_ANIMATION_ASSET*
+};
+static_assert_size(X_AVATAR_CARRYABLE, 0x5C);
+
+struct X_AVATAR_SKELETON_HIERARCHY_JOINT {
+  xe::be<uint16_t> parent;
+  xe::be<uint16_t> child;
+  xe::be<uint16_t> sibling;
+};
+static_assert_size(X_AVATAR_SKELETON_HIERARCHY_JOINT, 0x6);
 
 struct X_COLOR_GROUP {
   X_RGB_COLOR color;
