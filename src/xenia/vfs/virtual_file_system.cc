@@ -35,10 +35,9 @@ void VirtualFileSystem::Clear() {
   symlinks_.clear();
 }
 
-bool VirtualFileSystem::RegisterDevice(std::unique_ptr<Device> device) {
+Device* VirtualFileSystem::RegisterDevice(std::unique_ptr<Device> device) {
   auto global_lock = global_critical_region_.Acquire();
-  devices_.emplace_back(std::move(device));
-  return true;
+  return devices_.emplace_back(std::move(device)).get();
 }
 
 bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
@@ -56,9 +55,9 @@ bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
 bool VirtualFileSystem::RegisterSymbolicLink(const std::string_view path,
                                              const std::string_view target) {
   auto global_lock = global_critical_region_.Acquire();
-  auto it = std::find_if(
-      symlinks_.cbegin(), symlinks_.cend(),
-      [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
+  auto it = std::ranges::find_if(std::as_const(symlinks_), [&](const auto& s) {
+    return xe::utf8::equal_case(path, s.first);
+  });
   if (it != symlinks_.end()) {
     XELOGE("Trying to re-register already registered symbolic link: {} => {}",
            path, target);
@@ -73,9 +72,9 @@ bool VirtualFileSystem::RegisterSymbolicLink(const std::string_view path,
 
 bool VirtualFileSystem::UnregisterSymbolicLink(const std::string_view path) {
   auto global_lock = global_critical_region_.Acquire();
-  auto it = std::find_if(
-      symlinks_.cbegin(), symlinks_.cend(),
-      [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
+  auto it = std::ranges::find_if(std::as_const(symlinks_), [&](const auto& s) {
+    return xe::utf8::equal_case(path, s.first);
+  });
   if (it == symlinks_.end()) {
     return false;
   }
@@ -86,18 +85,18 @@ bool VirtualFileSystem::UnregisterSymbolicLink(const std::string_view path) {
 }
 
 bool VirtualFileSystem::IsSymbolicLinkRegistered(const std::string_view path) {
-  auto it = std::find_if(
-      symlinks_.cbegin(), symlinks_.cend(),
-      [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
+  auto it = std::ranges::find_if(std::as_const(symlinks_), [&](const auto& s) {
+    return xe::utf8::equal_case(path, s.first);
+  });
 
   return it != symlinks_.cend();
 }
 
 bool VirtualFileSystem::FindSymbolicLink(const std::string_view path,
                                          std::string& target) {
-  auto it = std::find_if(
-      symlinks_.cbegin(), symlinks_.cend(),
-      [&](const auto& s) { return xe::utf8::starts_with_case(path, s.first); });
+  auto it = std::ranges::find_if(std::as_const(symlinks_), [&](const auto& s) {
+    return xe::utf8::starts_with_case(path, s.first);
+  });
   if (it == symlinks_.cend()) {
     return false;
   }
@@ -111,7 +110,7 @@ bool VirtualFileSystem::ResolveSymbolicLink(const std::string_view path,
   bool was_resolved = false;
   while (true) {
     auto it =
-        std::find_if(symlinks_.cbegin(), symlinks_.cend(), [&](const auto& s) {
+        std::ranges::find_if(std::as_const(symlinks_), [&](const auto& s) {
           return xe::utf8::starts_with_case(result, s.first);
         });
     if (it == symlinks_.cend()) {
@@ -139,10 +138,9 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   }
 
   // Find the device.
-  auto it =
-      std::find_if(devices_.cbegin(), devices_.cend(), [&](const auto& d) {
-        return xe::utf8::starts_with(normalized_path, d->mount_path());
-      });
+  auto it = std::ranges::find_if(std::as_const(devices_), [&](const auto& d) {
+    return xe::utf8::starts_with(normalized_path, d->mount_path());
+  });
   if (it == devices_.cend()) {
     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is
     // not an actual problem nor something we care about.
@@ -350,10 +348,10 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
   return result;
 }
 
-X_STATUS VirtualFileSystem::ExtractContentFile(Entry* entry,
-                                               std::filesystem::path base_path,
-                                               uint64_t& progress,
-                                               bool extract_to_root) {
+X_STATUS VirtualFileSystem::ExtractDeviceFile(Entry* entry,
+                                              std::filesystem::path base_path,
+                                              uint64_t& progress,
+                                              bool extract_to_root) {
   // Allocate a buffer when needed.
   size_t buffer_size = 0;
   uint8_t* buffer = nullptr;
@@ -428,9 +426,9 @@ X_STATUS VirtualFileSystem::ExtractContentFile(Entry* entry,
   return 0;
 }
 
-X_STATUS VirtualFileSystem::ExtractContentFiles(Device* device,
-                                                std::filesystem::path base_path,
-                                                uint64_t& progress) {
+X_STATUS VirtualFileSystem::ExtractDeviceFiles(Device* device,
+                                               std::filesystem::path base_path,
+                                               uint64_t& progress) {
   // Run through all the files, breadth-first style.
   std::queue<vfs::Entry*> queue;
   auto root = device->ResolvePath("/");
@@ -443,37 +441,10 @@ X_STATUS VirtualFileSystem::ExtractContentFiles(Device* device,
       queue.push(entry.get());
     }
 
-    ExtractContentFile(entry, base_path, progress);
+    ExtractDeviceFile(entry, base_path, progress);
   }
   return X_STATUS_SUCCESS;
 }
 
-void VirtualFileSystem::ExtractContentHeader(Device* device,
-                                             std::filesystem::path base_path) {
-  const XContentContainerDevice* xcontent_device =
-      ((XContentContainerDevice*)device);
-
-  if (!std::filesystem::exists(base_path.parent_path())) {
-    if (!std::filesystem::create_directories(base_path.parent_path())) {
-      return;
-    }
-  }
-  auto header_filename = base_path.filename().string() + ".header";
-  auto header_path = base_path.parent_path() / header_filename;
-  xe::filesystem::CreateEmptyFile(header_path);
-
-  if (std::filesystem::exists(header_path)) {
-    auto file = xe::filesystem::OpenFile(header_path, "wb");
-    kernel::xam::XCONTENT_AGGREGATE_DATA data =
-        xcontent_device->content_header();
-    uint32_t license_mask = xcontent_device->license_mask();
-
-    data.set_file_name(base_path.filename().string());
-    fwrite(&data, 1, sizeof(kernel::xam::XCONTENT_AGGREGATE_DATA), file);
-    fwrite(&license_mask, 1, sizeof(license_mask), file);
-    fclose(file);
-  }
-  return;
-}
 }  // namespace vfs
 }  // namespace xe

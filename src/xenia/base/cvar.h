@@ -146,7 +146,7 @@ template <>
 inline void CommandVar<std::filesystem::path>::LoadFromLaunchOptions(
     cxxopts::ParseResult* result) {
   std::string value = (*result)[name_].template as<std::string>();
-  SetCommandLineValue(value);
+  SetCommandLineValue(xe::to_path(value));
 }
 template <class T>
 void ConfigVar<T>::LoadConfigValue(const toml::node* result) {
@@ -164,8 +164,8 @@ void ConfigVar<T>::LoadConfigValue(const toml::node* result) {
 template <>
 inline void ConfigVar<std::filesystem::path>::LoadConfigValue(
     const toml::node* result) {
-  SetConfigValue(
-      xe::utf8::fix_path_separators(result->as_string()->value_or("")));
+  SetConfigValue(xe::to_path(
+      xe::utf8::fix_path_separators(result->as_string()->value_or(""))));
 }
 template <class T>
 void ConfigVar<T>::LoadGameConfigValue(const toml::node* result) {
@@ -183,8 +183,8 @@ void ConfigVar<T>::LoadGameConfigValue(const toml::node* result) {
 template <>
 inline void ConfigVar<std::filesystem::path>::LoadGameConfigValue(
     const toml::node* result) {
-  SetGameConfigValue(
-      xe::utf8::fix_path_separators(result->as_string()->value_or("")));
+  SetGameConfigValue(xe::to_path(
+      xe::utf8::fix_path_separators(result->as_string()->value_or(""))));
 }
 template <class T>
 CommandVar<T>::CommandVar(const char* name, T* default_value,

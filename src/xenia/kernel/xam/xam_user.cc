@@ -641,14 +641,9 @@ DECLARE_XAM_EXPORT1(XamUserCreateAchievementEnumerator, kUserProfiles,
 dword_result_t XamUserCreateTitlesPlayedEnumerator_entry(
     dword_t title_id, dword_t user_index, qword_t xuid, dword_t starting_index,
     dword_t game_count, lpdword_t buffer_size_ptr, lpdword_t handle_ptr) {
-  if (user_index >= XUserMaxUserCount && game_count != 0 && !buffer_size_ptr &&
+  if (user_index >= XUserMaxUserCount || !game_count || !buffer_size_ptr ||
       !handle_ptr) {
     return X_ERROR_INVALID_PARAMETER;
-  }
-
-  const uint32_t kEntrySize = sizeof(XTitleEnumerator::XTITLE_PLAYED);
-  if (buffer_size_ptr) {
-    *buffer_size_ptr = kEntrySize * game_count;
   }
 
   const auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
@@ -656,28 +651,29 @@ dword_result_t XamUserCreateTitlesPlayedEnumerator_entry(
     return X_ERROR_INVALID_PARAMETER;
   }
 
+  uint64_t requester_xuid = user->xuid();
+  if (xuid) {
+    requester_xuid = xuid;
+  }
+
+  *buffer_size_ptr = game_count * sizeof(XTitleEnumerator::XTITLE_PLAYED);
+
   auto e = object_ref<XTitleEnumerator>(
-      new XTitleEnumerator(kernel_state(), game_count));
+      new XTitleEnumerator(kernel_state(), game_count, starting_index));
+
   auto result =
-      e->Initialize(user_index, 0xFB, 0xB0050, 0xB000B, 0x20, game_count, 0);
+      e->Initialize(user_index, 0xFB, 0xB0050, 0xB000B, 0, 0x28, nullptr);
+
   if (XFAILED(result)) {
     return result;
   }
 
   const auto user_titles =
       kernel_state()->xam_state()->user_tracker()->GetPlayedTitles(
-          user->xuid());
+          requester_xuid);
 
-  if (!user_titles.empty()) {
-    for (const auto& title : user_titles) {
-      if (title.id == kDashboardID) {
-        continue;
-      }
-      if (!title.achievements_count || !title.gamerscore_amount) {
-        continue;
-      }
-      e->AppendItem(title);
-    }
+  for (const auto& title : user_titles) {
+    e->AppendItem(title);
   }
 
   *handle_ptr = e->handle();
@@ -776,9 +772,8 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  const bool is_valid_hex_string =
-      std::all_of(tile_key.cbegin(), tile_key.cend(),
-                  [](unsigned char c) { return std::isxdigit(c); });
+  const bool is_valid_hex_string = std::ranges::all_of(
+      tile_key, [](unsigned char c) { return std::isxdigit(c); });
 
   if (!is_valid_hex_string) {
     return X_ERROR_INVALID_PARAMETER;

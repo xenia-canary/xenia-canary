@@ -159,12 +159,10 @@ std::vector<uint64_t> PluginLoader::GetHashes(
 
 bool PluginLoader::IsAnyPluginForTitleAvailable(
     const uint32_t title_id, const uint64_t module_hash) const {
-  const auto result = std::find_if(
-      plugin_configs_.cbegin(), plugin_configs_.cend(),
-      [title_id, module_hash](const PluginInfoEntry& entry) {
+  const auto result = std::ranges::find_if(
+      plugin_configs_, [title_id, module_hash](const PluginInfoEntry& entry) {
         const auto hash_exists =
-            std::find(entry.hashes.cbegin(), entry.hashes.cend(),
-                      module_hash) != entry.hashes.cend();
+            std::ranges::find(entry.hashes, module_hash) != entry.hashes.cend();
 
         return entry.is_enabled && entry.title_id == title_id && hash_exists;
       });
@@ -176,15 +174,13 @@ void PluginLoader::LoadTitlePlugins(const uint32_t title_id,
                                     const uint64_t module_hash) {
   std::vector<PluginInfoEntry> title_plugins;
 
-  std::copy_if(plugin_configs_.cbegin(), plugin_configs_.cend(),
-               std::back_inserter(title_plugins),
-               [title_id, module_hash](const PluginInfoEntry& entry) {
-                 const auto hash_exists =
-                     std::find(entry.hashes.cbegin(), entry.hashes.cend(),
-                               module_hash) != entry.hashes.cend();
-                 return entry.is_enabled && entry.title_id == title_id &&
-                        hash_exists;
-               });
+  std::ranges::copy_if(
+      std::as_const(plugin_configs_), std::back_inserter(title_plugins),
+      [title_id, module_hash](const PluginInfoEntry& entry) {
+        const auto hash_exists =
+            std::ranges::find(entry.hashes, module_hash) != entry.hashes.cend();
+        return entry.is_enabled && entry.title_id == title_id && hash_exists;
+      });
 
   if (title_plugins.empty()) {
     return;

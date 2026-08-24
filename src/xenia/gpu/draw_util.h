@@ -233,6 +233,22 @@ inline int32_t GetD3D10IntegerPolygonOffset(
   return polygon_offset < 0 ? -polygon_offset_int : polygon_offset_int;
 }
 
+struct HostDepthPolygonOffset {
+  float front_scale = 0.0f;
+  float front_offset = 0.0f;
+  float back_scale = 0.0f;
+  float back_offset = 0.0f;
+};
+
+// Detects a narrow type of coplanar redraws that tend to Z-fight when the depth
+// bias is applied via host fixed function polygon offset, like static decals in
+// UE3 and Halo engine titles. Host space offsets are computed so that the depth
+// bias is applied via shader depth output instead.
+bool GetHostDepthPolygonOffsetIfNeeded(
+    const RegisterFile& regs, bool primitive_polygonal,
+    reg::RB_DEPTHCONTROL normalized_depth_control,
+    uint32_t normalized_color_mask, HostDepthPolygonOffset& polygon_offset_out);
+
 // For hosts not supporting separate front and back polygon offsets, returns the
 // polygon offset for the face which likely needs the offset the most (and that
 // will not be culled). The values returned will have the units of the original
@@ -516,10 +532,9 @@ union ResolveEdramInfo {
     // of the resolve region with the contents of the first surely covered
     // column / row with resolution scaling.
     uint32_t fill_half_pixel_offset : 1;
-    // Flag from gamma_decode_pwl_resolve in resolve shader. Some games appear
-    // overexposed unless full 8_8_8_8_GAMMA resolves decode PWL gamma to
-    // linear before MSAA averaging / conversion, then write gamma bytes again
-    // for gamma dests. Off keeps the old byte averaging.
+    // Some games appear overexposed unless full 8_8_8_8_GAMMA resolves decode
+    // PWL gamma to linear before MSAA averaging / conversion, then write gamma
+    // bytes again for gamma dests. Kept as a constant in the resolve shader.
     uint32_t decode_pwl_gamma : 1;
   };
   ResolveEdramInfo() : packed(0) { static_assert_size(*this, sizeof(packed)); }

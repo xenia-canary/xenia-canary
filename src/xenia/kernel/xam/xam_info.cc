@@ -94,6 +94,101 @@ dword_result_t XamGetOnlineSchema_entry() {
 }
 DECLARE_XAM_EXPORT1(XamGetOnlineSchema, kNone, kImplemented);
 
+dword_result_t XamQueryLiveHiveA_entry(
+    lpstring_t feature_name, lpstring_t value_ptr, dword_t value_buffer_size,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // See Netplay, create shared function for both XamQueryLiveHiveA and
+  // XamGetLiveHiveValueA
+  X_RESULT extended_error = 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
+  if (!feature_name || !value_ptr || !value_buffer_size) {
+    extended_error = X_E_INVALIDARG;
+  }
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped_ptr, X_STATUS_SUCCESS, extended_error, 0);
+    return X_E_PENDING;
+  } else {
+    return extended_error;
+  }
+}
+DECLARE_XAM_EXPORT1(XamQueryLiveHiveA, kMisc, kStub);
+
+dword_result_t XamGetLiveHiveValueA_entry(
+    lpstring_t feature_name, lpstring_t value_ptr, dword_t value_buffer_size,
+    int_t unk, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // See Netplay
+  X_RESULT result = 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
+  if (!feature_name || !value_ptr || !value_buffer_size) {
+    result = X_E_INVALIDARG;
+  }
+
+  auto thread = kernel::XThread::GetCurrentThread();
+  auto ctx = thread->thread_state()->context();
+  auto type = xboxkrnl::xeKeGetCurrentProcessType(ctx);
+  if (unk == -1 && kernel_state()->emulator()->title_id() == kDashboardID &&
+      type == 2) {
+    return XamQueryLiveHiveA_entry(feature_name, value_ptr, value_buffer_size,
+                                   overlapped_ptr);
+  }
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
+    return X_ERROR_IO_PENDING;
+  } else {
+    return result;
+  }
+}
+DECLARE_XAM_EXPORT1(XamGetLiveHiveValueA, kMisc, kStub);
+
+dword_result_t XamQueryLiveHiveW_entry(
+    lpu16string_t feature_name, lpu16string_t value_ptr,
+    dword_t value_buffer_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // See Netplay, create shared function for both XamQueryLiveHiveW and
+  // XamGetLiveHiveValueW
+  X_RESULT extended_error = 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
+  if (!feature_name || !value_ptr || !value_buffer_size) {
+    extended_error = X_E_INVALIDARG;
+  }
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped_ptr, X_STATUS_SUCCESS, extended_error, 0);
+    return X_E_PENDING;
+  } else {
+    return extended_error;
+  }
+}
+DECLARE_XAM_EXPORT1(XamQueryLiveHiveW, kMisc, kStub);
+
+dword_result_t XamGetLiveHiveValueW_entry(
+    lpu16string_t feature_name, lpu16string_t value_ptr,
+    dword_t value_buffer_size, int_t unk,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // See Netplay
+  X_RESULT result = 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
+  if (!feature_name || !value_ptr || !value_buffer_size) {
+    result = X_E_INVALIDARG;
+  }
+
+  auto thread = kernel::XThread::GetCurrentThread();
+  auto ctx = thread->thread_state()->context();
+  auto type = xboxkrnl::xeKeGetCurrentProcessType(ctx);
+  if (unk == -1 && kernel_state()->emulator()->title_id() == kDashboardID &&
+      type == 2) {
+    return XamQueryLiveHiveW_entry(feature_name, value_ptr, value_buffer_size,
+                                   overlapped_ptr);
+  }
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
+    return X_ERROR_IO_PENDING;
+  } else {
+    return result;
+  }
+}
+DECLARE_XAM_EXPORT1(XamGetLiveHiveValueW, kMisc, kStub);
+
 dword_result_t keXamBuildResourceLocator(uint64_t module,
                                          const std::u16string& container,
                                          const std::u16string& resource,
@@ -109,8 +204,9 @@ dword_result_t keXamBuildResourceLocator(uint64_t module,
     path = fmt::format(u"section://{:X},{}#{}", (uint32_t)module, container,
                        resource);
   }
+  const uint32_t char_count = buffer_count / sizeof(char16_t);
   xe::string_util::copy_and_swap_truncating(buffer_ptr.as<char16_t*>(), path,
-                                            buffer_count);
+                                            char_count);
   return 0;
 }
 
@@ -183,7 +279,20 @@ dword_result_t XamGetCachedTitleName_entry(dword_t title_id,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  assert_false(title_id != kernel_state()->title_id());
+  if (title_id != kernel_state()->title_id()) {
+    if (const auto profile = kernel_state()->xam_state()->GetUserProfile(0u);
+        profile) {
+      const auto title =
+          kernel_state()->xam_state()->user_tracker()->GetUserTitleInfo(
+              profile->xuid(), title_id);
+      if (title) {
+        xe::string_util::copy_and_swap_truncating(
+            title_name_ptr, title->title_name, title->title_name.size() + 1);
+        *title_name_length_ptr = title->title_name.size() + 1;
+        return X_ERROR_SUCCESS;
+      }
+    }
+  }
 
   std::u16string title_name = xe::to_utf16(
       kernel_state()->emulator()->game_info_database()->GetTitleName());
@@ -438,13 +547,6 @@ dword_result_t XamFree_entry(lpdword_t ptr) {
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamFree, kMemory, kImplemented);
-
-dword_result_t XamQueryLiveHiveW_entry(lpu16string_t name, lpvoid_t out_buf,
-                                       dword_t out_size,
-                                       dword_t type /* guess */) {
-  return X_STATUS_INVALID_PARAMETER_1;
-}
-DECLARE_XAM_EXPORT1(XamQueryLiveHiveW, kNone, kStub);
 
 // http://www.noxa.org/blog/2011/02/28/building-an-xbox-360-emulator-part-3-feasibilityos/
 // http://www.noxa.org/blog/2011/08/13/building-an-xbox-360-emulator-part-5-xex-files/

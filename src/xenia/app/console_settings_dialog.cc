@@ -131,8 +131,7 @@ void DrawTimezoneCombobox(ImGuiIO& io, kernel::XConfigData* xdata) {
 
   size_t index = 0x19;  // Index of GMT+00
 
-  auto it = std::find(kernel::kTimezones.cbegin(), kernel::kTimezones.cend(),
-                      current_tz);
+  auto it = std::ranges::find(kernel::kTimezones, current_tz);
   if (it != kernel::kTimezones.cend()) {
     index = std::distance(kernel::kTimezones.cbegin(), it);
   }

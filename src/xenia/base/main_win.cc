@@ -90,12 +90,16 @@ bool ParseWin32LaunchArguments(
   }
 
   // Convert all args to narrow, as cxxopts doesn't support wchar.
+  // Use WideCharToMultiByte with CP_UTF8 to support non-ANSI characters
+  // (e.g. CJK paths), unlike locale-dependent wcstombs.
   int argc = wargc;
   char** argv = reinterpret_cast<char**>(alloca(sizeof(char*) * argc));
   for (int n = 0; n < argc; n++) {
-    size_t len = std::wcstombs(nullptr, wargv[n], 0);
-    argv[n] = reinterpret_cast<char*>(alloca(sizeof(char) * (len + 1)));
-    std::wcstombs(argv[n], wargv[n], len + 1);
+    int len = WideCharToMultiByte(CP_UTF8, 0, wargv[n], -1, nullptr, 0, nullptr,
+                                  nullptr);
+    argv[n] = reinterpret_cast<char*>(alloca(sizeof(char) * len));
+    WideCharToMultiByte(CP_UTF8, 0, wargv[n], -1, argv[n], len, nullptr,
+                        nullptr);
   }
 
   LocalFree(wargv);

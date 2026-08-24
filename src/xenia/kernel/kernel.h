@@ -19,6 +19,8 @@ namespace kernel {
 
 // IOCTL_, used by NtDeviceIoControlFile
 constexpr uint32_t X_IOCTL_DISK_GET_DRIVE_GEOMETRY = 0x70000;
+constexpr uint32_t X_IOCTL_DISK_UNK =
+    0x70042;  // used when accessing storage in dash
 constexpr uint32_t X_IOCTL_DISK_GET_PARTITION_INFO = 0x74004;
 
 // MEM_*, used by NtAllocateVirtualMemory

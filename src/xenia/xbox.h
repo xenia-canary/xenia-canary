@@ -125,6 +125,7 @@ typedef uint32_t X_HRESULT;
 #define X_E_FALSE                               static_cast<X_HRESULT>(0x80000000L)
 #define X_E_SUCCESS                             X_HRESULT_FROM_WIN32(X_ERROR_SUCCESS)
 #define X_E_ACCESS_DENIED                       X_HRESULT_FROM_WIN32(X_ERROR_ACCESS_DENIED)
+#define X_E_PENDING                             X_HRESULT_FROM_WIN32(0x8000000AL)
 #define X_E_NOT_IMPLEMENTED                     static_cast<X_HRESULT>(0x80004001L)
 #define X_E_FAIL                                static_cast<X_HRESULT>(0x80004005L)
 #define X_E_NO_MORE_FILES                       X_HRESULT_FROM_WIN32(X_ERROR_NO_MORE_FILES)
@@ -435,7 +436,7 @@ enum class XOnlineCountry : uint32_t {
 };
 
 enum class XContentType : uint32_t {
-  kFolder = 0xffffffff,
+  kAll = 0xFFFFFFFF,  // Iterate all types
   kInvalid = 0x00000000,
   kSavedGame = 0x00000001,
   kMarketplaceContent = 0x00000002,
@@ -474,7 +475,7 @@ enum class XContentType : uint32_t {
 };
 
 inline const std::map<XContentType, std::string> XContentTypeMap = {
-    {XContentType::kFolder, "Folder"},
+    {XContentType::kAll, "All"},
     {XContentType::kSavedGame, "Saved Game"},
     {XContentType::kMarketplaceContent, "Marketplace Content"},
     {XContentType::kPublisher, "Publisher"},

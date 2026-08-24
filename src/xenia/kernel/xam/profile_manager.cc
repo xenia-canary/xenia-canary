@@ -9,6 +9,7 @@
 
 #include <regex>
 
+#include "xenia/kernel/xam/content_manager.h"
 #include "xenia/kernel/xam/profile_manager.h"
 
 #include "xenia/base/logging.h"
@@ -96,8 +97,11 @@ void ProfileManager::EncryptAccountFile(const X_XAMACCOUNTINFO* input,
 }
 
 ProfileManager::ProfileManager(KernelState* kernel_state,
+                               ContentManager* content_manager,
                                UserTracker* user_tracker)
-    : kernel_state_(kernel_state), user_tracker_(user_tracker) {
+    : kernel_state_(kernel_state),
+      content_manager_(content_manager),
+      user_tracker_(user_tracker) {
   logged_profiles_.clear();
   accounts_.clear();
 
@@ -235,26 +239,27 @@ bool ProfileManager::LoadAccount(const uint64_t xuid) {
 
 bool ProfileManager::MountProfile(const uint64_t xuid, std::string mount_path) {
   std::filesystem::path profile_path = GetProfilePath(xuid);
-  if (mount_path.empty()) {
-    mount_path = fmt::format(kDefaultMountFormat, xuid);
-  }
-  mount_path += ':';
+  mount_path =
+      !mount_path.empty() ? mount_path : fmt::format(kDefaultMountFormat, xuid);
 
-  auto device =
-      std::make_unique<vfs::HostPathDevice>(mount_path, profile_path, false);
-  if (!device->Initialize()) {
+  if (!content_manager_->OpenAndMountPackage(profile_path, mount_path)) {
     XELOGE(
         "MountProfile: Unable to mount {} profile; file not found or "
         "corrupted.",
         profile_path);
     return false;
   }
-  return kernel_state_->file_system()->RegisterDevice(std::move(device));
+
+  return true;
 }
 
 bool ProfileManager::DismountProfile(const uint64_t xuid) {
-  return kernel_state_->file_system()->UnregisterDevice(
-      fmt::format(kDefaultMountFormat, xuid) + ':');
+  return content_manager_->CloseContent(
+             fmt::format(kDefaultMountFormat, xuid)) == X_ERROR_SUCCESS;
+}
+
+bool ProfileManager::DismountProfile(const std::string_view mount_path) {
+  return content_manager_->CloseContent(mount_path) == X_ERROR_SUCCESS;
 }
 
 void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
@@ -278,9 +283,9 @@ void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
   }
 
   // Find if xuid is already logged in. We might want to logout.
-  auto it = std::find_if(
-      logged_profiles_.begin(), logged_profiles_.end(),
-      [xuid](const auto& entry) { return entry.second->xuid() == xuid; });
+  auto it = std::ranges::find_if(logged_profiles_, [xuid](const auto& entry) {
+    return entry.second->xuid() == xuid;
+  });
   if (it != logged_profiles_.end()) {
     Logout(it->first);
   }
@@ -452,12 +457,19 @@ std::filesystem::path ProfileManager::GetProfilePath(
 bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
                                    bool default_xuid) {
   const auto xuid = !default_xuid ? GenerateXuid() : 0xB13EBABEBABEBABE;
-
-  if (!std::filesystem::create_directories(GetProfilePath(xuid))) {
+  const auto profile_path = GetProfilePath(xuid);
+  if (!std::filesystem::create_directories(profile_path)) {
     return false;
   }
 
-  if (!MountProfile(xuid)) {
+  XCONTENT_DATA_INTERNAL data{};
+  data.title_id = kDashboardID;
+  data.content_type = XContentType::kProfile;
+  data.xuid = xuid;
+  data.set_file_name(fmt::format("{:016X}", xuid));
+
+  if (!kernel_state_->content_manager()->CreateAndMountPackage(
+          profile_path, fmt::format(kDefaultMountFormat, xuid), data)) {
     return false;
   }
 
@@ -474,11 +486,18 @@ bool ProfileManager::CreateProfile(const X_XAMACCOUNTINFO* account_info,
     xuid = GenerateXuid();
   }
 
-  if (!std::filesystem::create_directories(GetProfilePath(xuid))) {
+  const auto profile_path = GetProfilePath(xuid);
+  if (!std::filesystem::create_directories(profile_path)) {
     return false;
   }
 
-  if (!MountProfile(xuid)) {
+  XCONTENT_DATA_INTERNAL data{};
+  data.title_id = kDashboardID;
+  data.content_type = XContentType::kProfile;
+  data.xuid = xuid;
+
+  if (!kernel_state_->content_manager()->CreateAndMountPackage(
+          profile_path, fmt::format(kDefaultMountFormat, xuid), data)) {
     return false;
   }
 
@@ -499,7 +518,7 @@ bool ProfileManager::CreateAccount(const uint64_t xuid,
   const std::u16string gamertag_u16 = xe::to_utf16(gamertag);
 
   string_util::copy_and_swap_truncating(account.gamertag, gamertag_u16,
-                                        sizeof(account.gamertag));
+                                        xe::countof(account.gamertag));
 
   const bool result = UpdateAccount(xuid, &account);
   DismountProfile(xuid);

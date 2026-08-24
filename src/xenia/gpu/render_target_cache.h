@@ -28,12 +28,12 @@
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/xenos.h"
 
+DECLARE_bool(debug_msaa_2x_as_4x);
 DECLARE_bool(depth_transfer_not_equal_test);
 DECLARE_bool(depth_float24_round);
 DECLARE_bool(depth_float24_convert_in_pixel_shader);
 DECLARE_bool(draw_resolution_scaled_texture_offsets);
 DECLARE_bool(gamma_render_target_as_unorm16);
-DECLARE_bool(native_2x_msaa);
 DECLARE_bool(native_stencil_value_output);
 DECLARE_bool(snorm16_render_target_full_range);
 

@@ -165,10 +165,6 @@ void UserTracker::AddTitleToPlayedList(uint64_t xuid) {
     UpdateTitleGpdFile();
   }
 
-  if (!spa_data_->include_in_profile()) {
-    return;
-  }
-
   const uint64_t current_time = Clock::QueryGuestSystemTime();
 
   auto title_info = user->dashboard_gpd_.GetTitleInfo(title_id);
@@ -191,11 +187,37 @@ void UserTracker::RemoveTitleFromPlayedList(uint64_t xuid, uint32_t title_id) {
     return;
   }
 
-  if (user->dashboard_gpd_.RemoveTitle(title_id)) {
-    UpdateSettingValue(xuid, kDashboardID,
-                       UserSettingId::XPROFILE_GAMERCARD_TITLES_PLAYED, -1);
-    FlushUserData(xuid);
+  auto title_data = user->dashboard_gpd_.GetTitleInfo(title_id);
+  if (!title_data) {
+    return;
   }
+
+  // Get the number of achievements and gamer score we got from this title.
+  int32_t gamerscore_earned =
+      static_cast<int32_t>(title_data->gamerscore_earned);
+  int32_t achievements_unlocked =
+      static_cast<int32_t>(title_data->achievements_unlocked);
+
+  // Remove the title's GPD.
+  if (!user->RemoveGpd(title_id)) {
+    return;
+  }
+
+  // Remove the title from dashboard GPD.
+  if (!user->dashboard_gpd_.RemoveTitle(title_id)) {
+    return;
+  }
+
+  // Lower the profile's stats.
+  UpdateSettingValue(xuid, kDashboardID,
+                     UserSettingId::XPROFILE_GAMERCARD_TITLES_PLAYED, -1);
+  UpdateSettingValue(xuid, kDashboardID, UserSettingId::XPROFILE_GAMERCARD_CRED,
+                     -gamerscore_earned);
+  UpdateSettingValue(xuid, kDashboardID,
+                     UserSettingId::XPROFILE_GAMERCARD_ACHIEVEMENTS_EARNED,
+                     -achievements_unlocked);
+
+  FlushUserData(xuid);
 }
 
 // Privates
@@ -282,10 +304,10 @@ std::vector<TitleInfo> UserTracker::GetPlayedTitles(uint64_t xuid) const {
     played_titles.push_back(info);
   }
 
-  std::sort(played_titles.begin(), played_titles.end(),
-            [](const TitleInfo& first, const TitleInfo& second) {
-              return first.last_played > second.last_played;
-            });
+  std::ranges::sort(played_titles,
+                    [](const TitleInfo& first, const TitleInfo& second) {
+                      return first.last_played > second.last_played;
+                    });
 
   return played_titles;
 }
@@ -467,11 +489,10 @@ void UserTracker::AddProperty(const uint64_t xuid, const Property* property) {
     }
   }
 
-  auto entry = std::find_if(user->properties_.begin(), user->properties_.end(),
-                            [property_id](const Property& property_data) {
-                              return property_data.GetPropertyId().value ==
-                                     property_id.value;
-                            });
+  auto entry = std::ranges::find_if(
+      user->properties_, [property_id](const Property& property_data) {
+        return property_data.GetPropertyId().value == property_id.value;
+      });
 
   if (entry != user->properties_.end()) {
     *entry = *property;
@@ -491,11 +512,11 @@ X_STATUS UserTracker::GetProperty(const uint64_t xuid, uint32_t* property_size,
   *property_size = 0;
   const auto& property_id = property->property_id;
 
-  const auto entry =
-      std::find_if(user->properties_.cbegin(), user->properties_.cend(),
-                   [property_id](const Property& property_data) {
-                     return property_data.GetPropertyId().value == property_id;
-                   });
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_),
+      [property_id](const Property& property_data) {
+        return property_data.GetPropertyId().value == property_id;
+      });
 
   if (entry == user->properties_.cend()) {
     return X_E_INVALIDARG;
@@ -519,11 +540,10 @@ const Property* UserTracker::GetProperty(const uint64_t xuid,
     return nullptr;
   }
 
-  const auto entry =
-      std::find_if(user->properties_.cbegin(), user->properties_.cend(),
-                   [id](const Property& property_data) {
-                     return property_data.GetPropertyId().value == id;
-                   });
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_), [id](const Property& property_data) {
+        return property_data.GetPropertyId().value == id;
+      });
 
   if (entry == user->properties_.cend()) {
     return nullptr;
@@ -602,12 +622,11 @@ void UserTracker::UpdateContext(uint64_t xuid, uint32_t id, uint32_t value) {
     return;
   }
 
-  const auto entry =
-      std::find_if(user->properties_.begin(), user->properties_.end(),
-                   [id](const Property& property_data) {
-                     return property_data.IsContext() &&
-                            property_data.GetPropertyId().value == id;
-                   });
+  const auto entry = std::ranges::find_if(
+      user->properties_, [id](const Property& property_data) {
+        return property_data.IsContext() &&
+               property_data.GetPropertyId().value == id;
+      });
 
   if (entry != user->properties_.cend()) {
     *entry = Property(id, value);
@@ -633,9 +652,8 @@ std::optional<uint32_t> UserTracker::GetUserContext(uint64_t xuid,
     return std::nullopt;
   }
 
-  const auto entry = std::find_if(
-      user->properties_.cbegin(), user->properties_.cend(),
-      [id](const Property& property_data) {
+  const auto entry = std::ranges::find_if(
+      std::as_const(user->properties_), [id](const Property& property_data) {
         return property_data.get_type() == X_USER_DATA_TYPE::CONTEXT &&
                property_data.GetPropertyId().value == id;
       });

@@ -15,14 +15,14 @@ namespace vfs {
 
 SvodContainerEntry::SvodContainerEntry(Device* device, Entry* parent,
                                        const std::string_view path,
-                                       MultiFileHandles* files)
+                                       MultiMemoryMap* files)
     : XContentContainerEntry(device, parent, path), files_(files) {}
 
 SvodContainerEntry::~SvodContainerEntry() = default;
 
 std::unique_ptr<SvodContainerEntry> SvodContainerEntry::Create(
     Device* device, Entry* parent, const std::string_view name,
-    MultiFileHandles* files) {
+    MultiMemoryMap* files) {
   auto path = xe::utf8::join_guest_paths(parent->path(), name);
   auto entry =
       std::make_unique<SvodContainerEntry>(device, parent, path, files);

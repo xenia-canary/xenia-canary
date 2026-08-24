@@ -89,11 +89,11 @@ void GetSubresourcesFromFetchConstant(
                  mip_min_level);
   }
   if (mip_max_level != 0) {
+    if (mip_min_level != 0 && base_page == mip_page) {
+      base_page = 0;
+    }
     if (base_page == 0) {
       mip_min_level = std::max(mip_min_level, uint32_t(1));
-    }
-    if (mip_min_level != 0) {
-      base_page = 0;
     }
   } else {
     mip_page = 0;
@@ -217,7 +217,11 @@ TextureGuestLayout GetGuestTextureLayout(
     // GetPackedMipOffset may result in packing along Y for `width > height`
     // textures.
     assert_false(has_packed_levels);
-    height_texels = 1;
+    // For wide 1D textures mapped to 2D, height_texels is the number of rows.
+    // Only force height=1 for normal 1D textures.
+    if (height_texels <= 1) {
+      height_texels = 1;
+    }
   }
   uint32_t depth =
       dimension == xenos::DataDimension::k3D ? depth_or_array_size : 1;

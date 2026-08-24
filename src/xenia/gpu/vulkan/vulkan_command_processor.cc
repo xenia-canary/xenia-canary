@@ -1402,6 +1402,22 @@ void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
       texture_cache_->TextureFetchConstantWritten(
           (index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) / 6);
     }
+  } else if (index == XE_GPU_REG_VGT_MAX_VTX_INDX ||
+             index == XE_GPU_REG_VGT_MIN_VTX_INDX ||
+             index == XE_GPU_REG_VGT_INDX_OFFSET ||
+             index == XE_GPU_REG_VGT_DMA_SIZE ||
+             index == XE_GPU_REG_VGT_HOS_MAX_TESS_LEVEL ||
+             index == XE_GPU_REG_VGT_HOS_MIN_TESS_LEVEL) {
+    // Source registers for the tessellation constant buffer. Invalidate it so
+    // the factor range and index parameters are refreshed per draw instead of
+    // staying stale from the first draw of the submission.
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferTessellation);
+  } else if ((index >= XE_GPU_REG_PA_CL_UCP_0_X &&
+              index <= XE_GPU_REG_PA_CL_UCP_5_W) ||
+             index == XE_GPU_REG_PA_CL_CLIP_CNTL) {
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferClipPlanes);
   }
 }
 void VulkanCommandProcessor::WriteRegistersFromMem(uint32_t start_index,
@@ -2376,6 +2392,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     return IssueCopy();
   }
 
+  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 0) {
+    // Doesn't actually draw. Matches the Direct3D 12 backend.
+    // TODO(Triang3l): Do something so memexport still works in this case maybe?
+    // Unlikely that zero would even really be legal though.
+    return true;
+  }
+
   const ui::vulkan::VulkanDevice::Properties& device_properties =
       GetVulkanDevice()->properties();
 
@@ -2441,6 +2464,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   SpirvShaderTranslator::Modification pixel_shader_modification;
   VulkanShader::VulkanTranslation* vertex_shader_translation;
   VulkanShader::VulkanTranslation* pixel_shader_translation;
+  uint32_t normalized_color_mask;
+  reg::RB_DEPTHCONTROL normalized_depth_control;
+  draw_util::HostDepthPolygonOffset host_depth_polygon_offset;
+  bool apply_host_depth_polygon_offset = false;
 
   // Two iterations because a submission (even the current one - in which case
   // it needs to be ended, and a new one must be started) may need to be awaited
@@ -2475,6 +2502,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
 
+    normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);
+
+    // Compute which color render targets are used.
+    normalized_color_mask =
+        pixel_shader ? draw_util::GetNormalizedColorMask(
+                           regs, pixel_shader->writes_color_targets())
+                     : 0;
+    apply_host_depth_polygon_offset =
+        pixel_shader && !pixel_shader->writes_depth() &&
+        render_target_cache_->GetPath() ==
+            RenderTargetCache::Path::kHostRenderTargets &&
+        draw_util::GetHostDepthPolygonOffsetIfNeeded(
+            regs, primitive_polygonal, normalized_depth_control,
+            normalized_color_mask, host_depth_polygon_offset);
+
     // Shader modifications.
     vertex_shader_modification =
         pipeline_cache_->GetCurrentVertexShaderModification(
@@ -2482,7 +2524,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             interpolator_mask, ps_param_gen_pos != UINT32_MAX);
     pixel_shader_modification =
         pixel_shader ? pipeline_cache_->GetCurrentPixelShaderModification(
-                           *pixel_shader, interpolator_mask, ps_param_gen_pos)
+                           *pixel_shader, interpolator_mask, ps_param_gen_pos,
+                           normalized_depth_control, normalized_color_mask,
+                           apply_host_depth_polygon_offset)
                      : SpirvShaderTranslator::Modification(0);
 
     // Translate the shaders now to obtain the sampler bindings.
@@ -2571,12 +2615,6 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   }
 
   // Set up the render targets - this may perform dispatches and draws.
-  reg::RB_DEPTHCONTROL normalized_depth_control =
-      draw_util::GetNormalizedDepthControl(regs);
-  uint32_t normalized_color_mask =
-      pixel_shader ? draw_util::GetNormalizedColorMask(
-                         regs, pixel_shader->writes_color_targets())
-                   : 0;
   if (!render_target_cache_->Update(is_rasterization_done,
                                     normalized_depth_control,
                                     normalized_color_mask, *vertex_shader)) {
@@ -2699,24 +2737,27 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // into system constants.
   UpdateZPDScale(draw_resolution_scale_x * draw_resolution_scale_y);
   draw_util::GetViewportInfoArgs gviargs{};
-  gviargs.Setup(draw_resolution_scale_x, draw_resolution_scale_y,
-                draw_resolution_scale_x > 1
-                    ? texture_cache_->draw_resolution_scale_x_divisor()
-                    : divisors::MagicDiv(1),
-                draw_resolution_scale_y > 1
-                    ? texture_cache_->draw_resolution_scale_y_divisor()
-                    : divisors::MagicDiv(1),
-                false, device_properties.maxViewportDimensions[0],
-                device_properties.maxViewportDimensions[1], true,
-                normalized_depth_control, false, host_render_targets_used,
-                pixel_shader && pixel_shader->writes_depth());
+  gviargs.Setup(
+      draw_resolution_scale_x, draw_resolution_scale_y,
+      draw_resolution_scale_x > 1
+          ? texture_cache_->draw_resolution_scale_x_divisor()
+          : divisors::MagicDiv(1),
+      draw_resolution_scale_y > 1
+          ? texture_cache_->draw_resolution_scale_y_divisor()
+          : divisors::MagicDiv(1),
+      false, device_properties.maxViewportDimensions[0],
+      device_properties.maxViewportDimensions[1], true,
+      normalized_depth_control,
+      host_render_targets_used &&
+          render_target_cache_->depth_float24_convert_in_pixel_shader(),
+      host_render_targets_used, pixel_shader && pixel_shader->writes_depth());
   gviargs.SetupRegisterValues(regs);
 
   draw_util::GetHostViewportInfo(&gviargs, viewport_info);
   // Update dynamic graphics pipeline state.
   UpdateDynamicState(viewport_info, primitive_polygonal,
                      normalized_depth_control, draw_resolution_scale_x,
-                     draw_resolution_scale_y);
+                     draw_resolution_scale_y, apply_host_depth_polygon_offset);
 
   auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
 
@@ -2731,11 +2772,24 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       primitive_processing_result.host_vertex_shader_type ==
           Shader::HostVertexShaderType::kVertex;
 
+  // The tessellation vertex index endian is a per-draw value from the
+  // primitive processor rather than a register, kNone for auto draws whose
+  // factors were already converted on the host. A change between draws must
+  // invalidate the tessellation constant buffer explicitly.
+  if (current_tessellation_index_endian_ !=
+      primitive_processing_result.host_shader_index_endian) {
+    current_tessellation_index_endian_ =
+        primitive_processing_result.host_shader_index_endian;
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferTessellation);
+  }
+
   // Update system constants before uploading them.
-  UpdateSystemConstantValues(primitive_polygonal, primitive_processing_result,
-                             shader_32bit_index_dma, viewport_info,
-                             used_texture_mask, normalized_depth_control,
-                             normalized_color_mask);
+  UpdateSystemConstantValues(
+      primitive_polygonal, primitive_processing_result, shader_32bit_index_dma,
+      viewport_info, used_texture_mask, normalized_depth_control,
+      normalized_color_mask,
+      apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr);
 
   // Update uniform buffers and descriptor sets after binding the pipeline with
   // the new layout.
@@ -4535,7 +4589,8 @@ void VulkanCommandProcessor::DestroyScratchBuffer() {
 void VulkanCommandProcessor::UpdateDynamicState(
     const draw_util::ViewportInfo& viewport_info, bool primitive_polygonal,
     reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y) {
+    uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y,
+    bool depth_bias_in_pixel_shader) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -4587,21 +4642,27 @@ void VulkanCommandProcessor::UpdateDynamicState(
       RenderTargetCache::Path::kHostRenderTargets) {
     // Depth bias.
     float depth_bias_constant_factor, depth_bias_slope_factor;
-    draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
-                                             depth_bias_slope_factor,
-                                             depth_bias_constant_factor);
-    depth_bias_constant_factor *=
-        regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
-                xenos::DepthRenderTargetFormat::kD24S8
-            ? draw_util::kD3D10PolygonOffsetFactorUnorm24
-            : draw_util::kD3D10PolygonOffsetFactorFloat24;
-    // With non-square resolution scaling, make sure the worst-case impact is
-    // reverted (slope only along the scaled axis), thus max. Per-draw scale
-    // so native draws get the guest bias as is. More bias is better than less
-    // bias; less bias means Z fighting with the background is more likely.
-    depth_bias_slope_factor *=
-        xenos::kPolygonOffsetScaleSubpixelUnit *
-        float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
+    if (depth_bias_in_pixel_shader) {
+      depth_bias_constant_factor = 0.0f;
+      depth_bias_slope_factor = 0.0f;
+    } else {
+      draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
+                                               depth_bias_slope_factor,
+                                               depth_bias_constant_factor);
+      depth_bias_constant_factor *=
+          regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+                  xenos::DepthRenderTargetFormat::kD24S8
+              ? draw_util::kD3D10PolygonOffsetFactorUnorm24
+              : draw_util::kD3D10PolygonOffsetFactorFloat24;
+      // With non-square resolution scaling, make sure the worst-case impact is
+      // reverted (slope only along the scaled axis), thus max. More bias is
+      // better than less bias, because less bias means Z fighting with the
+      // background is more likely.
+      depth_bias_slope_factor *=
+          xenos::kPolygonOffsetScaleSubpixelUnit *
+          float(std::max(render_target_cache_->draw_resolution_scale_x(),
+                         render_target_cache_->draw_resolution_scale_y()));
+    }
     // std::memcmp instead of != so in case of NaN, every draw won't be
     // invalidating it.
     dynamic_depth_bias_update_needed_ |=
@@ -4651,8 +4712,9 @@ void VulkanCommandProcessor::UpdateDynamicState(
           stencil_ref_mask_back_reg = XE_GPU_REG_RB_STENCILREFMASK_BF;
         } else {
           // Choose the back face values only if drawing only back faces.
+          auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
           stencil_ref_mask_front_reg =
-              regs.Get<reg::PA_SU_SC_MODE_CNTL>().cull_front
+              (pa_su_sc_mode_cntl.cull_front && !pa_su_sc_mode_cntl.cull_back)
                   ? XE_GPU_REG_RB_STENCILREFMASK_BF
                   : XE_GPU_REG_RB_STENCILREFMASK;
           stencil_ref_mask_back_reg = stencil_ref_mask_front_reg;
@@ -4762,7 +4824,8 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
     bool shader_32bit_index_dma, const draw_util::ViewportInfo& viewport_info,
     uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t normalized_color_mask) {
+    uint32_t normalized_color_mask,
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -5180,6 +5243,30 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     }
   }
 
+  if (!edram_fragment_shader_interlock && host_depth_polygon_offset) {
+    draw_util::HostDepthPolygonOffset polygon_offset =
+        *host_depth_polygon_offset;
+    float scale_factor =
+        float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
+    polygon_offset.front_scale *= scale_factor;
+    polygon_offset.back_scale *= scale_factor;
+    dirty |= system_constants_.edram_poly_offset_front_scale !=
+             polygon_offset.front_scale;
+    system_constants_.edram_poly_offset_front_scale =
+        polygon_offset.front_scale;
+    dirty |= system_constants_.edram_poly_offset_front_offset !=
+             polygon_offset.front_offset;
+    system_constants_.edram_poly_offset_front_offset =
+        polygon_offset.front_offset;
+    dirty |= system_constants_.edram_poly_offset_back_scale !=
+             polygon_offset.back_scale;
+    system_constants_.edram_poly_offset_back_scale = polygon_offset.back_scale;
+    dirty |= system_constants_.edram_poly_offset_back_offset !=
+             polygon_offset.back_offset;
+    system_constants_.edram_poly_offset_back_offset =
+        polygon_offset.back_offset;
+  }
+
   if (edram_fragment_shader_interlock) {
     uint32_t depth_base_dwords_scaled =
         rb_depth_info.depth_base * edram_tile_dwords_scaled;
@@ -5439,10 +5526,13 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
       tessellation_constants.tessellation_factor_range[1] = tess_factor_max;
       tessellation_constants.padding0[0] = 0.0f;
       tessellation_constants.padding0[1] = 0.0f;
-      // Vertex index processing parameters for tessellation shaders.
-      auto vgt_dma_size = regs.Get<reg::VGT_DMA_SIZE>();
+      // Vertex index processing parameters for tessellation shaders. The
+      // endian comes from the primitive processor, not raw
+      // VGT_DMA_SIZE.swap_mode. Auto draws read factors the host has already
+      // byte swapped, so swapping them again in the hull shader corrupted every
+      // adaptive factor.
       tessellation_constants.vertex_index_endian =
-          static_cast<uint32_t>(vgt_dma_size.swap_mode);
+          static_cast<uint32_t>(current_tessellation_index_endian_);
       tessellation_constants.vertex_index_offset =
           regs[XE_GPU_REG_VGT_INDX_OFFSET];
       tessellation_constants.vertex_index_min_max[0] =

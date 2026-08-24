@@ -59,6 +59,9 @@ DEFINE_int32(
     "the number of threads explicitly (up to the number of logical CPU cores), "
     "0 to disable multithreaded pipeline creation.",
     "Vulkan");
+
+DECLARE_bool(spirv_disable_rounding_mode_rte);
+
 namespace xe {
 namespace gpu {
 namespace vulkan {
@@ -83,9 +86,16 @@ bool VulkanPipelineCache::Initialize() {
       render_target_cache_.GetPath() ==
       RenderTargetCache::Path::kPixelShaderInterlock;
 
+  // Cache device float control features for geometry shader creation.
+  const SpirvShaderTranslator::Features features(vulkan_device);
+  signed_zero_inf_nan_preserve_float32_ =
+      features.signed_zero_inf_nan_preserve_float32;
+  denorm_flush_to_zero_float32_ = features.denorm_flush_to_zero_float32;
+  rounding_mode_rte_float32_ = features.rounding_mode_rte_float32 &&
+                               !cvars::spirv_disable_rounding_mode_rte;
+
   shader_translator_ = std::make_unique<SpirvShaderTranslator>(
-      SpirvShaderTranslator::Features(vulkan_device),
-      render_target_cache_.msaa_2x_attachments_supported(),
+      features, render_target_cache_.msaa_2x_attachments_supported(),
       render_target_cache_.msaa_2x_no_attachments_supported(),
       edram_fragment_shader_interlock,
       render_target_cache_.draw_resolution_scale_x(),
@@ -104,6 +114,32 @@ bool VulkanPipelineCache::Initialize() {
           "VulkanPipelineCache: Failed to create the depth/stencil-only "
           "fragment shader for the fragment shader interlock render backend "
           "implementation");
+      return false;
+    }
+  }
+
+  // Substitute fragment shaders for guest depth-only draws when in-PS float24
+  // conversion is active - keep the depth buffer's encoding consistent with
+  // PS-converted draws (matches the DXBC backend's
+  // float24_{truncate,round}_ps).
+  if (render_target_cache_.depth_float24_convert_in_pixel_shader()) {
+    using DepthStencilMode =
+        SpirvShaderTranslator::Modification::DepthStencilMode;
+    auto build = [&](DepthStencilMode mode, VkShaderModule& out) -> bool {
+      std::vector<uint8_t> code =
+          shader_translator_->CreateDepthOnlyFragmentShader(mode);
+      out = ui::vulkan::util::CreateShaderModule(
+          vulkan_device, reinterpret_cast<const uint32_t*>(code.data()),
+          code.size());
+      return out != VK_NULL_HANDLE;
+    };
+    if (!build(DepthStencilMode::kFloat24Truncating,
+               float24_truncate_fragment_shader_) ||
+        !build(DepthStencilMode::kFloat24Rounding,
+               float24_round_fragment_shader_)) {
+      XELOGE(
+          "VulkanPipelineCache: Failed to create the float24 substitute "
+          "depth-only fragment shaders");
       return false;
     }
   }
@@ -168,6 +204,13 @@ bool VulkanPipelineCache::Initialize() {
           "VulkanPipelineCache: Failed to create one or more tessellation "
           "shaders - tessellation will not be available");
     }
+  }
+
+  if (cvars::force_depth_clamp && !vulkan_device->properties().depthClamp) {
+    XELOGW(
+        "force_depth_clamp is enabled, but the device doesn't support depth "
+        "clamping - guest draws with clipping enabled will still be clipped "
+        "to the host planes");
   }
 
   // Create placeholder pixel shader for pipeline hot-swap (stutter reduction).
@@ -288,6 +331,10 @@ void VulkanPipelineCache::Shutdown() {
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          depth_only_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
+                                         float24_truncate_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
+                                         float24_round_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          placeholder_pixel_shader_);
   // Destroy tessellation shaders.
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
@@ -372,6 +419,12 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
 
   modification.vertex.interpolator_mask = interpolator_mask;
 
+  // Tessellation mode selects the domain shader spacing.
+  if (Shader::IsHostVertexShaderTypeDomain(host_vertex_shader_type)) {
+    modification.vertex.tessellation_mode =
+        regs.Get<reg::VGT_HOS_CNTL>().tess_mode;
+  }
+
   // User clip planes.
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
   uint32_t user_clip_planes =
@@ -379,6 +432,13 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
   modification.vertex.user_clip_plane_count = xe::bit_count(user_clip_planes);
   modification.vertex.user_clip_plane_cull =
       uint32_t(user_clip_planes && pa_cl_clip_cntl.ucp_cull_only_ena);
+
+  // Vertex kill via the kill flag (oPts.z). The "and" operator (kill only when
+  // all vertices of the primitive request it) is emulated with a cull distance;
+  // the "or" operator sets the position to NaN in the translator.
+  modification.vertex.vertex_kill_and =
+      uint32_t((shader.writes_point_size_edge_flag_kill_vertex() & 0b100) &&
+               !pa_cl_clip_cntl.vtx_kill_or);
 
   if (host_vertex_shader_type ==
       Shader::HostVertexShaderType::kPointListAsTriangleStrip) {
@@ -395,8 +455,9 @@ VulkanPipelineCache::GetCurrentVertexShaderModification(
 
 SpirvShaderTranslator::Modification
 VulkanPipelineCache::GetCurrentPixelShaderModification(
-    const Shader& shader, uint32_t interpolator_mask,
-    uint32_t param_gen_pos) const {
+    const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
+    reg::RB_DEPTHCONTROL normalized_depth_control,
+    uint32_t normalized_color_mask, bool apply_polygon_offset_in_shader) const {
   assert_true(shader.type() == xenos::ShaderType::kPixel);
   assert_true(shader.is_ucode_analyzed());
   const auto& regs = register_file_;
@@ -434,13 +495,30 @@ VulkanPipelineCache::GetCurrentPixelShaderModification(
 
     using DepthStencilMode =
         SpirvShaderTranslator::Modification::DepthStencilMode;
-    if (shader.implicit_early_z_write_allowed() &&
-        (!shader.writes_color_target(0) ||
-         !draw_util::DoesCoverageDependOnAlpha(
-             regs.Get<reg::RB_COLORCONTROL>()))) {
-      modification.pixel.depth_stencil_mode = DepthStencilMode::kEarlyHint;
+    if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+        normalized_depth_control.z_enable &&
+        regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+            xenos::DepthRenderTargetFormat::kD24FS8) {
+      modification.pixel.depth_stencil_mode =
+          apply_polygon_offset_in_shader
+              ? (render_target_cache_.depth_float24_round()
+                     ? DepthStencilMode::kFloat24RoundingPolygonOffset
+                     : DepthStencilMode::kFloat24TruncatingPolygonOffset)
+              : (render_target_cache_.depth_float24_round()
+                     ? DepthStencilMode::kFloat24Rounding
+                     : DepthStencilMode::kFloat24Truncating);
     } else {
-      modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
+      if (apply_polygon_offset_in_shader) {
+        modification.pixel.depth_stencil_mode =
+            DepthStencilMode::kPolygonOffset;
+      } else if (shader.implicit_early_z_write_allowed() &&
+                 (!shader.writes_color_target(0) ||
+                  !draw_util::DoesCoverageDependOnAlpha(
+                      regs.Get<reg::RB_COLORCONTROL>()))) {
+        modification.pixel.depth_stencil_mode = DepthStencilMode::kEarlyHint;
+      } else {
+        modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
+      }
     }
 
     // Check if MIN/MAX blend is used with non-trivial source factors.
@@ -1051,15 +1129,37 @@ void VulkanPipelineCache::WritePipelineRenderTargetDescription(
         /* 15 */ PipelineBlendFactor::kOneMinusConstantAlpha,
         /* 16 */ PipelineBlendFactor::kSrcAlphaSaturate,
     };
+    // Like kBlendFactorMap, but with the color factors changed to their alpha
+    // equivalents. Alpha is scalar, so hardware treats a _COLOR factor in the
+    // alpha slot as the matching _ALPHA factor.
+    static constexpr PipelineBlendFactor kBlendFactorAlphaMap[32] = {
+        /*  0 */ PipelineBlendFactor::kZero,
+        /*  1 */ PipelineBlendFactor::kOne,
+        /*  2 */ PipelineBlendFactor::kZero,  // ?
+        /*  3 */ PipelineBlendFactor::kZero,  // ?
+        /*  4 */ PipelineBlendFactor::kSrcAlpha,
+        /*  5 */ PipelineBlendFactor::kOneMinusSrcAlpha,
+        /*  6 */ PipelineBlendFactor::kSrcAlpha,
+        /*  7 */ PipelineBlendFactor::kOneMinusSrcAlpha,
+        /*  8 */ PipelineBlendFactor::kDstAlpha,
+        /*  9 */ PipelineBlendFactor::kOneMinusDstAlpha,
+        /* 10 */ PipelineBlendFactor::kDstAlpha,
+        /* 11 */ PipelineBlendFactor::kOneMinusDstAlpha,
+        /* 12 */ PipelineBlendFactor::kConstantAlpha,
+        /* 13 */ PipelineBlendFactor::kOneMinusConstantAlpha,
+        /* 14 */ PipelineBlendFactor::kConstantAlpha,
+        /* 15 */ PipelineBlendFactor::kOneMinusConstantAlpha,
+        /* 16 */ PipelineBlendFactor::kSrcAlphaSaturate,
+    };
     render_target_out.src_color_blend_factor =
         kBlendFactorMap[uint32_t(blend_control.color_srcblend)];
     render_target_out.dst_color_blend_factor =
         kBlendFactorMap[uint32_t(blend_control.color_destblend)];
     render_target_out.color_blend_op = blend_control.color_comb_fcn;
     render_target_out.src_alpha_blend_factor =
-        kBlendFactorMap[uint32_t(blend_control.alpha_srcblend)];
+        kBlendFactorAlphaMap[uint32_t(blend_control.alpha_srcblend)];
     render_target_out.dst_alpha_blend_factor =
-        kBlendFactorMap[uint32_t(blend_control.alpha_destblend)];
+        kBlendFactorAlphaMap[uint32_t(blend_control.alpha_destblend)];
     render_target_out.alpha_blend_op = blend_control.alpha_comb_fcn;
     if (!command_processor_.GetVulkanDevice()
              ->properties()
@@ -1212,9 +1312,16 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
   description_out.primitive_restart =
       primitive_processing_result.host_primitive_reset_enabled;
 
+  // With force_depth_clamp, use the host viewport clamp instead of near and far
+  // Z plane clipping. X/Y/W clipping is unchanged. Both 494707EE and 41560881
+  // have passes that rely on alpha inputs that currently gets dropped by
+  // near-plane clipping.
+  // TODO(boma): Investigate whether the difference is in shader arithmetic or
+  // the clipper itself.
   description_out.depth_clamp_enable =
       device_properties.depthClamp &&
-      regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable;
+      (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable ||
+       cvars::force_depth_clamp);
 
   // TODO(Triang3l): Tessellation.
   bool primitive_polygonal = draw_util::IsPrimitivePolygonal(regs);
@@ -1421,12 +1528,9 @@ bool VulkanPipelineCache::GetGeometryShaderKey(
   }
   GeometryShaderKey key;
   key.type = geometry_shader_type;
-  // TODO(Triang3l): Once all needed inputs and outputs are added, uncomment the
-  // real counts here.
   key.interpolator_count =
       xe::bit_count(vertex_shader_modification.vertex.interpolator_mask);
-  key.has_vertex_kill_and =
-      /* vertex_shader_modification.vertex.vertex_kill_and */ 0;
+  key.has_vertex_kill_and = vertex_shader_modification.vertex.vertex_kill_and;
   key.has_point_size =
       vertex_shader_modification.vertex.output_point_parameters;
   key.has_point_coordinates = pixel_shader_modification.pixel.param_gen_point;
@@ -1506,7 +1610,25 @@ VkShaderModule VulkanPipelineCache::GetGeometryShader(GeometryShaderKey key) {
   builder.setMemoryModel(spv::AddressingModelLogical, spv::MemoryModelGLSL450);
   builder.setSource(spv::SourceLanguageUnknown, 0);
 
-  // TODO(Triang3l): Shader float controls (NaN preservation most importantly).
+  // Match the vertex and pixel shaders' float controls. NaN preservation most
+  // importantly keeps the NaN-position primitive discard below (used for the
+  // vertex kill "or" operator and degenerate rectangles) from being folded
+  // away. The geometry shader is built as SPIR-V 1.0, where the float controls
+  // are an extension. The execution modes are added once the entry point
+  // exists.
+  if (denorm_flush_to_zero_float32_ || signed_zero_inf_nan_preserve_float32_ ||
+      rounding_mode_rte_float32_) {
+    builder.addExtension("SPV_KHR_float_controls");
+  }
+  if (denorm_flush_to_zero_float32_) {
+    builder.addCapability(spv::CapabilityDenormFlushToZero);
+  }
+  if (signed_zero_inf_nan_preserve_float32_) {
+    builder.addCapability(spv::CapabilitySignedZeroInfNanPreserve);
+  }
+  if (rounding_mode_rte_float32_) {
+    builder.addCapability(spv::CapabilityRoundingModeRTE);
+  }
 
   std::vector<spv::Id> main_interface;
 
@@ -1753,6 +1875,18 @@ VkShaderModule VulkanPipelineCache::GetGeometryShader(GeometryShaderKey key) {
   builder.addExecutionMode(main_function, output_primitive_execution_mode);
   builder.addExecutionMode(main_function, spv::ExecutionModeOutputVertices,
                            int(output_max_vertices));
+  if (denorm_flush_to_zero_float32_) {
+    builder.addExecutionMode(main_function, spv::ExecutionModeDenormFlushToZero,
+                             32);
+  }
+  if (signed_zero_inf_nan_preserve_float32_) {
+    builder.addExecutionMode(main_function,
+                             spv::ExecutionModeSignedZeroInfNanPreserve, 32);
+  }
+  if (rounding_mode_rte_float32_) {
+    builder.addExecutionMode(main_function, spv::ExecutionModeRoundingModeRTE,
+                             32);
+  }
 
   // Note that after every OpEmitVertex, all output variables are undefined.
 
@@ -2630,6 +2764,19 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   } else {
     if (edram_fragment_shader_interlock) {
       shader_stage_fragment.module = depth_only_fragment_shader_;
+    } else if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+               (description.depth_write_enable ||
+                description.depth_compare_op !=
+                    xenos::CompareFunction::kAlways) &&
+               (description.render_pass_key.depth_and_color_used & 0b1) &&
+               description.render_pass_key.depth_format ==
+                   xenos::DepthRenderTargetFormat::kD24FS8) {
+      // No guest pixel shader, but depth matters and the host buffer is
+      // float24 - bind a substitute that converts gl_FragCoord.z so the
+      // depth buffer encoding stays consistent with PS-converted draws.
+      shader_stage_fragment.module = render_target_cache_.depth_float24_round()
+                                         ? float24_round_fragment_shader_
+                                         : float24_truncate_fragment_shader_;
     }
   }
   if (shader_stage_fragment.module == VK_NULL_HANDLE) {

@@ -36,7 +36,7 @@ class StringBuffer {
   template <typename... Args>
   void AppendFormat(const char* format, const Args&... args) {
     auto s = fmt::format(fmt::runtime(format), args...);
-    Append(s.c_str());
+    Append(std::string_view(s));
   }
 
   void AppendVarargs(const char* format, va_list args);

@@ -35,7 +35,7 @@ entry_inputs_end_code_begin_compute_xe
   }
   uint2_xe pixel_index = in_global_thread_id_xe.xy << uint2_xe(3u, 0u);
   float4_xe pixels_0123, pixels_4567;
-  XeResolveLoad8RedColors(
+  XeResolveLoad8ScalarColors(
       pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
       resolve_info,
       XeResolveColorCopySourcePixelAddressBytesYHalfPixelOffsetFilling(
@@ -53,6 +53,7 @@ entry_inputs_end_code_begin_compute_xe
     pixels_0123.x = pixels_0123.y;
   }
   // Convert to R8.
+  // Pack the selected component while loading the samples to R8.
   // TODO(Triang3l): Investigate formats 8_A and 8_B.
   byte_buffer_align8_store8_xe(
       xe_resolve_dest, XeResolveDestPixelAddress(resolve_info, pixel_index, 0u),

@@ -115,6 +115,19 @@ void UserProfile::WriteProfileIcon(XTileType tile_type,
   file->WriteSync({icon_data.data(), icon_data.size()}, 0, &written_bytes);
   file->Destroy();
 
+  // Update package thumbnail
+  XCONTENT_DATA_INTERNAL data{};
+  data.device_id = 1;
+  data.title_id = kDashboardID;
+  data.content_type = XContentType::kProfile;
+  data.xuid = xuid_;
+  data.set_file_name(fmt::format("{:016X}", xuid_));
+
+  if (auto package = kernel_state()->content_manager()->FindPackage(data);
+      package) {
+    package->SetThumbnail(icon_data);
+  }
+
   profile_images_.insert_or_assign(
       tile_type, std::vector<uint8_t>(icon_data.begin(), icon_data.end()));
 }
@@ -178,6 +191,23 @@ bool UserProfile::WriteGpd(const uint32_t title_id) {
   file->WriteSync(std::span<uint8_t>(data.data(), data.size()), 0,
                   &written_bytes);
   file->Destroy();
+  return true;
+}
+
+bool UserProfile::RemoveGpd(const uint32_t title_id) {
+  auto it = games_gpd_.find(title_id);
+  if (it == games_gpd_.end()) {
+    return false;
+  }
+
+  const std::string mounted_path =
+      fmt::format("User_{:016X}:\\{:08X}.gpd", xuid_, title_id);
+
+  if (!kernel_state()->file_system()->DeletePath(mounted_path)) {
+    return false;
+  }
+
+  games_gpd_.erase(it);
   return true;
 }
 

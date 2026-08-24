@@ -174,6 +174,7 @@ class UserProfile {
                         std::span<const uint8_t> icon_data);
   std::vector<uint8_t> LoadGpd(const uint32_t title_id);
   bool WriteGpd(const uint32_t title_id);
+  bool RemoveGpd(const uint32_t title_id);
 };
 
 }  // namespace xam

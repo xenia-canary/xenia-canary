@@ -1121,6 +1121,18 @@ void ParseTextureFetchInstruction(const TextureFetchInstruction& op,
       opcode_info.override_component_count
           ? opcode_info.override_component_count
           : xenos::GetFetchOpDimensionComponentCount(op.dimension());
+  if (op.opcode() == FetchOpcode::kTextureFetch &&
+      op.dimension() == xenos::FetchOpDimension::k1D) {
+    uint32_t src_swizzle = op.src_swizzle();
+    uint32_t src_select_x = src_swizzle & 0x3;
+    if (((src_swizzle >> 2) & 0x3) != src_select_x ||
+        ((src_swizzle >> 4) & 0x3) != src_select_x) {
+      // 1D may provide XY for a 2D fetch constant. 545407D4's UI shader does
+      // this, and it seems like we have to support it, even if it doesn't
+      // make sense on paper.
+      src_op.component_count = 2;
+    }
+  }
   uint32_t swizzle = op.src_swizzle();
   for (uint32_t j = 0; j < src_op.component_count; ++j, swizzle >>= 2) {
     src_op.components[j] = GetSwizzleFromComponentIndex(swizzle & 0x3);
@@ -1201,7 +1213,8 @@ uint32_t ParsedTextureFetchInstruction::GetNonZeroResultComponents() const {
 
 static void ParseAluInstructionOperand(const AluInstruction& op, uint32_t i,
                                        uint32_t swizzle_component_count,
-                                       InstructionOperand& out_op) {
+                                       InstructionOperand& out_op,
+                                       uint32_t scalar_second_component = 0) {
   out_op.is_negated = op.src_negate(i);
   uint32_t reg = op.src_reg(i);
   if (op.src_is_temp(i)) {
@@ -1235,9 +1248,10 @@ static void ParseAluInstructionOperand(const AluInstruction& op, uint32_t i,
     // Scalar `a` (W).
     out_op.components[0] = GetSwizzledAluSourceComponent(swizzle, 3);
   } else if (swizzle_component_count == 2) {
-    // Scalar left-hand `a` (W) and right-hand `b` (X).
+    // Scalar left-hand `a` (W) and right-hand `b` (X or Z).
     out_op.components[0] = GetSwizzledAluSourceComponent(swizzle, 3);
-    out_op.components[1] = GetSwizzledAluSourceComponent(swizzle, 0);
+    out_op.components[1] =
+        GetSwizzledAluSourceComponent(swizzle, scalar_second_component);
   } else if (swizzle_component_count == 3) {
     assert_always();
   } else if (swizzle_component_count == 4) {
@@ -1409,9 +1423,13 @@ void ParseAluInstruction(const AluInstruction& op,
   instr.scalar_operand_count = scalar_opcode_info.operand_count;
   if (instr.scalar_operand_count) {
     if (instr.scalar_operand_count == 1) {
+      // The scalar operation shares source 3 with the vector operation. If the
+      // vector operation uses source 3, the scalar `b` component is Z;
+      // otherwise it is X.
       ParseAluInstructionOperand(
           op, 3, scalar_opcode_info.single_operand_is_two_component ? 2 : 1,
-          instr.scalar_operands[0]);
+          instr.scalar_operands[0],
+          vector_opcode_info.GetOperandCount() == 3 ? 2 : 0);
     } else {
       // Constant and temporary register.
 

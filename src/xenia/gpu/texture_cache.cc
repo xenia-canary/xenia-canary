@@ -40,17 +40,17 @@ DEFINE_uint32(
     texture_cache_memory_limit_soft, 384,
     "Maximum host texture memory usage (in megabytes) above which old textures "
     "will be destroyed.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_uint32(
     texture_cache_memory_limit_soft_lifetime, 30,
     "Seconds a texture should be unused to be considered old enough to be "
     "deleted if texture memory usage exceeds texture_cache_memory_limit_soft.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_uint32(
     texture_cache_memory_limit_hard, 768,
     "Maximum host texture memory usage (in megabytes) above which textures "
     "will be destroyed as soon as possible.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_uint32(
     texture_cache_memory_limit_render_to_texture, 24,
     "Part of the host texture memory budget (in megabytes) that will be scaled "
@@ -60,11 +60,11 @@ DEFINE_uint32(
     "render-to-texture (resolve) targets and 384 - 24 = 360 MB of regular "
     "textures - so with 2x2 resolution scaling, the soft limit will be 360 + "
     "96 MB, and with 3x3, it will be 360 + 216 MB.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_bool(tiled_shared_memory, true,
             "Enable tiled/sparse resources for efficient large address space "
             "support. Disable for graphics debugger compatibility.",
-            "GPU");
+            "GPU.Debug");
 
 namespace xe {
 namespace gpu {
@@ -364,9 +364,8 @@ void TextureCache::RequestTextures(uint32_t used_texture_mask) {
     uint32_t old_host_swizzle = binding.host_swizzle;
     binding.host_swizzle =
         GuestToHostSwizzle(fetch.swizzle, GetHostFormatSwizzle(binding.key));
-    binding.integer_scale_bits =
-        GetIntegerScaleBits(fetch.format, fetch.num_format,
-                            binding.host_swizzle, binding.swizzled_signs);
+    binding.integer_scale_bits = GetIntegerScaleBits(
+        fetch.format, fetch.num_format, fetch.swizzle, binding.swizzled_signs);
 
     // Check if need to load the unsigned and the signed versions of the texture
     // (if the format is emulated with different host bit representations for
@@ -690,11 +689,15 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
 // undo the host sampler's normalization - the guest wants e.g. [0, 255], not
 // [0, 1]. 6 bits per output component: bits 0:3 = width - 1, bit 4 = signed,
 // bit 5 = unsigned-biased. The scale lands after swizzling, so each output lane
-// walks the host swizzle back to its source component's width; constant (0/1)
-// lanes, gamma, and non-fixed formats have nothing to rescale and stay 0.
+// walks the guest swizzle back to its source component's width. component_bits
+// only describes the stored width, so the source component is clamped to the
+// last stored channel the same way the host swizzle expands the formats.
+// (k_16 has a 16 bit width in all four components, k_5_6_5 gives blue in W.)
+// Constant (0/1) lanes, gamma, and non-fixed formats have nothing to rescale
+// and stay 0.
 uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
                                            uint32_t num_format,
-                                           uint32_t host_swizzle,
+                                           uint32_t guest_swizzle,
                                            uint8_t swizzled_signs) {
   // num_format 0 is the normalized/fractional fetch - nothing to rescale.
   const FormatInfo& format_info = *FormatInfo::Get(guest_format);
@@ -704,11 +707,19 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
     return 0;
   }
 
+  uint32_t last_stored_component = 0;
+  for (uint32_t i = 1; i < 4; ++i) {
+    if (format_info.component_bits[i]) {
+      last_stored_component = i;
+    }
+  }
+
   for (uint32_t i = 0; i < 4; ++i) {
-    uint32_t source_component = (host_swizzle >> (i * 3)) & 0b111;
+    uint32_t source_component = (guest_swizzle >> (i * 3)) & 0b111;
     if (source_component >= xenos::XE_GPU_TEXTURE_SWIZZLE_0) {
       continue;
     }
+    source_component = std::min(source_component, last_stored_component);
 
     xenos::TextureSign sign =
         xenos::TextureSign((swizzled_signs >> (i * 2)) & 0b11);
@@ -992,15 +1003,28 @@ void TextureCache::BindingInfoFromFetchConstant(
     // No texture data at all.
     return;
   }
+  uint32_t pitch = fetch.pitch;
   if (fetch.dimension == xenos::DataDimension::k1D) {
     bool is_invalid_1d = false;
-    // TODO(Triang3l): Support long 1D textures.
+    // Handle wide 1D textures (> 8192 wide) by mapping them to a 2D grid.
+    // The shaders will convert 1D coordinates to 2D using the original width
+    // from the fetch constant.
     if (width_minus_1 >= xenos::kTexture2DCubeMaxWidthHeight) {
-      XELOGE(
-          "1D texture is too wide ({}) - ignoring! Report the game to Xenia "
-          "developers",
-          width_minus_1 + 1);
-      is_invalid_1d = true;
+      uint32_t total_width = width_minus_1 + 1;
+      uint32_t row_width = xenos::kTexture2DCubeMaxWidthHeight;
+      uint32_t num_rows = (total_width + row_width - 1) / row_width;
+      num_rows = std::min(num_rows, xenos::kTexture1DWideMaxRows);
+      width_minus_1 = row_width - 1;
+      height_minus_1 = num_rows - 1;
+      // Disable mipmaps for wide 1D textures. The shader's coordinate remapping
+      // assumes base level dimensions (num_rows), but at mip level N, the 2D
+      // texture becomes (8192 >> N) x (num_rows >> N), which breaks the mapping
+      // when num_rows >> N becomes 1 while the shader still expects multiple
+      // rows. Mipmaps are rarely used with 1D lookup textures anyway.
+      mip_max_level = 0;
+      // The guest pitch is meaningless for a texture the guest believes is 1D
+      // (the 9 bit field couldn't even express the line width).
+      pitch = xenos::kTexture2DCubeMaxWidthHeight >> 5;
     }
     assert_false(fetch.tiled);
     if (fetch.tiled) {
@@ -1031,7 +1055,7 @@ void TextureCache::BindingInfoFromFetchConstant(
   key_out.width_minus_1 = width_minus_1;
   key_out.height_minus_1 = height_minus_1;
   key_out.depth_or_array_size_minus_1 = depth_or_array_size_minus_1;
-  key_out.pitch = fetch.pitch;
+  key_out.pitch = pitch;
   key_out.mip_max_level = mip_max_level;
   key_out.tiled = fetch.tiled;
   key_out.packed_mips = fetch.packed_mips;

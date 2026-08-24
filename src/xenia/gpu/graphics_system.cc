@@ -34,7 +34,7 @@ DEFINE_bool(
     store_shaders, true,
     "Store shaders persistently and load them when loading games to avoid "
     "runtime spikes and freezes when playing the game not for the first time.",
-    "GPU");
+    "GPU.Debug");
 
 namespace xe {
 namespace gpu {

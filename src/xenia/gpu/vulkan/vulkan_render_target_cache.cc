@@ -265,7 +265,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
   // 2x MSAA support.
   // TODO(Triang3l): Handle sampledImageIntegerSampleCounts 4 not supported in
   // transfers.
-  if (cvars::native_2x_msaa) {
+  if (!cvars::debug_msaa_2x_as_4x) {
     // Multisampled integer sampled images are optional in Vulkan and in Xenia.
     msaa_2x_attachments_supported_ =
         (device_properties.framebufferColorSampleCounts &
@@ -570,6 +570,12 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
          kGammaUnorm16Features) == kGammaUnorm16Features;
 
     depth_float24_round_ = cvars::depth_float24_round;
+    // In-PS conversion requires per-sample shading under MSAA for intersections
+    // to antialias; without sampleRateShading, fall back to transfer-time
+    // conversion so the host/PS encoding stays consistent across all draws.
+    depth_float24_convert_in_pixel_shader_ =
+        cvars::depth_float24_convert_in_pixel_shader &&
+        device_properties.sampleRateShading;
 
     // Host depth storing pipeline layout.
     VkDescriptorSetLayout host_depth_store_descriptor_set_layouts[] = {
@@ -773,8 +779,11 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
     // Piecewise linear gamma is 8-bit with programmable blending.
     gamma_render_target_as_unorm16_ = false;
 
-    // Always true float24 depth rounded to the nearest even.
+    // Always true float24 depth rounded to the nearest even, converted in the
+    // shader (FSI ignores depth_float24_convert_in_pixel_shader, but set it for
+    // parity with the host render target path).
     depth_float24_round_ = true;
+    depth_float24_convert_in_pixel_shader_ = true;
 
     // The pipeline layout and the pipelines for clearing the EDRAM buffer in
     // resolves.
@@ -1175,12 +1184,22 @@ bool VulkanRenderTargetCache::Resolve(
       } else {
         // TODO(Triang3l): Switching between descriptors if exceeding
         // maxStorageBufferRange.
-        // TODO(Triang3l): Use a single 512 MB shared memory binding if
-        // possible.
+        // Bind the whole shared memory buffer persistently when possible
+        // (passing the destination byte offset via dest_base) instead of
+        // allocating and writing a per-resolve descriptor. Scaled resolves
+        // write to separate scaled buffers, so they use transient descriptors.
+        // Decided per resolve, as native copies write to shared memory even
+        // with resolution scaling on.
+        const bool use_persistent_dest =
+            texture_cache.shared_memory_persistent_descriptor_set() !=
+                VK_NULL_HANDLE &&
+            !copy_dest_scaled;
         VkDescriptorSet descriptor_set_dest =
-            command_processor_.AllocateSingleTransientDescriptor(
-                VulkanCommandProcessor::SingleTransientDescriptorLayout ::
-                    kStorageBufferCompute);
+            use_persistent_dest
+                ? texture_cache.shared_memory_persistent_descriptor_set()
+                : command_processor_.AllocateSingleTransientDescriptor(
+                      VulkanCommandProcessor::SingleTransientDescriptorLayout ::
+                          kStorageBufferCompute);
         if (descriptor_set_dest != VK_NULL_HANDLE) {
           // Write the destination descriptor.
           VkDescriptorBufferInfo write_descriptor_set_dest_buffer_info;
@@ -1247,7 +1266,7 @@ bool VulkanRenderTargetCache::Resolve(
             }
           }
 
-          if (!scaled_buffer_ready) {
+          if (!scaled_buffer_ready && !use_persistent_dest) {
             // Write unscaled or native resolves to shared memory.
             if (copy_dest_scaled) {
               XELOGW(
@@ -1264,22 +1283,24 @@ bool VulkanRenderTargetCache::Resolve(
                 resolve_info.copy_dest_base +
                 resolve_info.copy_dest_extent_length;
           }
-          VkWriteDescriptorSet write_descriptor_set_dest;
-          write_descriptor_set_dest.sType =
-              VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-          write_descriptor_set_dest.pNext = nullptr;
-          write_descriptor_set_dest.dstSet = descriptor_set_dest;
-          write_descriptor_set_dest.dstBinding = 0;
-          write_descriptor_set_dest.dstArrayElement = 0;
-          write_descriptor_set_dest.descriptorCount = 1;
-          write_descriptor_set_dest.descriptorType =
-              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-          write_descriptor_set_dest.pImageInfo = nullptr;
-          write_descriptor_set_dest.pBufferInfo =
-              &write_descriptor_set_dest_buffer_info;
-          write_descriptor_set_dest.pTexelBufferView = nullptr;
-          dfn.vkUpdateDescriptorSets(device, 1, &write_descriptor_set_dest, 0,
-                                     nullptr);
+          if (!use_persistent_dest) {
+            VkWriteDescriptorSet write_descriptor_set_dest;
+            write_descriptor_set_dest.sType =
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write_descriptor_set_dest.pNext = nullptr;
+            write_descriptor_set_dest.dstSet = descriptor_set_dest;
+            write_descriptor_set_dest.dstBinding = 0;
+            write_descriptor_set_dest.dstArrayElement = 0;
+            write_descriptor_set_dest.descriptorCount = 1;
+            write_descriptor_set_dest.descriptorType =
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            write_descriptor_set_dest.pImageInfo = nullptr;
+            write_descriptor_set_dest.pBufferInfo =
+                &write_descriptor_set_dest_buffer_info;
+            write_descriptor_set_dest.pTexelBufferView = nullptr;
+            dfn.vkUpdateDescriptorSets(device, 1, &write_descriptor_set_dest, 0,
+                                       nullptr);
+          }
 
           // Submit the resolve.
           if (!scaled_buffer_ready) {
@@ -1336,11 +1357,15 @@ bool VulkanRenderTargetCache::Resolve(
                 sizeof(copy_shader_constants.dest_relative),
                 &copy_shader_constants.dest_relative);
           } else {
-            // TODO(Triang3l): Proper dest_base in case of one 512 MB shared
-            // memory binding, or multiple shared memory bindings in case of
+            // TODO(Triang3l): Multiple shared memory bindings in case of
             // splitting due to maxStorageBufferRange overflow.
-            copy_shader_constants.dest_base -=
-                uint32_t(write_descriptor_set_dest_buffer_info.offset);
+            if (!use_persistent_dest) {
+              // The descriptor is offset to the destination, so make dest_base
+              // relative to it. With the whole buffer bound persistently,
+              // dest_base stays the absolute byte offset.
+              copy_shader_constants.dest_base -=
+                  uint32_t(write_descriptor_set_dest_buffer_info.offset);
+            }
             command_buffer.CmdVkPushConstants(
                 copy_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                 sizeof(copy_shader_constants), &copy_shader_constants);
@@ -2105,12 +2130,14 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(
 
 bool VulkanRenderTargetCache::IsHostDepthEncodingDifferent(
     xenos::DepthRenderTargetFormat format) const {
-  // TODO(Triang3l): Conversion directly in shaders.
   switch (format) {
     case xenos::DepthRenderTargetFormat::kD24S8:
       return !depth_unorm24_vulkan_format_supported();
     case xenos::DepthRenderTargetFormat::kD24FS8:
-      return true;
+      // When converting in the pixel shader, the host float32 depth already
+      // holds float24-grid values, so it's the canonical encoding and the
+      // separate host depth tracking isn't needed.
+      return !depth_float24_convert_in_pixel_shader();
   }
   return false;
 }
@@ -3605,8 +3632,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
           } break;
           case xenos::DepthRenderTargetFormat::kD24FS8: {
             depth24 = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                builder, source_depth_float[i], depth_float24_round(), true,
-                ext_inst_glsl_std_450);
+                builder, source_depth_float[i],
+                !depth_float24_convert_in_pixel_shader() &&
+                    depth_float24_round(),
+                true, ext_inst_glsl_std_450);
           } break;
         }
         // Merge depth and stencil.
@@ -3911,8 +3940,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
           } break;
           case xenos::DepthRenderTargetFormat::kD24FS8: {
             packed = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                builder, source_depth_float[0], depth_float24_round(), true,
-                ext_inst_glsl_std_450);
+                builder, source_depth_float[0],
+                !depth_float24_convert_in_pixel_shader() &&
+                    depth_float24_round(),
+                true, ext_inst_glsl_std_450);
           } break;
         }
         if (mode.output == TransferOutput::kDepth) {
@@ -4391,8 +4422,10 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
               } break;
               case xenos::DepthRenderTargetFormat::kD24FS8: {
                 host_depth24 = SpirvShaderTranslator::PreClampedDepthTo20e4(
-                    builder, host_depth32, depth_float24_round(), true,
-                    ext_inst_glsl_std_450);
+                    builder, host_depth32,
+                    !depth_float24_convert_in_pixel_shader() &&
+                        depth_float24_round(),
+                    true, ext_inst_glsl_std_450);
               } break;
             }
             assert_true(host_depth24 != spv::NoResult);
@@ -6109,8 +6142,9 @@ VkPipeline VulkanRenderTargetCache::GetDumpPipeline(DumpPipelineKey key) {
       } break;
       case xenos::DepthRenderTargetFormat::kD24FS8: {
         packed[0] = SpirvShaderTranslator::PreClampedDepthTo20e4(
-            builder, source_depth32, depth_float24_round(), true,
-            ext_inst_glsl_std_450);
+            builder, source_depth32,
+            !depth_float24_convert_in_pixel_shader() && depth_float24_round(),
+            true, ext_inst_glsl_std_450);
       } break;
     }
     packed[0] = builder.createQuadOp(

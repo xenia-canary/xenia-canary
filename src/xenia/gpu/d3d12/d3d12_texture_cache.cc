@@ -140,6 +140,32 @@ bool D3D12TextureCache::Initialize() {
   }
   scaled_resolve_heap_count_ = 0;
 
+  // GetSamplerParameters drops samplers for non-filterable formats.
+  for (uint32_t i = 0; i < xe::countof(host_formats_); ++i) {
+    const HostFormat& host_format = host_formats_[i];
+    uint64_t format_bit = uint64_t(1) << i;
+    if (host_format.dxgi_format_unsigned != DXGI_FORMAT_UNKNOWN) {
+      D3D12_FEATURE_DATA_FORMAT_SUPPORT format_support = {
+          host_format.dxgi_format_unsigned};
+      if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT,
+                                                &format_support,
+                                                sizeof(format_support))) &&
+          (format_support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE)) {
+        host_filterable_unsigned_ |= format_bit;
+      }
+    }
+    if (host_format.dxgi_format_signed != DXGI_FORMAT_UNKNOWN) {
+      D3D12_FEATURE_DATA_FORMAT_SUPPORT format_support = {
+          host_format.dxgi_format_signed};
+      if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT,
+                                                &format_support,
+                                                sizeof(format_support))) &&
+          (format_support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE)) {
+        host_filterable_signed_ |= format_bit;
+      }
+    }
+  }
+
   // Create the loading root signature.
   D3D12_ROOT_PARAMETER root_parameters[3];
   // Parameter 0 is constants (changed multiple times when untiling).
@@ -765,16 +791,15 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
       xenos::ClampModeUsesBorder(parameters.clamp_y) ||
       xenos::ClampModeUsesBorder(parameters.clamp_z)) {
     parameters.border_color = fetch.border_color;
+    parameters.force_bc_w_to_max = fetch.force_bc_w_to_max;
   } else {
     parameters.border_color = xenos::BorderColor::k_ABGR_Black;
   }
 
-  uint32_t mip_min_level, mip_max_level;
+  uint32_t base_page, mip_min_level, mip_max_level;
   texture_util::GetSubresourcesFromFetchConstant(
-      fetch, nullptr, nullptr, nullptr, nullptr, nullptr, &mip_min_level,
+      fetch, nullptr, nullptr, nullptr, &base_page, nullptr, &mip_min_level,
       &mip_max_level);
-  parameters.mip_min_level = mip_min_level;
-  bool has_mips = mip_max_level > mip_min_level;
   xenos::TextureFilter mag_filter =
       binding.mag_filter == xenos::TextureFilter::kUseFetchConst
           ? fetch.mag_filter
@@ -793,8 +818,12 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
       mip_filter == xenos::TextureFilter::kPoint ||
       mip_filter == xenos::TextureFilter::kLinear;
   bool mip_base_map = mip_filter == xenos::TextureFilter::kBaseMap;
+  if (mip_base_map && base_page != 0) {
+    mip_min_level = 0;
+  }
+  parameters.mip_min_level = mip_min_level;
+  bool has_mips = mip_max_level > mip_min_level;
   // high cache miss count here, prefetch fetch earlier
-  //  TODO(Triang3l): Disable filtering for texture formats not supporting it.
   xenos::AnisoFilter aniso_filter =
       binding.aniso_filter == xenos::AnisoFilter::kUseFetchConst
           ? fetch.aniso_filter
@@ -818,6 +847,27 @@ D3D12TextureCache::SamplerParameters D3D12TextureCache::GetSamplerParameters(
     parameters.mip_linear = mip_filter == xenos::TextureFilter::kLinear;
   }
   parameters.mip_base_map = mip_base_map;
+
+  // Fall back to point sampling if the host formats don't report
+  // D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE.
+  if (parameters.mag_linear || parameters.min_linear || parameters.mip_linear ||
+      parameters.aniso_filter != xenos::AnisoFilter::kDisabled) {
+    TextureKey texture_key;
+    uint8_t texture_swizzled_signs;
+    BindingInfoFromFetchConstant(fetch, texture_key, &texture_swizzled_signs);
+    uint64_t format_bit =
+        texture_key.is_valid ? uint64_t(1) << uint32_t(texture_key.format) : 0;
+    if (!texture_key.is_valid ||
+        (texture_util::IsAnySignNotSigned(texture_swizzled_signs) &&
+         (host_filterable_unsigned_ & format_bit) == 0) ||
+        (texture_util::IsAnySignSigned(texture_swizzled_signs) &&
+         (host_filterable_signed_ & format_bit) == 0)) {
+      parameters.mag_linear = 0;
+      parameters.min_linear = 0;
+      parameters.mip_linear = 0;
+      parameters.aniso_filter = xenos::AnisoFilter::kDisabled;
+    }
+  }
 
   return parameters;
 }
@@ -890,6 +940,9 @@ void D3D12TextureCache::WriteSampler(SamplerParameters parameters,
       desc.BorderColor[2] = 0.0f;
       desc.BorderColor[3] = 0.0f;
       break;
+  }
+  if (parameters.force_bc_w_to_max) {
+    desc.BorderColor[3] = 1.0f;
   }
   desc.MinLOD = float(parameters.mip_min_level);
   if (parameters.mip_base_map) {
@@ -1728,7 +1781,36 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
           source_box.front + std::max(depth >> level, uint32_t(1));
       source_box_ptr = &source_box;
     } else {
+      // Non-packed level: copy the whole footprint. The footprint is sized as
+      // the guest mip reduced then scaled, while the host mip subresource is
+      // the base scaled then reduced, so for the deepest mips of scaled
+      // textures the footprint can be a row or column larger. Compressed dests
+      // round up to the block and absorb it. For uncompressed dests clamp the
+      // copy to the exact subresource with an explicit source box to avoid
+      // overrunning. Clamp per axis to min(footprint, subresource) since a
+      // non-power-of-two axis can be smaller than the subresource while another
+      // axis is larger, and the box must not exceed the source footprint
+      // either.
       source_box_ptr = nullptr;
+      if (!host_block_compressed) {
+        const D3D12_SUBRESOURCE_FOOTPRINT& footprint =
+            location_source.PlacedFootprint.Footprint;
+        uint32_t dst_width = std::max(
+            (width * texture_resolution_scale_x) >> level, uint32_t(1));
+        uint32_t dst_height = std::max(
+            (height * texture_resolution_scale_y) >> level, uint32_t(1));
+        uint32_t dst_depth = std::max(depth >> level, uint32_t(1));
+        if (footprint.Width > dst_width || footprint.Height > dst_height ||
+            footprint.Depth > dst_depth) {
+          source_box.left = 0;
+          source_box.top = 0;
+          source_box.front = 0;
+          source_box.right = std::min(footprint.Width, dst_width);
+          source_box.bottom = std::min(footprint.Height, dst_height);
+          source_box.back = std::min(footprint.Depth, dst_depth);
+          source_box_ptr = &source_box;
+        }
+      }
     }
     for (uint32_t slice = 0; slice < array_size; ++slice) {
       command_list.D3DCopyTextureRegion(&location_dest, 0, 0, 0,

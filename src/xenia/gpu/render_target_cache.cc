@@ -22,6 +22,12 @@
 #include "xenia/gpu/xenos.h"
 
 DEFINE_bool(
+    debug_msaa_2x_as_4x, false,
+    "Use 4x MSAA with 2 samples instead of native 2x MSAA when available. "
+    "For scalability testing on host GPU APIs where 2x is not mandatory. MSAA "
+    "will be of a similar or worse quality and use more memory.",
+    "GPU.Debug");
+DEFINE_bool(
     depth_transfer_not_equal_test, true,
     "When transferring data between depth render targets, use the \"not "
     "equal\" test to avoid writing rewriting depth via shader depth output if "
@@ -33,7 +39,7 @@ DEFINE_bool(
     "beneficial to subsequent rendering, while setting this to false may "
     "reduce bandwidth usage during transfers as the previous depth won't need "
     "to be read.",
-    "GPU");
+    "GPU.Debug");
 // Lossless round trip: 545407F2.
 // Lossy round trip with the "greater or equal" test afterwards: 4D530919.
 // Lossy round trip with the "equal" test afterwards: 535107F5, 565507EF.
@@ -163,7 +169,7 @@ DEFINE_bool(
     "Greatly increases accuracy for this format, but may result in render "
     "target copying costs if the game switches between 8_8_8_8_GAMMA and "
     "8_8_8_8 views for the same EDRAM render target.",
-    "GPU");
+    "GPU.Debug");
 DEFINE_bool(
     mrt_edram_used_range_clamp_to_min, true,
     "With host render targets, if multiple render targets are bound, estimate "
@@ -173,14 +179,7 @@ DEFINE_bool(
     "Has effect primarily on draws without viewport clipping.\n"
     "Setting this to false results in higher accuracy in rare cases, but may "
     "increase the amount of copying that needs to be done sometimes.",
-    "GPU");
-DEFINE_bool(
-    native_2x_msaa, true,
-    "Use host 2x MSAA when available. Can be disabled for scalability testing "
-    "on host GPU APIs where 2x is not mandatory, in this case, 2 samples of 4x "
-    "MSAA will be used instead (with similar or worse quality and higher "
-    "memory usage).",
-    "GPU");
+    "GPU.Debug");
 DEFINE_bool(
     native_stencil_value_output, true,
     "Use pixel shader stencil reference output where available for purposes "
@@ -193,7 +192,7 @@ DEFINE_bool(
     "When the host can only support 16_16 and 16_16_16_16 render targets as "
     "-1...1, remap -32...32 to -1...1 to use the full possible range of "
     "values, at the expense of multiplicative blending correctness.",
-    "GPU");
+    "GPU.Debug");
 // Enabled by default as the GPU is overall usually the bottleneck when the
 // pixel shader interlock render backend implementation is used, anything that
 // may improve GPU performance is favorable.
@@ -206,7 +205,7 @@ DEFINE_bool(
     "needed when the ownership of a EDRAM range is changed.\n"
     "If this is enabled, excessive barriers may be eliminated when switching "
     "between different render targets in separate EDRAM locations.",
-    "GPU");
+    "GPU.Debug");
 
 namespace xe {
 namespace gpu {
@@ -283,11 +282,11 @@ void RenderTargetCache::GetPSIColorFormatInfo(
       break;
     case xenos::ColorRenderTargetFormat::k_16_16_FLOAT:
     case xenos::ColorRenderTargetFormat::k_16_16_16_16_FLOAT:
-      // No NaNs on the Xbox 360 GPU, though can't use the extended range with
-      // Direct3D and Vulkan conversions.
-      // TODO(Triang3l): Use the extended-range encoding in all implementations.
-      clamp_rgb_low = clamp_alpha_low = -65504.0f;
-      clamp_rgb_high = clamp_alpha_high = 65504.0f;
+      // No NaNs on the Xbox 360 GPU. The interlock paths of both backends
+      // emulate the extended-range encoding in their pack and unpack, so the
+      // whole guest range survives the clamp.
+      clamp_rgb_low = clamp_alpha_low = -131008.0f;
+      clamp_rgb_high = clamp_alpha_high = 131008.0f;
       if (!(write_mask & 0b0001)) {
         keep_mask_low |= 0xFFFFu;
       }
@@ -1625,7 +1624,7 @@ void RenderTargetCache::ChangeOwnership(
       if (it_pre->second.end_tiles > extent_start &&
           !it_pre->second.IsOwnedBy(dest, host_depth_encoding_different)) {
         // Different render target overlapping the range - split the head.
-        ownership_ranges_.emplace(extent_start, it_pre->second);
+        ownership_ranges_.emplace_hint(it, extent_start, it_pre->second);
         it_pre->second.end_tiles = extent_start;
         // Let the next loop do the transfer and needed merging and splitting
         // starting from the added tail.
@@ -1647,7 +1646,7 @@ void RenderTargetCache::ChangeOwnership(
       // (split in this case) or within it.
       if (it->second.end_tiles > extent_end) {
         // Split the tail.
-        ownership_ranges_.emplace(extent_end, it->second);
+        ownership_ranges_.emplace_hint(std::next(it), extent_end, it->second);
         it->second.end_tiles = extent_end;
       }
       if (transfers_append_out) {

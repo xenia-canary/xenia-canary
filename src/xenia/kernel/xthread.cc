@@ -180,7 +180,7 @@ static uint8_t GetFakeCpuNumber(uint8_t proc_mask) {
 void XThread::InitializeGuestObject() {
   auto guest_thread = guest_object<X_KTHREAD>();
   auto thread_guest_ptr = guest_object();
-  guest_thread->header.type = X_DISPATCHER_FLAGS::DISPATCHER_THREAD;
+  guest_thread->header.type = X_OBJECT_TYPES::ThreadObject;
   guest_thread->suspend_count =
       (creation_params_.creation_flags & X_CREATE_SUSPENDED) ? 1 : 0;
 

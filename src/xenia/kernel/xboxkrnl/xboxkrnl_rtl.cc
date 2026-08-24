@@ -535,16 +535,16 @@ DECLARE_XBOXKRNL_EXPORT1(RtlImageXexHeaderField, kNone, kImplemented);
 #pragma pack(push, 1)
 struct X_RTL_CRITICAL_SECTION {
   X_DISPATCH_HEADER header;
-  int32_t lock_count;               // 0x10 -1 -> 0 on first lock
-  xe::be<int32_t> recursion_count;  // 0x14  0 -> 1 on first lock
-  xe::be<uint32_t> owning_thread;   // 0x18 PKTHREAD 0 unless locked
+  int32_t lock_count;                          // 0x10 -1 -> 0 on first lock
+  xe::be<int32_t> recursion_count;             // 0x14  0 -> 1 on first lock
+  TypedGuestPointer<X_KTHREAD> owning_thread;  // 0x18 PKTHREAD 0 unless locked
 };
 #pragma pack(pop)
 static_assert_size(X_RTL_CRITICAL_SECTION, 28);
 
 void xeRtlInitializeCriticalSection(X_RTL_CRITICAL_SECTION* cs,
                                     uint32_t cs_ptr) {
-  cs->header.type = X_DISPATCHER_FLAGS::DISPATCHER_AUTO_RESET_EVENT;
+  cs->header.type = X_OBJECT_TYPES::EventSynchronizationObject;
   cs->header.absolute = 0;  // spin count div 256
   cs->header.signal_state = 0;
   cs->lock_count = -1;
@@ -567,7 +567,7 @@ X_STATUS xeRtlInitializeCriticalSectionAndSpinCount(X_RTL_CRITICAL_SECTION* cs,
     spin_count_div_256 = 255;
   }
 
-  cs->header.type = X_DISPATCHER_FLAGS::DISPATCHER_AUTO_RESET_EVENT;
+  cs->header.type = X_OBJECT_TYPES::EventSynchronizationObject;
   cs->header.absolute = spin_count_div_256;
   cs->header.signal_state = 0;
   cs->lock_count = -1;

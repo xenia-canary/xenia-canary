@@ -170,8 +170,9 @@ uint32_t XTitleEnumerator::WriteItems(uint8_t* buffer_data,
 
     // On console if title is played offline this field is set to 0.
     details[i].base.last_played = X_FILETIME((uint64_t)0);
-    string_util::copy_and_swap_truncating((char16_t*)&details[i].title_name,
-                                          item.title_name, 128);
+    string_util::copy_and_swap_truncating(
+        reinterpret_cast<char16_t*>(details[i].title_name), item.title_name,
+        xe::countof(details[i].title_name));
   }
 
   if (written_count) {
@@ -256,11 +257,33 @@ uint32_t ContentEnumerator::WriteItems(uint8_t* buffer_data,
     return X_ERROR_NO_MORE_FILES;
   }
 
-  // 4E4D07F0 does not respect buffer_size, possibly bug?
-  xam::XCONTENT_DATA* contents =
-      reinterpret_cast<xam::XCONTENT_DATA*>(buffer_data);
+  // Switch between different item_size.
+  switch (item_size()) {
+    case sizeof(xam::XCONTENT_DATA): {
+      // 4E4D07F0 does not respect buffer_size, possibly bug?
+      xam::XCONTENT_DATA* contents =
+          reinterpret_cast<xam::XCONTENT_DATA*>(buffer_data);
 
-  std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    case sizeof(xam::XCONTENT_DATA_AGGREGATE): {
+      xam::XCONTENT_DATA_AGGREGATE* contents =
+          reinterpret_cast<xam::XCONTENT_DATA_AGGREGATE*>(buffer_data);
+
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    case sizeof(xam::XCONTENT_DATA_INTERNAL): {
+      xam::XCONTENT_DATA_INTERNAL* contents =
+          reinterpret_cast<xam::XCONTENT_DATA_INTERNAL*>(buffer_data);
+
+      std::copy_n(items_.begin() + current_item_, actual_count, contents);
+      break;
+    }
+    default:
+      return X_ERROR_NO_MORE_FILES;
+  }
 
   current_item_ += actual_count;
 

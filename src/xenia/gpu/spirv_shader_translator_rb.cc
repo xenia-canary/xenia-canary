@@ -645,6 +645,22 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
             block_rt_0_alpha_tests_rt_written_head->getId());
         main_fsi_sample_mask_ =
             builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+      } else if (edram_fragment_shader_interlock_) {
+        // Demote path: the alpha test demotes instead of touching the mask, but
+        // alpha to coverage still modified main_fsi_sample_mask_ inside the
+        // written branch. Merge in fsi_sample_mask_in_rt_0_alpha_tests, the
+        // mask from before the branch, on the edge where the render target
+        // wasn't written so the value dominates the merge. Otherwise it is
+        // undefined there (invalid SPIR-V dominance and garbage coverage).
+        id_vector_temp_.clear();
+        id_vector_temp_.push_back(main_fsi_sample_mask_);
+        id_vector_temp_.push_back(
+            block_rt_0_alpha_tests_rt_written_end.getId());
+        id_vector_temp_.push_back(fsi_sample_mask_in_rt_0_alpha_tests);
+        id_vector_temp_.push_back(
+            block_rt_0_alpha_tests_rt_written_head->getId());
+        main_fsi_sample_mask_ =
+            builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
       }
     }
   }
@@ -1517,28 +1533,161 @@ void SpirvShaderTranslator::CompleteFragmentShader_DSV_DepthTo24Bit() {
       output_fragment_depth_ == spv::NoResult) {
     return;
   }
-  if (!current_shader().writes_depth()) {
+  bool shader_writes_depth = current_shader().writes_depth();
+  bool is_float24 = DSV_IsWritingFloat24Depth();
+  bool apply_polygon_offset =
+      DSV_IsApplyingPolygonOffset() && !shader_writes_depth;
+  assert_true(shader_writes_depth || is_float24 || apply_polygon_offset);
+
+  // Source depth from guest oDepth, or from raster depth for float24 conversion
+  // and the host RT decal path.
+  spv::Id depth_value;
+  if (shader_writes_depth) {
+    depth_value =
+        builder_->createLoad(output_or_var_fragment_depth_, spv::NoPrecision);
+  } else {
+    spv::Id host_depth;
+    if (apply_polygon_offset) {
+      assert_true(input_front_facing_ != spv::NoResult);
+      assert_true(main_fbo_depth_unbiased_ != spv::NoResult);
+      assert_true(main_fbo_depth_derivatives_[0] != spv::NoResult);
+      assert_true(main_fbo_depth_derivatives_[1] != spv::NoResult);
+      auto load_system_constant_float = [&](SystemConstantIndex index) {
+        id_vector_temp_.clear();
+        id_vector_temp_.push_back(builder_->makeIntConstant(index));
+        return builder_->createLoad(
+            builder_->createAccessChain(spv::StorageClassUniform,
+                                        uniform_system_constants_,
+                                        id_vector_temp_),
+            spv::NoPrecision);
+      };
+      spv::Id depth_dx = builder_->createUnaryBuiltinCall(
+          type_float_, ext_inst_glsl_std_450_, GLSLstd450FAbs,
+          main_fbo_depth_derivatives_[0]);
+      spv::Id depth_dy = builder_->createUnaryBuiltinCall(
+          type_float_, ext_inst_glsl_std_450_, GLSLstd450FAbs,
+          main_fbo_depth_derivatives_[1]);
+      spv::Id depth_max_slope =
+          builder_->createBinBuiltinCall(type_float_, ext_inst_glsl_std_450_,
+                                         GLSLstd450FMax, depth_dx, depth_dy);
+      spv::Id front_facing =
+          builder_->createLoad(input_front_facing_, spv::NoPrecision);
+      spv::Id poly_offset_scale = builder_->createTriOp(
+          spv::OpSelect, type_float_, front_facing,
+          load_system_constant_float(kSystemConstantEdramPolyOffsetFrontScale),
+          load_system_constant_float(kSystemConstantEdramPolyOffsetBackScale));
+      spv::Id poly_offset_offset = builder_->createTriOp(
+          spv::OpSelect, type_float_, front_facing,
+          load_system_constant_float(kSystemConstantEdramPolyOffsetFrontOffset),
+          load_system_constant_float(kSystemConstantEdramPolyOffsetBackOffset));
+      spv::Id poly_offset = builder_->createNoContractionBinOp(
+          spv::OpFAdd, type_float_,
+          builder_->createNoContractionBinOp(
+              spv::OpFMul, type_float_, depth_max_slope, poly_offset_scale),
+          poly_offset_offset);
+      host_depth = builder_->createNoContractionBinOp(
+          spv::OpFAdd, type_float_, main_fbo_depth_unbiased_, poly_offset);
+    } else {
+      assert_true(input_fragment_coordinates_ != spv::NoResult);
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(builder_->makeIntConstant(2));
+      host_depth = builder_->createLoad(
+          builder_->createAccessChain(spv::StorageClassInput,
+                                      input_fragment_coordinates_,
+                                      id_vector_temp_),
+          spv::NoPrecision);
+    }
+    if (is_float24) {
+      depth_value = builder_->createBinOp(spv::OpFMul, type_float_, host_depth,
+                                          builder_->makeFloatConstant(2.0f));
+      depth_value = builder_->createTriBuiltinCall(
+          type_float_, ext_inst_glsl_std_450_, GLSLstd450NClamp, depth_value,
+          const_float_0_, const_float_1_);
+    } else {
+      depth_value = host_depth;
+    }
+  }
+
+  if (!is_float24) {
+    if (!shader_writes_depth) {
+      builder_->createStore(depth_value, output_fragment_depth_);
+      return;
+    }
+    // Legacy path: shader writes oDepth, but the modification is not in float24
+    // mode (the host buffer may still be float24 if depth_float24_convert_in_
+    // pixel_shader is off - check dynamically via the system flag).
+    spv::Id depth_float24_flag = builder_->createBinOp(
+        spv::OpINotEqual, type_bool_,
+        builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_, main_system_constant_flags_,
+            builder_->makeUintConstant(kSysFlag_DepthFloat24)),
+        const_uint_0_);
+    spv::Id depth_scaled =
+        builder_->createBinOp(spv::OpFMul, type_float_, depth_value,
+                              builder_->makeFloatConstant(0.5f));
+    spv::Id depth_remapped =
+        builder_->createTriOp(spv::OpSelect, type_float_, depth_float24_flag,
+                              depth_scaled, depth_value);
+    builder_->createStore(depth_remapped, output_fragment_depth_);
     return;
   }
-  assert_true(output_or_var_fragment_depth_ != spv::NoResult);
-  // The shader writes depth explicitly, for float24, need to scale it from
-  // guest 0...1 to host 0...0.5 to support reinterpretation round trips as
-  // viewport scaling doesn't apply to oDepth.
-  spv::Id depth_value =
-      builder_->createLoad(output_or_var_fragment_depth_, spv::NoPrecision);
-  spv::Id depth_float24_flag = builder_->createBinOp(
-      spv::OpINotEqual, type_bool_,
-      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
-                            main_system_constant_flags_,
-                            builder_->makeUintConstant(kSysFlag_DepthFloat24)),
-      const_uint_0_);
-  spv::Id depth_scaled = builder_->createBinOp(
-      spv::OpFMul, type_float_, depth_value, builder_->makeFloatConstant(0.5f));
-  spv::Id depth_remapped =
-      builder_->createTriOp(spv::OpSelect, type_float_, depth_float24_flag,
-                            depth_scaled, depth_value);
-  // Write the depth from the temporary to the system depth output.
-  builder_->createStore(depth_remapped, output_fragment_depth_);
+  // Float24 mode: statically known float24 host buffer; perform the conversion.
+  Modification::DepthStencilMode mode =
+      GetSpirvShaderModification().pixel.depth_stencil_mode;
+  if (mode == Modification::DepthStencilMode::kFloat24Truncating ||
+      mode == Modification::DepthStencilMode::kFloat24TruncatingPolygonOffset) {
+    // Mantissa bit-truncation, then guest 0...1 -> host 0...0.5.
+    spv::Id depth_uint =
+        builder_->createUnaryOp(spv::OpBitcast, type_uint_, depth_value);
+    // Representable as float24 (exponent >= -34): bit pattern >= 0x2E800000.
+    spv::Id representable =
+        builder_->createBinOp(spv::OpUGreaterThanEqual, type_bool_, depth_uint,
+                              builder_->makeUintConstant(0x2E800000));
+    SpirvBuilder::IfBuilder representable_if(
+        representable, spv::SelectionControlDontFlattenMask, *builder_);
+    {
+      // Biased exponent: 113+ at exp -14+; 93 at exp -34.
+      spv::Id exponent = builder_->createTriOp(
+          spv::OpBitFieldUExtract, type_uint_, depth_uint,
+          builder_->makeUintConstant(23), builder_->makeUintConstant(8));
+      // trunc_bits = max(116 - exponent, 3), in signed - drops 3 mantissa bits
+      // at exp -14+ and 23 at exp -34. Must be signed: exponent > 116 (i.e.
+      // values larger than ~2^-11) makes 116 - exponent negative; an unsigned
+      // underflow would feed OpBitFieldInsert a Count > 32 (undefined).
+      spv::Id trunc_bits_signed = builder_->createBinOp(
+          spv::OpISub, type_int_, builder_->makeIntConstant(116),
+          builder_->createUnaryOp(spv::OpBitcast, type_int_, exponent));
+      trunc_bits_signed = builder_->createBinBuiltinCall(
+          type_int_, ext_inst_glsl_std_450_, GLSLstd450SMax, trunc_bits_signed,
+          builder_->makeIntConstant(3));
+      spv::Id trunc_bits = builder_->createUnaryOp(spv::OpBitcast, type_uint_,
+                                                   trunc_bits_signed);
+      spv::Id truncated_uint =
+          builder_->createQuadOp(spv::OpBitFieldInsert, type_uint_, depth_uint,
+                                 builder_->makeUintConstant(0),
+                                 builder_->makeUintConstant(0), trunc_bits);
+      spv::Id truncated_f32 =
+          builder_->createUnaryOp(spv::OpBitcast, type_float_, truncated_uint);
+      spv::Id remapped =
+          builder_->createBinOp(spv::OpFMul, type_float_, truncated_f32,
+                                builder_->makeFloatConstant(0.5f));
+      builder_->createStore(remapped, output_fragment_depth_);
+    }
+    representable_if.makeBeginElse();
+    {
+      // Not representable - zero.
+      builder_->createStore(const_float_0_, output_fragment_depth_);
+    }
+    representable_if.makeEndIf();
+  } else {
+    // kFloat24Rounding: round-trip through 20e4 (round to nearest even), with
+    // the 0...0.5 host remap baked in via remap_to_0_to_0_5 on Depth20e4To32.
+    spv::Id f24_uint = PreClampedDepthTo20e4(*builder_, depth_value, true,
+                                             false, ext_inst_glsl_std_450_);
+    spv::Id depth_f32 = Depth20e4To32(*builder_, f24_uint, 0, true, false,
+                                      ext_inst_glsl_std_450_);
+    builder_->createStore(depth_f32, output_fragment_depth_);
+  }
 }
 
 spv::Id SpirvShaderTranslator::LoadMsaaSamplesFromFlags() {
@@ -1608,12 +1757,12 @@ void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
                                 input_sample_mask_value),
         builder_->makeUintConstant(32 - 2));
   } else {
-    // 0 and 3 to 0 and 1.
+    // 0 and 3 to 0 and 1. Guest sample 1 comes from host sample 3.
     sample_mask_2x = builder_->createQuadOp(
         spv::OpBitFieldInsert, type_uint_, input_sample_mask_value,
         builder_->createTriOp(spv::OpBitFieldUExtract, type_uint_,
-                              input_sample_mask_value, const_uint_2,
-                              const_uint_1),
+                              input_sample_mask_value,
+                              builder_->makeUintConstant(3), const_uint_1),
         const_uint_1, builder_->makeUintConstant(32 - 1));
   }
   builder_->createBranch(&block_msaa_merge);
@@ -2547,6 +2696,132 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
   }
 }
 
+spv::Id SpirvShaderTranslator::PackFloat16x2ExtendedRange(
+    spv::Id float2_value) {
+  // The Xbox 360 float16 has no NaN, map it to 0. Also keeps the overflow
+  // detection below from misreading a NaN's exponent 31 as a finite extended
+  // value, and FClamp's NaN result is undefined.
+  float2_value = builder_->createTriOp(
+      spv::OpSelect, type_float2_,
+      builder_->createUnaryOp(spv::OpIsNan, type_bool2_, float2_value),
+      const_float2_0_, float2_value);
+  // The standard conversion covers magnitudes up to 65504. Anything larger
+  // overflows to Inf (exponent field 0x7C00). Re-encode the overflowed lanes
+  // using the extended range: halve into the standard range, convert
+  // (exponent <= 30), then bump the exponent by 1 into the exponent 31 slot
+  // the Xbox 360 treats as finite.
+  spv::Id standard = builder_->createUnaryBuiltinCall(
+      type_uint_, ext_inst_glsl_std_450_, GLSLstd450PackHalf2x16, float2_value);
+  spv::Id const_0x7C00 = builder_->makeUintConstant(0x7C00);
+  spv::Id lower_overflow =
+      builder_->createBinOp(spv::OpIEqual, type_bool_,
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  standard, const_0x7C00),
+                            const_0x7C00);
+  spv::Id upper_overflow = builder_->createBinOp(
+      spv::OpIEqual, type_bool_,
+      builder_->createBinOp(
+          spv::OpBitwiseAnd, type_uint_,
+          builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, standard,
+                                builder_->makeUintConstant(16)),
+          const_0x7C00),
+      const_0x7C00);
+  id_vector_temp_.clear();
+  id_vector_temp_.resize(2, builder_->makeFloatConstant(-131008.0f));
+  spv::Id const_neg_131008 =
+      builder_->makeCompositeConstant(type_float2_, id_vector_temp_);
+  id_vector_temp_.clear();
+  id_vector_temp_.resize(2, builder_->makeFloatConstant(131008.0f));
+  spv::Id const_131008 =
+      builder_->makeCompositeConstant(type_float2_, id_vector_temp_);
+  spv::Id clamped = builder_->createTriBuiltinCall(
+      type_float2_, ext_inst_glsl_std_450_, GLSLstd450FClamp, float2_value,
+      const_neg_131008, const_131008);
+  id_vector_temp_.clear();
+  id_vector_temp_.resize(2, builder_->makeFloatConstant(0.5f));
+  spv::Id halved = builder_->createBinOp(
+      spv::OpFMul, type_float2_, clamped,
+      builder_->makeCompositeConstant(type_float2_, id_vector_temp_));
+  spv::Id halved_packed = builder_->createUnaryBuiltinCall(
+      type_uint_, ext_inst_glsl_std_450_, GLSLstd450PackHalf2x16, halved);
+  // halved_packed has exponent <= 30 in both lanes, so adding 0x0400 per lane
+  // bumps the exponent without ever carrying across lanes.
+  spv::Id extended =
+      builder_->createBinOp(spv::OpIAdd, type_uint_, halved_packed,
+                            builder_->makeUintConstant(0x04000400));
+  spv::Id const_0xFFFF = builder_->makeUintConstant(0xFFFF);
+  spv::Id const_0xFFFF0000 = builder_->makeUintConstant(0xFFFF0000);
+  spv::Id result_lower =
+      builder_->createTriOp(spv::OpSelect, type_uint_, lower_overflow,
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  extended, const_0xFFFF),
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  standard, const_0xFFFF));
+  spv::Id result_upper =
+      builder_->createTriOp(spv::OpSelect, type_uint_, upper_overflow,
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  extended, const_0xFFFF0000),
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  standard, const_0xFFFF0000));
+  return builder_->createBinOp(spv::OpBitwiseOr, type_uint_, result_lower,
+                               result_upper);
+}
+
+spv::Id SpirvShaderTranslator::UnpackFloat16x2ExtendedRange(
+    spv::Id packed_uint) {
+  // Inverse of PackFloat16x2ExtendedRange. Exponent 31 lanes are large finite
+  // values rather than Inf or NaN. Decrement their exponent by 1 into the
+  // standard range, unpack, then double to compensate.
+  spv::Id const_0x7C00 = builder_->makeUintConstant(0x7C00);
+  spv::Id lower_overflow =
+      builder_->createBinOp(spv::OpIEqual, type_bool_,
+                            builder_->createBinOp(spv::OpBitwiseAnd, type_uint_,
+                                                  packed_uint, const_0x7C00),
+                            const_0x7C00);
+  spv::Id upper_overflow = builder_->createBinOp(
+      spv::OpIEqual, type_bool_,
+      builder_->createBinOp(
+          spv::OpBitwiseAnd, type_uint_,
+          builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
+                                packed_uint, builder_->makeUintConstant(16)),
+          const_0x7C00),
+      const_0x7C00);
+  spv::Id standard =
+      builder_->createUnaryBuiltinCall(type_float2_, ext_inst_glsl_std_450_,
+                                       GLSLstd450UnpackHalf2x16, packed_uint);
+  // Decrement the exponent only in overflowed lanes (0x0400 in the low lane,
+  // 0x04000000 in the high one) so the subtraction never borrows across lanes.
+  spv::Id sub_lower =
+      builder_->createTriOp(spv::OpSelect, type_uint_, lower_overflow,
+                            builder_->makeUintConstant(0x0400), const_uint_0_);
+  spv::Id sub_upper = builder_->createTriOp(
+      spv::OpSelect, type_uint_, upper_overflow,
+      builder_->makeUintConstant(0x04000000), const_uint_0_);
+  spv::Id reduced =
+      builder_->createBinOp(spv::OpISub, type_uint_, packed_uint,
+                            builder_->createBinOp(spv::OpBitwiseOr, type_uint_,
+                                                  sub_lower, sub_upper));
+  spv::Id reduced_unpacked = builder_->createUnaryBuiltinCall(
+      type_float2_, ext_inst_glsl_std_450_, GLSLstd450UnpackHalf2x16, reduced);
+  id_vector_temp_.clear();
+  id_vector_temp_.resize(2, builder_->makeFloatConstant(2.0f));
+  spv::Id extended = builder_->createBinOp(
+      spv::OpFMul, type_float2_, reduced_unpacked,
+      builder_->makeCompositeConstant(type_float2_, id_vector_temp_));
+  spv::Id result_x = builder_->createTriOp(
+      spv::OpSelect, type_float_, lower_overflow,
+      builder_->createCompositeExtract(extended, type_float_, 0),
+      builder_->createCompositeExtract(standard, type_float_, 0));
+  spv::Id result_y = builder_->createTriOp(
+      spv::OpSelect, type_float_, upper_overflow,
+      builder_->createCompositeExtract(extended, type_float_, 1),
+      builder_->createCompositeExtract(standard, type_float_, 1));
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(result_x);
+  id_vector_temp_.push_back(result_y);
+  return builder_->createCompositeConstruct(type_float2_, id_vector_temp_);
+}
+
 std::array<spv::Id, 2> SpirvShaderTranslator::FSI_ClampAndPackColor(
     spv::Id color_float4, spv::Id format_with_flags) {
   spv::Block& block_format_head = *builder_->getBuildPoint();
@@ -2844,31 +3119,14 @@ std::array<spv::Id, 2> SpirvShaderTranslator::FSI_ClampAndPackColor(
   std::array<spv::Id, 2> packed_16_float;
   {
     builder_->setBuildPoint(&block_format_16_float);
-    // TODO(Triang3l): Xenos extended-range float16.
-    id_vector_temp_.clear();
-    id_vector_temp_.resize(4, builder_->makeFloatConstant(-65504.0f));
-    spv::Id const_float4_minus_float16_max =
-        builder_->makeCompositeConstant(type_float4_, id_vector_temp_);
-    id_vector_temp_.clear();
-    id_vector_temp_.resize(4, builder_->makeFloatConstant(65504.0f));
-    spv::Id const_float4_float16_max =
-        builder_->makeCompositeConstant(type_float4_, id_vector_temp_);
-    // NaN to 0, not to -max.
-    spv::Id color_clamped = builder_->createTriBuiltinCall(
-        type_float4_, ext_inst_glsl_std_450_, GLSLstd450FClamp,
-        builder_->createTriOp(
-            spv::OpSelect, type_float4_,
-            builder_->createUnaryOp(spv::OpIsNan, type_bool4_, color_float4),
-            const_float4_0_, color_float4),
-        const_float4_minus_float16_max, const_float4_float16_max);
+    // NaN is flushed to 0 inside PackFloat16x2ExtendedRange.
     for (uint32_t i = 0; i < 2; ++i) {
       uint_vector_temp_.clear();
       uint_vector_temp_.push_back(2 * i);
       uint_vector_temp_.push_back(2 * i + 1);
-      packed_16_float[i] = builder_->createUnaryBuiltinCall(
-          type_uint_, ext_inst_glsl_std_450_, GLSLstd450PackHalf2x16,
-          builder_->createRvalueSwizzle(spv::NoPrecision, type_float2_,
-                                        color_clamped, uint_vector_temp_));
+      packed_16_float[i] =
+          PackFloat16x2ExtendedRange(builder_->createRvalueSwizzle(
+              spv::NoPrecision, type_float2_, color_float4, uint_vector_temp_));
     }
     builder_->createBranch(&block_format_merge);
   }
@@ -3157,11 +3415,9 @@ std::array<spv::Id, 4> SpirvShaderTranslator::FSI_UnpackColor(
     for (uint32_t i = 0; i < 2; ++i) {
       builder_->setBuildPoint(i ? &block_format_16_16_16_16_float
                                 : &block_format_16_16_float);
-      // TODO(Triang3l): Xenos extended-range float16.
       for (uint32_t j = 0; j <= i; ++j) {
-        spv::Id components_float2 = builder_->createUnaryBuiltinCall(
-            type_float2_, ext_inst_glsl_std_450_, GLSLstd450UnpackHalf2x16,
-            color_packed[j]);
+        spv::Id components_float2 =
+            UnpackFloat16x2ExtendedRange(color_packed[j]);
         for (uint32_t k = 0; k < 2; ++k) {
           unpacked_16_float[i][2 * j + k] = builder_->createCompositeExtract(
               components_float2, type_float_, k);
@@ -4161,8 +4417,11 @@ void SpirvShaderTranslator::FSI_AlphaToMask() {
     FSI_AlphaToMaskSample(false, 1, 1.0f, threshold_offset, 1.0f / 8.0f, alpha,
                           coverage_2x);
   } else {
-    // FBO: Account for native 2x vs 2x-as-4x sample mapping.
-    if (native_2x_msaa_no_attachments_) {
+    // FBO: Account for native 2x vs 2x-as-4x sample mapping. This epilogue only
+    // runs when there is a color attachment (sample mask output), so whether 2x
+    // is native must be taken from the capability with attachments, matching
+    // the choice made for the host pipeline.
+    if (native_2x_msaa_with_attachments_) {
       // Native 2x: D3D10.1+ standard - top is 1, bottom is 0.
       FSI_AlphaToMaskSample(true, 1, 0.5f, threshold_offset, 1.0f / 8.0f, alpha,
                             coverage_2x);

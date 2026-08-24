@@ -396,7 +396,7 @@ void XObject::SetNativePointer(uint32_t native_ptr, bool uninitialized) {
 
 object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
                                              void* native_ptr,
-                                             X_DISPATCHER_FLAGS as_type,
+                                             X_OBJECT_TYPES as_type,
                                              bool already_locked) {
   assert_not_null(native_ptr);
 
@@ -415,9 +415,9 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
   XObject* result = nullptr;
 
   auto header = reinterpret_cast<X_DISPATCH_HEADER*>(native_ptr);
-  X_DISPATCHER_FLAGS type = as_type;
+  X_OBJECT_TYPES type = as_type;
 
-  if (as_type == X_DISPATCHER_FLAGS::DISPATCHER_UNDEFINED) {
+  if (as_type == X_OBJECT_TYPES::UndefinedObject) {
     type = header->type;
   }
 
@@ -432,37 +432,36 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
     // First use, create new.
     // https://www.nirsoft.net/kernel_struct/vista/KOBJECTS.html
     switch (type) {
-      case X_DISPATCHER_FLAGS::DISPATCHER_MANUAL_RESET_EVENT:
-      case X_DISPATCHER_FLAGS::DISPATCHER_AUTO_RESET_EVENT: {
+      case X_OBJECT_TYPES::EventNotificationObject:
+      case X_OBJECT_TYPES::EventSynchronizationObject: {
         auto ev = new XEvent(kernel_state);
         ev->InitializeNative(native_ptr, header);
         result = ev;
       } break;
-      case X_DISPATCHER_FLAGS::DISPATCHER_MUTANT: {
+      case X_OBJECT_TYPES::MutantObject: {
         auto mutant = new XMutant(kernel_state);
         mutant->InitializeNative(native_ptr, header);
         result = mutant;
       } break;
-      case X_DISPATCHER_FLAGS::DISPATCHER_SEMAPHORE: {
+      case X_OBJECT_TYPES::SemaphoreObject: {
         auto sem = new XSemaphore(kernel_state);
         auto success = sem->InitializeNative(native_ptr, header);
         // Can't report failure to the guest at late initialization:
         assert_true(success);
         result = sem;
       } break;
-      case 3:   // ProcessObject
-      case 4:   // QueueObject
-      case 6:   // ThreadObject
-      case 7:   // GateObject
-      case 8:   // TimerNotificationObject
-      case 9:   // TimerSynchronizationObject
-      case 18:  // ApcObject
-      case 19:  // DpcObject
-      case 20:  // DeviceQueueObject
-      case 21:  // EventPairObject
-      case 22:  // InterruptObject
-      case 23:  // ProfileObject
-      case 24:  // ThreadedDpcObject
+      case X_OBJECT_TYPES::ProcessObject:
+      case X_OBJECT_TYPES::QueueObject:
+      case X_OBJECT_TYPES::ThreadObject:
+      case X_OBJECT_TYPES::Spare1Object:
+      case X_OBJECT_TYPES::TimerNotificationObject:
+      case X_OBJECT_TYPES::TimerSynchronizationObject:
+      case X_OBJECT_TYPES::ApcObject:
+      case X_OBJECT_TYPES::DpcObject:
+      case X_OBJECT_TYPES::DeviceQueueObject:
+      case X_OBJECT_TYPES::EventPairObject:
+      case X_OBJECT_TYPES::InterruptObject:
+      case X_OBJECT_TYPES::ProfileObject:
       default:
         assert_always();
         result = nullptr;

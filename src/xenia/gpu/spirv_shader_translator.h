@@ -34,15 +34,31 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // TODO(Triang3l): Change to 0xYYYYMMDD once it's out of the rapid
     // prototyping stage (easier to do small granular updates with an
     // incremental counter).
-    static constexpr uint32_t kVersion = 10;
+    static constexpr uint32_t kVersion = 18;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
       // Early fragment tests - enable if alpha test and alpha to coverage are
       // disabled; ignored if anything in the shader blocks early Z writing.
       kEarlyHint,
-      // TODO(Triang3l): Unorm24 (rounding) and float24 (truncating and
-      // rounding) output modes.
+      // Converting the depth to the closest 32-bit float representable exactly
+      // as a 20e4 float, truncating towards zero, so SV_DepthLessEqual-style
+      // conservative depth output (ExecutionModeDepthLess) can still allow
+      // coarse early Z culling. MSAA depth must be per-sample, so the shader
+      // runs at sample frequency.
+      // Fixed-function viewport depth bounds must be snapped to float24 too.
+      kFloat24Truncating,
+      // Similar to kFloat24Truncating, but rounding to the nearest even, so
+      // plain ExecutionModeDepthReplacing is used rather than DepthLess.
+      kFloat24Rounding,
+      // Host RT shader polygon offset for suspected coplanar redraws with tiny
+      // biases. Writes the biased depth from the pixel shader and zeroes fixed
+      // function depth bias to avoid host slope/quantization quirks. This path
+      // is controlled by depth_bias_shader_offset.
+      kPolygonOffset,
+      kFloat24TruncatingPolygonOffset,
+      kFloat24RoundingPolygonOffset,
+      // TODO(Triang3l): Unorm24 (rounding) output mode.
     };
 
     struct {
@@ -65,6 +81,16 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // If user_clip_plane_count is non-zero, whether they should be cull
       // distances instead of clip distances.
       uint32_t user_clip_plane_cull : 1;
+      // Vertex kill (oPts.z) with the "and" operator - the primitive is culled
+      // only when all of its vertices request the kill, emulated with an extra
+      // cull distance written after the user clip plane cull distances. The
+      // "or" operator sets the position to NaN instead and needs no bit here.
+      uint32_t vertex_kill_and : 1;
+      // The tessellation mode for domain shaders, selecting the tessellation
+      // evaluation shader spacing (Direct3D 12 sets it in the hull shaders, but
+      // in SPIR-V the spacing lives in the domain shader). Discrete uses equal
+      // spacing, continuous and adaptive use fractional even.
+      xenos::TessellationMode tessellation_mode : 2;
     } vertex;
     struct PixelShaderModification {
       // uint32_t 0.
@@ -284,7 +310,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // Integer num_format on fixed textures. Each dword packs the scale needed
     // to turn normalized host samples back into guest integer values.
     // bits 0:3 = component_bits - 1
-    // bit 4 = signed.
+    // bit 4 = signed
+    // bit 5 = unsigned-biased
     // Zero means no scale.
     uint32_t texture_integer_scale_bits[32];
   };
@@ -439,8 +466,13 @@ class SpirvShaderTranslator : public ShaderTranslator {
   }
 
   // Creates a special fragment shader without color outputs - this resets the
-  // state of the translator.
-  std::vector<uint8_t> CreateDepthOnlyFragmentShader();
+  // state of the translator. When depth_stencil_mode is a float24 mode, the
+  // shader reads gl_FragCoord.z, converts to float24, and writes the result to
+  // gl_FragDepth - matching the substitute pixel shader the DXBC backend uses
+  // when a guest draw has no pixel shader.
+  std::vector<uint8_t> CreateDepthOnlyFragmentShader(
+      Modification::DepthStencilMode depth_stencil_mode =
+          Modification::DepthStencilMode::kNoModifiers);
 
   // Common functions useful not only for the translator, but also for EDRAM
   // emulation via conventional render targets.
@@ -468,7 +500,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
                                        bool round_to_nearest_even,
                                        bool remap_from_0_to_0_5,
                                        spv::Id ext_inst_glsl_std_450);
-  // Converts the 20e4 number in bits [f24_shift, f24_shift + 10) to a 32-bit
+  // Converts the 20e4 number in bits [f24_shift, f24_shift + 24) to a 32-bit
   // float.
   static spv::Id Depth20e4To32(SpirvBuilder& builder, spv::Id f24_uint_scalar,
                                uint32_t f24_shift, bool remap_to_0_to_0_5,
@@ -567,6 +599,45 @@ class SpirvShaderTranslator : public ShaderTranslator {
            current_shader().implicit_early_z_write_allowed();
   }
 
+  // Whether the current non-FSI pixel shader should convert the depth to 20e4.
+  bool DSV_IsWritingFloat24Depth() const {
+    if (edram_fragment_shader_interlock_) {
+      return false;
+    }
+    Modification::DepthStencilMode depth_stencil_mode =
+        GetSpirvShaderModification().pixel.depth_stencil_mode;
+    return depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24Truncating ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24Rounding ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
+  }
+  // Whether the current non-FSI pixel shader applies polygon offset via shader
+  // depth output instead of fixed function bias.
+  bool DSV_IsApplyingPolygonOffset() const {
+    if (edram_fragment_shader_interlock_) {
+      return false;
+    }
+    Modification::DepthStencilMode depth_stencil_mode =
+        GetSpirvShaderModification().pixel.depth_stencil_mode;
+    return depth_stencil_mode ==
+               Modification::DepthStencilMode::kPolygonOffset ||
+           depth_stencil_mode == Modification::DepthStencilMode::
+                                     kFloat24TruncatingPolygonOffset ||
+           depth_stencil_mode ==
+               Modification::DepthStencilMode::kFloat24RoundingPolygonOffset;
+  }
+  // Whether the shader runs at sample frequency - when converting depth to
+  // float24 from the rasterizer's own depth (not guest oDepth), each sample
+  // needs its own depth value for intersections to be antialiased.
+  bool IsSampleRate() const {
+    return is_pixel_shader() && DSV_IsWritingFloat24Depth() &&
+           !current_shader().writes_depth();
+  }
+
   uint32_t GetModificationInterpolatorMask() const {
     Modification modification = GetSpirvShaderModification();
     return is_vertex_shader() ? modification.vertex.interpolator_mask
@@ -590,9 +661,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   void StartFragmentShaderInMain();
   void CompleteFragmentShaderInMain();
 
-  // Writes gl_FragDepth at the end of an FBO pixel shader, remapping the
-  // guest 0...1 oDepth value to host 0...0.5 when the bound depth buffer is
-  // float24. No-op for FSI and for shaders that don't write oDepth.
+  // Writes gl_FragDepth for FBO shaders that need explicit depth: guest oDepth,
+  // float24 conversion, or the host RT decal bias path.
   void CompleteFragmentShader_DSV_DepthTo24Bit();
 
   // Updates the current flow control condition (to be called in the beginning
@@ -659,6 +729,10 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // must be called with absolute values of operands - use GetAbsoluteOperand!
   spv::Id ZeroIfAnyOperandIsZero(spv::Id value, spv::Id operand_0_abs,
                                  spv::Id operand_1_abs);
+  // Pack/unpack two floats as Xbox 360 extended-range float16, where exponent
+  // 31 is a large finite value (up to +-131008), not Inf/NaN.
+  spv::Id PackFloat16x2ExtendedRange(spv::Id float2_value);
+  spv::Id UnpackFloat16x2ExtendedRange(spv::Id packed_uint);
   // Conditionally discard the current fragment. Changes the build point.
   void KillPixel(spv::Id condition,
                  uint8_t memexport_eM_potentially_written_before);
@@ -959,8 +1033,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
   // VS as VS only - int.
   spv::Id input_vertex_index_;
-  // VS as TES only - int.
-  spv::Id input_primitive_id_;
+  // VS as TES only - per-control-point float array carrying the patch/control
+  // point index computed by the host vertex and hull shaders.
+  spv::Id input_control_point_index_;
   // VS as TES only - float3 (barycentric coordinates).
   spv::Id input_tess_coord_;
   // PS, only when needed - float2.
@@ -1018,6 +1093,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // FBO only: actual gl_FragDepth Output.
   // Written at the end of the pixel shader from output_or_var_fragment_depth_.
   spv::Id output_fragment_depth_;
+  // Raster depth and derivatives captured early for the host RT decal path.
+  spv::Id main_fbo_depth_unbiased_;
+  std::array<spv::Id, 2> main_fbo_depth_derivatives_;
 
   // Fragment shader sample mask output (gl_SampleMask).
   // Only used for alpha-to-coverage in non-FSI mode.
@@ -1040,6 +1118,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // `base + index * stride` in dwords from the last vfetch_full as it may be
   // needed by vfetch_mini - int.
   spv::Id var_main_vfetch_address_;
+  // Exclusive end (base + size) in dwords of the last vfetch_full's buffer, for
+  // clamping out-of-bounds words to 0 in both it and its vfetch_mini - int.
+  spv::Id var_main_vfetch_bound_;
   // float.
   spv::Id var_main_tfetch_lod_;
   // float3.

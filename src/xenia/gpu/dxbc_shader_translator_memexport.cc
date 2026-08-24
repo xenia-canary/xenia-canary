@@ -195,8 +195,9 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
         while (xe::bit_scan_forward(eM_remaining, &eM_index)) {
           eM_remaining &= ~(uint8_t(1) << eM_index);
           uint32_t eM = system_temps_memexport_data_[eM_index];
-          a_.OpBFI(dxbc::Dest::R(eM, components), dxbc::Src::LU(31),
-                   dxbc::Src::LU(0), dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
+          a_.OpBFI(dxbc::Dest::R(round_bias_temp, components),
+                   dxbc::Src::LU(31), dxbc::Src::LU(0), dxbc::Src::LF(0.5f),
+                   dxbc::Src::R(eM));
           a_.OpAdd(dxbc::Dest::R(eM, components), dxbc::Src::R(eM),
                    dxbc::Src::R(round_bias_temp));
           a_.OpFToI(dxbc::Dest::R(eM, components), dxbc::Src::R(eM));
@@ -421,8 +422,8 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
         while (xe::bit_scan_forward(eM_remaining, &eM_index)) {
           eM_remaining &= ~(uint8_t(1) << eM_index);
           uint32_t eM = system_temps_memexport_data_[eM_index];
-          a_.OpBFI(dxbc::Dest::R(eM), dxbc::Src::LU(31), dxbc::Src::LU(0),
-                   dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
+          a_.OpBFI(dxbc::Dest::R(round_bias_temp), dxbc::Src::LU(31),
+                   dxbc::Src::LU(0), dxbc::Src::LF(0.5f), dxbc::Src::R(eM));
           a_.OpAdd(dxbc::Dest::R(eM), dxbc::Src::R(eM),
                    dxbc::Src::R(round_bias_temp));
           a_.OpFToI(dxbc::Dest::R(eM), dxbc::Src::R(eM));
@@ -486,64 +487,16 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
     }
     a_.OpBreak();
 
-    // Xbox 360 float16 uses extended range: exponent 31 is NOT Inf/NaN
-    // but a valid large value (up to ±131008). Standard DXBC f32tof16
-    // clamps to ±65504 and produces Inf for larger values. This helper
-    // detects where standard conversion overflowed to Inf/NaN and
-    // re-encodes those values using the extended range representation:
-    // halve the value, convert to standard f16 (giving exponent <= 30),
-    // then increment the exponent by 1 (placing it in the exponent 31
-    // slot that Xbox 360 treats as a normal value, not Inf/NaN).
+    // Convert to extended-range float16 with the helper shared with the ROV
+    // render target packing.
     auto f32_to_f16_extended_range = [&](uint32_t components) {
-      uint32_t ext_original_temp = PushSystemTemp();
-      uint32_t ext_mask_temp = PushSystemTemp();
-
       uint8_t eM_remaining_ext = export_eM;
       uint32_t eM_index_ext;
       while (xe::bit_scan_forward(eM_remaining_ext, &eM_index_ext)) {
         eM_remaining_ext &= ~(uint8_t(1) << eM_index_ext);
-        uint32_t eM = system_temps_memexport_data_[eM_index_ext];
-
-        // Save original float32 values before conversion.
-        a_.OpMov(dxbc::Dest::R(ext_original_temp, components),
-                 dxbc::Src::R(eM));
-
-        // Standard f32 to f16 conversion (handles ±0..65504 correctly).
-        a_.OpF32ToF16(dxbc::Dest::R(eM, components), dxbc::Src::R(eM));
-
-        // Detect where standard conversion produced Inf or NaN
-        // (exponent field = 31, i.e. bits [14:10] all set = 0x7C00).
-        a_.OpAnd(dxbc::Dest::R(ext_mask_temp, components), dxbc::Src::R(eM),
-                 dxbc::Src::LU(0x7C00));
-        a_.OpIEq(dxbc::Dest::R(ext_mask_temp, components),
-                 dxbc::Src::R(ext_mask_temp), dxbc::Src::LU(0x7C00));
-
-        // For values that overflowed, compute extended range encoding
-        // from the saved original float32 values:
-        // 1. Clamp to ±131008.0 (max extended float16 can represent).
-        a_.OpMin(dxbc::Dest::R(ext_original_temp, components),
-                 dxbc::Src::R(ext_original_temp), dxbc::Src::LF(131008.0f));
-        a_.OpMax(dxbc::Dest::R(ext_original_temp, components),
-                 dxbc::Src::R(ext_original_temp), dxbc::Src::LF(-131008.0f));
-        // 2. Halve to bring into standard float16 range (max 65504).
-        a_.OpMul(dxbc::Dest::R(ext_original_temp, components),
-                 dxbc::Src::R(ext_original_temp), dxbc::Src::LF(0.5f));
-        // 3. Convert the halved value (will have exponent <= 30).
-        a_.OpF32ToF16(dxbc::Dest::R(ext_original_temp, components),
-                      dxbc::Src::R(ext_original_temp));
-        // 4. Increment exponent by 1 (add 1 << 10 = 0x0400) to
-        //    compensate for the halving → places value at exponent 31.
-        a_.OpIAdd(dxbc::Dest::R(ext_original_temp, components),
-                  dxbc::Src::R(ext_original_temp), dxbc::Src::LU(0x0400));
-
-        // Select: use extended result where standard gave Inf/NaN,
-        // keep standard result otherwise.
-        a_.OpMovC(dxbc::Dest::R(eM, components), dxbc::Src::R(ext_mask_temp),
-                  dxbc::Src::R(ext_original_temp), dxbc::Src::R(eM));
+        Float32ToF16ExtendedRange(system_temps_memexport_data_[eM_index_ext],
+                                  components);
       }
-
-      // Release ext_mask_temp and ext_original_temp.
-      PopSystemTemp(2);
     };
 
     a_.OpCase(dxbc::Src::LU(uint32_t(xenos::ColorFormat::k_16_FLOAT)));

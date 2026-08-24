@@ -44,8 +44,11 @@ class VulkanTextureCache final : public TextureCache {
       xenos::AnisoFilter aniso_filter : 3;  // 17
       uint32_t mip_min_level : 4;           // 21
       uint32_t mip_base_map : 1;            // 22
+      // Force the border color alpha to 1.0 (only meaningful with a border
+      // clamp mode).
+      uint32_t force_bc_w_to_max : 1;  // 23
       // Maximum mip level is in the texture resource itself, but mip_base_map
-      // can be used to limit fetching to mip_min_level.
+      // limits fetching to mip_min_level (level 0 when the base is available).
     };
 
     SamplerParameters() : value(0) { static_assert_size(*this, sizeof(value)); }
@@ -93,6 +96,14 @@ class VulkanTextureCache final : public TextureCache {
   VkImageView GetActiveBindingOrNullImageView(uint32_t fetch_constant_index,
                                               xenos::FetchOpDimension dimension,
                                               bool is_signed);
+
+  // Descriptor set (kStorageBufferCompute layout) binding the whole shared
+  // memory buffer for compute load/store, or VK_NULL_HANDLE if the buffer
+  // doesn't fit in maxStorageBufferRange. When valid, the byte offset into the
+  // buffer must be supplied via push constants. Shared with resolve.
+  VkDescriptorSet shared_memory_persistent_descriptor_set() const {
+    return shared_memory_persistent_descriptor_set_;
+  }
 
   SamplerParameters GetSamplerParameters(
       const VulkanShader::SamplerBinding& binding) const;
@@ -437,6 +448,16 @@ class VulkanTextureCache final : public TextureCache {
   VkPipelineLayout load_pipeline_layout_ = VK_NULL_HANDLE;
   std::array<VkPipeline, kLoadShaderCount> load_pipelines_{};
   std::array<VkPipeline, kLoadShaderCount> load_pipelines_scaled_{};
+
+  // Persistent descriptor binding the whole shared memory buffer
+  // (kStorageBufferCompute layout) for compute load/store, so per-operation
+  // transient descriptors don't need to be allocated and written. Only created
+  // when the buffer fits in maxStorageBufferRange. The byte offset into the
+  // buffer is passed via push constants instead. Used as the source of texture
+  // loads here, and shared as the destination of resolves in the render target
+  // cache.
+  VkDescriptorPool shared_memory_persistent_descriptor_pool_ = VK_NULL_HANDLE;
+  VkDescriptorSet shared_memory_persistent_descriptor_set_ = VK_NULL_HANDLE;
 
   // If both images can be placed in the same allocation, it's one allocation,
   // otherwise it's two separate.

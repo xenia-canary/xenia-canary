@@ -57,7 +57,7 @@ Window::~Window() {
 void Window::AddListener(WindowListener* listener) {
   assert_not_null(listener);
   // Check if already added.
-  if (std::find(listeners_.cbegin(), listeners_.cend(), listener) !=
+  if (std::ranges::find(std::as_const(listeners_), listener) !=
       listeners_.cend()) {
     return;
   }
@@ -66,7 +66,7 @@ void Window::AddListener(WindowListener* listener) {
 
 void Window::RemoveListener(WindowListener* listener) {
   assert_not_null(listener);
-  auto it = std::find(listeners_.cbegin(), listeners_.cend(), listener);
+  auto it = std::ranges::find(std::as_const(listeners_), listener);
   if (it == listeners_.cend()) {
     return;
   }

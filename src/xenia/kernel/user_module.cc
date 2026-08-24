@@ -132,7 +132,9 @@ X_STATUS UserModule::LoadFromMemory(const void* addr, const size_t length) {
 
   be<fourcc_t> magic;
   magic.value = xe::load<fourcc_t>(addr);
-  if (magic == xe::cpu::kXEX2Signature || magic == xe::cpu::kXEX1Signature) {
+  if (magic == xe::cpu::kXEX2Signature || magic == xe::cpu::kXEX1Signature ||
+      magic == xe::cpu::kXEXQSignature || magic == xe::cpu::kXEXHSignature ||
+      magic == xe::cpu::kXEX25Signature || magic == xe::cpu::kXEX0Signature) {
     module_format_ = kModuleFormatXex;
   } else if (magic == xe::cpu::kElfSignature) {
     module_format_ = kModuleFormatElf;
@@ -146,6 +148,8 @@ X_STATUS UserModule::LoadFromMemory(const void* addr, const size_t length) {
       XELOGE("XNA executables are not yet implemented");
       return X_STATUS_NOT_IMPLEMENTED;
     } else {
+      // restore it back
+      magic.value = xe::load<fourcc_t>(addr);
       XELOGE("Unknown module magic: {:08X}", magic.get());
       return X_STATUS_NOT_IMPLEMENTED;
     }

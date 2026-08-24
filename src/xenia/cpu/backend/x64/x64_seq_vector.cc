@@ -2425,6 +2425,10 @@ struct PERMUTE_I32
       } else {
         src3 = i.src3;
       }
+      if (control == MakePermuteMask(0, 2, 0, 3, 1, 0, 1, 1)) {
+        e.vshufps(i.dest, src2, src3, MakeSwizzleMask(2, 3, 0, 1));
+        return;
+      }
       if (i.dest != src3) {
         e.vpshufd(i.dest, src2, src_control);
         e.vpshufd(e.xmm0, src3, src_control);

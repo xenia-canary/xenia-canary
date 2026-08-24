@@ -152,7 +152,7 @@ void SharedMemory::UnregisterGlobalWatch(GlobalWatchHandle handle) {
 
   {
     auto global_lock = global_critical_region_.Acquire();
-    auto it = std::find(global_watches_.begin(), global_watches_.end(), watch);
+    auto it = std::ranges::find(global_watches_, watch);
     assert_false(it == global_watches_.end());
     if (it != global_watches_.end()) {
       global_watches_.erase(it);
@@ -341,6 +341,8 @@ void SharedMemory::MakeRangeValid(uint32_t start, uint32_t length,
   }
 
   if (memory_invalidation_callback_handle_) {
+    // A page that isn't writable here gets no watch. A later guest
+    // protect-to-writable invalidates it so its writes are still caught.
     memory().EnablePhysicalMemoryAccessCallbacks(
         valid_page_first << page_size_log2_,
         (valid_page_last - valid_page_first + 1) << page_size_log2_, true,

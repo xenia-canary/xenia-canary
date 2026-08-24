@@ -33,16 +33,15 @@
 #include "xenia/cpu/backend/x64/x64_emitter.h"
 #include "xenia/cpu/backend/x64/x64_op.h"
 #include "xenia/cpu/backend/x64/x64_tracers.h"
-// needed for stmxcsr
+// Needed for MXCSR scratch storage.
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 #include "xenia/cpu/backend/x64/x64_util.h"
 #include "xenia/cpu/hir/hir_builder.h"
 #include "xenia/cpu/processor.h"
 
 DEFINE_bool(use_fast_dot_product, false,
-            "Experimental optimization, much shorter sequence on dot products, "
-            "treating inf as overflow instead of using mcxsr"
-            "four insn dotprod",
+            "Use less accurate dot-product exception handling that converts "
+            "all infinite results to QNaN.",
             "CPU");
 
 DEFINE_bool(no_round_to_single, false,
@@ -2340,30 +2339,61 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // ============================================================================
 // OPCODE_DOT_PRODUCT_3
 // ============================================================================
+// Keep the float64 accumulation below: it closely matches Xbox 360 vmsum
+// results, which may differ from a host float32 dot product by one bit.
+template <typename EmitArgType>
+static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& exceptional_result =
+      e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& exceptional_result) {
+        e.L(exceptional_result);
+
+        if (!cvars::use_fast_dot_product) {
+          // A dot product of four float32 values can't overflow float64, so
+          // float32 overflow happened exactly when the float64 sum is finite
+          // but its float32 conversion has an all-ones exponent. Preserve
+          // infinities and NaNs originating in the inputs, as the previous
+          // MXCSR overflow-flag check did.
+          Xbyak::Label double_result_was_non_finite;
+          e.vmovq(e.rax, e.xmm2);
+          e.shr(e.rax, 52);
+          e.and_(e.eax, 0x7FF);
+          e.cmp(e.eax, 0x7FF);
+          e.je(double_result_was_non_finite);
+          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+          e.jmp(done, X64Emitter::T_NEAR);
+          e.L(double_result_was_non_finite);
+        } else {
+          // Preserve the existing opt-in behavior, which maps infinity to the
+          // canonical quiet NaN but leaves an existing NaN unchanged.
+          Xbyak::Label input_was_nan;
+          e.vmovd(e.eax, e.xmm1);
+          e.test(e.eax, 0x007FFFFF);
+          e.jnz(input_was_nan);
+          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+          e.jmp(done, X64Emitter::T_NEAR);
+          e.L(input_was_nan);
+        }
+
+        e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+
+  // The common finite result needs no MXCSR status round trip. Check only the
+  // float32 exponent and leave all exceptional handling in cold tail code.
+  e.vmovd(e.eax, e.xmm1);
+  e.add(e.eax, e.eax);  // Discard the sign bit.
+  e.cmp(e.eax, 0xFF000000);
+  e.jae(exceptional_result, X64Emitter::T_NEAR);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.L(done);
+}
+
 struct DOT_PRODUCT_3_V128
     : Sequence<DOT_PRODUCT_3_V128,
                I<OPCODE_DOT_PRODUCT_3, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    // todo: add fast_dot_product path that just checks for infinity instead of
-    // using mxcsr
-    auto mxcsr_storage = e.dword[e.rsp + StackLayout::GUEST_SCRATCH];
-
-    // this is going to hurt a bit...
-    /*
-    this implementation is accurate, it matches the results of xb360 vmsum3
-    except that vmsum3 is often off by 1 bit, but its extremely slow. it is a
-    long, unbroken chain of dependencies, and the three uses of mxcsr all cost
-    about 15-20 cycles at the very least on amd zen processors. on older amd the
-    figures agner has are pretty horrible. it looks like its just as bad on
-    modern intel cpus also up until just recently. perhaps a better way of
-    detecting overflow would be to just compare with inf. todo: test whether cmp
-    with inf can replace
-    */
-    if (!cvars::use_fast_dot_product) {
-      e.vstmxcsr(mxcsr_storage);
-      e.mov(e.eax, 8);
-    }
     e.vmovaps(e.xmm2, e.GetXmmConstPtr(XMMThreeFloatMask));
     bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
 
@@ -2381,9 +2411,6 @@ struct DOT_PRODUCT_3_V128
     } else {
       src2v = i.src2.reg();
     }
-    if (!cvars::use_fast_dot_product) {
-      e.not_(e.eax);
-    }
     // todo: maybe the top element should be cleared by the InstrEmit_ function
     // so that in the future this could be optimized away if the top is known to
     // be zero. Right now im not sure that happens often though and its
@@ -2393,11 +2420,6 @@ struct DOT_PRODUCT_3_V128
 
       e.vandps(e.xmm2, src2v, e.xmm2);
 
-      if (!cvars::use_fast_dot_product) {
-        e.and_(mxcsr_storage, e.eax);
-        e.vldmxcsr(mxcsr_storage);  // overflow flag is cleared, now we're good
-                                    // to go
-      }
       e.vcvtps2pd(e.ymm0, e.xmm3);
       e.vcvtps2pd(e.ymm1, e.xmm2);
 
@@ -2408,47 +2430,15 @@ struct DOT_PRODUCT_3_V128
       e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
     } else {
       e.vandps(e.xmm3, src1v, e.xmm2);
-      if (!cvars::use_fast_dot_product) {
-        e.and_(mxcsr_storage, e.eax);
-        e.vldmxcsr(mxcsr_storage);  // overflow flag is cleared, now we're good
-                                    // to go
-      }
       e.vcvtps2pd(e.ymm0, e.xmm3);
       e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
     }
     e.vextractf128(e.xmm2, e.ymm3, 1);
     e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
     e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
-    if (!cvars::use_fast_dot_product) {
-      e.not_(e.eax);
-    }
     e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
     e.vcvtsd2ss(e.xmm1, e.xmm2);
-
-    if (!cvars::use_fast_dot_product) {
-      e.vstmxcsr(mxcsr_storage);
-
-      e.test(mxcsr_storage, e.eax);
-
-      Xbyak::Label& done = e.NewCachedLabel();
-      Xbyak::Label& ret_qnan =
-          e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& me) {
-            e.L(me);
-            e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-            e.jmp(done, X64Emitter::T_NEAR);
-          });
-
-      e.jnz(ret_qnan, X64Emitter::T_NEAR);  // reorder these jmps later, just
-                                            // want to get this fix in
-      e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-      e.L(done);
-    } else {
-      e.vandps(e.xmm0, e.xmm1, e.GetXmmConstPtr(XMMAbsMaskPS));
-
-      e.vcmpgeps(e.xmm2, e.xmm0, e.GetXmmConstPtr(XMMFloatInf));
-      e.vblendvps(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMQNaN), e.xmm2);
-      e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-    }
+    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
@@ -2461,10 +2451,6 @@ struct DOT_PRODUCT_4_V128
                I<OPCODE_DOT_PRODUCT_4, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    // todo: add fast_dot_product path that just checks for infinity instead of
-    // using mxcsr
-    auto mxcsr_storage = e.dword[e.rsp + StackLayout::GUEST_SCRATCH];
-
     bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
 
     auto src1v = e.xmm3;
@@ -2481,15 +2467,6 @@ struct DOT_PRODUCT_4_V128
     } else {
       src2v = i.src2.reg();
     }
-    if (!cvars::use_fast_dot_product) {
-      e.vstmxcsr(mxcsr_storage);
-
-      e.mov(e.eax, 8);
-      e.not_(e.eax);
-
-      e.and_(mxcsr_storage, e.eax);
-      e.vldmxcsr(mxcsr_storage);
-    }
     if (is_lensqr) {
       e.vcvtps2pd(e.ymm0, src1v);
 
@@ -2504,36 +2481,9 @@ struct DOT_PRODUCT_4_V128
     e.vaddpd(e.xmm3, e.xmm3, e.xmm2);
 
     e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
-    if (!cvars::use_fast_dot_product) {
-      e.not_(e.eax);
-    }
     e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
     e.vcvtsd2ss(e.xmm1, e.xmm2);
-
-    if (!cvars::use_fast_dot_product) {
-      e.vstmxcsr(mxcsr_storage);
-
-      e.test(mxcsr_storage, e.eax);
-
-      Xbyak::Label& done = e.NewCachedLabel();
-      Xbyak::Label& ret_qnan =
-          e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& me) {
-            e.L(me);
-            e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-            e.jmp(done, X64Emitter::T_NEAR);
-          });
-
-      e.jnz(ret_qnan, X64Emitter::T_NEAR);  // reorder these jmps later, just
-                                            // want to get this fix in
-      e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-      e.L(done);
-    } else {
-      e.vandps(e.xmm0, e.xmm1, e.GetXmmConstPtr(XMMAbsMaskPS));
-
-      e.vcmpgeps(e.xmm2, e.xmm0, e.GetXmmConstPtr(XMMFloatInf));
-      e.vblendvps(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMQNaN), e.xmm2);
-      e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-    }
+    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_4, DOT_PRODUCT_4_V128);
@@ -3360,7 +3310,7 @@ bool SelectSequence(X64Emitter* e, const Instr* i, const Instr** new_tail) {
 
     auto it = sequence_table.find(key);
     if (it != sequence_table.end()) {
-      if (it->second(*e, i, InstrKey(i))) {
+      if (it->second(*e, i, key)) {
         *new_tail = i->next;
         return true;
       }

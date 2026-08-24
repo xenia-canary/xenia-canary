@@ -340,47 +340,88 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
     }
   }
 
-  void XeResolveUnpack32bpp8RedSamples(
-      uint4_xe packed_0123, uint4_xe packed_4567, uint format, bool swap,
+  // L8 and A8 both use GPUTEXTUREFORMAT_8, which is confirmed by
+  // XGCopySurface decompilation, the software version of the copy. It combines
+  // the source swizzle with the inverse dest swizzle. Resolve maps L8 ORRR
+  // swizzle to LOW_RED and A8 RZZZ swizzle to LOW_BLUE, routing red or alpha
+  // respectively to the stored component. So, this is source selection for
+  // k_8 dests, not a byte change.
+  //
+  // 5451080D resolves an opacity plane it composites the frame through from
+  // the alpha of an 8_8_8_8_GAMMA target via k_8 + LOW_BLUE. 4D530808 does the
+  // same for a fog lighting pass. The blue of those targets are black, and
+  // literally interpreting the swap results in missing composites and lighting.
+  void XeResolveUnpack32bpp8ScalarSamples(
+      uint4_xe packed_0123, uint4_xe packed_4567, uint format,
+      bool source_blue, bool source_alpha,
       out_param_xe(float4_xe, samples_0123),
       out_param_xe(float4_xe, samples_4567)) {
     switch (format) {
       case kXenosColorRenderTargetFormat_8_8_8_8:
       case kXenosColorRenderTargetFormat_8_8_8_8_GAMMA: {
-        uint shift = swap ? 16u : 0u;
+        uint shift = source_alpha ? 24u : (source_blue ? 16u : 0u);
         samples_0123 = XeUnpackR8UNormX4(packed_0123 >> shift);
         samples_4567 = XeUnpackR8UNormX4(packed_4567 >> shift);
       } break;
       case kXenosColorRenderTargetFormat_2_10_10_10:
-      case kXenosColorRenderTargetFormat_2_10_10_10_AS_10_10_10_10: {
-        uint shift = swap ? 20u : 0u;
-        samples_0123 = XeUnpackR10UNormX4(packed_0123 >> shift);
-        samples_4567 = XeUnpackR10UNormX4(packed_4567 >> shift);
-      } break;
+      case kXenosColorRenderTargetFormat_2_10_10_10_AS_10_10_10_10:
+        dont_flatten_xe if (source_alpha) {
+          // 2 bit unsigned repeating fraction alpha.
+          samples_0123 = float4_xe(packed_0123 >> 30u) * (1.0f / 3.0f);
+          samples_4567 = float4_xe(packed_4567 >> 30u) * (1.0f / 3.0f);
+        } else {
+          uint shift = source_blue ? 20u : 0u;
+          samples_0123 = XeUnpackR10UNormX4(packed_0123 >> shift);
+          samples_4567 = XeUnpackR10UNormX4(packed_4567 >> shift);
+        }
+        break;
       case kXenosColorRenderTargetFormat_2_10_10_10_FLOAT:
-      case kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16: {
-        uint shift = swap ? 20u : 0u;
-        samples_0123 = XeUnpackR10FloatX4(packed_0123 >> shift);
-        samples_4567 = XeUnpackR10FloatX4(packed_4567 >> shift);
-      } break;
+      case kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16:
+        dont_flatten_xe if (source_alpha) {
+          // The alpha is a 2 bit unsigned repeating fraction as well, only
+          // RGB are 7e3 floats.
+          samples_0123 = float4_xe(packed_0123 >> 30u) * (1.0f / 3.0f);
+          samples_4567 = float4_xe(packed_4567 >> 30u) * (1.0f / 3.0f);
+        } else {
+          uint shift = source_blue ? 20u : 0u;
+          samples_0123 = XeUnpackR10FloatX4(packed_0123 >> shift);
+          samples_4567 = XeUnpackR10FloatX4(packed_4567 >> shift);
+        }
+        break;
       case kXenosColorRenderTargetFormat_16_16:
-        samples_0123 = XeUnpackR16EdramX4(packed_0123);
-        samples_4567 = XeUnpackR16EdramX4(packed_4567);
+        dont_flatten_xe if (source_alpha) {
+          // Missing alpha is 1.0 before MSAA averaging and exponent bias.
+          samples_0123 = float_x4_xe(1.0f);
+          samples_4567 = float_x4_xe(1.0f);
+        } else {
+          samples_0123 = XeUnpackR16EdramX4(packed_0123);
+          samples_4567 = XeUnpackR16EdramX4(packed_4567);
+        }
         break;
       case kXenosColorRenderTargetFormat_16_16_FLOAT:
-        samples_0123.x = unpack_half_2x16_xe(packed_0123.x).x;
-        samples_0123.y = unpack_half_2x16_xe(packed_0123.y).x;
-        samples_0123.z = unpack_half_2x16_xe(packed_0123.z).x;
-        samples_0123.w = unpack_half_2x16_xe(packed_0123.w).x;
-        samples_4567.x = unpack_half_2x16_xe(packed_4567.x).x;
-        samples_4567.y = unpack_half_2x16_xe(packed_4567.y).x;
-        samples_4567.z = unpack_half_2x16_xe(packed_4567.z).x;
-        samples_4567.w = unpack_half_2x16_xe(packed_4567.w).x;
+        dont_flatten_xe if (source_alpha) {
+          samples_0123 = float_x4_xe(1.0f);
+          samples_4567 = float_x4_xe(1.0f);
+        } else {
+          samples_0123.x = unpack_half_2x16_xe(packed_0123.x).x;
+          samples_0123.y = unpack_half_2x16_xe(packed_0123.y).x;
+          samples_0123.z = unpack_half_2x16_xe(packed_0123.z).x;
+          samples_0123.w = unpack_half_2x16_xe(packed_0123.w).x;
+          samples_4567.x = unpack_half_2x16_xe(packed_4567.x).x;
+          samples_4567.y = unpack_half_2x16_xe(packed_4567.y).x;
+          samples_4567.z = unpack_half_2x16_xe(packed_4567.z).x;
+          samples_4567.w = unpack_half_2x16_xe(packed_4567.w).x;
+        }
         break;
       default:
         // Treat as 32_FLOAT.
-        samples_0123 = uint_bits_to_float_xe(packed_0123);
-        samples_4567 = uint_bits_to_float_xe(packed_4567);
+        dont_flatten_xe if (source_alpha) {
+          samples_0123 = float_x4_xe(1.0f);
+          samples_4567 = float_x4_xe(1.0f);
+        } else {
+          samples_0123 = uint_bits_to_float_xe(packed_0123);
+          samples_4567 = uint_bits_to_float_xe(packed_4567);
+        }
         break;
     }
   }
@@ -438,29 +479,49 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
     }
   }
 
-  void XeResolveUnpack64bpp8RedUnswappedSamples(
+  // The caller selects the second dword for blue or alpha. Alpha occupies the
+  // high half in 16 bit component formats.
+  void XeResolveUnpack64bpp8ScalarSamples(
       uint4_xe packed_0123, uint4_xe packed_4567, uint format,
-      out_param_xe(float4_xe, samples_0123),
+      bool source_alpha, out_param_xe(float4_xe, samples_0123),
       out_param_xe(float4_xe, samples_4567)) {
     switch (format) {
-      case kXenosColorRenderTargetFormat_16_16_16_16:
-        samples_0123 = XeUnpackR16EdramX4(packed_0123);
-        samples_4567 = XeUnpackR16EdramX4(packed_4567);
-        break;
+      case kXenosColorRenderTargetFormat_16_16_16_16: {
+        uint shift = source_alpha ? 16u : 0u;
+        samples_0123 = XeUnpackR16EdramX4(packed_0123 >> shift);
+        samples_4567 = XeUnpackR16EdramX4(packed_4567 >> shift);
+      } break;
       case kXenosColorRenderTargetFormat_16_16_16_16_FLOAT:
-        samples_0123.x = unpack_half_2x16_xe(packed_0123.x).x;
-        samples_0123.y = unpack_half_2x16_xe(packed_0123.y).x;
-        samples_0123.z = unpack_half_2x16_xe(packed_0123.z).x;
-        samples_0123.w = unpack_half_2x16_xe(packed_0123.w).x;
-        samples_4567.x = unpack_half_2x16_xe(packed_4567.x).x;
-        samples_4567.y = unpack_half_2x16_xe(packed_4567.y).x;
-        samples_4567.z = unpack_half_2x16_xe(packed_4567.z).x;
-        samples_4567.w = unpack_half_2x16_xe(packed_4567.w).x;
+        dont_flatten_xe if (source_alpha) {
+          samples_0123.x = unpack_half_2x16_xe(packed_0123.x).y;
+          samples_0123.y = unpack_half_2x16_xe(packed_0123.y).y;
+          samples_0123.z = unpack_half_2x16_xe(packed_0123.z).y;
+          samples_0123.w = unpack_half_2x16_xe(packed_0123.w).y;
+          samples_4567.x = unpack_half_2x16_xe(packed_4567.x).y;
+          samples_4567.y = unpack_half_2x16_xe(packed_4567.y).y;
+          samples_4567.z = unpack_half_2x16_xe(packed_4567.z).y;
+          samples_4567.w = unpack_half_2x16_xe(packed_4567.w).y;
+        } else {
+          samples_0123.x = unpack_half_2x16_xe(packed_0123.x).x;
+          samples_0123.y = unpack_half_2x16_xe(packed_0123.y).x;
+          samples_0123.z = unpack_half_2x16_xe(packed_0123.z).x;
+          samples_0123.w = unpack_half_2x16_xe(packed_0123.w).x;
+          samples_4567.x = unpack_half_2x16_xe(packed_4567.x).x;
+          samples_4567.y = unpack_half_2x16_xe(packed_4567.y).x;
+          samples_4567.z = unpack_half_2x16_xe(packed_4567.z).x;
+          samples_4567.w = unpack_half_2x16_xe(packed_4567.w).x;
+        }
         break;
       default:
         // Treat as 32_32_FLOAT.
-        samples_0123 = uint_bits_to_float_xe(packed_0123);
-        samples_4567 = uint_bits_to_float_xe(packed_4567);
+        dont_flatten_xe if (source_alpha) {
+          // Missing alpha is 1.0 before MSAA averaging and exponent bias.
+          samples_0123 = float_x4_xe(1.0f);
+          samples_4567 = float_x4_xe(1.0f);
+        } else {
+          samples_0123 = uint_bits_to_float_xe(packed_0123);
+          samples_4567 = uint_bits_to_float_xe(packed_4567);
+        }
         break;
     }
   }
@@ -543,11 +604,11 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       }
     }
 
-    // For red/blue swapping for 64bpp, pre-add 4 to sample_address_bytes.
-    void XeResolveLoad8RedPixelSamplesFromRaw(
+    void XeResolveLoad8ScalarPixelSamplesFromRaw(
         param_byte_buffer_xe(xe_resolve_edram) param_next_after_byte_buffer_xe
         uint sample_address_bytes, uint pixel_stride_bytes,
-        uint format_ints_log2, uint format, bool swap_32bpp,
+        uint format_ints_log2, uint format, bool source_blue,
+        bool source_alpha,
         out_param_xe(float4_xe, pixels_0123),
         out_param_xe(float4_xe, pixels_4567)) {
       uint4_xe packed_0123, packed_4567;
@@ -575,12 +636,13 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
             xe_resolve_edram, sample_address_bytes + 7u * pixel_stride_bytes);
       }
       dont_flatten_xe if (format_ints_log2 != 0u) {
-        XeResolveUnpack64bpp8RedUnswappedSamples(packed_0123, packed_4567,
-                                                 format, pixels_0123,
-                                                 pixels_4567);
+        XeResolveUnpack64bpp8ScalarSamples(packed_0123, packed_4567, format,
+                                           source_alpha, pixels_0123,
+                                           pixels_4567);
       } else {
-        XeResolveUnpack32bpp8RedSamples(packed_0123, packed_4567, format,
-                                        swap_32bpp, pixels_0123, pixels_4567);
+        XeResolveUnpack32bpp8ScalarSamples(packed_0123, packed_4567, format,
+                                           source_blue, source_alpha,
+                                           pixels_0123, pixels_4567);
       }
     }
 
@@ -664,28 +726,6 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
                  kXenosColorRenderTargetFormat_8_8_8_8_GAMMA;
     }
 
-    bool XeResolveDestStoresPWLGamma(XeResolveInfo resolve_info) {
-      // Resolve constants don't carry a destination gamma bit. Treat an
-      // unsigned 8_8_8_8 destination as PWL gamma storage.
-      bool dest_number_is_unorm =
-          resolve_info.dest_num_format ==
-          kXenosSurfaceNumberFormat_UnsignedRepeatingFraction;
-      bool dest_is_8888 =
-          resolve_info.dest_format == kXenosFormat_8_8_8_8 ||
-          resolve_info.dest_format == kXenosFormat_8_8_8_8_A ||
-          resolve_info.dest_format ==
-              kXenosFormat_8_8_8_8_AS_16_16_16_16;
-      return dest_number_is_unorm && dest_is_8888;
-    }
-
-    void XeResolvePWLGammaToLinearRGB(inout_param_xe(float4_xe, pixel)) {
-      pixel.rgb = XePWLGammaToLinear3(pixel.rgb);
-    }
-
-    void XeResolveLinearToPWLGammaRGB(inout_param_xe(float4_xe, pixel)) {
-      pixel.rgb = XeLinearToPWLGamma3(pixel.rgb);
-    }
-
     void XeResolveDecodePWLGammaSource(
         XeResolveInfo resolve_info, inout_param_xe(float4_xe, pixel)) {
       // Source gamma is RGB only. 8_8_8_8_GAMMA still stores alpha as ordinary
@@ -697,7 +737,7 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       // the same model that maintains float 2_10_10_10 bits, which makes it
       // not a gamma source here either.
       dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
-        XeResolvePWLGammaToLinearRGB(pixel);
+        pixel.rgb = XePWLGammaToLinear3(pixel.rgb);
       }
     }
 
@@ -849,22 +889,32 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
       }
     }
 
-    void XeResolveLoad8RedColors(
+    void XeResolveLoad8ScalarColors(
         param_byte_buffer_xe(xe_resolve_edram) param_next_after_byte_buffer_xe
         XeResolveInfo resolve_info, uint address_bytes,
         out_param_xe(float4_xe, pixels_0123),
         out_param_xe(float4_xe, pixels_4567)) {
+      // D3D maps A8 to k_8 with LOW_BLUE.
+      // k_8_A and k_8_B are still unknown, so keep the red/blue swap behavior.
+      bool source_alpha =
+          resolve_info.dest_swap && resolve_info.dest_format == kXenosFormat_8;
+      bool source_blue = resolve_info.dest_swap && !source_alpha;
       uint pixel_stride_bytes = XeResolveEdramPixelStrideBytes(resolve_info);
-      if (resolve_info.dest_swap && resolve_info.edram_format_ints_log2 != 0u) {
-        // Likely want to load the blue part from the right half for 64bpp.
+      if ((source_blue || source_alpha) &&
+          resolve_info.edram_format_ints_log2 != 0u) {
+        // The second dword of each 64bpp pixel holds blue and alpha.
         address_bytes += 4u;
       }
-      XeResolveLoad8RedPixelSamplesFromRaw(
+      // PWL encoding of 8_8_8_8_GAMMA only covers RGB. Alpha is stored as fixed
+      // data, so it's not decoded.
+      bool decode_pwl_gamma =
+          XeResolveSourceUsesPWLGamma(resolve_info) && !source_alpha;
+      XeResolveLoad8ScalarPixelSamplesFromRaw(
           pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
           address_bytes, pixel_stride_bytes,
           resolve_info.edram_format_ints_log2, resolve_info.edram_format,
-          resolve_info.dest_swap, pixels_0123, pixels_4567);
-      dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+          source_blue, source_alpha, pixels_0123, pixels_4567);
+      dont_flatten_xe if (decode_pwl_gamma) {
         pixels_0123 = XePWLGammaToLinear4(pixels_0123);
         pixels_4567 = XePWLGammaToLinear4(pixels_4567);
       }
@@ -874,13 +924,13 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
         uint tile_row_stride_bytes = 4u * 80u * resolve_info.resolution_scale.x;
         exp_bias *= 0.5f;
         float4_xe msaa_resolve_pixels_0123, msaa_resolve_pixels_4567;
-        XeResolveLoad8RedPixelSamplesFromRaw(
+        XeResolveLoad8ScalarPixelSamplesFromRaw(
             pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
             address_bytes + tile_row_stride_bytes, pixel_stride_bytes,
             resolve_info.edram_format_ints_log2, resolve_info.edram_format,
-            resolve_info.dest_swap, msaa_resolve_pixels_0123,
+            source_blue, source_alpha, msaa_resolve_pixels_0123,
             msaa_resolve_pixels_4567);
-        dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+        dont_flatten_xe if (decode_pwl_gamma) {
           msaa_resolve_pixels_0123 =
               XePWLGammaToLinear4(msaa_resolve_pixels_0123);
           msaa_resolve_pixels_4567 =
@@ -892,14 +942,14 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
         if (resolve_info.sample_select >= kXenosCopySampleSelect_0123) {
           uint sample_stride_bytes = 4u << resolve_info.edram_format_ints_log2;
           exp_bias *= 0.5f;
-          XeResolveLoad8RedPixelSamplesFromRaw(
+          XeResolveLoad8ScalarPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
               address_bytes + sample_stride_bytes, pixel_stride_bytes,
               resolve_info.edram_format_ints_log2, resolve_info.edram_format,
-              resolve_info.dest_swap, msaa_resolve_pixels_0123,
+              source_blue, source_alpha, msaa_resolve_pixels_0123,
               msaa_resolve_pixels_4567);
-          dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+          dont_flatten_xe if (decode_pwl_gamma) {
             msaa_resolve_pixels_0123 =
                 XePWLGammaToLinear4(msaa_resolve_pixels_0123);
             msaa_resolve_pixels_4567 =
@@ -907,14 +957,14 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
           }
           pixels_0123 += msaa_resolve_pixels_0123;
           pixels_4567 += msaa_resolve_pixels_4567;
-          XeResolveLoad8RedPixelSamplesFromRaw(
+          XeResolveLoad8ScalarPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
               address_bytes + tile_row_stride_bytes + sample_stride_bytes,
               pixel_stride_bytes, resolve_info.edram_format_ints_log2,
-              resolve_info.edram_format, resolve_info.dest_swap,
+              resolve_info.edram_format, source_blue, source_alpha,
               msaa_resolve_pixels_0123, msaa_resolve_pixels_4567);
-          dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+          dont_flatten_xe if (decode_pwl_gamma) {
             msaa_resolve_pixels_0123 =
                 XePWLGammaToLinear4(msaa_resolve_pixels_0123);
             msaa_resolve_pixels_4567 =

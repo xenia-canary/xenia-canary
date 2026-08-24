@@ -173,7 +173,7 @@ dword_result_t XamContentCreateDeviceEnumerator_entry(dword_t content_type,
 
   for (const auto& device_info : dummy_device_infos_) {
     if (device_info->device_type == DeviceType::ODD &&
-        (content_flags & vfs::XContentFlag::kExcludeReadOnlyDevices)) {
+        (content_flags & XContentFlag::kExcludeReadOnlyDevices)) {
       continue;
     }
 

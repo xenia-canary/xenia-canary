@@ -93,7 +93,8 @@ class PipelineCache {
       uint32_t interpolator_mask) const;
   DxbcShaderTranslator::Modification GetCurrentPixelShaderModification(
       const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
-      reg::RB_DEPTHCONTROL normalized_depth_control) const;
+      reg::RB_DEPTHCONTROL normalized_depth_control,
+      bool apply_polygon_offset_in_shader) const;
 
   // If draw_util::IsRasterizationPotentiallyDone is false, the pixel shader
   // MUST be made nullptr BEFORE calling this!
@@ -102,7 +103,7 @@ class PipelineCache {
       D3D12Shader::D3D12Translation* pixel_shader,
       const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
       reg::RB_DEPTHCONTROL normalized_depth_control,
-      uint32_t normalized_color_mask,
+      uint32_t normalized_color_mask, bool apply_polygon_offset_in_shader,
       uint32_t bound_depth_and_color_render_target_bits,
       const uint32_t* bound_depth_and_color_render_targets_formats,
       void** pipeline_handle_out, ID3D12RootSignature** root_signature_out);
@@ -179,6 +180,8 @@ class PipelineCache {
     kBlendFactor,
     kInvBlendFactor,
     kSrcAlphaSat,
+    kAlphaFactor,
+    kInvAlphaFactor,
   };
 
   // Update PipelineDescription::kVersion if anything is changed!
@@ -236,7 +239,7 @@ class PipelineCache {
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
 
     inline bool operator==(const PipelineDescription& other) const;
-    static constexpr uint32_t kVersion = 0x20260716;
+    static constexpr uint32_t kVersion = 0x20260815;
   });
 
   XEPACKEDSTRUCT(PipelineStoredDescription, {
@@ -307,7 +310,7 @@ class PipelineCache {
       D3D12Shader::D3D12Translation* pixel_shader,
       const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
       reg::RB_DEPTHCONTROL normalized_depth_control,
-      uint32_t normalized_color_mask,
+      uint32_t normalized_color_mask, bool depth_bias_in_pixel_shader,
       uint32_t bound_depth_and_color_render_target_bits,
       const uint32_t* bound_depth_and_color_render_target_formats,
       PipelineRuntimeDescription& runtime_description_out,

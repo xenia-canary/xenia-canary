@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2022 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -29,11 +29,14 @@ dword_result_t XUsbcamCreate_entry(dword_t buffer,
 }
 DECLARE_XBOXKRNL_EXPORT1(XUsbcamCreate, kNone, kStub);
 
+enum class XUsbCamState : uint32_t {
+  CamNotConnected = 0x00000000,
+  CamInitilizied = 0x00000001,
+  CamConnected = 0x00000002,
+};
+
 dword_result_t XUsbcamGetState_entry() {
-  // 0 = not connected.
-  // 1 = initialized
-  // 2 = connected
-  return 0;
+  return static_cast<uint32_t>(XUsbCamState::CamNotConnected);
 }
 DECLARE_XBOXKRNL_EXPORT1(XUsbcamGetState, kNone, kStub);
 

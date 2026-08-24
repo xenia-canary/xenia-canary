@@ -189,8 +189,10 @@ class XTitleEnumerator : public XEnumerator {
     xe::be<char16_t> title_name[64];
   };
 
-  XTitleEnumerator(KernelState* kernel_state, size_t items_per_enumerate)
-      : XEnumerator(kernel_state, items_per_enumerate, sizeof(XTITLE_PLAYED)) {}
+  XTitleEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
+                   size_t enumeration_offset)
+      : XEnumerator(kernel_state, items_per_enumerate, sizeof(XTITLE_PLAYED)),
+        current_item_(enumeration_offset) {}
 
   void AppendItem(const xam::TitleInfo& item) { items_.push_back(item); }
 
@@ -264,19 +266,21 @@ class ProfileEnumerator : public XEnumerator {
 
 class ContentEnumerator : public XEnumerator {
  public:
-  ContentEnumerator(KernelState* kernel_state, size_t items_per_enumerate)
-      : XEnumerator(kernel_state, items_per_enumerate,
-                    sizeof(xam::XCONTENT_DATA)) {}
+  ContentEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
+                    size_t item_size)
+      : XEnumerator(kernel_state, items_per_enumerate, item_size) {}
 
   size_t item_count() const { return items_.size(); }
 
-  void AppendItem(const xam::XCONTENT_DATA& item) { items_.push_back(item); }
+  void AppendItem(const xam::XCONTENT_DATA_INTERNAL& item) {
+    items_.push_back(item);
+  }
 
   uint32_t WriteItems(uint8_t* buffer_data, uint32_t buffer_size,
                       uint32_t* written_count) override;
 
  private:
-  std::vector<xam::XCONTENT_DATA> items_;
+  std::vector<xam::XCONTENT_DATA_INTERNAL> items_;
   size_t current_item_ = 0;
 };
 

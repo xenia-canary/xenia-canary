@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_XAM_CONTENT_MANAGER_H_
 #define XENIA_KERNEL_XAM_CONTENT_MANAGER_H_
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -23,6 +24,11 @@
 #include "xenia/vfs/entry.h"
 #include "xenia/xbox.h"
 
+#include "xenia/kernel/xam/xcontent/xcontent.h"
+#include "xenia/kernel/xam/xcontent/xcontent_package.h"
+
+#include "xenia/vfs/device.h"
+
 namespace xe {
 namespace kernel {
 class KernelState;
@@ -33,189 +39,7 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
-// If set in XCONTENT_AGGREGATE_DATA, will be substituted with the running
-// titles ID
-// TODO: check if actual x360 kernel/xam has a value similar to this
-constexpr uint32_t kCurrentlyRunningTitleId = 0xFFFFFFFF;
-
-struct XCONTENT_DATA {
-  be<uint32_t> device_id;         // 0x0 sz:0x4
-  be<XContentType> content_type;  // 0x4 sz:0x4
-  union {
-    // this should be be<uint16_t>, but that stops copy constructor being
-    // generated...
-    uint16_t uint[128];
-    char16_t chars[128];
-  } display_name_raw;  // 0x8 sz:0x100
-
-  char file_name_raw[42];  // 0x108 sz:0x2A
-
-  // Some games use this padding field as a null-terminator, as eg.
-  // DLC packages usually fill the entire file_name_raw array
-  // Not every game sets it to 0 though, so make sure any file_name_raw reads
-  // only go up to 42 chars!
-  uint8_t padding[2];  // 0x132 sz: 0x2
-
-  bool operator==(const XCONTENT_DATA& other) const {
-    // Package is located via device_id/content_type/file_name, so only need to
-    // compare those
-    return device_id == other.device_id && content_type == other.content_type &&
-           file_name() == other.file_name();
-  }
-
-  std::u16string display_name() const {
-    return load_and_swap<std::u16string>(display_name_raw.uint);
-  }
-
-  std::string file_name() const {
-    std::string value;
-    value.assign(file_name_raw,
-                 std::min(strlen(file_name_raw), countof(file_name_raw)));
-    return value;
-  }
-
-  void set_display_name(const std::u16string_view value) {
-    // Some games (e.g. 584108A9) require multiple null-terminators for it to
-    // read the string properly, blanking the array should take care of that
-
-    std::fill_n(display_name_raw.chars, countof(display_name_raw.chars), 0);
-    string_util::copy_and_swap_truncating(display_name_raw.chars, value,
-                                          countof(display_name_raw.chars));
-  }
-
-  void set_file_name(const std::string_view value) {
-    std::fill_n(file_name_raw, countof(file_name_raw), 0);
-    string_util::copy_maybe_truncating<string_util::Safety::IKnowWhatIAmDoing>(
-        file_name_raw, value, xe::countof(file_name_raw));
-
-    // Some games rely on padding field acting as a null-terminator...
-    padding[0] = padding[1] = 0;
-  }
-};
-static_assert_size(XCONTENT_DATA, 0x134);
-
-struct XCONTENT_AGGREGATE_DATA : XCONTENT_DATA {
-  be<uint64_t> xuid;  // some titles store XUID here?
-  be<uint32_t> title_id;
-
-  XCONTENT_AGGREGATE_DATA() = default;
-  XCONTENT_AGGREGATE_DATA(const XCONTENT_DATA& other) {
-    device_id = other.device_id;
-    content_type = other.content_type;
-    set_display_name(other.display_name());
-    set_file_name(other.file_name());
-    padding[0] = padding[1] = 0;
-    xuid = 0;
-    title_id = kCurrentlyRunningTitleId;
-  }
-
-  bool operator==(const XCONTENT_AGGREGATE_DATA& other) const {
-    // Package is located via device_id/title_id/content_type/file_name, so only
-    // need to compare those
-    return device_id == other.device_id && title_id == other.title_id &&
-           content_type == other.content_type &&
-           file_name() == other.file_name();
-  }
-};
-static_assert_size(XCONTENT_AGGREGATE_DATA, 0x148);
-
-struct XCONTENT_CROSS_TITLE_DATA {
-  XCONTENT_DATA content_data;
-  xe::be<uint32_t> title_id;
-};
-static_assert_size(XCONTENT_CROSS_TITLE_DATA, 0x138);
-
-struct XCONTENT_DATA_MEDIA {
-  be<uint8_t> series_id[0x10];  // 0x0 sz:0x10
-  be<uint8_t> seasonid[0x10];   // 0x10 sz:0x10
-  be<uint16_t> season_number;   // 0x20 sz:0x2
-  be<uint16_t> episode_number;  // 0x22 sz:0x2
-};
-static_assert_size(XCONTENT_DATA_MEDIA, 0x24);
-
-struct XCONTENT_DATA_AVATAR_ASSET {
-  be<uint32_t> subcategory;           // 0x0 sz:0x4
-  be<int32_t> colorizable;            // 0x4 sz:0x4
-  be<uint8_t> asset_id[0x10];         // 0x8 sz:0x10
-  be<uint8_t> skeleton_version_mask;  // 0x18 sz:0x1
-};
-static_assert_size(XCONTENT_DATA_AVATAR_ASSET, 0x1C);
-
-enum XCONTENT_INTERNAL_FLAGS : uint32_t {
-  Partial = 0x00000001,
-  Corrupt = 0x00000002,
-  KinectEnabled = 0x00000004,
-  DeepLinkSupported = 0x00000008,
-  DisableNetworkStorage = 0x00000010,
-  MoveOnlyTransfer = 0x00000020,
-  DeviceTransfer = 0x00000040,
-  ProfileTransfer = 0x00000080,
-};
-
-struct XCONTENT_DATA_INTERNAL : XCONTENT_DATA {  // 0x0 sz:0x134
-  be<uint32_t> category;                         // 0x134 sz:0x4
-  be<uint64_t> xuid;                             // 0x138 sz:0x8
-  be<uint32_t> title_id;                         // 0x140 sz:0x4
-  be<uint32_t> license_mask;                     // 0x144 sz:0x4
-
-  // added in V4532 0x148
-  be<uint64_t> content_size;  // 0x148 sz:0x8
-
-  // added in NXE
-  be<uint64_t> creation_time;  // 0x150 sz:0x8 FILETIME
-  char16_t title_name[0x40];   // 0x158 sz:0x80
-
-  // compiler does not like
-  // union {
-  // XCONTENT_DATA_AVATAR_ASSET avatar_content_data;  // 0x1D8 sz:0x1C
-  // XCONTENT_DATA_MEDIA media_content_data;          // 0x1D8 sz:0x24
-  //};
-  be<uint8_t> padding[0x24];                  // 0x1D8 sz:0x1C
-  be<XCONTENT_INTERNAL_FLAGS> xcontent_flag;  // 0x1FC sz:0x04
-
-  XCONTENT_DATA_INTERNAL() = default;
-  XCONTENT_DATA_INTERNAL(const XCONTENT_DATA& other) {
-    device_id = other.device_id;
-    content_type = other.content_type;
-    set_display_name(other.display_name());
-    set_file_name(other.file_name());
-    padding[0] = padding[1] = 0;
-    xuid = 0;
-    title_id = kCurrentlyRunningTitleId;
-  }
-
-  bool operator==(const XCONTENT_DATA_INTERNAL& other) const {
-    // Package is located via device_id/title_id/content_type/file_name, so only
-    // need to compare those
-    return device_id == other.device_id && title_id == other.title_id &&
-           content_type == other.content_type &&
-           file_name() == other.file_name();
-  }
-};
-static_assert_size(XCONTENT_DATA_INTERNAL, 0x200);
-
-class ContentPackage {
- public:
-  ContentPackage(KernelState* kernel_state, const std::string_view root_name,
-                 const XCONTENT_AGGREGATE_DATA& data,
-                 const std::filesystem::path& package_path);
-  ~ContentPackage();
-
-  void LoadPackageLicenseMask(const std::filesystem::path header_path);
-
-  const XCONTENT_AGGREGATE_DATA& GetPackageContentData() const {
-    return content_data_;
-  }
-
-  const uint32_t GetPackageLicense() const { return license_; }
-
- private:
-  KernelState* kernel_state_;
-  std::string root_name_;
-  std::string device_path_;
-  XCONTENT_AGGREGATE_DATA content_data_;
-  uint32_t license_;
-};
+static std::string_view kCommonContentDirectory = "0000000000000000";
 
 class ContentManager {
  public:
@@ -223,70 +47,99 @@ class ContentManager {
                  const std::filesystem::path& root_path);
   ~ContentManager();
 
-  std::vector<XCONTENT_AGGREGATE_DATA> ListContent(
+  static X_STATUS ExtractContentHeader(
+      const std::filesystem::path& header_path,
+      const XContentContainerHeader& container_header);
+
+  // Host specific methods
+  std::unique_ptr<ContentPackage> OpenPackage(
+      const std::filesystem::path host_path);
+  std::unique_ptr<ContentPackage> OpenPackage(
+      const uint64_t xuid, const XCONTENT_DATA_INTERNAL& data);
+  std::unique_ptr<ContentPackage> CreatePackage(
+      const std::filesystem::path host_path,
+      const XCONTENT_DATA_INTERNAL& data);
+
+  ContentPackage* OpenAndMountPackage(const std::filesystem::path host_path,
+                                      const std::string_view root_name);
+  ContentPackage* CreateAndMountPackage(const std::filesystem::path host_path,
+                                        const std::string_view root_name,
+                                        const XCONTENT_DATA_INTERNAL& data);
+  ContentPackage* FindPackage(const XCONTENT_DATA_INTERNAL& data);
+
+  // Used only in case you don't want device to be autoregistered in VFS.
+  // Example: Device is initialized externally, not via ContentManager.
+  std::unique_ptr<vfs::Device> MountPackageUnregistered(
+      const std::string_view root_name,
+      std::unique_ptr<ContentPackage> package);
+
+  // Common methods
+  std::vector<XCONTENT_DATA_INTERNAL> ListContent(
+      const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
+      const XContentType content_type, const XContentFlag content_flags);
+
+  std::vector<XCONTENT_DATA_INTERNAL> ListContentODD(
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
 
-  std::vector<XCONTENT_AGGREGATE_DATA> ListContentODD(
-      const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
-      const XContentType content_type) const;
+  bool ContentExists(const uint64_t xuid, const XCONTENT_DATA_INTERNAL& data);
 
-  std::unique_ptr<ContentPackage> ResolvePackage(
-      const std::string_view root_name, const uint64_t xuid,
-      const XCONTENT_AGGREGATE_DATA& data, const uint32_t disc_number = -1);
-
-  bool ContentExists(const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data);
-  X_RESULT WriteContentHeaderFile(const uint64_t xuid,
-                                  XCONTENT_AGGREGATE_DATA data);
-  X_RESULT ReadContentHeaderFile(const std::string_view file_name,
-                                 const uint64_t xuid, const uint32_t title_id,
-                                 XContentType content_type,
-                                 XCONTENT_AGGREGATE_DATA& data) const;
   X_RESULT CreateContent(const std::string_view root_name, const uint64_t xuid,
-                         const XCONTENT_AGGREGATE_DATA& data);
+                         const XCONTENT_DATA_INTERNAL& data);
   X_RESULT OpenContent(const std::string_view root_name, const uint64_t xuid,
-                       const XCONTENT_AGGREGATE_DATA& data,
-                       uint32_t& content_license,
-                       const uint32_t disc_number = -1);
+                       const XCONTENT_DATA_INTERNAL& data,
+                       uint32_t& content_license);
   X_RESULT CloseContent(const std::string_view root_name);
+  X_RESULT CloseContentByDeviceName(const std::string_view device_name);
   X_RESULT GetContentThumbnail(const uint64_t xuid,
-                               const XCONTENT_AGGREGATE_DATA& data,
-                               std::vector<uint8_t>* buffer);
+                               const XCONTENT_DATA_INTERNAL& data,
+                               std::vector<uint8_t>& buffer);
   X_RESULT SetContentThumbnail(const uint64_t xuid,
-                               const XCONTENT_AGGREGATE_DATA& data,
-                               std::vector<uint8_t> buffer);
+                               const XCONTENT_DATA_INTERNAL& data,
+                               std::span<const uint8_t> buffer);
   X_RESULT DeleteContent(const uint64_t xuid,
-                         const XCONTENT_AGGREGATE_DATA& data);
-  std::filesystem::path ResolveGameUserContentPath(const uint64_t xuid);
-  bool IsContentOpen(const XCONTENT_AGGREGATE_DATA& data) const;
+                         const XCONTENT_DATA_INTERNAL& data);
+  bool IsContentOpen(const XCONTENT_DATA_INTERNAL& data) const;
+  bool IsContentOpen(const std::string_view root_name) const;
+
   void CloseOpenedFilesFromContent(const std::string_view root_name);
 
   uint64_t GetContentTotalSpace() const;
   uint64_t GetContentFreeSpace() const;
 
+  X_STATUS InstallContentPackage(const ContentPackage* package,
+                                 const std::filesystem::path& installation_path,
+                                 const std::filesystem::path& header_path,
+                                 uint64_t& installation_progress,
+                                 bool force_extract = false);
+
  private:
+  std::string GeneratePackageDevicePath(const std::filesystem::path& root_path);
+  // Used in case of mounting package on guest (via XAM). Package is
+  // autoregistered.
+  ContentPackage* MountPackage(const std::string_view root_name,
+                               std::unique_ptr<ContentPackage> package);
+
   std::filesystem::path ResolvePackageRoot(
       const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
   std::filesystem::path ResolvePackagePath(const uint64_t xuid,
-                                           const XCONTENT_AGGREGATE_DATA& data,
-                                           const uint32_t disc_number = -1);
-  std::filesystem::path ResolvePackageHeaderPath(
-      const std::string_view file_name, uint64_t xuid, uint32_t title_id,
-      const XContentType content_type) const;
-
+                                           const XCONTENT_DATA_INTERNAL& data);
   std::unordered_set<uint32_t> FindPublisherTitleIds(
       const uint64_t xuid,
       uint32_t base_title_id = kCurrentlyRunningTitleId) const;
 
   bool UpdateSpaData(vfs::Entry* spa_file_update);
 
+  uint32_t content_device_id_ = 0;
+
   KernelState* kernel_state_;
   std::filesystem::path root_path_;
 
   // TODO(benvanik): remove use of global lock, it's bad here!
   xe::global_critical_region global_critical_region_;
-  std::unordered_map<string_key_insensitive, ContentPackage*> open_packages_;
+  std::unordered_map<std::string, std::unique_ptr<ContentPackage>>
+      mounted_packages_;
 };
 
 }  // namespace xam

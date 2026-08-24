@@ -10,6 +10,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_util.h"
+#include "xenia/kernel/info/file.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/smc.h"
 #include "xenia/kernel/user_module.h"
@@ -81,13 +82,13 @@ dword_result_t xeXamContentResolve(
   auto run = [user_index, content_data_ptr, content_data_size, path_ptr,
               path_size, create_directory, root_name_ptr](
                  uint32_t& extended_error, uint32_t& length) -> X_RESULT {
-    XCONTENT_AGGREGATE_DATA content_data;
+    XCONTENT_DATA_AGGREGATE content_data;
     if (content_data_size == sizeof(XCONTENT_DATA)) {
       content_data = *content_data_ptr.as<XCONTENT_DATA*>();
     } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
       // Due to the current implementation of content data we can't use
       // XCONTENT_DATA_INTERNAL
-      content_data = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+      content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
     } else {
       assert_always();
       return X_ERROR_INVALID_PARAMETER;
@@ -186,8 +187,8 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
     *buffer_size_ptr = sizeof(XCONTENT_DATA) * items_per_enumerate;
   }
 
-  auto e = object_ref<ContentEnumerator>(
-      new ContentEnumerator(kernel_state(), items_per_enumerate));
+  auto e = object_ref<ContentEnumerator>(new ContentEnumerator(
+      kernel_state(), items_per_enumerate, sizeof(XCONTENT_DATA)));
 
   auto result =
       e->Initialize(XUserIndexAny, 0xFE, 0x20005, 0x20007, 0, 0x98, nullptr);
@@ -200,8 +201,7 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
     title = kernel_state()->title_id();
   }
 
-  std::vector<XCONTENT_AGGREGATE_DATA> enumerated_content =
-      {};  // XCONTENT_DATA_INTERNAL
+  std::vector<XCONTENT_DATA_INTERNAL> enumerated_content{};
 
   if (!device_info || device_info->device_id == DummyDeviceId::HDD) {
     std::vector<uint64_t> xuids_to_enumerate = {};
@@ -209,7 +209,7 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
       xuids_to_enumerate.push_back(xuid);
     }
 
-    if (!xuid || !(content_flags & vfs::XContentFlag::kExcludeCommon)) {
+    if (!xuid || !(content_flags & XContentFlag::kExcludeCommon)) {
       xuids_to_enumerate.push_back(0);  // Common content
     }
 
@@ -217,7 +217,8 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
       auto user_enumerated_data =
           kernel_state()->content_manager()->ListContent(
               static_cast<uint32_t>(DummyDeviceId::HDD), xuid, title,
-              static_cast<XContentType>(content_type.value()));
+              static_cast<XContentType>(content_type.value()),
+              static_cast<XContentFlag>(content_flags.value()));
 
       enumerated_content.insert(enumerated_content.end(),
                                 user_enumerated_data.cbegin(),
@@ -225,9 +226,8 @@ dword_result_t XamContentCreateEnumeratorInternal_entry(
     }
 
     // Remove duplicates
-    enumerated_content.erase(
-        std::unique(enumerated_content.begin(), enumerated_content.end()),
-        enumerated_content.end());
+    enumerated_content.erase(std::ranges::unique(enumerated_content).begin(),
+                             enumerated_content.end());
   }
 
   if (!device_info || device_info->device_id == DummyDeviceId::ODD) {
@@ -310,11 +310,13 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  XCONTENT_AGGREGATE_DATA content_data;
+  XCONTENT_DATA_INTERNAL content_data{};
   if (content_data_size == sizeof(XCONTENT_DATA)) {
     content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-  } else if (content_data_size == sizeof(XCONTENT_AGGREGATE_DATA)) {
-    content_data = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+  } else if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
+    content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
+  } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
+    content_data = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
   } else {
     assert_always();
     return X_ERROR_INVALID_PARAMETER;
@@ -331,12 +333,13 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
   }
 
   auto run = [content_manager, xuid, root_name = root_name.value(), flags,
-              content_data, disposition_ptr, license_mask_ptr, overlapped_ptr](
-                 uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+              content_data, content_data_size, disposition_ptr,
+              license_mask_ptr, overlapped_ptr](uint32_t& extended_error,
+                                                uint32_t& length) -> X_RESULT {
     X_RESULT result = X_ERROR_INVALID_PARAMETER;
     kDispositionState disposition = kDispositionState::Unknown;
     switch (flags & 0xF) {
-      case vfs::XContentFlag::kCreateNew:
+      case XContentFlag::kCreateNew:
         // Fail if exists.
         if (content_manager->ContentExists(xuid, content_data)) {
           result = X_ERROR_ALREADY_EXISTS;
@@ -344,14 +347,14 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
           disposition = kDispositionState::Create;
         }
         break;
-      case vfs::XContentFlag::kCreateAlways:
+      case XContentFlag::kCreateAlways:
         // Overwrite existing, if any.
         if (content_manager->ContentExists(xuid, content_data)) {
           content_manager->DeleteContent(xuid, content_data);
         }
         disposition = kDispositionState::Create;
         break;
-      case vfs::XContentFlag::kOpenExisting:
+      case XContentFlag::kOpenExisting:
         // Open only if exists.
         if (!content_manager->ContentExists(xuid, content_data)) {
           result = X_ERROR_PATH_NOT_FOUND;
@@ -359,7 +362,7 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
           disposition = kDispositionState::Open;
         }
         break;
-      case vfs::XContentFlag::kOpenAlways:
+      case XContentFlag::kOpenAlways:
         // Create if needed.
         if (!content_manager->ContentExists(xuid, content_data)) {
           disposition = kDispositionState::Create;
@@ -367,7 +370,7 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
           disposition = kDispositionState::Open;
         }
         break;
-      case vfs::XContentFlag::kTruncateExisting:
+      case XContentFlag::kTruncateExisting:
         // Fail if doesn't exist, if does exist delete and recreate.
         if (!content_manager->ContentExists(xuid, content_data)) {
           result = X_ERROR_PATH_NOT_FOUND;
@@ -383,10 +386,25 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
 
     uint32_t content_license = 0;
     if (disposition == kDispositionState::Create) {
-      result = content_manager->CreateContent(root_name, xuid, content_data);
-      if (XSUCCEEDED(result)) {
-        content_manager->WriteContentHeaderFile(xuid, content_data);
+      XCONTENT_DATA_INTERNAL content_data_internal = content_data;
+      // We need to explicitly check these fields as they can be set from
+      // XCONTENT_DATA_AGGREGATE version.
+      if (!content_data_internal.title_id ||
+          content_data_internal.title_id == kCurrentlyRunningTitleId) {
+        content_data_internal.title_id = kernel_state()->title_id();
       }
+
+      if (!content_data_internal.xuid) {
+        content_data_internal.xuid = xuid;
+      }
+
+      content_data_internal.content_size =
+          static_cast<uint64_t>(content_data_size);
+      content_data_internal.set_title_name(
+          xe::to_utf16(kernel_state()->emulator()->title_name()));
+
+      result = content_manager->CreateContent(root_name, xuid,
+                                              content_data_internal);
     } else if (disposition == kDispositionState::Open) {
       result = content_manager->OpenContent(root_name, xuid, content_data,
                                             content_license);
@@ -448,12 +466,12 @@ dword_result_t XamContentCreateInternal_entry(
     lpstring_t root_name, lpvoid_t content_data_ptr, dword_t flags,
     lpdword_t disposition_ptr, lpdword_t license_mask_ptr, dword_t cache_size,
     qword_t content_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
-  auto content_data_internal = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+  auto content_data_internal = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
   if (content_data_internal.file_name_raw[0] == '\0') {
     return X_ERROR_INVALID_NAME;
   }
   return xeXamContentCreate(XUserIndexNone, root_name, content_data_ptr,
-                            sizeof(XCONTENT_AGGREGATE_DATA), flags,
+                            sizeof(XCONTENT_DATA_INTERNAL), flags,
                             disposition_ptr, license_mask_ptr, cache_size,
                             content_size, overlapped_ptr);
 }
@@ -508,7 +526,7 @@ dword_result_t XamContentGetCreator_entry(
     return X_ERROR_NO_SUCH_USER;
   }
 
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  XCONTENT_DATA_AGGREGATE content_data = *content_data_ptr.as<XCONTENT_DATA*>();
 
   auto run = [content_data, xuid = user->xuid(), user_index, is_creator_ptr,
               creator_xuid_ptr, overlapped_ptr](uint32_t& extended_error,
@@ -572,14 +590,14 @@ dword_result_t XamContentGetThumbnail_entry(
 
   assert_not_null(buffer_size_ptr);
   uint32_t buffer_size = *buffer_size_ptr;
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  XCONTENT_DATA_INTERNAL content_data = *content_data_ptr.as<XCONTENT_DATA*>();
 
   // Get thumbnail (if it exists).
   std::vector<uint8_t> buffer;
   auto result = kernel_state()->content_manager()->GetContentThumbnail(
-      user->xuid(), content_data, &buffer);
+      user->xuid(), content_data, buffer);
 
-  *buffer_size_ptr = uint32_t(buffer.size());
+  *buffer_size_ptr = static_cast<uint32_t>(buffer.size());
 
   if (XSUCCEEDED(result)) {
     // Write data, if we were given a pointer.
@@ -605,15 +623,19 @@ dword_result_t XamContentGetThumbnail_entry(
 DECLARE_XAM_EXPORT1(XamContentGetThumbnail, kContent, kImplemented);
 
 dword_result_t XamContentSetThumbnail_entry(
-    dword_t user_index, lpvoid_t content_data_ptr, lpvoid_t buffer_ptr,
-    dword_t buffer_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+    dword_t user_index, pointer_t<XCONTENT_DATA> content_data_ptr,
+    lpvoid_t buffer_ptr, dword_t buffer_size,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
 
   if (!user) {
     return X_ERROR_NO_SUCH_USER;
   }
 
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  XCONTENT_DATA_INTERNAL content_data = *content_data_ptr;
+  if (content_data.title_id == kCurrentlyRunningTitleId) {
+    content_data.title_id = kernel_state()->title_id();
+  }
 
   // Buffer is PNG data.
   auto buffer = std::vector<uint8_t>((uint8_t*)buffer_ptr,
@@ -634,9 +656,9 @@ dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
                                   dword_t content_data_size,
                                   pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   uint64_t xuid = 0;
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-  if (content_data_size == sizeof(XCONTENT_AGGREGATE_DATA)) {
-    content_data = *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>();
+  XCONTENT_DATA_AGGREGATE content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
+    content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
   }
 
   if (user_index != XUserIndexNone) {
@@ -674,7 +696,7 @@ dword_result_t XamContentDeleteInternal_entry(
   // 0xFE as user_index.
   // In XAM content size is set to 0x200.
   return xeXamContentDelete(XUserIndexNone, content_data_ptr,
-                            sizeof(XCONTENT_AGGREGATE_DATA), overlapped_ptr);
+                            sizeof(XCONTENT_DATA_INTERNAL), overlapped_ptr);
 }
 DECLARE_XAM_EXPORT1(XamContentDeleteInternal, kContent, kImplemented);
 
@@ -720,9 +742,7 @@ static_assert_size(X_SWAPDISC_ERROR_MESSAGE, 12);
 dword_result_t XamSwapDisc_entry(
     dword_t disc_number, pointer_t<X_KEVENT> completion_handle,
     pointer_t<X_SWAPDISC_ERROR_MESSAGE> error_message) {
-  xex2_opt_execution_info* info = nullptr;
-  kernel_state()->GetExecutableModule()->GetOptHeader(XEX_HEADER_EXECUTION_INFO,
-                                                      &info);
+  xex2_opt_execution_info* info = kernel_state()->GetExecutionInfo();
 
   if (info->disc_number > info->disc_count) {
     return X_ERROR_INVALID_PARAMETER;
@@ -810,7 +830,7 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
   */
   vfs::Entry* entry;
   if (!image_location) {
-    XCONTENT_AGGREGATE_DATA content_data =
+    XCONTENT_DATA_AGGREGATE content_data =
         *content_data_ptr.as<XCONTENT_DATA*>();
     const uint32_t title_id = xe::string_util::from_string<uint32_t>(
         content_data.file_name().substr(0, 8), true);
@@ -836,7 +856,7 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
 
   if (!std::filesystem::exists(host_path)) {
     uint64_t progress = 0;
-    vfs::VirtualFileSystem::ExtractContentFile(
+    vfs::VirtualFileSystem::ExtractDeviceFile(
         entry, kernel_state()->emulator()->content_root(), progress, true);
   }
 
@@ -918,6 +938,103 @@ dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
+dword_result_t XamContentGetMetaDataInternal_entry(
+    pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr,
+    lpdword_t content_metadata_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  const auto package =
+      kernel_state()->content_manager()->OpenPackage(0, *content_data_ptr);
+
+  if (!package) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  const auto metadata = package->GetContainerMetadata();
+
+  if (!metadata) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  memcpy(
+      kernel_memory()->TranslateVirtual(content_metadata_ptr.guest_address()),
+      metadata, sizeof(XContentMetadata));
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, 0);
+    return X_ERROR_IO_PENDING;
+  }
+
+  // INFO: Analysis of xam.xex shows that "internal" functions are wrappers with
+  // 0xFE as user_index.
+  // In XAM content size is set to 0x200.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetMetaDataInternal, kContent, kImplemented);
+
+dword_result_t XamContentGetAttributesInternal_entry(
+    pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr,
+    lpdword_t file_attribute_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  const auto package =
+      kernel_state()->content_manager()->OpenPackage(0, *content_data_ptr);
+
+  if (!package) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  const auto file_info = xe::filesystem::GetInfo(package->GetPackageHostPath());
+  if (!file_info) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  auto info = kernel_memory()->TranslateVirtual<X_FILE_ATTRIBUTE_DATA*>(
+      file_attribute_ptr.guest_address());
+
+  info->dwFileAttributes = 0;
+  info->ftCreationTime = file_info->create_timestamp;
+  info->ftLastAccessTime = file_info->access_timestamp;
+  info->ftLastWriteTime = file_info->write_timestamp;
+  info->nFileSizeHigh = file_info->total_size >> 32;
+  info->nFileSizeLow = file_info->total_size;
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, 0);
+    return X_ERROR_IO_PENDING;
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetAttributesInternal, kContent, kSketchy);
+
+dword_result_t XamContentGetLocalizedString_entry(
+    pointer_t<XContentMetadata> metadata_ptr, lpu16string_t display_name_buffer,
+    dword_t display_name_buffer_size, lpu16string_t description_buffer,
+    dword_t description_buffer_size) {
+  if (!metadata_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  // Get language from console settings
+  const auto language = kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE);
+
+  if (display_name_buffer) {
+    const auto language_str =
+        metadata_ptr->display_name(static_cast<XLanguage>(language));
+    xe::string_util::copy_and_swap_truncating(display_name_buffer, language_str,
+                                              display_name_buffer_size);
+  }
+
+  if (description_buffer) {
+    const auto language_str =
+        metadata_ptr->description(static_cast<XLanguage>(language));
+    xe::string_util::copy_and_swap_truncating(description_buffer, language_str,
+                                              description_buffer_size);
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetLocalizedString, kContent, kSketchy);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

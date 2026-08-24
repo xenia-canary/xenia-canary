@@ -463,6 +463,12 @@ bool D3D12Provider::Initialize() {
     unaligned_block_textures_supported_ =
         bool(options8.UnalignedBlockTexturesSupported);
   }
+  alpha_blend_factor_supported_ = false;
+  D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13 = {};
+  if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13,
+                                            &options13, sizeof(options13)))) {
+    alpha_blend_factor_supported_ = bool(options13.AlphaBlendFactorSupported);
+  }
   virtual_address_bits_per_resource_ = 0;
   D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT virtual_address_support;
   if (SUCCEEDED(device->CheckFeatureSupport(
@@ -478,6 +484,7 @@ bool D3D12Provider::Initialize() {
       "* Pixel-shader-specified stencil reference: {}\n"
       "* Programmable sample positions: tier {}\n"
       "* Rasterizer-ordered views: {}\n"
+      "* Scalar alpha blend factor: {}\n"
       "* Resource binding: tier {}\n"
       "* Tiled resources: tier {}\n"
       "* Unaligned block-compressed textures: {}",
@@ -487,6 +494,7 @@ bool D3D12Provider::Initialize() {
       ps_specified_stencil_reference_supported_ ? "yes" : "no",
       uint32_t(programmable_sample_positions_tier_),
       rasterizer_ordered_views_supported_ ? "yes" : "no",
+      alpha_blend_factor_supported_ ? "yes" : "no",
       uint32_t(resource_binding_tier_), uint32_t(tiled_resources_tier_),
       unaligned_block_textures_supported_ ? "yes" : "no");
 

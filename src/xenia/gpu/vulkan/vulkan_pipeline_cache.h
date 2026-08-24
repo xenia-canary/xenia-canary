@@ -132,8 +132,10 @@ class VulkanPipelineCache {
       Shader::HostVertexShaderType host_vertex_shader_type,
       uint32_t interpolator_mask, bool ps_param_gen_used) const;
   SpirvShaderTranslator::Modification GetCurrentPixelShaderModification(
-      const Shader& shader, uint32_t interpolator_mask,
-      uint32_t param_gen_pos) const;
+      const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
+      reg::RB_DEPTHCONTROL normalized_depth_control,
+      uint32_t normalized_color_mask,
+      bool apply_polygon_offset_in_shader) const;
 
   bool EnsureShadersTranslated(VulkanShader::VulkanTranslation* vertex_shader,
                                VulkanShader::VulkanTranslation* pixel_shader);
@@ -398,6 +400,13 @@ class VulkanPipelineCache {
   VulkanRenderTargetCache& render_target_cache_;
   VkShaderStageFlags guest_shader_vertex_stages_;
 
+  // Cached device float control features for geometry shader creation, so the
+  // built-in geometry shaders run under the same float semantics as the guest
+  // vertex and pixel shaders.
+  bool signed_zero_inf_nan_preserve_float32_ = false;
+  bool denorm_flush_to_zero_float32_ = false;
+  bool rounding_mode_rte_float32_ = false;
+
   // Temporary storage for AnalyzeUcode calls on the processor thread.
   StringBuffer ucode_disasm_buffer_;
   // Reusable shader translator on the command processor thread.
@@ -432,6 +441,13 @@ class VulkanPipelineCache {
   // Empty depth-only pixel shader for writing to depth buffer using fragment
   // shader interlock when no Xenos pixel shader provided.
   VkShaderModule depth_only_fragment_shader_ = VK_NULL_HANDLE;
+
+  // Substitute depth-only pixel shaders that perform float24 conversion of the
+  // rasterizer's depth, bound for guest depth-only draws when in-PS float24
+  // conversion is active and the depth buffer is D24FS8. Mirrors the DXBC
+  // backend's float24_{truncate,round}_ps.
+  VkShaderModule float24_truncate_fragment_shader_ = VK_NULL_HANDLE;
+  VkShaderModule float24_round_fragment_shader_ = VK_NULL_HANDLE;
 
   // Placeholder pixel shader for pipeline hot-swap to reduce stutter.
   // Outputs transparent black while the real shader compiles in background.

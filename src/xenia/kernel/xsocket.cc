@@ -363,7 +363,15 @@ uint32_t XSocket::GetLastWSAError() const {
 #ifdef XE_PLATFORM_WIN32
   return WSAGetLastError();
 #endif
-  return errno;
+  const uint32_t error_no = errno;
+  // For now only use switch case. If this will expand to more than 3-4 entries
+  // then it will be reasonable to create some form of map.
+  switch (error_no) {
+    case 11:
+      return 10035;
+    default:
+      return error_no;
+  }
 }
 
 }  // namespace kernel

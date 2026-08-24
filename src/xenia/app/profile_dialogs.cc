@@ -205,6 +205,8 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
       if (ImGui::BeginPopupContextItem("Profile Menu")) {
         //*selected_xuid = xuid;
         if (user_index == XUserIndexAny) {
+          ImGui::BeginDisabled(!profile_manager->IsAnyProfileSlotFree());
+
           if (ImGui::MenuItem("Login")) {
             profile_manager->Login(xuid);
             if (!profile_manager->GetProfile(xuid)
@@ -235,6 +237,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
             }
             ImGui::EndMenu();
           }
+          ImGui::EndDisabled();
         } else {
           if (ImGui::MenuItem("Logout")) {
             profile_manager->Logout(user_index);
