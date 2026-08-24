@@ -1518,12 +1518,13 @@ std::string Emulator::FindLaunchModule() {
           kDefaultGameSymbolicLink);
 
       file_path /= std::filesystem::path(xam->loader_data().launch_path);
+      const auto registered_path =
+          xe::path_to_utf8(file_path.parent_path()) + kGuestPathSeparator;
 
       kernel_state_->file_system()->RegisterSymbolicLink(
-          kDefaultPartitionSymbolicLink,
-          xe::path_to_utf8(file_path.parent_path()));
+          kDefaultPartitionSymbolicLink, registered_path);
       kernel_state_->file_system()->RegisterSymbolicLink(
-          kDefaultGameSymbolicLink, xe::path_to_utf8(file_path.parent_path()));
+          kDefaultGameSymbolicLink, registered_path);
 
       return xe::path_to_utf8(file_path);
     }
