@@ -772,7 +772,15 @@ const uint32_t XmaContextNew::GetNextPacketReadOffset(
                next_packet_index, current_input_packet_count);
       return new_input_buffer_offset;
     }
-    next_packet_index++;
+
+    // No frame *starts* in this packet, it is entirely the continuation of
+    // a frame split across the packet boundary.  Follow this packet's own
+    // skip count to the next packet of the same sub-stream.
+    const uint8_t next_skip = xma::GetPacketSkipCount(next_packet);
+    if (next_skip == 0xFF) {
+      break;
+    }
+    next_packet_index += next_skip + 1;
   }
 
   return kBitsPerPacketHeader;
