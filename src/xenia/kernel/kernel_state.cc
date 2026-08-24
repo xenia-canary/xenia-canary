@@ -31,7 +31,7 @@
 #include "third_party/crypto/TinySHA1.hpp"
 
 DEFINE_bool(apply_title_update, true, "Apply title updates.", "Kernel");
-DEFINE_bool(allow_incompatible_title_update, true,
+DEFINE_bool(allow_incompatible_title_update, false,
             "Allow title updates with mismatched signatures to be applied.",
             "Kernel");
 
@@ -701,11 +701,23 @@ X_RESULT KernelState::ApplyTitleUpdate(
       XELOGW(
           "Skipping incompatible title update for {} due to signature mismatch",
           title_module->name());
+      if (!GetExecutableModule()) {
+        emulator_->display_window()->app_context().CallInUIThread([&]() {
+          new xe::ui::HostNotificationWindow(
+              emulator_->imgui_drawer(), "Warning!",
+              "Title Update signature doesn't match. Skipping its application!",
+              0);
+        });
+      }
       return X_STATUS_SUCCESS;
     }
 
     // First module that is loaded is always main executable. That way we can
     // prevent random message spam in case of loading/unloading.
+    XELOGW(
+        "Applying incompatible title update for {} due to enabled "
+        "allow_incompatible_title_update config option!",
+        title_module->name());
     if (!GetExecutableModule()) {
       emulator_->display_window()->app_context().CallInUIThread([&]() {
         new xe::ui::HostNotificationWindow(
