@@ -47,6 +47,7 @@ class ALSAAudioDriver : public AudioDriver {
                        size_t input_frame_count, size_t output_capacity_frames,
                        float frequency_ratio, uint32_t channels);
   void ApplyVolume(float* buffer, size_t sample_count, float volume);
+  void ApplyChannelSwizzle(float* buffer, size_t channel_samples);
 
   xe::threading::Semaphore* semaphore_ = nullptr;
 
@@ -66,6 +67,11 @@ class ALSAAudioDriver : public AudioDriver {
   uint32_t output_channels_ = 0;
   snd_pcm_uframes_t period_size_ = 0;
   snd_pcm_uframes_t buffer_size_ = 0;
+
+  // True if the opened device's channel map doesn't already match Xenia's
+  // Xbox 360/XAudio2 channel order (FL, FR, FC, LFE, BL, BR), and channels
+  // 3/5 need to be swapped with 5/6 (indices 2/3 with 4/5) before writing.
+  bool swizzle_channels_ = false;
 
   // Threading
   std::unique_ptr<std::thread> worker_thread_;
