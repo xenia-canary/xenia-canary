@@ -186,7 +186,14 @@ bool XmaContextNew::Work() {
     Decode(&data);
     Consume(&output_rb, &data);
 
-    if (!data.IsAnyInputBufferValid() || data.error_status == 4) {
+    // Don't abandon a partially consumed frame. Consume() hands over at most
+    // subframe_decode_count blocks per pass so the pass that exhausts the
+    // input typically leaves the rest of the frame undelivered. Work() has
+    // already cleared is_enabled_ and only XMAEnableContext sets it again.
+    // Game polling for the remainder therefore never kicks and nothing
+    // else can ever deliver it so keep draining until the frame is out.
+    if ((!data.IsAnyInputBufferValid() || data.error_status == 4) &&
+        current_frame_remaining_subframes_ == 0) {
       XELOGAPU(
           "XmaContext {}: Work loop exit - buffers_valid={} error_status={}",
           id(), data.IsAnyInputBufferValid(), data.error_status);
