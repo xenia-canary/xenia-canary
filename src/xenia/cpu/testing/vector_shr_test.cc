@@ -213,3 +213,18 @@ TEST_CASE("VECTOR_SHR_I32_CONSTANT", "[instr]") {
                 vec128i(0x00000001, 0x0000FFFF, 0x00000000, 0x12345678));
       });
 }
+
+// Shifts in zeros where VECTOR_SHA shifts in sign.
+TEST_CASE("VECTOR_SHR_FOLD_MATCHES_BACKEND", "[instr]") {
+  const vec128_t value =
+      vec128b(0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA,
+              0x98, 0x76, 0x54, 0x32, 0x10);
+  const vec128_t counts =
+      vec128b(0, 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 127, 255);
+  for (TypeName part : {INT8_TYPE, INT16_TYPE, INT32_TYPE}) {
+    RequireVectorFoldMatchesBackend(
+        {value, counts}, [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorShr(ops[0], ops[1], part);
+        });
+  }
+}

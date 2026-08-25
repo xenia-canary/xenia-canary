@@ -123,6 +123,73 @@ inline void StoreVR(hir::HIRBuilder& b, int reg, hir::Value* value) {
   b.StoreContext(offsetof(PPCContext, v) + reg * 16, value);
 }
 
+// Runs the op twice and requires a match. Operands from the guest context
+// stay opaque and the backend emits it. Operands as HIR constants reach
+// the folder. Give inputs distinct lanes or a wrong-lane fold will not show.
+template <typename T>
+inline void RequireFoldMatchesBackend(
+    const std::vector<vec128_t>& inputs,
+    std::function<hir::Value*(hir::HIRBuilder&,
+                              const std::vector<hir::Value*>&)>
+        build,
+    std::function<void(hir::HIRBuilder&, hir::Value*)> store,
+    std::function<T(PPCContext*)> read) {
+  T from_backend{};
+  TestFunction([&](hir::HIRBuilder& b) {
+    std::vector<hir::Value*> ops;
+    for (size_t n = 0; n < inputs.size(); ++n) {
+      ops.push_back(LoadVR(b, static_cast<int>(4 + n)));
+    }
+    store(b, build(b, ops));
+    b.Return();
+  })
+      .Run(
+          [&](PPCContext* ctx) {
+            for (size_t n = 0; n < inputs.size(); ++n) {
+              ctx->v[4 + n] = inputs[n];
+            }
+          },
+          [&](PPCContext* ctx) { from_backend = read(ctx); });
+
+  T from_fold{};
+  TestFunction([&](hir::HIRBuilder& b) {
+    std::vector<hir::Value*> ops;
+    for (const vec128_t& input : inputs) {
+      ops.push_back(b.LoadConstantVec128(input));
+    }
+    store(b, build(b, ops));
+    b.Return();
+  }).Run([](PPCContext*) {}, [&](PPCContext* ctx) { from_fold = read(ctx); });
+
+  REQUIRE(from_fold == from_backend);
+}
+
+// Result goes to VR3.
+inline void RequireVectorFoldMatchesBackend(
+    const std::vector<vec128_t>& inputs,
+    std::function<hir::Value*(hir::HIRBuilder&,
+                              const std::vector<hir::Value*>&)>
+        build) {
+  RequireFoldMatchesBackend<vec128_t>(
+      inputs, build,
+      [](hir::HIRBuilder& b, hir::Value* v) { StoreVR(b, 3, v); },
+      [](PPCContext* ctx) { return ctx->v[3]; });
+}
+
+// Result is zero extended into GPR3.
+inline void RequireScalarFoldMatchesBackend(
+    const std::vector<vec128_t>& inputs,
+    std::function<hir::Value*(hir::HIRBuilder&,
+                              const std::vector<hir::Value*>&)>
+        build) {
+  RequireFoldMatchesBackend<uint64_t>(
+      inputs, build,
+      [](hir::HIRBuilder& b, hir::Value* v) {
+        StoreGPR(b, 3, b.ZeroExtend(v, hir::INT64_TYPE));
+      },
+      [](PPCContext* ctx) { return ctx->r[3]; });
+}
+
 }  // namespace testing
 }  // namespace cpu
 }  // namespace xe
