@@ -1003,3 +1003,27 @@ TEST_CASE("VECTOR_COMPARE_FOLD_MATCHES_BACKEND", "[vector]") {
         });
   }
 }
+
+// ============================================================================
+// VECTOR_CONVERT_F2I — constant operand
+// ============================================================================
+// DISALLOW_CONSTANT_FOLDING keeps this unfolded, so a constant operand always
+// reaches the emitter. The unsigned AVX-512 path is the one at risk.
+TEST_CASE("VECTOR_CONVERT_F2I_CONSTANT_MATCHES_REGISTER", "[vector]") {
+  const vec128_t values[] = {
+      vec128f(0.0f, 1.5f, 100.0f, 2.0f),
+      // Past INT_MAX and past UINT_MAX to reach the saturating paths.
+      vec128f(3.0e9f, 4.5e9f, -1.0f, 1.0f),
+      vec128f(std::numeric_limits<float>::quiet_NaN(), 0.0f, -0.0f, 7.0f),
+  };
+  for (const vec128_t& value : values) {
+    RequireVectorFoldMatchesBackend(
+        {value}, [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorConvertF2I(ops[0], ARITHMETIC_UNSIGNED);
+        });
+    RequireVectorFoldMatchesBackend(
+        {value}, [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorConvertF2I(ops[0]);
+        });
+  }
+}
