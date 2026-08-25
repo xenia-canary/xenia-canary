@@ -181,3 +181,46 @@ TEST_CASE("EXTRACT_INT32_FOLD_MATCHES_BACKEND", "[instr]") {
         });
   }
 }
+
+// stvebx and stvehx extract with a runtime index. The fold cannot fire so the
+// vector reaches the emitter as a constant.
+TEST_CASE("EXTRACT_INT8_CONSTANT_VECTOR_MATCHES_REGISTER", "[instr]") {
+  const vec128_t vec =
+      vec128b(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+  for (int i = 0; i < 16; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec},
+        [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.Truncate(LoadGPR(b, 5), INT8_TYPE),
+                           INT8_TYPE);
+        },
+        {uint64_t(i)});
+  }
+}
+
+TEST_CASE("EXTRACT_INT16_CONSTANT_VECTOR_MATCHES_REGISTER", "[instr]") {
+  const vec128_t vec =
+      vec128s(0x0000, 0x1001, 0x2002, 0x3003, 0x4004, 0x5005, 0x6006, 0x7007);
+  for (int i = 0; i < 8; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec},
+        [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.Truncate(LoadGPR(b, 5), INT8_TYPE),
+                           INT16_TYPE);
+        },
+        {uint64_t(i)});
+  }
+}
+
+TEST_CASE("EXTRACT_INT32_CONSTANT_VECTOR_MATCHES_REGISTER", "[instr]") {
+  const vec128_t vec = vec128i(0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F);
+  for (int i = 0; i < 4; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec},
+        [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.Truncate(LoadGPR(b, 5), INT8_TYPE),
+                           INT32_TYPE);
+        },
+        {uint64_t(i)});
+  }
+}
