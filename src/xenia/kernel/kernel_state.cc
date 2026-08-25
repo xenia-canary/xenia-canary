@@ -1057,6 +1057,15 @@ void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
                                   0x001510F1L);
     listener->EnqueueNotification(kXNotificationLiveLinkStateChanged, 0);
   }
+
+  if (!has_notified_xmp_startup_ && listener->mask() & kXNotifyXmp) {
+    has_notified_xmp_startup_ = true;
+    // Playback state is idle until the media player broadcasts a transition
+    // of its own, so only the controller is worth priming.
+    listener->EnqueueNotification(
+        kXNotificationXmpPlaybackControllerChanged,
+        emulator()->audio_media_player()->IsTitleInPlaybackControl());
+  }
 }
 
 void KernelState::UnregisterNotifyListener(XNotifyListener* listener) {

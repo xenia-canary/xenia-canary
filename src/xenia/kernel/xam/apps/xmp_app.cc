@@ -383,9 +383,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // 58411446
       kernel_state_->BroadcastNotification(
           kXNotificationXmpPlaybackControllerChanged,
-          media_player->IsXMPOverrideEnabled()
-              ? false
-              : media_player->IsTitleInPlaybackControl());
+          media_player->IsTitleInPlaybackControl());
 
       return X_E_SUCCESS;
     }
