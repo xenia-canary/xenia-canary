@@ -44,3 +44,11 @@ TEST_CASE("BYTE_SWAP_V128", "[instr]") {
                     vec128i(0x0F10130C, 0x0B0C0D0E, 0x0000000A, 0x00000000));
           });
 }
+
+TEST_CASE("BYTE_SWAP_V128_FOLD_MATCHES_BACKEND", "[instr]") {
+  RequireVectorFoldMatchesBackend(
+      {vec128i(0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F)},
+      [](HIRBuilder& b, const std::vector<Value*>& ops) {
+        return b.ByteSwap(ops[0]);
+      });
+}

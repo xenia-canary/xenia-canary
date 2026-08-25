@@ -309,3 +309,54 @@ TEST_CASE("VECTOR_ADD_F32", "[instr]") {
         REQUIRE(result == vec128i(0x7F7FFFFF));
       });
 }
+
+// No float guard on these. Every lane type reaches a folder.
+namespace {
+const vec128_t kFoldLhs =
+    vec128b(0x00, 0x01, 0x7F, 0x80, 0xFF, 0xFE, 0x40, 0xC0, 0x01, 0x02, 0x03,
+            0x04, 0x7F, 0x81, 0x00, 0xFF);
+const vec128_t kFoldRhs =
+    vec128b(0x00, 0xFF, 0x01, 0x80, 0x01, 0x02, 0x40, 0xC0, 0x7F, 0x80, 0xFF,
+            0x7E, 0x7F, 0x81, 0x01, 0xFF);
+}  // namespace
+
+TEST_CASE("VECTOR_ADD_FOLD_MATCHES_BACKEND", "[instr]") {
+  for (TypeName part : {INT8_TYPE, INT16_TYPE, INT32_TYPE}) {
+    const uint32_t ariths[] = {0, ARITHMETIC_SATURATE, ARITHMETIC_UNSIGNED,
+                               ARITHMETIC_SATURATE | ARITHMETIC_UNSIGNED};
+    for (uint32_t arith : ariths) {
+      RequireVectorFoldMatchesBackend(
+          {kFoldLhs, kFoldRhs},
+          [part, arith](HIRBuilder& b, const std::vector<Value*>& ops) {
+            return b.VectorAdd(ops[0], ops[1], part, arith);
+          });
+    }
+  }
+}
+
+TEST_CASE("VECTOR_SUB_FOLD_MATCHES_BACKEND", "[instr]") {
+  for (TypeName part : {INT8_TYPE, INT16_TYPE, INT32_TYPE}) {
+    const uint32_t ariths[] = {0, ARITHMETIC_SATURATE, ARITHMETIC_UNSIGNED,
+                               ARITHMETIC_SATURATE | ARITHMETIC_UNSIGNED};
+    for (uint32_t arith : ariths) {
+      RequireVectorFoldMatchesBackend(
+          {kFoldLhs, kFoldRhs},
+          [part, arith](HIRBuilder& b, const std::vector<Value*>& ops) {
+            return b.VectorSub(ops[0], ops[1], part, arith);
+          });
+    }
+  }
+}
+
+TEST_CASE("VECTOR_AVERAGE_FOLD_MATCHES_BACKEND", "[instr]") {
+  for (TypeName part : {INT8_TYPE, INT16_TYPE, INT32_TYPE}) {
+    const uint32_t ariths[] = {0, ARITHMETIC_UNSIGNED};
+    for (uint32_t arith : ariths) {
+      RequireVectorFoldMatchesBackend(
+          {kFoldLhs, kFoldRhs},
+          [part, arith](HIRBuilder& b, const std::vector<Value*>& ops) {
+            return b.VectorAverage(ops[0], ops[1], part, arith);
+          });
+    }
+  }
+}

@@ -47,3 +47,19 @@ TEST_CASE("SWIZZLE_V128", "[instr]") {
              REQUIRE(result == vec128i(1, 1, 2, 2));
            });
 }
+
+TEST_CASE("SWIZZLE_V128_FOLD_MATCHES_BACKEND", "[instr]") {
+  const vec128_t vec = vec128i(0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F);
+  const uint32_t masks[] = {
+      SWIZZLE_XYZW_TO_XYZW,        SWIZZLE_XYZW_TO_YZWX,
+      SWIZZLE_XYZW_TO_ZWXY,        SWIZZLE_XYZW_TO_WXYZ,
+      MakeSwizzleMask(3, 2, 1, 0), MakeSwizzleMask(0, 0, 0, 0),
+      MakeSwizzleMask(2, 2, 3, 3),
+  };
+  for (uint32_t mask : masks) {
+    RequireVectorFoldMatchesBackend(
+        {vec}, [mask](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Swizzle(ops[0], INT32_TYPE, mask);
+        });
+  }
+}

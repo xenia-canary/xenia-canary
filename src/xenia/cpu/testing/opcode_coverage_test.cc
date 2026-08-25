@@ -809,3 +809,197 @@ TEST_CASE("VECTOR_COMPARE_UGE_I32", "[vector]") {
         REQUIRE(ctx->v[3].u32[3] == 0xFFFFFFFF);
       });
 }
+
+// ============================================================================
+// Gates that only open when an operand's definition is visible
+// ============================================================================
+// The three below pick structurally different code, not just different
+// registers, based on what the backend can prove about an operand. Every other
+// test feeds operands in through registers, where nothing is provable, so none
+// of these paths ran until VEC128 context promotion made definitions visible
+// in real code. Each compares the gated path against the ungated one rather
+// than a hand-derived result.
+
+// x64's SELECT_V128 drops the bitwise select for vblendvps or vpblendvb once
+// GetPermittedBlendForSelectV128 can prove the selector is a lane or byte
+// mask, which it does by walking the selector's definition.
+TEST_CASE("SELECT_V128_BLEND_MATCHES_BITWISE", "[vector]") {
+  const vec128_t lhs = vec128f(1.0f, 2.0f, 3.0f, 4.0f);
+  const vec128_t rhs = vec128f(1.0f, 9.0f, 3.0f, 9.0f);
+  const vec128_t a = vec128i(0xAAAAAAAA, 0xBBBBBBBB, 0xCCCCCCCC, 0xDDDDDDDD);
+  const vec128_t c = vec128i(0x11111111, 0x22222222, 0x33333333, 0x44444444);
+
+  // Some lanes set and some clear, so a lane granular blend and a bitwise
+  // select disagree if the classification is wrong. Taken from the compare
+  // itself so the mask needs no hand derivation.
+  vec128_t mask = vec128i(0, 0, 0, 0);
+  TestFunction([](HIRBuilder& b) {
+    StoreVR(b, 3, b.VectorCompareEQ(LoadVR(b, 4), LoadVR(b, 5), FLOAT32_TYPE));
+    b.Return();
+  })
+      .Run(
+          [&](PPCContext* ctx) {
+            ctx->v[4] = lhs;
+            ctx->v[5] = rhs;
+          },
+          [&](PPCContext* ctx) { mask = ctx->v[3]; });
+
+  vec128_t blended = vec128i(0, 0, 0, 0);
+  TestFunction([](HIRBuilder& b) {
+    StoreVR(
+        b, 3,
+        b.Select(b.VectorCompareEQ(LoadVR(b, 4), LoadVR(b, 5), FLOAT32_TYPE),
+                 LoadVR(b, 6), LoadVR(b, 7)));
+    b.Return();
+  })
+      .Run(
+          [&](PPCContext* ctx) {
+            ctx->v[4] = lhs;
+            ctx->v[5] = rhs;
+            ctx->v[6] = a;
+            ctx->v[7] = c;
+          },
+          [&](PPCContext* ctx) { blended = ctx->v[3]; });
+
+  vec128_t bitwise = vec128i(0, 0, 0, 0);
+  TestFunction([](HIRBuilder& b) {
+    // Selector arrives in a register, so its definition is opaque and the
+    // bitwise fallback is emitted.
+    StoreVR(b, 3, b.Select(LoadVR(b, 8), LoadVR(b, 6), LoadVR(b, 7)));
+    b.Return();
+  })
+      .Run(
+          [&](PPCContext* ctx) {
+            ctx->v[8] = mask;
+            ctx->v[6] = a;
+            ctx->v[7] = c;
+          },
+          [&](PPCContext* ctx) { bitwise = ctx->v[3]; });
+
+  REQUIRE(blended == bitwise);
+}
+
+// DOT_PRODUCT_3/4 take a shorter route when both operands are the same Value,
+// squaring one conversion instead of multiplying two.
+TEST_CASE("DOT_PRODUCT_LENSQR_MATCHES_GENERAL", "[vector]") {
+  const vec128_t input = vec128f(1.5f, -2.25f, 3.0f, 0.5f);
+
+  for (int width = 3; width <= 4; ++width) {
+    vec128_t one_value = vec128i(0, 0, 0, 0);
+    TestFunction([width](HIRBuilder& b) {
+      auto v = LoadVR(b, 4);
+      StoreVR(b, 3, width == 3 ? b.DotProduct3(v, v) : b.DotProduct4(v, v));
+      b.Return();
+    })
+        .Run([&](PPCContext* ctx) { ctx->v[4] = input; },
+             [&](PPCContext* ctx) { one_value = ctx->v[3]; });
+
+    vec128_t two_values = vec128i(0, 0, 0, 0);
+    TestFunction([width](HIRBuilder& b) {
+      auto v1 = LoadVR(b, 4);
+      auto v2 = LoadVR(b, 5);
+      StoreVR(b, 3, width == 3 ? b.DotProduct3(v1, v2) : b.DotProduct4(v1, v2));
+      b.Return();
+    })
+        .Run(
+            [&](PPCContext* ctx) {
+              ctx->v[4] = input;
+              ctx->v[5] = input;
+            },
+            [&](PPCContext* ctx) { two_values = ctx->v[3]; });
+
+    REQUIRE(one_value == two_values);
+  }
+}
+
+// RSQRT_V128 computes a single lane and broadcasts it once
+// AllFloatVectorLanesSameValue can prove every lane is equal, which swaps one
+// hand written vrsqrte helper for another. A splat proves it, a register does
+// not.
+TEST_CASE("RSQRT_V128_SCALAR_PATH_MATCHES_VECTOR_PATH", "[vector]") {
+  const float value = 4.0f;
+
+  vec128_t from_splat = vec128i(0, 0, 0, 0);
+  TestFunction([&](HIRBuilder& b) {
+    StoreVR(b, 3, b.RSqrt(b.Splat(b.LoadConstantFloat32(value), VEC128_TYPE)));
+    b.Return();
+  })
+      .Run([](PPCContext* ctx) {},
+           [&](PPCContext* ctx) { from_splat = ctx->v[3]; });
+
+  vec128_t from_register = vec128i(0, 0, 0, 0);
+  TestFunction([](HIRBuilder& b) {
+    StoreVR(b, 3, b.RSqrt(LoadVR(b, 4)));
+    b.Return();
+  })
+      .Run(
+          [&](PPCContext* ctx) {
+            ctx->v[4] = vec128f(value, value, value, value);
+          },
+          [&](PPCContext* ctx) { from_register = ctx->v[3]; });
+
+  REQUIRE(from_splat == from_register);
+}
+
+// ============================================================================
+// VECTOR_COMPARE_* — folder vs backend
+// ============================================================================
+// No float guard on these. The FLOAT32 forms reach a folder too.
+TEST_CASE("VECTOR_COMPARE_FOLD_MATCHES_BACKEND", "[vector]") {
+  const vec128_t int_lhs =
+      vec128b(0x00, 0x01, 0x7F, 0x80, 0xFF, 0xFE, 0x40, 0xC0, 0x01, 0x02, 0x03,
+              0x04, 0x7F, 0x81, 0x00, 0xFF);
+  const vec128_t int_rhs =
+      vec128b(0x00, 0xFF, 0x01, 0x80, 0x01, 0x02, 0x40, 0xC0, 0x7F, 0x80, 0xFF,
+              0x7E, 0x7F, 0x81, 0x01, 0xFF);
+
+  for (TypeName part : {INT8_TYPE, INT16_TYPE, INT32_TYPE}) {
+    RequireVectorFoldMatchesBackend(
+        {int_lhs, int_rhs},
+        [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareEQ(ops[0], ops[1], part);
+        });
+    RequireVectorFoldMatchesBackend(
+        {int_lhs, int_rhs},
+        [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareSGT(ops[0], ops[1], part);
+        });
+    RequireVectorFoldMatchesBackend(
+        {int_lhs, int_rhs},
+        [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareSGE(ops[0], ops[1], part);
+        });
+    RequireVectorFoldMatchesBackend(
+        {int_lhs, int_rhs},
+        [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareUGT(ops[0], ops[1], part);
+        });
+    RequireVectorFoldMatchesBackend(
+        {int_lhs, int_rhs},
+        [part](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareUGE(ops[0], ops[1], part);
+        });
+  }
+
+  const float qnan = std::numeric_limits<float>::quiet_NaN();
+  const float pinf = std::numeric_limits<float>::infinity();
+  const vec128_t float_pairs[][2] = {
+      {vec128f(1.0f, -1.0f, 0.0f, 2.0f), vec128f(1.0f, 1.0f, -0.0f, 1.0f)},
+      {vec128f(qnan, 1.0f, qnan, -pinf), vec128f(1.0f, qnan, qnan, pinf)},
+      {vec128f(pinf, -pinf, 0.0f, -0.0f), vec128f(pinf, -pinf, -0.0f, 0.0f)},
+  };
+  for (const auto& pair : float_pairs) {
+    RequireVectorFoldMatchesBackend(
+        {pair[0], pair[1]}, [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareEQ(ops[0], ops[1], FLOAT32_TYPE);
+        });
+    RequireVectorFoldMatchesBackend(
+        {pair[0], pair[1]}, [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareSGT(ops[0], ops[1], FLOAT32_TYPE);
+        });
+    RequireVectorFoldMatchesBackend(
+        {pair[0], pair[1]}, [](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.VectorCompareSGE(ops[0], ops[1], FLOAT32_TYPE);
+        });
+  }
+}

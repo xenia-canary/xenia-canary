@@ -148,3 +148,36 @@ TEST_CASE("EXTRACT_INT32_CONSTANT", "[instr]") {
             });
   }
 }
+
+// The folded and emitted forms must pick the same lane.
+TEST_CASE("EXTRACT_INT8_FOLD_MATCHES_BACKEND", "[instr]") {
+  const vec128_t vec =
+      vec128b(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+  for (int i = 0; i < 16; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec}, [i](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.LoadConstantUint8(uint8_t(i)), INT8_TYPE);
+        });
+  }
+}
+
+TEST_CASE("EXTRACT_INT16_FOLD_MATCHES_BACKEND", "[instr]") {
+  const vec128_t vec =
+      vec128s(0x0000, 0x1001, 0x2002, 0x3003, 0x4004, 0x5005, 0x6006, 0x7007);
+  for (int i = 0; i < 8; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec}, [i](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.LoadConstantUint8(uint8_t(i)), INT16_TYPE);
+        });
+  }
+}
+
+TEST_CASE("EXTRACT_INT32_FOLD_MATCHES_BACKEND", "[instr]") {
+  const vec128_t vec = vec128i(0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F);
+  for (int i = 0; i < 4; ++i) {
+    RequireScalarFoldMatchesBackend(
+        {vec}, [i](HIRBuilder& b, const std::vector<Value*>& ops) {
+          return b.Extract(ops[0], b.LoadConstantUint8(uint8_t(i)), INT32_TYPE);
+        });
+  }
+}
