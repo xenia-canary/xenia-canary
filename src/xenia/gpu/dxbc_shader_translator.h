@@ -418,6 +418,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // bits 0:3 = component_bits - 1
     // bit 4 = signed
     // bit 5 = unsigned-biased
+    // bit 24 = normalized
     // Zero means no scale.
     uint32_t texture_integer_scale_bits[32];
 

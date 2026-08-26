@@ -694,17 +694,20 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
 // last stored channel the same way the host swizzle expands the formats.
 // (k_16 has a 16 bit width in all four components, k_5_6_5 gives blue in W.)
 // Constant (0/1) lanes, gamma, and non-fixed formats have nothing to rescale
-// and stay 0.
+// and stay 0. Bit 24 for normalized fixed fetches.
 uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
                                            uint32_t num_format,
                                            uint32_t guest_swizzle,
                                            uint8_t swizzled_signs) {
-  // num_format 0 is the normalized/fractional fetch - nothing to rescale.
   const FormatInfo& format_info = *FormatInfo::Get(guest_format);
   uint32_t scale_bits = 0;
 
-  if (!num_format || !format_info.fixed) {
+  if (!format_info.fixed) {
     return 0;
+  }
+
+  if (!num_format) {
+    return swizzled_signs == kSwizzledSignsUnsigned ? UINT32_C(1) << 24 : 0;
   }
 
   uint32_t last_stored_component = 0;

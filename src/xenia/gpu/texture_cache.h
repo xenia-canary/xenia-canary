@@ -523,6 +523,7 @@ class TextureCache {
   struct TextureBinding {
     TextureKey key;
     // Packed integer scale, 6 bits per component.
+    // Bit 24 for normalized values.
     uint32_t integer_scale_bits;
     // Destination swizzle merged with guest to host format swizzle.
     uint32_t host_swizzle;
