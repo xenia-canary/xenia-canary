@@ -73,6 +73,8 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
   } else {
     // Get the base address in dwords from the bits 2:31 of the first fetch
     // constant word.
+    // Drop the upper bits so writeback & XPS addresses alias their
+    // physical backing in shared memory.
     id_vector_temp_.clear();
     // The only element of the fetch constant buffer.
     id_vector_temp_.push_back(const_int_0_);
@@ -92,9 +94,12 @@ void SpirvShaderTranslator::ProcessVertexFetchInstruction(
     // may be conditional, so fetch constants may also be used conditionally.
     address = builder_->createUnaryOp(
         spv::OpBitcast, type_int_,
-        builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
-                              fetch_constant_word_0,
-                              builder_->makeUintConstant(2)));
+        builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_,
+            builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
+                                  fetch_constant_word_0,
+                                  builder_->makeUintConstant(2)),
+            builder_->makeUintConstant(0x07FFFFFF)));
     // address is the base now. The exclusive end is base + size (size in words
     // in bits 2:25 of the second word). Store it for the subsequent
     // vfetch_mini, which reuses this fetch constant.
