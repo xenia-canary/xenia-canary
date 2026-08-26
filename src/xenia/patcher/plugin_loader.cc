@@ -57,7 +57,7 @@ void PluginLoader::LoadConfigs() {
 
 void PluginLoader::LoadTitleConfig(const uint32_t title_id) {
   const std::filesystem::path title_plugins_config =
-      plugins_root_ / fmt::format("{:08X}\\plugins.toml", title_id);
+      plugins_root_ / fmt::format("{:08X}", title_id) / "plugins.toml";
 
   if (!std::filesystem::exists(title_plugins_config)) {
     return;
