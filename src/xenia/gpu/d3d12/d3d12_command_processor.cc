@@ -2891,7 +2891,8 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                 vfetch_index, vfetch_constant.dword_0, vfetch_constant.dword_1);
             return false;
         }
-        vfetch_addresses[vfetch_current_queued] = vfetch_constant.address;
+        vfetch_addresses[vfetch_current_queued] =
+            vfetch_constant.address & 0x07FFFFFF;
         vfetch_sizes[vfetch_current_queued++] = vfetch_constant.size;
       }
     }

@@ -2858,7 +2858,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                 static_cast<uint32_t>(vfetch_constant.type));
             return false;
         }
-        vfetch_addresses[vfetch_current_queued] = vfetch_constant.address;
+        vfetch_addresses[vfetch_current_queued] =
+            vfetch_constant.address & 0x07FFFFFF;
         vfetch_sizes[vfetch_current_queued++] = vfetch_constant.size;
       }
     }

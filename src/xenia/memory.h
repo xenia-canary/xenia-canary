@@ -669,6 +669,7 @@ class Memory {
     VirtualHeap v90000000;
 
     VirtualHeap physical;
+    PhysicalHeap v7F000000;
     PhysicalHeap vA0000000;
     PhysicalHeap vC0000000;
     PhysicalHeap vE0000000;

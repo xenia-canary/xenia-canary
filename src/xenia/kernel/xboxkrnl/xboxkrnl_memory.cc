@@ -761,10 +761,11 @@ dword_result_t KeGetImagePageTableEntry_entry(dword_t address,
 DECLARE_XBOXKRNL_EXPORT1(KeGetImagePageTableEntry, kMemory, kStub);
 
 dword_result_t KeLockL2_entry() {
-  // TODO
+  // Since the L2 cache isn't emulated, the XPS range is always backed, so
+  // there's nothing to lock.
   return 0;
 }
-DECLARE_XBOXKRNL_EXPORT1(KeLockL2, kMemory, kStub);
+DECLARE_XBOXKRNL_EXPORT2(KeLockL2, kMemory, kImplemented, kSketchy);
 
 void KeUnlockL2_entry() {}
 DECLARE_XBOXKRNL_EXPORT1(KeUnlockL2, kMemory, kStub);
