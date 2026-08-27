@@ -346,8 +346,9 @@ void GTKWindow::EndBatchedSizeUpdate(
   }
 }
 
-VirtualKey GTKWindow::TranslateVirtualKey(guint keyval) {
+VirtualKey GTKWindow::TranslateVirtualKeyToUKLayout(guint keyval) {
   switch (keyval) {
+    // Letters
     case GDK_KEY_a:
     case GDK_KEY_A:
       return VirtualKey::kA;
@@ -426,48 +427,166 @@ VirtualKey GTKWindow::TranslateVirtualKey(guint keyval) {
     case GDK_KEY_z:
     case GDK_KEY_Z:
       return VirtualKey::kZ;
-    case GDK_KEY_0:
-      return VirtualKey::k0;
+
+    // Top-row digits & Shift equivalents
     case GDK_KEY_1:
+    case GDK_KEY_exclam:
       return VirtualKey::k1;
     case GDK_KEY_2:
+    case GDK_KEY_quotedbl:  // UK: Shift + 2 = "
       return VirtualKey::k2;
     case GDK_KEY_3:
+    case GDK_KEY_sterling:  // UK: Shift + 3 = £
       return VirtualKey::k3;
     case GDK_KEY_4:
+    case GDK_KEY_dollar:
       return VirtualKey::k4;
     case GDK_KEY_5:
+    case GDK_KEY_percent:
       return VirtualKey::k5;
     case GDK_KEY_6:
+    case GDK_KEY_asciicircum:
       return VirtualKey::k6;
     case GDK_KEY_7:
+    case GDK_KEY_ampersand:
       return VirtualKey::k7;
     case GDK_KEY_8:
+    case GDK_KEY_asterisk:
       return VirtualKey::k8;
     case GDK_KEY_9:
+    case GDK_KEY_parenleft:
       return VirtualKey::k9;
+    case GDK_KEY_0:
+    case GDK_KEY_parenright:
+      return VirtualKey::k0;
+
+    // Numpad Numbers (Num Lock ON)
+    case GDK_KEY_KP_0:
+      return VirtualKey::kNumpad0;
+    case GDK_KEY_KP_1:
+      return VirtualKey::kNumpad1;
+    case GDK_KEY_KP_2:
+      return VirtualKey::kNumpad2;
+    case GDK_KEY_KP_3:
+      return VirtualKey::kNumpad3;
+    case GDK_KEY_KP_4:
+      return VirtualKey::kNumpad4;
+    case GDK_KEY_KP_5:
+      return VirtualKey::kNumpad5;
+    case GDK_KEY_KP_6:
+      return VirtualKey::kNumpad6;
+    case GDK_KEY_KP_7:
+      return VirtualKey::kNumpad7;
+    case GDK_KEY_KP_8:
+      return VirtualKey::kNumpad8;
+    case GDK_KEY_KP_9:
+      return VirtualKey::kNumpad9;
+
+    // Numpad Math Operators & Miscellaneous
+    case GDK_KEY_KP_Multiply:
+      return VirtualKey::kMultiply;
+    case GDK_KEY_KP_Add:
+      return VirtualKey::kAdd;
+    case GDK_KEY_KP_Subtract:
+      return VirtualKey::kSubtract;
+    case GDK_KEY_KP_Divide:
+      return VirtualKey::kDivide;
+    case GDK_KEY_KP_Decimal:
+      return VirtualKey::kDecimal;
+    case GDK_KEY_KP_Begin:
+      return VirtualKey::kClear;
+
+    // Punctuation / OEM Pairs
     case GDK_KEY_semicolon:
+    case GDK_KEY_colon:
       return VirtualKey::kOem1;
-    case GDK_KEY_apostrophe:
-      return VirtualKey::kOem7;
+    case GDK_KEY_equal:
+    case GDK_KEY_plus:
+      return VirtualKey::kOemPlus;
     case GDK_KEY_comma:
+    case GDK_KEY_less:
       return VirtualKey::kOemComma;
+    case GDK_KEY_minus:
+    case GDK_KEY_underscore:
+      return VirtualKey::kOemMinus;
     case GDK_KEY_period:
+    case GDK_KEY_greater:
       return VirtualKey::kOemPeriod;
-    case GDK_KEY_Up:
-      return VirtualKey::kUp;
-    case GDK_KEY_Down:
-      return VirtualKey::kDown;
+    case GDK_KEY_slash:
+    case GDK_KEY_question:
+      return VirtualKey::kOem2;
+    case GDK_KEY_grave:
+    case GDK_KEY_notsign:
+    case GDK_KEY_brokenbar:  // UK: (` / ¬ / ¦)
+      return VirtualKey::kOem3;
+    case GDK_KEY_bracketleft:
+    case GDK_KEY_braceleft:
+      return VirtualKey::kOem4;  // '[{'
+    case GDK_KEY_bracketright:
+    case GDK_KEY_braceright:
+      return VirtualKey::kOem6;  // ']}'
+    case GDK_KEY_apostrophe:
+    case GDK_KEY_at:  // UK: (' / @)
+      return VirtualKey::kOem7;
+    case GDK_KEY_numbersign:
+    case GDK_KEY_asciitilde:  // UK: (# / ~)
+      return VirtualKey::kOem5;
+
+    // Extra physical ISO key
+    case GDK_KEY_backslash:
+    case GDK_KEY_bar:  // UK: '\ |'
+      return VirtualKey::kOem102;
+
+    // Navigation / editing
+    case GDK_KEY_space:
+      return VirtualKey::kSpace;
+    case GDK_KEY_KP_Prior:
+    case GDK_KEY_Page_Up:
+      return VirtualKey::kPrior;
+    case GDK_KEY_KP_Next:
+    case GDK_KEY_Page_Down:
+      return VirtualKey::kNext;
+    case GDK_KEY_KP_End:
+    case GDK_KEY_End:
+      return VirtualKey::kEnd;
+    case GDK_KEY_KP_Home:
+    case GDK_KEY_Home:
+      return VirtualKey::kHome;
+    case GDK_KEY_KP_Left:
     case GDK_KEY_Left:
       return VirtualKey::kLeft;
+    case GDK_KEY_KP_Up:
+    case GDK_KEY_Up:
+      return VirtualKey::kUp;
+    case GDK_KEY_KP_Right:
     case GDK_KEY_Right:
       return VirtualKey::kRight;
+    case GDK_KEY_KP_Down:
+    case GDK_KEY_Down:
+      return VirtualKey::kDown;
+    case GDK_KEY_Select:
+      return VirtualKey::kSelect;
+    case GDK_KEY_Print:
+    case GDK_KEY_Sys_Req:
+      return VirtualKey::kSnapshot;
+    case GDK_KEY_KP_Insert:
+    case GDK_KEY_Insert:
+      return VirtualKey::kInsert;
+    case GDK_KEY_KP_Delete:
+    case GDK_KEY_Delete:
+      return VirtualKey::kDelete;
     case GDK_KEY_BackSpace:
       return VirtualKey::kBack;
     case GDK_KEY_Tab:
       return VirtualKey::kTab;
     case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
       return VirtualKey::kReturn;
+    case GDK_KEY_Pause:
+    case GDK_KEY_Break:
+      return VirtualKey::kPause;
+
+    // Modifiers
     case GDK_KEY_Control_L:
       return VirtualKey::kLControl;
     case GDK_KEY_Control_R:
@@ -480,12 +599,14 @@ VirtualKey GTKWindow::TranslateVirtualKey(guint keyval) {
       return VirtualKey::kLShift;
     case GDK_KEY_Shift_R:
       return VirtualKey::kRShift;
-    case GDK_KEY_space:
-      return VirtualKey::kSpace;
     case GDK_KEY_Caps_Lock:
       return VirtualKey::kCapital;
-    case GDK_KEY_Escape:
-      return VirtualKey::kEscape;
+    case GDK_KEY_Num_Lock:
+      return VirtualKey::kNumLock;
+    case GDK_KEY_Scroll_Lock:
+      return VirtualKey::kScroll;
+
+    // Function keys
     case GDK_KEY_F1:
       return VirtualKey::kF1;
     case GDK_KEY_F2:
@@ -510,20 +631,59 @@ VirtualKey GTKWindow::TranslateVirtualKey(guint keyval) {
       return VirtualKey::kF11;
     case GDK_KEY_F12:
       return VirtualKey::kF12;
-    case GDK_KEY_KP_Multiply:
-      return VirtualKey::kMultiply;
-    case GDK_KEY_KP_Add:
-      return VirtualKey::kAdd;
-    case GDK_KEY_KP_Subtract:
-      return VirtualKey::kSubtract;
-    case GDK_KEY_KP_Divide:
-      return VirtualKey::kDivide;
-    case GDK_KEY_Pause:
-    case GDK_KEY_Break:
-      return VirtualKey::kPause;
+    case GDK_KEY_F13:
+      return VirtualKey::kF13;
+    case GDK_KEY_F14:
+      return VirtualKey::kF14;
+    case GDK_KEY_F15:
+      return VirtualKey::kF15;
+    case GDK_KEY_F16:
+      return VirtualKey::kF16;
+    case GDK_KEY_F17:
+      return VirtualKey::kF17;
+    case GDK_KEY_F18:
+      return VirtualKey::kF18;
+    case GDK_KEY_F19:
+      return VirtualKey::kF19;
+    case GDK_KEY_F20:
+      return VirtualKey::kF20;
+    case GDK_KEY_F21:
+      return VirtualKey::kF21;
+    case GDK_KEY_F22:
+      return VirtualKey::kF22;
+    case GDK_KEY_F23:
+      return VirtualKey::kF23;
+    case GDK_KEY_F24:
+      return VirtualKey::kF24;
+
+    // Windows / Super / Menu keys
+    case GDK_KEY_Super_L:
+      return VirtualKey::kLWin;
+    case GDK_KEY_Super_R:
+      return VirtualKey::kRWin;
+    case GDK_KEY_Menu:
+      return VirtualKey::kApps;
+
+    // Media / volume keys
+    case GDK_KEY_AudioMute:
+      return VirtualKey::kVolumeMute;
+    case GDK_KEY_AudioLowerVolume:
+      return VirtualKey::kVolumeDown;
+    case GDK_KEY_AudioRaiseVolume:
+      return VirtualKey::kVolumeUp;
+    case GDK_KEY_AudioNext:
+      return VirtualKey::kMediaNextTrack;
+    case GDK_KEY_AudioPrev:
+      return VirtualKey::kMediaPrevTrack;
+    case GDK_KEY_AudioStop:
+      return VirtualKey::kMediaStop;
+    case GDK_KEY_AudioPause:
+    case GDK_KEY_AudioPlay:
+      return VirtualKey::kMediaPlayPause;
+
     default:
-      XELOGW("Unhandled key code: {}", keyval);
-      return VirtualKey(keyval);
+      XELOGW("Unhandled keyval: {}", keyval);
+      return static_cast<VirtualKey>(keyval);
   }
 }
 
@@ -607,43 +767,39 @@ bool GTKWindow::HandleKeyboard(
   bool shift_pressed = modifiers & GDK_SHIFT_MASK;
   bool ctrl_pressed = modifiers & GDK_CONTROL_MASK;
   bool alt_pressed = modifiers & GDK_META_MASK;
-  bool super_pressed = modifiers & GDK_SUPER_MASK;
+  bool capital_pressed = modifiers & GDK_LOCK_MASK;
 
   // Translate GTK to VK
-  VirtualKey vk = TranslateVirtualKey(event->keyval);
-  uint32_t unicode_char = gdk_keyval_to_unicode(event->keyval);
-
-  bool is_key_pressed = false;
-
-  // Backspace has unicode value but is not printable therefore we want
-  // OnKeyDown not OnKeyChar
-  if (unicode_char > 0) {
-    if (std::isprint(unicode_char)) {
-      is_key_pressed = true;
-      vk = static_cast<VirtualKey>(unicode_char);
-    }
-  }
+  VirtualKey vk = TranslateVirtualKeyToUKLayout(event->keyval);
 
   KeyEvent e(this, vk, 1, event->type == GDK_KEY_RELEASE, shift_pressed,
-             ctrl_pressed, alt_pressed, super_pressed);
-  switch (event->type) {
-    case GDK_KEY_PRESS:
-      if (is_key_pressed) {
-        OnKeyChar(e, destruction_receiver);
-      } else {
-        OnKeyDown(e, destruction_receiver);
+             ctrl_pressed, alt_pressed, capital_pressed);
 
-        if (destruction_receiver.IsWindowDestroyedOrClosed()) {
-          return e.is_handled();
+  switch (event->type) {
+    case GDK_KEY_PRESS: {
+      // Handle OnKeyDown before OnKeyChar so the input driver can update the
+      // unicode for the key press.
+      OnKeyDown(e, destruction_receiver);
+
+      // Guarantee input driver receives the unicode corresponding to its
+      // virtual key.
+      uint16_t unicode_char = gdk_keyval_to_unicode(event->keyval);
+
+      if (unicode_char > 0) {
+        if (g_unichar_isprint(unicode_char)) {
+          e.set_unicode(unicode_char);
+
+          OnKeyChar(e, destruction_receiver);
         }
       }
-      break;
+    } break;
     case GDK_KEY_RELEASE:
       OnKeyUp(e, destruction_receiver);
       break;
     default:
       break;
   }
+
   // Returning immediately anyway - no need to check
   // destruction_receiver.IsWindowDestroyed().
   return e.is_handled();

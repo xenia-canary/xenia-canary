@@ -76,7 +76,7 @@ class KeyEvent : public UIEvent {
   explicit KeyEvent(Window* target, VirtualKey virtual_key, int repeat_count,
                     bool prev_state, bool modifier_shift_pressed,
                     bool modifier_ctrl_pressed, bool modifier_alt_pressed,
-                    bool modifier_super_pressed)
+                    bool modifier_capital_pressed)
       : UIEvent(target),
         virtual_key_(virtual_key),
         repeat_count_(repeat_count),
@@ -84,13 +84,16 @@ class KeyEvent : public UIEvent {
         modifier_shift_pressed_(modifier_shift_pressed),
         modifier_ctrl_pressed_(modifier_ctrl_pressed),
         modifier_alt_pressed_(modifier_alt_pressed),
-        modifier_super_pressed_(modifier_super_pressed) {}
+        modifier_capital_pressed_(modifier_capital_pressed) {}
   ~KeyEvent() override = default;
 
   bool is_handled() const { return handled_; }
   void set_handled(bool value) { handled_ = value; }
 
   VirtualKey virtual_key() const { return virtual_key_; }
+  uint16_t unicode() const { return unicode_; }
+  void set_unicode(uint16_t unicode) { unicode_ = unicode; }
+  void set_virtual_key(VirtualKey virtual_key) { virtual_key_ = virtual_key; }
 
   int repeat_count() const { return repeat_count_; }
   bool prev_state() const { return prev_state_; }
@@ -98,19 +101,20 @@ class KeyEvent : public UIEvent {
   bool is_shift_pressed() const { return modifier_shift_pressed_; }
   bool is_ctrl_pressed() const { return modifier_ctrl_pressed_; }
   bool is_alt_pressed() const { return modifier_alt_pressed_; }
-  bool is_super_pressed() const { return modifier_super_pressed_; }
+  bool is_capital_pressed() const { return modifier_capital_pressed_; }
 
  private:
   bool handled_ = false;
   VirtualKey virtual_key_ = VirtualKey::kNone;
+  uint16_t unicode_ = 0;
 
   int repeat_count_ = 0;
   bool prev_state_ = false;  // Key previously down(true) or up(false)
 
   bool modifier_shift_pressed_ = false;
+  bool modifier_capital_pressed_ = false;
   bool modifier_ctrl_pressed_ = false;
   bool modifier_alt_pressed_ = false;
-  bool modifier_super_pressed_ = false;
 };
 
 class MouseEvent : public UIEvent {

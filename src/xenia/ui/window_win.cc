@@ -916,9 +916,9 @@ bool Win32Window::HandleKeyboard(
     UINT message, WPARAM wParam, LPARAM lParam,
     WindowDestructionReceiver& destruction_receiver) {
   KeyEvent e(this, VirtualKey(wParam), lParam & 0xFFFF,
-             !!(lParam & (LPARAM(1) << 30)), !!(GetKeyState(VK_SHIFT) & 0x80),
-             !!(GetKeyState(VK_CONTROL) & 0x80),
-             !!(GetKeyState(VK_MENU) & 0x80), !!(GetKeyState(VK_LWIN) & 0x80));
+             !!(lParam & (LPARAM(1) << 30)), !!(GetKeyState(VK_SHIFT) & 0x1),
+             !!(GetKeyState(VK_CONTROL) & 0x1), !!(GetKeyState(VK_MENU) & 0x1),
+             !!(GetKeyState(VK_CAPITAL) & 0x1));
   switch (message) {
     case WM_KEYDOWN:
       OnKeyDown(e, destruction_receiver);
@@ -926,9 +926,22 @@ bool Win32Window::HandleKeyboard(
     case WM_KEYUP:
       OnKeyUp(e, destruction_receiver);
       break;
-    case WM_CHAR:
+    case WM_CHAR: {
+      // Guarantee input driver receives the unicode corresponding to its
+      // virtual key.
+      e.set_virtual_key(VirtualKey::kNone);
+      e.set_unicode(wParam);
+
+      int16_t vk_result = VkKeyScanW(wParam);
+
+      if (vk_result >= 0) {
+        VirtualKey vk = VirtualKey(LOBYTE(vk_result));
+
+        e.set_virtual_key(vk);
+      }
+
       OnKeyChar(e, destruction_receiver);
-      break;
+    } break;
     default:
       break;
   }
