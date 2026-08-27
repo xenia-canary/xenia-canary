@@ -205,6 +205,31 @@ SleepResult AlertableSleep(std::chrono::microseconds duration) {
   return SleepResult::kSuccess;
 }
 
+class PosixConditionBase;
+
+// Lets Thread::QueueUserCallback interrupt an in-progress alertable
+// PosixConditionBase::Wait, mirroring how a queued APC wakes an alertable
+// wait on Windows. Without this, a callback queued while the target thread
+// is blocked (alertable or not) is never noticed by the wait itself: the
+// wake-up signal has nothing to interrupt, since the underlying condition
+// variable only re-checks its predicate when notified. Owned by the target
+// thread's PosixCondition<Thread> so a callback queued from a different
+// native thread can reach it directly via the WaitHandle it was queued on.
+struct AlertableWaitState {
+  // The PosixConditionBase this thread is currently blocked in, if any and
+  // if that wait is alertable. Set/cleared by PosixConditionBase::Wait.
+  std::atomic<PosixConditionBase*> blocked_on{nullptr};
+  // Sticky until consumed by an alertable wait: sets when queued, so a
+  // callback queued just before the target thread enters its next alertable
+  // wait is not lost even though nothing was there yet to notify.
+  std::atomic<bool> callback_pending{false};
+};
+
+// Points at the running thread's own AlertableWaitState. Set in
+// ThreadStartRoutine/GetCurrentThread so PosixConditionBase::Wait can find
+// it without a cross-thread lookup.
+thread_local AlertableWaitState* current_alertable_wait_state_ = nullptr;
+
 TlsHandle AllocateTlsHandle() {
   auto key = static_cast<pthread_key_t>(-1);
   auto res = pthread_key_create(&key, nullptr);
@@ -243,7 +268,22 @@ class PosixConditionBase {
 
   WaitResult Wait(std::chrono::milliseconds timeout) {
     bool executed;
-    auto predicate = [this] { return this->signaled(); };
+    bool woke_for_callback = false;
+    // Only alertable waits may be interrupted by a queued callback (matches
+    // the alertable flag's meaning for real APC delivery).
+    AlertableWaitState* wait_state =
+        alertable_state_ ? current_alertable_wait_state_ : nullptr;
+    auto predicate = [this, wait_state, &woke_for_callback] {
+      if (this->signaled()) {
+        return true;
+      }
+      if (wait_state &&
+          wait_state->callback_pending.load(std::memory_order_acquire)) {
+        woke_for_callback = true;
+        return true;
+      }
+      return false;
+    };
 
     // Handle robust mutex locking
     auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
@@ -257,6 +297,10 @@ class PosixConditionBase {
 
     std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
 
+    if (wait_state) {
+      wait_state->blocked_on.store(this, std::memory_order_release);
+    }
+
     if (predicate()) {
       executed = true;
     } else {
@@ -267,7 +311,16 @@ class PosixConditionBase {
         executed = cond_.wait_for(lock, timeout, predicate);
       }
     }
+
+    if (wait_state) {
+      wait_state->blocked_on.store(nullptr, std::memory_order_release);
+    }
+
     if (executed) {
+      if (woke_for_callback) {
+        wait_state->callback_pending.store(false, std::memory_order_release);
+        return WaitResult::kUserCallback;
+      }
       post_execution();
       return WaitResult::kSuccess;
     }
@@ -293,7 +346,19 @@ class PosixConditionBase {
                         ? std::chrono::steady_clock::time_point::max()
                         : start_time + timeout;
 
+    AlertableWaitState* wait_state =
+        alertable_state_ ? current_alertable_wait_state_ : nullptr;
+
     while (true) {
+      // A queued callback interrupts an alertable multi-wait the same way it
+      // does a single-object Wait() (see AlertableWaitState) -- checked here
+      // rather than via blocked_on/notify since this path already polls.
+      if (wait_state &&
+          wait_state->callback_pending.load(std::memory_order_acquire)) {
+        wait_state->callback_pending.store(false, std::memory_order_release);
+        return std::make_pair(WaitResult::kUserCallback, size_t(0));
+      }
+
       // Check all handles to see if any/all are signaled
       // Use try_lock to avoid deadlocks from lock ordering issues
       size_t first_signaled = std::numeric_limits<size_t>::max();
@@ -387,6 +452,15 @@ class PosixConditionBase {
 
   [[nodiscard]] virtual void* native_handle() const {
     return const_cast<std::condition_variable&>(cond_).native_handle();
+  }
+
+  // Wakes a thread parked in this object's Wait() so it can re-check its
+  // predicate, which is how it notices AlertableWaitState::callback_pending.
+  // Safe to call from any thread's normal execution context (unlike the
+  // pthread_sigqueue-based nudge, this never runs inside a signal handler).
+  void NotifyForUserCallback() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cond_.notify_all();
   }
 
  protected:
@@ -682,6 +756,8 @@ class PosixCondition<Thread> final : public PosixConditionBase {
 
   bool Signal() override { return true; }
 
+  AlertableWaitState& alertable_wait_state() { return alertable_wait_state_; }
+
   std::string name() const {
     WaitStarted();
     auto result = std::array<char, 17>{'\0'};
@@ -829,8 +905,23 @@ class PosixCondition<Thread> final : public PosixConditionBase {
 
   void QueueUserCallback(std::function<void()> callback) {
     WaitStarted();
-    std::unique_lock lock(callback_mutex_);
-    user_callback_ = std::move(callback);
+    {
+      std::unique_lock lock(callback_mutex_);
+      user_callback_ = std::move(callback);
+    }
+
+    // Sticky-set before checking blocked_on: if the target thread hasn't
+    // entered its wait yet, its next alertable Wait() will see this pending
+    // and return immediately instead of blocking. If it's already blocked,
+    // wake it so it re-checks and picks it up now.
+    alertable_wait_state_.callback_pending.store(true,
+                                                 std::memory_order_release);
+    PosixConditionBase* blocked =
+        alertable_wait_state_.blocked_on.load(std::memory_order_acquire);
+    if (blocked) {
+      blocked->NotifyForUserCallback();
+    }
+
     sigval value{};
     value.sival_ptr = this;
 #if XE_PLATFORM_ANDROID
@@ -998,6 +1089,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   mutable std::mutex callback_mutex_;
   mutable std::condition_variable state_signal_;
   std::function<void()> user_callback_;
+  AlertableWaitState alertable_wait_state_;
 #if XE_PLATFORM_ANDROID
   // Name accessible via name() on Android before API 26 which added
   // pthread_getname_np.
@@ -1314,6 +1406,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
   delete start_data;
 
   current_thread_ = thread;
+  current_alertable_wait_state_ = &thread->condition().alertable_wait_state();
   thread->handle_.tid_ = static_cast<pid_t>(syscall(SYS_gettid));
   {
     std::unique_lock lock(thread->handle_.state_mutex_);
@@ -1343,6 +1436,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
     thread->handle_.cond_.notify_all();
   }
 
+  current_alertable_wait_state_ = nullptr;
   current_thread_ = nullptr;
   return nullptr;
 }
@@ -1372,6 +1466,8 @@ Thread* Thread::GetCurrentThread() {
   pthread_t handle = pthread_self();
 
   current_thread_ = new PosixThread(handle);
+  current_alertable_wait_state_ =
+      &current_thread_->condition().alertable_wait_state();
   // TODO(bwrsandman): Disabling deleting thread_local current thread to prevent
   //                   assert in destructor. Since this is thread local, the
   //                   "memory leaking" is controlled.
