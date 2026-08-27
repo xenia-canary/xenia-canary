@@ -335,6 +335,8 @@ void ImGuiDrawer::SetupNotificationTextures() {
 
     stbi_image_free(image_data);
   }
+
+  achievement_notification_logo_ = LoadImGuiIcon(xenia_notification_logo_data);
 }
 
 // https://everythingfonts.com/unicode/maps
@@ -564,6 +566,7 @@ void ImGuiDrawer::SetImmediateDrawer(ImmediateDrawer* new_immediate_drawer) {
     GetIO().Fonts->TexID = reinterpret_cast<ImTextureID>(nullptr);
     font_texture_.reset();
     locked_achievement_icon_.reset();
+    achievement_notification_logo_.reset();
     notification_icon_textures_.clear();
   }
   immediate_drawer_ = new_immediate_drawer;
