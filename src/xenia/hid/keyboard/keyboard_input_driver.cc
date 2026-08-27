@@ -2,28 +2,27 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2022 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Xenia Canary. All rights reserved.                          *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
 
-#include "xenia/hid/winkey/winkey_input_driver.h"
+#include "xenia/hid/keyboard/keyboard_input_driver.h"
 
 #include "xenia/base/logging.h"
-#include "xenia/base/platform_win.h"
 #include "xenia/hid/hid_flags.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window.h"
 
-#define XE_HID_WINKEY_BINDING(button, description, cvar_name, \
-                              cvar_default_value)             \
-  DEFINE_string(cvar_name, cvar_default_value,                \
-                "List of keys to bind to " description        \
-                ", separated by spaces",                      \
-                "HID.WinKey")
-#include "winkey_binding_table.inc"
-#undef XE_HID_WINKEY_BINDING
+#define XE_HID_KEYBOARD_BINDING(button, description, cvar_name, \
+                                cvar_default_value)             \
+  DEFINE_string(cvar_name, cvar_default_value,                  \
+                "List of keys to bind to " description          \
+                ", separated by spaces",                        \
+                "HID.Key")
+#include "keyboard_binding_table.inc"
+#undef XE_HID_KEYBOARD_BINDING
 
 DEFINE_int32(keyboard_mode, 0,
              "Allows user do specify keyboard working mode. Possible values: 0 "
@@ -39,9 +38,9 @@ DEFINE_int32(
 
 namespace xe {
 namespace hid {
-namespace winkey {
+namespace keyboard {
 
-static uint8_t VirtualKeyToHIDUsage(UINT vk) {
+uint8_t KeyboardInputDriver::VirtualKeyToHIDUsage(uint16_t vk) const {
   // Letters: contiguous in both VK and HID space
   if (vk >= 'A' && vk <= 'Z') {
     return vk - 'A' + 0x04;
@@ -53,106 +52,111 @@ static uint8_t VirtualKeyToHIDUsage(UINT vk) {
   }
 
   // F1-F12
-  if (vk >= VK_F1 && vk <= VK_F12) {
-    return vk - VK_F1 + 0x3A;
+  if (vk >= static_cast<uint16_t>(ui::VirtualKey::kF1) &&
+      vk <= static_cast<uint16_t>(ui::VirtualKey::kF12)) {
+    return vk - static_cast<uint16_t>(ui::VirtualKey::kF1) + 0x3A;
   }
 
   // F13-F24
-  if (vk >= VK_F13 && vk <= VK_F24) {
-    return vk - VK_F13 + 0x68;
+  if (vk >= static_cast<uint16_t>(ui::VirtualKey::kF13) &&
+      vk <= static_cast<uint16_t>(ui::VirtualKey::kF24)) {
+    return vk - static_cast<uint16_t>(ui::VirtualKey::kF13) + 0x68;
   }
 
   // Numpad 1-9 (0 is irregular: 0x62)
-  if (vk >= VK_NUMPAD1 && vk <= VK_NUMPAD9) {
-    return vk - VK_NUMPAD1 + 0x59;
+  if (vk >= static_cast<uint16_t>(ui::VirtualKey::kNumpad1) &&
+      vk <= static_cast<uint16_t>(ui::VirtualKey::kNumpad9)) {
+    return vk - static_cast<uint16_t>(ui::VirtualKey::kNumpad1) + 0x59;
   }
 
   // Modifiers (Left side starts at 0xE0, Right at 0xE4)
-  if (vk >= VK_LCONTROL && vk <= VK_LWIN) {
-    return vk - VK_LCONTROL + 0xE0;
+  if (vk >= static_cast<uint16_t>(ui::VirtualKey::kLControl) &&
+      vk <= static_cast<uint16_t>(ui::VirtualKey::kLWin)) {
+    return vk - static_cast<uint16_t>(ui::VirtualKey::kLControl) + 0xE0;
   }
-  if (vk >= VK_RCONTROL && vk <= VK_RWIN) {
-    return vk - VK_RCONTROL + 0xE4;
+  if (vk >= static_cast<uint16_t>(ui::VirtualKey::kRControl) &&
+      vk <= static_cast<uint16_t>(ui::VirtualKey::kRWin)) {
+    return vk - static_cast<uint16_t>(ui::VirtualKey::kRControl) + 0xE4;
   }
 
   switch (vk) {
     case '0':
       return 0x27;
-    case VK_RETURN:
+    case static_cast<uint16_t>(ui::VirtualKey::kReturn):
       return 0x28;
-    case VK_ESCAPE:
+    case static_cast<uint16_t>(ui::VirtualKey::kEscape):
       return 0x29;
-    case VK_BACK:
+    case static_cast<uint16_t>(ui::VirtualKey::kBack):
       return 0x2A;
-    case VK_TAB:
+    case static_cast<uint16_t>(ui::VirtualKey::kTab):
       return 0x2B;
-    case VK_SPACE:
+    case static_cast<uint16_t>(ui::VirtualKey::kSpace):
       return 0x2C;
-    case VK_OEM_MINUS:
+    case static_cast<uint16_t>(ui::VirtualKey::kOemMinus):
       return 0x2D;
-    case VK_OEM_PLUS:
+    case static_cast<uint16_t>(ui::VirtualKey::kOemPlus):
       return 0x2E;
-    case VK_OEM_4:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem4):
       return 0x2F;
-    case VK_OEM_6:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem6):
       return 0x30;
-    case VK_OEM_5:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem5):
       return 0x31;
-    case VK_OEM_1:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem1):
       return 0x33;
-    case VK_OEM_7:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem7):
       return 0x34;
-    case VK_OEM_3:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem3):
       return 0x35;
-    case VK_OEM_COMMA:
+    case static_cast<uint16_t>(ui::VirtualKey::kOemComma):
       return 0x36;
-    case VK_OEM_PERIOD:
+    case static_cast<uint16_t>(ui::VirtualKey::kOemPeriod):
       return 0x37;
-    case VK_OEM_2:
+    case static_cast<uint16_t>(ui::VirtualKey::kOem2):
       return 0x38;
-    case VK_CAPITAL:
+    case static_cast<uint16_t>(ui::VirtualKey::kCapital):
       return 0x39;
-    case VK_SNAPSHOT:
+    case static_cast<uint16_t>(ui::VirtualKey::kSnapshot):
       return 0x46;
-    case VK_SCROLL:
+    case static_cast<uint16_t>(ui::VirtualKey::kScroll):
       return 0x47;
-    case VK_PAUSE:
+    case static_cast<uint16_t>(ui::VirtualKey::kPause):
       return 0x48;
-    case VK_INSERT:
+    case static_cast<uint16_t>(ui::VirtualKey::kInsert):
       return 0x49;
-    case VK_HOME:
+    case static_cast<uint16_t>(ui::VirtualKey::kHome):
       return 0x4A;
-    case VK_PRIOR:
+    case static_cast<uint16_t>(ui::VirtualKey::kPrior):
       return 0x4B;
-    case VK_DELETE:
+    case static_cast<uint16_t>(ui::VirtualKey::kDelete):
       return 0x4C;
-    case VK_END:
+    case static_cast<uint16_t>(ui::VirtualKey::kEnd):
       return 0x4D;
-    case VK_NEXT:
+    case static_cast<uint16_t>(ui::VirtualKey::kNext):
       return 0x4E;
-    case VK_RIGHT:
+    case static_cast<uint16_t>(ui::VirtualKey::kRight):
       return 0x4F;
-    case VK_LEFT:
+    case static_cast<uint16_t>(ui::VirtualKey::kLeft):
       return 0x50;
-    case VK_DOWN:
+    case static_cast<uint16_t>(ui::VirtualKey::kDown):
       return 0x51;
-    case VK_UP:
+    case static_cast<uint16_t>(ui::VirtualKey::kUp):
       return 0x52;
-    case VK_NUMLOCK:
+    case static_cast<uint16_t>(ui::VirtualKey::kNumLock):
       return 0x53;
-    case VK_DIVIDE:
+    case static_cast<uint16_t>(ui::VirtualKey::kDivide):
       return 0x54;
-    case VK_MULTIPLY:
+    case static_cast<uint16_t>(ui::VirtualKey::kMultiply):
       return 0x55;
-    case VK_SUBTRACT:
+    case static_cast<uint16_t>(ui::VirtualKey::kSubtract):
       return 0x56;
-    case VK_ADD:
+    case static_cast<uint16_t>(ui::VirtualKey::kAdd):
       return 0x57;
-    case VK_NUMPAD0:
+    case static_cast<uint16_t>(ui::VirtualKey::kNumpad0):
       return 0x62;
-    case VK_DECIMAL:
+    case static_cast<uint16_t>(ui::VirtualKey::kDecimal):
       return 0x63;
-    case VK_APPS:
+    case static_cast<uint16_t>(ui::VirtualKey::kApps):
       return 0x65;
     default:
       break;
@@ -160,12 +164,12 @@ static uint8_t VirtualKeyToHIDUsage(UINT vk) {
   return 0x00;
 }
 
-bool static IsPassthroughEnabled() {
+bool KeyboardInputDriver::IsPassthroughEnabled() {
   return static_cast<KeyboardMode>(cvars::keyboard_mode) ==
          KeyboardMode::Passthrough;
 }
 
-bool static IsKeyboardForUserEnabled(uint32_t user_index) {
+bool KeyboardInputDriver::IsKeyboardForUserEnabled(uint32_t user_index) {
   if (static_cast<KeyboardMode>(cvars::keyboard_mode) !=
       KeyboardMode::Enabled) {
     return false;
@@ -174,21 +178,9 @@ bool static IsKeyboardForUserEnabled(uint32_t user_index) {
   return cvars::keyboard_user_index == user_index;
 }
 
-bool __inline IsKeyToggled(uint8_t key) {
-  return (GetKeyState(key) & 0x1) == 0x1;
-}
-
-bool __inline IsKeyDown(uint8_t key) {
-  return (GetAsyncKeyState(key) & 0x8000) == 0x8000;
-}
-
-bool __inline IsKeyDown(ui::VirtualKey virtual_key) {
-  return IsKeyDown(static_cast<uint8_t>(virtual_key));
-}
-
-void WinKeyInputDriver::ParseKeyBinding(ui::VirtualKey output_key,
-                                        const std::string_view description,
-                                        const std::string_view source_tokens) {
+void KeyboardInputDriver::ParseKeyBinding(
+    ui::VirtualKey output_key, const std::string_view description,
+    const std::string_view source_tokens) {
   for (const std::string_view source_token :
        utf8::split(source_tokens, " ", true)) {
     KeyBinding key_binding;
@@ -214,39 +206,41 @@ void WinKeyInputDriver::ParseKeyBinding(ui::VirtualKey output_key,
     }
 
     if (key_binding.input_key == ui::VirtualKey::kNone) {
-      XELOGW("winkey: failed to parse binding \"{}\" for controller input {}.",
-             source_token, description);
+      XELOGW(
+          "keyboard: failed to parse binding \"{}\" for controller input {}.",
+          source_token, description);
       continue;
     }
 
     key_bindings_.push_back(key_binding);
-    XELOGI("winkey: \"{}\" binds key 0x{:X} to controller input {}.",
+    XELOGI("keyboard: \"{}\" binds key 0x{:X} to controller input {}.",
            source_token, static_cast<uint16_t>(key_binding.input_key),
            description);
   }
 }
 
-WinKeyInputDriver::WinKeyInputDriver(xe::ui::Window* window,
-                                     size_t window_z_order)
+KeyboardInputDriver::KeyboardInputDriver(xe::ui::Window* window,
+                                         size_t window_z_order)
     : InputDriver(window, window_z_order), window_input_listener_(*this) {
-#define XE_HID_WINKEY_BINDING(button, description, cvar_name,          \
-                              cvar_default_value)                      \
+#define XE_HID_KEYBOARD_BINDING(button, description, cvar_name,        \
+                                cvar_default_value)                    \
   ParseKeyBinding(xe::ui::VirtualKey::kXInputPad##button, description, \
                   cvars::cvar_name);
-#include "winkey_binding_table.inc"
-#undef XE_HID_WINKEY_BINDING
+#include "keyboard_binding_table.inc"
+#undef XE_HID_KEYBOARD_BINDING
 
   window->AddInputListener(&window_input_listener_, window_z_order);
 }
 
-WinKeyInputDriver::~WinKeyInputDriver() {
+KeyboardInputDriver::~KeyboardInputDriver() {
   window()->RemoveInputListener(&window_input_listener_);
 }
 
-X_STATUS WinKeyInputDriver::Setup() { return X_STATUS_SUCCESS; }
+X_STATUS KeyboardInputDriver::Setup() { return X_STATUS_SUCCESS; }
 
-X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
-                                            X_INPUT_CAPABILITIES* out_caps) {
+X_RESULT KeyboardInputDriver::GetCapabilities(uint32_t user_index,
+                                              uint32_t flags,
+                                              X_INPUT_CAPABILITIES* out_caps) {
   if (!IsKeyboardForUserEnabled(user_index) && !IsPassthroughEnabled()) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -272,8 +266,8 @@ X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
-                                     X_INPUT_STATE* out_state) {
+X_RESULT KeyboardInputDriver::GetState(uint32_t user_index,
+                                       X_INPUT_STATE* out_state) {
   if (!IsKeyboardForUserEnabled(user_index)) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -289,11 +283,8 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
   int16_t thumb_ry = 0;
 
   if (window()->HasFocus()) {
-    bool capital = IsKeyToggled(VK_CAPITAL) || IsKeyDown(VK_SHIFT);
     for (const KeyBinding& b : key_bindings_) {
-      if (((b.lowercase == b.uppercase) || (b.lowercase && !capital) ||
-           (b.uppercase && capital)) &&
-          IsKeyDown(b.input_key)) {
+      if (b.is_pressed) {
         switch (b.output_key) {
           case ui::VirtualKey::kXInputPadA:
             buttons |= X_INPUT_GAMEPAD_A;
@@ -370,6 +361,8 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
           case ui::VirtualKey::kXInputPadRThumbLeft:
             thumb_rx += SHRT_MIN;
             break;
+          default:
+            assert_unhandled_case(b.output_key);
         }
       }
     }
@@ -385,14 +378,14 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
   out_state->gamepad.thumb_ry = thumb_ry;
 
   if (IsPassthroughEnabled()) {
-    memset(out_state, 0, sizeof(out_state));
+    memset(out_state, 0, sizeof(X_INPUT_STATE));
   }
 
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
-                                     X_INPUT_VIBRATION* vibration) {
+X_RESULT KeyboardInputDriver::SetState(uint32_t user_index,
+                                       X_INPUT_VIBRATION* vibration) {
   if (!IsKeyboardForUserEnabled(user_index) && !IsPassthroughEnabled()) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -400,11 +393,12 @@ X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
-                                         X_INPUT_KEYSTROKE* out_keystroke) {
+X_RESULT KeyboardInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
+                                           X_INPUT_KEYSTROKE* out_keystroke) {
   if (!IsKeyboardForUserEnabled(user_index) && !IsPassthroughEnabled()) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
+
   // Pop from the queue.
   KeyEvent evt;
   {
@@ -414,7 +408,7 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
       return X_ERROR_EMPTY;
     }
     evt = key_events_.front();
-    key_events_.pop();
+    key_events_.pop_front();
   }
 
   X_RESULT result = X_ERROR_EMPTY;
@@ -424,30 +418,31 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
   uint16_t keystroke_flags = 0;
   uint8_t hid_code = 0;
 
-  bool capital = IsKeyToggled(VK_CAPITAL) || IsKeyDown(VK_SHIFT);
-
   if (!IsPassthroughEnabled()) {
     if (IsKeyboardForUserEnabled(user_index)) {
-      for (const KeyBinding& b : key_bindings_) {
-        if (b.input_key == evt.virtual_key &&
-            ((b.lowercase == b.uppercase) || (b.lowercase && !capital) ||
-             (b.uppercase && capital))) {
-          xinput_virtual_key = b.output_key;
+      for (const KeyBinding& key_binding : key_bindings_) {
+        if (key_binding.input_key != evt.virtual_key) {
+          continue;
+        }
+
+        if (key_binding.is_pressed) {
+          xinput_virtual_key = key_binding.output_key;
+          break;
         }
       }
     }
   } else {
     xinput_virtual_key = evt.virtual_key;
 
-    if (capital) {
+    if (evt.shift_pressed) {
       keystroke_flags |= 0x0008;  // XINPUT_KEYSTROKE_SHIFT
     }
 
-    if (IsKeyToggled(VK_CONTROL)) {
+    if (evt.ctrl_pressed) {
       keystroke_flags |= 0x0010;  // XINPUT_KEYSTROKE_CTRL
     }
 
-    if (IsKeyToggled(VK_MENU)) {
+    if (evt.alt_pressed) {
       keystroke_flags |= 0x0020;  // XINPUT_KEYSTROKE_ALT
     }
   }
@@ -463,22 +458,19 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
     }
 
     if (IsPassthroughEnabled()) {
-      const UINT vk = static_cast<UINT>(xinput_virtual_key);
-      hid_code = VirtualKeyToHIDUsage(vk);
-      if (GetKeyboardState(key_map_)) {
-        const UINT sc = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-        WCHAR buf;
-        if (ToUnicode(vk, sc, key_map_, &buf, 1, 0) == 1) {
-          keystroke_flags |= 0x1000;  // XINPUT_KEYSTROKE_VALIDUNICODE
-          unicode = buf;
-        }
+      hid_code =
+          VirtualKeyToHIDUsage(static_cast<uint16_t>(xinput_virtual_key));
+
+      if (evt.unicode) {
+        unicode = evt.unicode;
+        keystroke_flags |= 0x1000;  // XINPUT_KEYSTROKE_VALIDUNICODE
       }
     }
 
     result = X_ERROR_SUCCESS;
   }
 
-  out_keystroke->virtual_key = uint16_t(xinput_virtual_key);
+  out_keystroke->virtual_key = static_cast<uint16_t>(xinput_virtual_key);
   out_keystroke->unicode = unicode;
   out_keystroke->flags = keystroke_flags;
   out_keystroke->user_index = user_index;
@@ -490,15 +482,22 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
   return result;
 }
 
-void WinKeyInputDriver::WinKeyWindowInputListener::OnKeyDown(ui::KeyEvent& e) {
+void KeyboardInputDriver::KeyboardWindowInputListener::OnKeyDown(
+    ui::KeyEvent& e) {
   driver_.OnKey(e, true);
 }
 
-void WinKeyInputDriver::WinKeyWindowInputListener::OnKeyUp(ui::KeyEvent& e) {
+void KeyboardInputDriver::KeyboardWindowInputListener::OnKeyUp(
+    ui::KeyEvent& e) {
   driver_.OnKey(e, false);
 }
 
-void WinKeyInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
+void KeyboardInputDriver::KeyboardWindowInputListener::OnKeyChar(
+    ui::KeyEvent& e) {
+  driver_.OnChar(e);
+}
+
+void KeyboardInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
   if (static_cast<KeyboardMode>(cvars::keyboard_mode) ==
       KeyboardMode::Disabled) {
     return;
@@ -509,12 +508,52 @@ void WinKeyInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
   key.transition = is_down;
   key.prev_state = e.prev_state();
   key.repeat_count = e.repeat_count();
+  key.shift_pressed = e.is_shift_pressed();
+  key.ctrl_pressed = e.is_ctrl_pressed();
+  key.alt_pressed = e.is_alt_pressed();
+  key.capital_pressed = e.is_capital_pressed();
 
   auto global_lock = global_critical_region_.Acquire();
-  key_events_.push(key);
+  key_events_.push_back(key);
+
+  bool uppercase = key.capital_pressed || key.shift_pressed;
+
+  // Update key binding state for the correct input case, otherwise we will
+  // trigger both inputs for uppercase and lowercase causing input to be
+  // registered twice.
+  for (auto& key_binding : key_bindings_) {
+    if (key_binding.input_key != key.virtual_key) {
+      continue;
+    }
+
+    if (key_binding.uppercase && uppercase) {
+      key_binding.is_pressed = is_down;
+      break;
+    }
+
+    if (key_binding.lowercase && !uppercase) {
+      key_binding.is_pressed = is_down;
+      break;
+    }
+  }
 }
 
-InputType WinKeyInputDriver::GetInputType() const {
+void KeyboardInputDriver::OnChar(ui::KeyEvent& e) {
+  if (!IsPassthroughEnabled()) {
+    return;
+  }
+
+  auto global_lock = global_critical_region_.Acquire();
+  for (auto& key_event : key_events_) {
+    if (key_event.virtual_key == e.virtual_key() && key_event.transition &&
+        key_event.unicode == 0) {
+      key_event.unicode = e.unicode();
+      break;
+    }
+  }
+}
+
+InputType KeyboardInputDriver::GetInputType() const {
   switch (static_cast<KeyboardMode>(cvars::keyboard_mode)) {
     case KeyboardMode::Disabled:
       return InputType::None;
@@ -528,6 +567,6 @@ InputType WinKeyInputDriver::GetInputType() const {
   return InputType::Controller;
 }
 
-}  // namespace winkey
+}  // namespace keyboard
 }  // namespace hid
 }  // namespace xe
