@@ -51,7 +51,8 @@ test_mcrf_3:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  # cr0 = eq, cr3 = eq
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_3_constant:
   li r3, 5
@@ -62,7 +63,8 @@ test_mcrf_3_constant:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  # cr0 = eq, cr3 = eq
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_4:
   #_ REGISTER_IN r3 100
@@ -100,7 +102,8 @@ test_mcrf_5:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  # cr2 = lt, cr4 = eq, cr6 = lt
+  #_ REGISTER_OUT r12 0x00802080
 
 test_mcrf_5_constant:
   li r3, 10
@@ -116,4 +119,49 @@ test_mcrf_5_constant:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  # cr2 = lt, cr4 = eq, cr6 = lt
+  #_ REGISTER_OUT r12 0x00802080
+
+test_mcrf_6:
+  #_ REGISTER_IN r3 5
+  #_ REGISTER_IN r4 5
+  cmpw cr3, r3, r4
+  mcrf cr3, cr3
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r3 5
+  #_ REGISTER_OUT r4 5
+  # cr3 = eq
+  #_ REGISTER_OUT r12 0x00020000
+
+test_mcrf_6_constant:
+  li r3, 5
+  li r4, 5
+  cmpw cr3, r3, r4
+  mcrf cr3, cr3
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r3 5
+  #_ REGISTER_OUT r4 5
+  # cr3 = eq
+  #_ REGISTER_OUT r12 0x00020000
+
+test_mcrf_7:
+  #_ REGISTER_IN r3 9
+  mtcrf 0xFF, r3
+  mcrf cr0, cr7
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r3 9
+  # cr7 = lt|so, copied to cr0
+  #_ REGISTER_OUT r12 0x90000009
+
+test_mcrf_7_constant:
+  li r3, 9
+  mtcrf 0xFF, r3
+  mcrf cr0, cr7
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r3 9
+  # cr7 = lt|so, copied to cr0
+  #_ REGISTER_OUT r12 0x90000009
