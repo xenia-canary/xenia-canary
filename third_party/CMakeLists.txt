@@ -312,7 +312,7 @@ if(XE_TARGET_AARCH64)
     WITH_GZFILEOP
   )
   if(NOT MSVC)
-    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL)
+    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL HAVE_ATTRIBUTE_ALIGNED)
   endif()
 else()
   file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
@@ -336,7 +336,7 @@ else()
     # GCC/Clang have native __builtin_ctz/__builtin_ctzll (MSVC gets these
     # from fallback_builtins.h). Defining these enables optimized compare256
     # and longest_match codepaths.
-    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL)
+    target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL HAVE_ATTRIBUTE_ALIGNED)
     # GCC/Clang need per-file ISA flags; MSVC handles this via runtime dispatch
     set_source_files_properties(
       zlib-ng/arch/x86/adler32_avx2.c
