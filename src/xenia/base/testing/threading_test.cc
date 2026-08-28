@@ -1065,6 +1065,66 @@ TEST_CASE("Test Suspending Thread", "[thread]") {
   REQUIRE(result == threading::WaitResult::kSuccess);
 }
 
+TEST_CASE("Test Resuming Thread Created Suspended", "[thread]") {
+  // Resume straight after creation, racing the new thread's startup, from
+  // more threads than there are cores so the startup gets preempted.
+  const uint32_t resumer_count = 4 * logical_processor_count();
+  std::atomic<uint32_t> lost(0);
+  std::vector<std::unique_ptr<Thread>> resumers;
+  for (uint32_t r = 0; r < resumer_count; ++r) {
+    resumers.push_back(Thread::Create({}, [&lost] {
+      Thread::CreationParameters params = {};
+      params.create_suspended = true;
+      for (int i = 0; i < 200; ++i) {
+        std::atomic<bool> ran(false);
+        auto thread = Thread::Create(params, [&ran] { ran = true; });
+        // A lost resume leaves the thread suspended for good.
+        if (!thread->Resume() ||
+            Wait(thread.get(), false, 1s) != WaitResult::kSuccess || !ran) {
+          ++lost;
+        }
+      }
+    }));
+  }
+  for (auto& resumer : resumers) {
+    REQUIRE(Wait(resumer.get(), false, 120s) == WaitResult::kSuccess);
+  }
+  REQUIRE(lost == 0);
+}
+
+TEST_CASE("Test Suspending Thread After First Resume", "[thread]") {
+  Thread::CreationParameters params = {};
+  params.create_suspended = true;
+  std::atomic<uint64_t> counter(0);
+  std::atomic<bool> stop(false);
+  auto thread = Thread::Create(params, [&counter, &stop] {
+    while (!stop) {
+      ++counter;
+    }
+  });
+
+  Sleep(20ms);
+  REQUIRE(counter == 0);
+  REQUIRE(thread->Resume());
+  while (counter == 0) {
+    MaybeYield();
+  }
+
+  // Suspend is asynchronous on POSIX; let it land before sampling.
+  REQUIRE(thread->Suspend());
+  Sleep(20ms);
+  uint64_t suspended_at = counter;
+  Sleep(50ms);
+  REQUIRE(counter == suspended_at);
+
+  REQUIRE(thread->Resume());
+  Sleep(20ms);
+  REQUIRE(counter > suspended_at);
+
+  stop = true;
+  REQUIRE(Wait(thread.get(), false, 1s) == WaitResult::kSuccess);
+}
+
 TEST_CASE("Test Thread QueueUserCallback", "[thread]") {
   std::unique_ptr<Thread> thread;
   WaitResult result;
