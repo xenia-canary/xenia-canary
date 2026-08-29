@@ -996,6 +996,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
       const ParsedAluInstruction& instr,
       uint8_t memexport_eM_potentially_written_before, uint32_t& result_swizzle,
       bool& predicate_written);
+  // Reduces finite host approximations to a chosen mantissa width.
+  // We still don't know the exact precision or rounding.
+  void ReduceFloatPrecision(const dxbc::Dest& dest, const dxbc::Src& value,
+                            uint32_t mantissa_bits);
   void ProcessScalarAluOperation(
       const ParsedAluInstruction& instr,
       uint8_t memexport_eM_potentially_written_before, bool& predicate_written);

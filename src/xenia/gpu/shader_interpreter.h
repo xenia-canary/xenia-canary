@@ -121,6 +121,7 @@ class ShaderInterpreter {
   const std::array<float, 4> GetFloatConstant(
       uint32_t address, bool is_relative, bool relative_address_is_a0) const;
 
+  static float ReduceFloatPrecision(float value, uint32_t mantissa_bits);
   void ExecuteAluInstruction(ucode::AluInstruction instr);
   void StoreFetchResult(uint32_t dest, bool is_dest_relative, uint32_t swizzle,
                         const float* value);

@@ -46,8 +46,6 @@ DECLARE_bool(async_shader_compilation);
 
 DECLARE_bool(gpu_3d_to_2d_texture);
 
-DECLARE_bool(ac6_ground_fix);
-
 DECLARE_bool(force_depth_clamp);
 
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1

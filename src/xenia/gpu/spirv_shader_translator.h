@@ -744,6 +744,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
   spv::Id ProcessVectorAluOperation(
       const ParsedAluInstruction& instr,
       uint8_t memexport_eM_potentially_written_before, bool& predicate_written);
+  // Reduces finite host approximations to a chosen mantissa width.
+  // We still don't know the exact precision or rounding.
+  spv::Id ReduceFloatPrecision(spv::Id value, uint32_t mantissa_bits);
   // Returns a float value to write to the previous scalar register and to the
   // destination. If the return value is ps itself (in the retain_prev case),
   // returns spv::NoResult (handled as a special case, so if it's retain_prev,
