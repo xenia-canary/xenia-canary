@@ -7,6 +7,10 @@
  ******************************************************************************
  */
 
+#include <array>
+#include <cstdint>
+#include <cstdio>
+
 #include "xenia/cpu/testing/util.h"
 
 using namespace xe;
@@ -14,6 +18,23 @@ using namespace xe::cpu;
 using namespace xe::cpu::hir;
 using namespace xe::cpu::testing;
 using xe::cpu::ppc::PPCContext;
+
+namespace {
+
+// Independent exact-bit reference for the default Xenos half conversion used
+// by vupkd3d128. Half denormals flush to signed zero; exponent 31 remains part
+// of the Xenos extended finite range rather than becoming IEEE infinity/NaN.
+uint32_t ReferenceXenosHalfToFloatBits(uint16_t half_bits) {
+  const uint32_t sign = uint32_t(half_bits & 0x8000u) << 16;
+  const uint32_t exponent = (half_bits >> 10) & 0x1Fu;
+  const uint32_t mantissa = half_bits & 0x3FFu;
+  if (exponent == 0) {
+    return sign;
+  }
+  return sign | ((exponent + 112u) << 23) | (mantissa << 13);
+}
+
+}  // namespace
 
 TEST_CASE("UNPACK_D3DCOLOR", "[instr]") {
   TestFunction test([](HIRBuilder& b) {
@@ -65,6 +86,178 @@ TEST_CASE("UNPACK_FLOAT16_2", "[instr]") {
            });
 }
 
+TEST_CASE("UNPACK_FLOAT16_2_EXHAUSTIVE_EXACT_BITS", "[instr]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreVR(b, 3, b.Unpack(LoadVR(b, 4), PACK_TYPE_FLOAT16_2));
+    b.Return();
+  });
+
+  constexpr size_t kInvocationCount = 1u << 16;
+  constexpr size_t kExpectedLaneConversions = kInvocationCount * 2;
+  size_t invocation_count = 0;
+  size_t lane_conversion_count = 0;
+  size_t mismatch_count = 0;
+  size_t fill_mismatch_count = 0;
+  size_t first_mismatch_index = 0;
+  uint32_t first_mismatch_lane = 0;
+  uint32_t first_expected = 0;
+  uint32_t first_actual = 0;
+
+  test.RunRepeated(
+      kInvocationCount,
+      [](PPCContext* ctx, size_t iteration) {
+        const uint16_t x = static_cast<uint16_t>(iteration);
+        const uint16_t y = static_cast<uint16_t>(x ^ 0xFFFFu);
+        vec128_t source = vec128b(0xA5);
+        source.u16[7] = x;
+        source.u16[6] = y;
+        ctx->v[3] = vec128b(0xCD);
+        ctx->v[4] = source;
+      },
+      [&](PPCContext* ctx, size_t iteration) {
+        const uint16_t x = static_cast<uint16_t>(iteration);
+        const uint16_t y = static_cast<uint16_t>(x ^ 0xFFFFu);
+        const uint32_t expected_x = ReferenceXenosHalfToFloatBits(x);
+        const uint32_t expected_y = ReferenceXenosHalfToFloatBits(y);
+        const vec128_t actual = ctx->v[3];
+
+        const auto record_mismatch = [&](uint32_t lane, uint32_t expected,
+                                         uint32_t observed) {
+          if (expected == observed) {
+            return;
+          }
+          if (mismatch_count == 0) {
+            first_mismatch_index = iteration;
+            first_mismatch_lane = lane;
+            first_expected = expected;
+            first_actual = observed;
+          }
+          ++mismatch_count;
+        };
+        record_mismatch(0, expected_x, actual.u32[0]);
+        record_mismatch(1, expected_y, actual.u32[1]);
+        if (actual.u32[2] != 0 || actual.u32[3] != 0x3F800000u) {
+          ++fill_mismatch_count;
+        }
+        ++invocation_count;
+        lane_conversion_count += 2;
+      });
+
+  std::printf(
+      "UNPACK_FLOAT16_2 exhaustive: %zu invocations, %zu lane conversions\n",
+      invocation_count, lane_conversion_count);
+  REQUIRE(invocation_count == kInvocationCount);
+  REQUIRE(lane_conversion_count == kExpectedLaneConversions);
+  CAPTURE(first_mismatch_index, first_mismatch_lane, first_expected,
+          first_actual);
+  REQUIRE(mismatch_count == 0);
+  REQUIRE(fill_mismatch_count == 0);
+}
+
+TEST_CASE("UNPACK_FLOAT16_2_CONSTANT_SOURCE", "[instr]") {
+  struct ConstantCase {
+    uint16_t x;
+    uint16_t y;
+  };
+  constexpr std::array<ConstantCase, 10> kCases = {{
+      {0x0000u, 0x8000u},
+      {0x0001u, 0x83FFu},
+      {0x0400u, 0x8400u},
+      {0x3C00u, 0xBC00u},
+      {0x5555u, 0x6666u},
+      {0x7BFFu, 0xFBFFu},
+      {0x7C00u, 0xFC00u},
+      {0x7FFFu, 0xFFFFu},
+      {0x3555u, 0xB666u},
+      {0x03FFu, 0x8001u},
+  }};
+
+  std::array<vec128_t, kCases.size()> sources;
+  std::array<vec128_t, kCases.size()> expected;
+  for (size_t i = 0; i < kCases.size(); ++i) {
+    const ConstantCase& test_case = kCases[i];
+    vec128_t source = vec128b(0xA5);
+    source.u16[7] = test_case.x;
+    source.u16[6] = test_case.y;
+    sources[i] = source;
+
+    expected[i] = vec128b(0);
+    expected[i].u32[0] = ReferenceXenosHalfToFloatBits(test_case.x);
+    expected[i].u32[1] = ReferenceXenosHalfToFloatBits(test_case.y);
+    expected[i].u32[3] = 0x3F800000u;
+  }
+
+  TestFunction test([sources](HIRBuilder& b) {
+    for (size_t i = 0; i < sources.size(); ++i) {
+      StoreVR(b, 3 + static_cast<int>(i),
+              b.Unpack(b.LoadConstantVec128(sources[i]), PACK_TYPE_FLOAT16_2));
+    }
+    b.Return();
+  });
+  size_t comparison_count = 0;
+  test.Run(
+      [](PPCContext*) {},
+      [&](PPCContext* ctx) {
+        for (size_t i = 0; i < expected.size(); ++i) {
+          REQUIRE(ctx->v[3 + i] == expected[i]);
+          ++comparison_count;
+        }
+        REQUIRE(ctx->v[7] == vec128i(0x42AAA000, 0x44CCC000, 0, 0x3F800000));
+      });
+
+  std::printf("UNPACK_FLOAT16_2 constant source: %zu comparisons\n",
+              comparison_count);
+  REQUIRE(comparison_count == kCases.size());
+}
+
+TEST_CASE("UNPACK_FLOAT16_2_SOURCE_LIVE_PRESSURE", "[instr]") {
+  constexpr size_t kSurvivorCount = 12;
+  TestFunction test([](HIRBuilder& b) {
+    auto source = LoadVR(b, 4);
+    std::array<Value*, kSurvivorCount> survivors;
+    for (size_t i = 0; i < survivors.size(); ++i) {
+      survivors[i] = LoadVR(b, 5 + static_cast<int>(i));
+    }
+    auto unpacked = b.Unpack(source, PACK_TYPE_FLOAT16_2);
+    StoreVR(b, 3, unpacked);
+    StoreVR(b, 20, source);
+    for (size_t i = 0; i < survivors.size(); ++i) {
+      StoreVR(b, 21 + static_cast<int>(i), survivors[i]);
+    }
+    b.Return();
+  });
+
+  vec128_t source = vec128b(0xA5);
+  source.u16[7] = 0x5555u;
+  source.u16[6] = 0xD666u;
+  std::array<vec128_t, kSurvivorCount> survivors;
+  for (size_t i = 0; i < survivors.size(); ++i) {
+    survivors[i] = vec128i(0x01020304u + static_cast<uint32_t>(i),
+                           0x11223344u + static_cast<uint32_t>(i),
+                           0x89ABCDEFu - static_cast<uint32_t>(i),
+                           0xF0E1D2C3u - static_cast<uint32_t>(i));
+  }
+  vec128_t expected = vec128b(0);
+  expected.u32[0] = ReferenceXenosHalfToFloatBits(source.u16[7]);
+  expected.u32[1] = ReferenceXenosHalfToFloatBits(source.u16[6]);
+  expected.u32[3] = 0x3F800000u;
+
+  test.Run(
+      [source, survivors](PPCContext* ctx) {
+        ctx->v[4] = source;
+        for (size_t i = 0; i < survivors.size(); ++i) {
+          ctx->v[5 + i] = survivors[i];
+        }
+      },
+      [source, survivors, expected](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] == expected);
+        REQUIRE(ctx->v[20] == source);
+        for (size_t i = 0; i < survivors.size(); ++i) {
+          REQUIRE(ctx->v[21 + i] == survivors[i]);
+        }
+      });
+}
+
 TEST_CASE("UNPACK_FLOAT16_4", "[instr]") {
   TestFunction test([](HIRBuilder& b) {
     StoreVR(b, 3, b.Unpack(LoadVR(b, 4), PACK_TYPE_FLOAT16_4));
@@ -83,6 +276,14 @@ TEST_CASE("UNPACK_FLOAT16_4", "[instr]") {
         auto result = ctx->v[3];
         REQUIRE(result ==
                 vec128i(0x449A4000, 0x45B16000, 0x41102000, 0x40922000));
+      });
+  test.Run(
+      [](PPCContext* ctx) {
+        ctx->v[4] = vec128s(0, 0, 0, 0, 0x0001, 0x8001, 0x03FF, 0x83FF);
+      },
+      [](PPCContext* ctx) {
+        REQUIRE(ctx->v[3] ==
+                vec128i(0x00000000, 0x80000000, 0x00000000, 0x80000000));
       });
 }
 

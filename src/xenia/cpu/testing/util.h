@@ -98,6 +98,41 @@ class TestFunction {
     }
   }
 
+  template <typename PreCall, typename PostCall>
+  void RunRepeated(size_t iteration_count, PreCall&& pre_call,
+                   PostCall&& post_call) {
+    for (auto& processor : processors) {
+      auto fn = processor->ResolveFunction(0x80000000);
+      REQUIRE(fn != nullptr);
+
+      uint32_t stack_size = 64 * 1024;
+      uint32_t stack_address = memory->SystemHeapAlloc(stack_size);
+      uint32_t stack_base = stack_address + stack_size;
+      auto thread_state =
+          std::make_unique<ThreadState>(processor.get(), 0x100, stack_base);
+      auto ctx = thread_state->context();
+
+      // Establish the same clean initial rounding mode as Run. The emitted
+      // function may switch to VMX mode, so resetting the host mode without
+      // also resetting the emitter's runtime mode state between invocations
+      // would make the next invocation internally inconsistent.
+      processor->backend()->SetGuestRoundingMode(ctx, 0);
+
+      size_t successful_call_count = 0;
+      for (size_t iteration = 0; iteration < iteration_count; ++iteration) {
+        ctx->lr = 0xBCBCBCBC;
+        pre_call(ctx, iteration);
+        if (fn->Call(thread_state.get(), uint32_t(ctx->lr))) {
+          ++successful_call_count;
+        }
+        post_call(ctx, iteration);
+      }
+      thread_state.reset();
+      memory->SystemHeapFree(stack_address);
+      REQUIRE(successful_call_count == iteration_count);
+    }
+  }
+
   std::unique_ptr<Memory> memory;
   std::vector<std::unique_ptr<Processor>> processors;
 };

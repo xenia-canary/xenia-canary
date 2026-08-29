@@ -2668,18 +2668,19 @@ struct PERMUTE_V128
 };
 EMITTER_OPCODE_TABLE(OPCODE_PERMUTE, PERMUTE_I32, PERMUTE_V128);
 
-template <typename Inst>
-static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
+static void emit_fast_f16_unpack(X64Emitter& e, Xmm dest, Xmm src,
                                  XmmConst initial_shuffle) {
-  auto src1 = i.src1;
+  e.vpshufb(dest, src, e.GetXmmConstPtr(initial_shuffle));
+  e.vpmovsxwd(e.xmm1, dest);
 
-  e.vpshufb(i.dest, src1, e.GetXmmConstPtr(initial_shuffle));
-  e.vpmovsxwd(e.xmm1, i.dest);
-
-  e.vpsrld(e.xmm2, e.xmm1, 10);
-  e.vpmovsxwd(e.xmm0, i.dest);
+  // Isolate half exponent bits 10-14. The source words are sign-extended so
+  // that their sign reaches float bit 31 below; a logical shift plus a broad
+  // byte mask would incorrectly retain those extension bits for negative
+  // denormals and prevent the exponent-zero flush.
+  e.vpslld(e.xmm2, e.xmm1, 17);
+  e.vpsrld(e.xmm2, e.xmm2, 27);
+  e.vpmovsxwd(e.xmm0, dest);
   e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMSignMaskPS));
-  e.vpand(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMPermuteByteMask));
 
   e.vpslld(e.xmm3, e.xmm2, 23);
 
@@ -2694,22 +2695,29 @@ static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
 
   e.vpand(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMF16UnpackLCPI3));
   e.vpor(e.xmm0, e.xmm1, e.xmm0);
-  e.vpor(i.dest, e.xmm0, e.xmm2);
+  e.vpor(dest, e.xmm0, e.xmm2);
 }
-template <typename Inst>
-static void emit_fast_f16_pack(X64Emitter& e, const Inst& i,
+template <bool kRoundToNearestEven>
+static void emit_fast_f16_pack(X64Emitter& e, Xmm dest, Xmm src,
                                XmmConst final_shuffle) {
-  // XMMF16PackLCPI0 includes bias (0x08000000) + round-half-down (0xFFF).
-  // For round-to-nearest-even, also add the tie-breaker: bit 13 of src.
-  // Bit 13 of (src + bias) == bit 13 of src since the bias doesn't affect
-  // bits 0-26.
-  e.vpaddd(e.xmm1, i.src1, e.GetXmmConstPtr(XMMF16PackLCPI0));
-  e.vpsrld(e.xmm0, i.src1, 13);
-  e.vpslld(e.xmm0, e.xmm0, 31);
-  e.vpsrld(e.xmm0, e.xmm0, 31);
-  e.vpaddd(e.xmm1, e.xmm1, e.xmm0);
+  if constexpr (kRoundToNearestEven) {
+    // XMMF16PackLCPI0 includes bias (0x08000000) + round-half-down
+    // (0xFFF). For round-to-nearest-even, also add the tie-breaker: bit 13
+    // of src. Bit 13 of (src + bias) equals bit 13 of src because the bias
+    // doesn't affect bits 0-26.
+    e.vpaddd(e.xmm1, src, e.GetXmmConstPtr(XMMF16PackLCPI0));
+    e.vpsrld(e.xmm0, src, 13);
+    e.vpslld(e.xmm0, e.xmm0, 31);
+    e.vpsrld(e.xmm0, e.xmm0, 31);
+    e.vpaddd(e.xmm1, e.xmm1, e.xmm0);
+  } else {
+    // FLOAT16_2 truncates. Subtracting the minimum-normal float exponent
+    // rebiases normalized values directly; the source sign bit is removed
+    // by the later shift and 0x7FFF mask.
+    e.vpsubd(e.xmm1, src, e.GetXmmConstPtr(XMMF16UnpackLCPI2));
+  }
 
-  e.vpand(e.xmm2, i.src1, e.GetXmmConstPtr(XMMAbsMaskPS));
+  e.vpand(e.xmm2, src, e.GetXmmConstPtr(XMMAbsMaskPS));
   e.vmovdqa(e.xmm3, e.GetXmmConstPtr(XMMF16PackLCPI2));
 
   e.vpcmpgtd(e.xmm3, e.xmm3, e.xmm2);
@@ -2726,11 +2734,11 @@ static void emit_fast_f16_pack(X64Emitter& e, const Inst& i,
 
   e.vblendvps(e.xmm1, e.xmm0, e.xmm1, e.xmm3);
 
-  e.vpsrld(e.xmm0, i.src1, 16);
+  e.vpsrld(e.xmm0, src, 16);
   e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMF16PackLCPI6));
   e.vorps(e.xmm0, e.xmm1, e.xmm0);
-  e.vpackusdw(i.dest, e.xmm0, e.xmm2);
-  e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(final_shuffle));
+  e.vpackusdw(dest, e.xmm0, e.xmm2);
+  e.vpshufb(dest, dest, e.GetXmmConstPtr(final_shuffle));
 }
 // ============================================================================
 // OPCODE_SWIZZLE
@@ -2826,34 +2834,20 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     //     ((src1.uy & 0xFF) << 8) | (src1.uz & 0xFF)
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackD3DCOLOR));
   }
-  static __m128i EmulateFLOAT16_2(void*, __m128 src1) {
-    alignas(16) float a[4];
-    alignas(16) uint16_t b[8];
-    _mm_store_ps(a, src1);
-    std::memset(b, 0, sizeof(b));
-
-    for (int i = 0; i < 2; i++) {
-      b[7 - i] = float_to_xenos_half(a[i]);
-    }
-
-    return _mm_load_si128(reinterpret_cast<__m128i*>(b));
-  }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
     // http://blogs.msdn.com/b/chuckw/archive/2012/09/11/directxmath-f16c-and-fma.aspx
     // dest = [(src1.x | src1.y), 0, 0, 0]
+    if (i.src1.is_constant) {
+      vec128_t result = vec128b(0);
+      for (unsigned idx = 0; idx < 2; ++idx) {
+        result.u16[7 - idx] = float_to_xenos_half(i.src1.constant().f32[idx]);
+      }
+      e.LoadConstantXmm(i.dest, result);
+      return;
+    }
 
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
-    e.vmovaps(i.dest, e.xmm0);
+    emit_fast_f16_pack<false>(e, i.dest, i.src1, XMMPackFLOAT16_2);
   }
 
   static __m128i EmulateFLOAT16_4_RoundToEven(void*, __m128 src1) {
@@ -2881,7 +2875,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
     if (!i.src1.is_constant) {
 #if XE_ARCH_AMD64
-      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
+      emit_fast_f16_pack<true>(e, i.dest, i.src1, XMMPackFLOAT16_4);
 #else
       auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
 #if XE_PLATFORM_WIN32
@@ -3261,21 +3255,6 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.vpor(i.dest, e.GetXmmConstPtr(XMMOne));
     // To convert to 0 to 1, games multiply by 0x47008081 and add 0xC7008081.
   }
-  static __m128 EmulateFLOAT16_2(void*, __m128i src1) {
-    alignas(16) uint16_t a[8];
-    alignas(16) float b[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-
-    for (int i = 0; i < 2; i++) {
-      b[i] = xenos_half_to_float(a[VEC128_W(6 + i)]);
-    }
-
-    // Constants, or something
-    b[2] = 0.f;
-    b[3] = 1.f;
-
-    return _mm_load_ps(b);
-  }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     // 1 bit sign, 5 bit exponent, 10 bit mantissa
     // D3D10 half float format
@@ -3287,19 +3266,20 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     // Packing half floats: https://gist.github.com/rygorous/2156668
     // Load source, move from tight pack of X16Y16.... to X16...Y16...
     // Also zero out the high end.
-    // TODO(benvanik): special case constant unpacks that just get 0/1/etc.
+    if (i.src1.is_constant) {
+      vec128_t result{};
+      for (unsigned idx = 0; idx < 2; ++idx) {
+        result.f32[idx] =
+            xenos_half_to_float(i.src1.constant().u16[VEC128_W(6 + idx)]);
+      }
+      result.f32[2] = 0.0f;
+      result.f32[3] = 1.0f;
+      e.LoadConstantXmm(i.dest, result);
+      return;
+    }
 
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128i is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128i passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
-    e.vmovaps(i.dest, e.xmm0);
+    emit_fast_f16_unpack(e, i.dest, i.src1, XMMUnpackFLOAT16_2);
+    e.vblendps(i.dest, i.dest, e.GetXmmConstPtr(XMM0001), 0b1100);
   }
 
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
@@ -3314,7 +3294,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
       e.LoadConstantXmm(i.dest, result);
 
     } else {
-      emit_fast_f16_unpack(e, i, XMMUnpackFLOAT16_4);
+      emit_fast_f16_unpack(e, i.dest, i.src1, XMMUnpackFLOAT16_4);
     }
   }
   static void EmitSHORT_2(X64Emitter& e, const EmitArgType& i) {
