@@ -1450,12 +1450,25 @@ uint32_t COMMAND_PROCESSOR::ExecutePrimaryBuffer(uint32_t read_index,
   // chiplets l3
   reader_.BeginPrefetchedRead<swcache::PrefetchTag::Level2>(
       GetCurrentRingReadCount());
+  // The guest polls the read pointer write-back to know how much ring space
+  // it has. Hardware advances it continuously; publishing it only after the
+  // whole burst (the caller does that) left the game waiting for the
+  // command processor to finish everything it had queued before it could
+  // submit more (Eternal Sonata's intro cutscene: 14-19 fps of a 30 fps
+  // scene, the main thread spinning on the pointer). Publish every few
+  // packets instead.
+  uint32_t packets_since_writeback = 0;
   do {
     if (!COMMAND_PROCESSOR::ExecutePacket()) {
       // This probably should be fatal - but we're going to continue anyways.
       XELOGE("**** PRIMARY RINGBUFFER: Failed to execute packet.");
       assert_always();
       break;
+    }
+    if (read_ptr_writeback_ptr_ && (++packets_since_writeback & 7) == 0) {
+      xe::store_and_swap<uint32_t>(
+          memory_->TranslatePhysical(read_ptr_writeback_ptr_),
+          uint32_t(reader_.read_offset() / sizeof(uint32_t)));
     }
   } while (reader_.read_count());
 
