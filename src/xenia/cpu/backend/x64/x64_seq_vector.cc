@@ -9,7 +9,6 @@
 
 #include "xenia/cpu/backend/x64/x64_sequences.h"
 
-#include <algorithm>
 #include <cstring>
 
 #include "xenia/cpu/backend/x64/x64_op.h"
@@ -2994,71 +2993,31 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // Merge XZ and YW.
     e.vorps(i.dest, e.xmm0);
   }
-  static __m128i EmulatePack8_IN_16_UN_UN_SAT(void*, __m128i src1,
-                                              __m128i src2) {
-    alignas(16) uint16_t a[8];
-    alignas(16) uint16_t b[8];
-    alignas(16) uint8_t c[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(b), src2);
-    for (int i = 0; i < 8; ++i) {
-      c[i] = uint8_t(std::max(uint16_t(0), std::min(uint16_t(255), a[i])));
-      c[i + 8] = uint8_t(std::max(uint16_t(0), std::min(uint16_t(255), b[i])));
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(c));
-  }
-  static __m128i EmulatePack8_IN_16_UN_UN(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint8_t a[16];
-    alignas(16) uint8_t b[16];
-    alignas(16) uint8_t c[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(b), src2);
-    for (int i = 0; i < 8; ++i) {
-      c[i] = a[i * 2];
-      c[i + 8] = b[i * 2];
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(c));
-  }
   static void Emit8_IN_16(X64Emitter& e, const EmitArgType& i, uint32_t flags) {
     // TODO(benvanik): handle src2 (or src1) being constant zero
     if (IsPackInUnsigned(flags)) {
       if (IsPackOutUnsigned(flags)) {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
-
-#if XE_PLATFORM_WIN32
-          // Windows x64 ABI: __m128i is passed by implicit pointer
-          e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-          e.lea(e.GetNativeParam(1), e.StashXmm(1, src2));
-#else
-          // Linux/Mac System V ABI: __m128i passed in xmm0/xmm1, return in xmm0
-          e.vmovaps(e.xmm0, src1);
-          e.vmovaps(e.xmm1, src2);
-#endif
-          e.CallNativeSafe(
-              reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN_SAT));
-          e.vmovaps(i.dest, e.xmm0);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
+          // Clamp each unsigned word to 255 before signed-word byte packing.
+          const Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+          e.vpminuw(e.xmm0, src1,
+                    e.GetXmmConstPtr(XMMPack8_IN_16_UnsignedByteMax));
+          const Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+          e.vpminuw(e.xmm1, src2,
+                    e.GetXmmConstPtr(XMMPack8_IN_16_UnsignedByteMax));
         } else {
           // unsigned -> unsigned
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
-
-#if XE_PLATFORM_WIN32
-          // Windows x64 ABI: __m128i is passed by implicit pointer
-          e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-          e.lea(e.GetNativeParam(1), e.StashXmm(1, src2));
-#else
-          // Linux/Mac System V ABI: __m128i passed in xmm0/xmm1, return in xmm0
-          e.vmovaps(e.xmm0, src1);
-          e.vmovaps(e.xmm1, src2);
-#endif
-          e.CallNativeSafe(reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN));
-          e.vmovaps(i.dest, e.xmm0);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
+          // Keep each word's low byte before signed-word byte packing.
+          const Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+          e.vpand(e.xmm0, src1,
+                  e.GetXmmConstPtr(XMMPack8_IN_16_UnsignedByteMax));
+          const Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+          e.vpand(e.xmm1, src2,
+                  e.GetXmmConstPtr(XMMPack8_IN_16_UnsignedByteMax));
         }
+        e.vpackuswb(i.dest, e.xmm0, e.xmm1);
+        e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
       } else {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> signed + saturate

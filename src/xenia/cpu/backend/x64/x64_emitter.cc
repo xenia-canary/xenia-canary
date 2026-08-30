@@ -1077,6 +1077,8 @@ static const vec128_t xmm_consts[] = {
     vec128i(0xFFFFFFFFu, 0xFFFFFFFFu, 0x0A0908FFu, 0xFF020100u),
     /* XMMPackULONG_4202020_PermuteYW */
     vec128i(0xFFFFFFFFu, 0xFFFFFFFFu, 0x0CFFFF06u, 0x0504FFFFu),
+    /* XMMPack8_IN_16_UnsignedByteMax */
+    vec128i(0x00FF00FFu, 0x00FF00FFu, 0x00FF00FFu, 0x00FF00FFu),
     /* XMMUnpackULONG_4202020_Permute */
     vec128i(0xFF0E0D0Cu, 0xFF0B0A09u, 0xFF080F0Eu, 0xFFFFFF0Bu),
     /* XMMUnpackULONG_4202020_Overflow */ vec128i(0x40380000u),
