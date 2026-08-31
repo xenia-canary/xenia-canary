@@ -3124,10 +3124,8 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
   uint32_t msaa_sample_count = uint32_t(1)
                                << uint32_t(description.host_msaa_samples);
   if (edram_rov_used) {
-    // Only 1, 4, 8 and (not on all GPUs) 16 are allowed, using sample 0 as 0
-    // and 3 as 1 for 2x instead (not exactly the same sample positions, but
-    // still top-left and bottom-right - however, this can be adjusted with
-    // programmable sample positions).
+    // Only 1, 4, 8 and (not on all GPUs) 16 are allowed, using samples 2 and
+    // 1 as 0 and 1 for 2x instead (see GetHostSampleXenosPositions).
     assert_true(msaa_sample_count == 1 || msaa_sample_count == 4);
     if (msaa_sample_count != 1 && msaa_sample_count != 4) {
       return nullptr;
@@ -3147,9 +3145,7 @@ ID3D12PipelineState* PipelineCache::CreateD3D12Pipeline(
       return nullptr;
     }
     if (msaa_sample_count == 2 && !render_target_cache_.msaa_2x_supported()) {
-      // Using sample 0 as 0 and 3 as 1 for 2x instead (not exactly the same
-      // sample positions, but still top-left and bottom-right - however, this
-      // can be adjusted with programmable sample positions).
+      // Using sample 0 as 0 and 3 as 1 for 2x instead.
       state_desc.SampleMask = 0b1001;
       state_desc.SampleDesc.Count = 4;
     } else {

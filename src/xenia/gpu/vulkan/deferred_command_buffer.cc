@@ -65,6 +65,34 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
         } else {
           render_pass_begin_info.pClearValues = nullptr;
         }
+        VkAttachmentSampleLocationsEXT initial_sample_locations;
+        VkSubpassSampleLocationsEXT post_sample_locations;
+        VkRenderPassSampleLocationsBeginInfoEXT sample_locations_begin;
+        if (args.sample_locations_count) {
+          offset_bytes = xe::align(offset_bytes, alignof(VkSampleLocationEXT));
+          initial_sample_locations.attachmentIndex = 0;
+          auto& info = initial_sample_locations.sampleLocationsInfo;
+          info.sType = VK_STRUCTURE_TYPE_SAMPLE_LOCATIONS_INFO_EXT;
+          info.pNext = nullptr;
+          info.sampleLocationsPerPixel = args.sample_locations_per_pixel;
+          info.sampleLocationGridSize = args.sample_location_grid_size;
+          info.sampleLocationsCount = args.sample_locations_count;
+          info.pSampleLocations = reinterpret_cast<const VkSampleLocationEXT*>(
+              reinterpret_cast<const uint8_t*>(stream) + offset_bytes);
+          post_sample_locations.subpassIndex = 0;
+          post_sample_locations.sampleLocationsInfo = info;
+          sample_locations_begin.sType =
+              VK_STRUCTURE_TYPE_RENDER_PASS_SAMPLE_LOCATIONS_BEGIN_INFO_EXT;
+          sample_locations_begin.pNext = nullptr;
+          sample_locations_begin.attachmentInitialSampleLocationsCount =
+              args.has_depth_attachment ? 1 : 0;
+          sample_locations_begin.pAttachmentInitialSampleLocations =
+              &initial_sample_locations;
+          sample_locations_begin.postSubpassSampleLocationsCount = 1;
+          sample_locations_begin.pPostSubpassSampleLocations =
+              &post_sample_locations;
+          render_pass_begin_info.pNext = &sample_locations_begin;
+        }
         dfn.vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info,
                                  args.contents);
       } break;
@@ -273,6 +301,39 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
           barrier_offset_bytes +=
               sizeof(VkImageMemoryBarrier) * args.image_memory_barrier_count;
         }
+        if (args.sample_locations_info_count) {
+          image_barriers_with_sample_locations_.assign(
+              image_memory_barriers,
+              image_memory_barriers + args.image_memory_barrier_count);
+          barrier_sample_locations_.resize(args.sample_locations_info_count);
+          for (uint32_t i = 0; i < args.sample_locations_info_count; ++i) {
+            barrier_offset_bytes = xe::align(barrier_offset_bytes,
+                                             alignof(ArgsSampleLocationsInfo));
+            const auto& locations_args =
+                *reinterpret_cast<const ArgsSampleLocationsInfo*>(
+                    reinterpret_cast<const uint8_t*>(stream) +
+                    barrier_offset_bytes);
+            barrier_offset_bytes += sizeof(ArgsSampleLocationsInfo);
+            barrier_offset_bytes =
+                xe::align(barrier_offset_bytes, alignof(VkSampleLocationEXT));
+            auto& info = barrier_sample_locations_[i];
+            info.sType = VK_STRUCTURE_TYPE_SAMPLE_LOCATIONS_INFO_EXT;
+            info.pNext = nullptr;
+            info.sampleLocationsPerPixel = locations_args.samples_per_pixel;
+            info.sampleLocationGridSize = locations_args.grid_size;
+            info.sampleLocationsCount = locations_args.count;
+            info.pSampleLocations =
+                reinterpret_cast<const VkSampleLocationEXT*>(
+                    reinterpret_cast<const uint8_t*>(stream) +
+                    barrier_offset_bytes);
+            barrier_offset_bytes +=
+                sizeof(VkSampleLocationEXT) * locations_args.count;
+            image_barriers_with_sample_locations_
+                [locations_args.image_memory_barrier_index]
+                    .pNext = &info;
+          }
+          image_memory_barriers = image_barriers_with_sample_locations_.data();
+        }
         dfn.vkCmdPipelineBarrier(
             command_buffer, args.src_stage_mask, args.dst_stage_mask,
             args.dependency_flags, args.memory_barrier_count, memory_barriers,
@@ -377,6 +438,23 @@ void DeferredCommandBuffer::CmdVkPipelineBarrier(
     image_memory_barriers_offset = arguments_size;
     arguments_size += sizeof(VkImageMemoryBarrier) * image_memory_barrier_count;
   }
+  size_t sample_locations_offset = arguments_size;
+  uint32_t sample_locations_info_count = 0;
+  for (uint32_t i = 0; i < image_memory_barrier_count; ++i) {
+    const auto* info = static_cast<const VkSampleLocationsInfoEXT*>(
+        image_memory_barriers[i].pNext);
+    if (!info) {
+      continue;
+    }
+    assert_true(info->sType == VK_STRUCTURE_TYPE_SAMPLE_LOCATIONS_INFO_EXT);
+    assert_null(info->pNext);
+    ++sample_locations_info_count;
+    arguments_size =
+        xe::align(arguments_size, alignof(ArgsSampleLocationsInfo));
+    arguments_size += sizeof(ArgsSampleLocationsInfo);
+    arguments_size = xe::align(arguments_size, alignof(VkSampleLocationEXT));
+    arguments_size += sizeof(VkSampleLocationEXT) * info->sampleLocationsCount;
+  }
   uint8_t* args_ptr = reinterpret_cast<uint8_t*>(
       WriteCommand(Command::kVkPipelineBarrier, arguments_size));
   auto& args = *reinterpret_cast<ArgsVkPipelineBarrier*>(args_ptr);
@@ -386,6 +464,7 @@ void DeferredCommandBuffer::CmdVkPipelineBarrier(
   args.memory_barrier_count = memory_barrier_count;
   args.buffer_memory_barrier_count = buffer_memory_barrier_count;
   args.image_memory_barrier_count = image_memory_barrier_count;
+  args.sample_locations_info_count = sample_locations_info_count;
   if (memory_barrier_count) {
     std::memcpy(args_ptr + memory_barriers_offset, memory_barriers,
                 sizeof(VkMemoryBarrier) * memory_barrier_count);
@@ -398,6 +477,31 @@ void DeferredCommandBuffer::CmdVkPipelineBarrier(
   if (image_memory_barrier_count) {
     std::memcpy(args_ptr + image_memory_barriers_offset, image_memory_barriers,
                 sizeof(VkImageMemoryBarrier) * image_memory_barrier_count);
+  }
+  for (uint32_t i = 0; i < image_memory_barrier_count; ++i) {
+    const auto* info = static_cast<const VkSampleLocationsInfoEXT*>(
+        image_memory_barriers[i].pNext);
+    if (!info) {
+      continue;
+    }
+    reinterpret_cast<VkImageMemoryBarrier*>(args_ptr +
+                                            image_memory_barriers_offset)[i]
+        .pNext = nullptr;
+    sample_locations_offset =
+        xe::align(sample_locations_offset, alignof(ArgsSampleLocationsInfo));
+    auto& locations_args = *reinterpret_cast<ArgsSampleLocationsInfo*>(
+        args_ptr + sample_locations_offset);
+    locations_args.image_memory_barrier_index = i;
+    locations_args.samples_per_pixel = info->sampleLocationsPerPixel;
+    locations_args.grid_size = info->sampleLocationGridSize;
+    locations_args.count = info->sampleLocationsCount;
+    sample_locations_offset += sizeof(ArgsSampleLocationsInfo);
+    sample_locations_offset =
+        xe::align(sample_locations_offset, alignof(VkSampleLocationEXT));
+    std::memcpy(args_ptr + sample_locations_offset, info->pSampleLocations,
+                sizeof(VkSampleLocationEXT) * info->sampleLocationsCount);
+    sample_locations_offset +=
+        sizeof(VkSampleLocationEXT) * info->sampleLocationsCount;
   }
 }
 

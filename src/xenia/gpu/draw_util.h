@@ -126,6 +126,43 @@ bool IsVIZSurveyDraw(const RegisterFile& regs);
 extern const int8_t kD3D10StandardSamplePositions2x[2][2];
 extern const int8_t kD3D10StandardSamplePositions4x[4][2];
 
+// Xenos sample positions in guest order, in 1/16th of a pixel from the
+// center like the D3D10.1 positions above. They're quite different though,
+// at 2x the diagonal even goes the other way.
+//
+// There aren't any public sources that directly document Xenos positions, but
+// they can be reasonably inferred from a few different places:
+// - R6xx and R7xx 3D Register Reference Guide (PA_SC_MODE_CNTL, pg. 44)
+//   outlines these exact 2x and 4x positions. Additionally, Mesa's r600 driver
+//   programs with these same positions. Evergreen moved to the D3D10.1 ones.
+//
+// - 4D5307D5, like most other UE3 titles, adds (-0.25, 0.25) or
+//   (-0.125, -0.125) to the device's x/y viewport offsets for 2x or 4x tiling
+//   modes, respectively. These .data floats match R6xx/R7xx sample 0:
+//   (-4, 4) or (-2, -2) in 1/16 units. Under predicated tiling, UE3 applies
+//   them to align sample 0 with non-MSAA depth when restoring depth. Since the
+//   D3D10.1 positions can't match this correction, restored depth can fail
+//   subsequent depth tests and leave parts of the scene unshaded.
+//
+// - ATI Xenos: Xbox 360 Graphics Demystified describes the sampling pattern as
+//   "not programmable but fixed, although it does use a sample pattern that
+//   doesn't have any of the sample points intersecting one or another on
+//   either the vertical or horizontal axis."
+constexpr int8_t kXenosSamplePositions2x[2][2] = {{-4, 4}, {4, -4}};
+constexpr int8_t kXenosSamplePositions4x[4][2] = {
+    {-2, -2}, {2, 2}, {-6, 6}, {6, -6}};
+
+// Writes the Xenos position paired with each host sample and returns the
+// sample count. Uses the same mapping as render target loads/stores, choosing
+// the closest host samples where possible:
+// - 4x: guest sample order for host RT; 0, 3, 2, 1 for interlock.
+// - Native 2x: guest sample XOR 1; both host samples are equally close.
+// - 2x as 4x: samples 0 and 3 for host RT; 2 and 1 for interlock.
+//   The unused samples repeat these positions.
+uint32_t GetHostSampleXenosPositions(xenos::MsaaSamples msaa_samples,
+                                     bool native_2x, bool interlock,
+                                     int8_t (*positions_out)[2]);
+
 reg::RB_DEPTHCONTROL GetNormalizedDepthControl(const RegisterFile& regs);
 
 // Direct3D 9 and Xenos constant polygon offset is an absolute floating-point
@@ -326,6 +363,8 @@ struct GetViewportInfoArgs {
           // and a cached viewport has to match it. 3 bits fit max 7 scale.
           uint32_t draw_resolution_scale_x : 3;
           uint32_t draw_resolution_scale_y : 3;
+          xenos::MsaaSamples msaa_samples : xenos::kMsaaSamplesBits;
+          uint32_t xenos_sample_positions : 1;
         };
         uint32_t packed_portions;
       };
@@ -371,7 +410,7 @@ struct GetViewportInfoArgs {
              bool _allow_reverse_z,
              reg::RB_DEPTHCONTROL _normalized_depth_control,
              bool _convert_z_to_float24, bool _full_float24_in_0_to_1,
-             bool _pixel_shader_writes_depth) {
+             bool _pixel_shader_writes_depth, bool _xenos_sample_positions) {
     packed_portions = 0;
     padding_set_to_0 = 0;  // important to zero this
     draw_resolution_scale_x = _draw_resolution_scale_x;
@@ -386,6 +425,7 @@ struct GetViewportInfoArgs {
     convert_z_to_float24 = _convert_z_to_float24;
     full_float24_in_0_to_1 = _full_float24_in_0_to_1;
     pixel_shader_writes_depth = _pixel_shader_writes_depth;
+    xenos_sample_positions = _xenos_sample_positions;
   }
 
   void SetupRegisterValues(const RegisterFile& regs,
@@ -405,6 +445,7 @@ struct GetViewportInfoArgs {
       pa_sc_window_offset.value = 0;
     }
     depth_format = regs.Get<reg::RB_DEPTH_INFO>().depth_format;
+    msaa_samples = regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
   }
   XE_FORCEINLINE
   bool operator==(const GetViewportInfoArgs& prev) const {

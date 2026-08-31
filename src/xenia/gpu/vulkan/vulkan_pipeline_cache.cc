@@ -2993,21 +2993,34 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   VkPipelineMultisampleStateCreateInfo multisample_state = {};
   multisample_state.sType =
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+  bool subpass_has_attachments =
+      !edram_fragment_shader_interlock &&
+      description.render_pass_key.depth_and_color_used != 0;
   if (description.render_pass_key.msaa_samples == xenos::MsaaSamples::k2X &&
-      !render_target_cache_.IsMsaa2xSupported(
-          !edram_fragment_shader_interlock &&
-          description.render_pass_key.depth_and_color_used != 0)) {
-    // Using sample 0 as 0 and 3 as 1 for 2x instead (not exactly the same
-    // sample locations, but still top-left and bottom-right - however, this can
-    // be adjusted with custom sample locations).
+      !render_target_cache_.IsMsaa2xSupported(subpass_has_attachments)) {
     multisample_state.rasterizationSamples = VK_SAMPLE_COUNT_4_BIT;
-    sample_mask = 0b1001;
+    // Using samples 2 and 1 as 0 and 1 for 2x instead with interlock, 0 and 3
+    // otherwise (see GetHostSampleXenosPositions).
+    sample_mask = edram_fragment_shader_interlock ? 0b0110 : 0b1001;
     // TODO(Triang3l): Research sample mask behavior without attachments (in
     // Direct3D, it's completely ignored in this case).
     multisample_state.pSampleMask = &sample_mask;
   } else {
     multisample_state.rasterizationSamples = VkSampleCountFlagBits(
         uint32_t(1) << uint32_t(description.render_pass_key.msaa_samples));
+  }
+
+  VkPipelineSampleLocationsStateCreateInfoEXT sample_locations_state;
+  const VkSampleLocationsInfoEXT* sample_locations_info =
+      render_target_cache_.GetSampleLocationsInfo(
+          description.render_pass_key.msaa_samples, subpass_has_attachments);
+  if (sample_locations_info) {
+    sample_locations_state.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_SAMPLE_LOCATIONS_STATE_CREATE_INFO_EXT;
+    sample_locations_state.pNext = nullptr;
+    sample_locations_state.sampleLocationsEnable = VK_TRUE;
+    sample_locations_state.sampleLocationsInfo = *sample_locations_info;
+    multisample_state.pNext = &sample_locations_state;
   }
 
   VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {};

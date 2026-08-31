@@ -193,6 +193,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     // #148.
     XE_UI_VULKAN_STRUCT_PROMOTED_EXTENSION(KHR_image_format_list, 1, 2)
     if (get_physical_device_properties2_supported) {
+      // #144.
+      XE_UI_VULKAN_STRUCT_EXTENSION(EXT_sample_locations)
       // #157.
       XE_UI_VULKAN_STRUCT_PROMOTED_EXTENSION(KHR_sampler_ycbcr_conversion, 1, 1)
       // #198. Also must be enabled for VK_KHR_spirv_1_4.
@@ -301,6 +303,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       features_KHR_portability_subset;
   VkPhysicalDeviceDriverPropertiesKHR properties_1_2_KHR_driver_properties = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+  VkPhysicalDeviceSampleLocationsPropertiesEXT properties_EXT_sample_locations =
+      {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLE_LOCATIONS_PROPERTIES_EXT};
   VkPhysicalDeviceFloatControlsProperties
       properties_1_2_KHR_shader_float_controls = {
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES};
@@ -351,6 +355,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     if (ext_1_2_KHR_shader_float_controls) {
       properties_1_2_KHR_shader_float_controls.pNext = properties_2.pNext;
       properties_2.pNext = &properties_1_2_KHR_shader_float_controls;
+    }
+    if (device->extensions_.ext_EXT_sample_locations) {
+      properties_EXT_sample_locations.pNext = properties_2.pNext;
+      properties_2.pNext = &properties_EXT_sample_locations;
     }
     if (ext_EXT_fragment_shader_interlock) {
       features_EXT_fragment_shader_interlock.Link(supported_features_2,
@@ -729,6 +737,13 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       XE_UI_VULKAN_FEATURE_2(features_EXT_fragment_shader_interlock,
                              fragmentShaderPixelInterlock)
     }
+  }
+
+  if (device->extensions_.ext_EXT_sample_locations) {
+    XE_UI_VULKAN_PROPERTY_2(properties_EXT_sample_locations,
+                            sampleLocationSampleCounts);
+    XE_UI_VULKAN_PROPERTY_2(properties_EXT_sample_locations,
+                            variableSampleLocations);
   }
 
   if (ext_EXT_non_seamless_cube_map) {

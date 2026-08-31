@@ -460,36 +460,65 @@ void DxbcShaderTranslator::StartPixelShader_LoadROVParameters() {
   // Sample coverage to system_temp_rov_params_.x.
   // ***************************************************************************
 
-  // Using ForcedSampleCount of 4 (2 is not supported on Nvidia), so for 2x
-  // MSAA, handling samples 0 and 3 (upper-left and lower-right) as 0 and 1.
+  // Using ForcedSampleCount of 4 (2 is not supported on Nvidia). Coverage
+  // comes from host samples 2 and 1 for 2x and 0, 3, 2, 1 for 4x, the pairing
+  // in GetHostSampleXenosPositions.
 
+  uint32_t coverage_temp = PushSystemTemp();
+  dxbc::Dest coverage_temp_x_dest(dxbc::Dest::R(coverage_temp, 0b0001));
+  dxbc::Src coverage_temp_x_src(dxbc::Src::R(coverage_temp, dxbc::Src::kXXXX));
   // Check if 4x MSAA is enabled.
   a_.OpIf(true, LoadSystemConstant(SystemConstants::Index::kSampleCountLog2,
                                    offsetof(SystemConstants, sample_count_log2),
                                    dxbc::Src::kXXXX));
   {
-    // Copy the 4x AA coverage to system_temp_rov_params_.x. The guest sample
-    // numbering matches Direct3D 10.1+, bit 0 horizontal and bit 1 vertical,
-    // just like the canonical layout where the horizontal sample bit of a 4x
-    // view selects the horizontally adjacent sample column pair.
-    a_.OpMov(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
-             dxbc::Src::VCoverage());
+    // Swap the coverage of samples 1 and 3.
+    // coverage_temp.x = host sample 3 coverage
+    a_.OpUBFE(coverage_temp_x_dest, dxbc::Src::LU(1), dxbc::Src::LU(3),
+              dxbc::Src::VCoverage());
+    // system_temp_rov_params_.x = coverage with the guest sample 1 bit
+    a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001), dxbc::Src::LU(1),
+             dxbc::Src::LU(1), coverage_temp_x_src, dxbc::Src::VCoverage());
+    // coverage_temp.x = host sample 1 coverage
+    a_.OpUBFE(coverage_temp_x_dest, dxbc::Src::LU(1), dxbc::Src::LU(1),
+              dxbc::Src::VCoverage());
+    // system_temp_rov_params_.x = the guest 4x coverage
+    a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001), dxbc::Src::LU(1),
+             dxbc::Src::LU(3), coverage_temp_x_src,
+             dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX));
   }
   // Handle 1 or 2 samples.
   a_.OpElse();
   {
-    // Extract sample 3 coverage, which will be used as sample 1.
-    a_.OpUBFE(dxbc::Dest::R(system_temp_rov_params_, 0b0001), dxbc::Src::LU(1),
-              dxbc::Src::LU(3), dxbc::Src::VCoverage());
-    // Combine coverage of samples 0 (in bit 0 of vCoverage) and 3 (in bit 0 of
-    // system_temp_rov_params_.x).
-    a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001), dxbc::Src::LU(31),
-             dxbc::Src::LU(1),
-             dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-             dxbc::Src::VCoverage());
+    // Check if 2x MSAA is enabled.
+    a_.OpIf(true,
+            LoadSystemConstant(SystemConstants::Index::kSampleCountLog2,
+                               offsetof(SystemConstants, sample_count_log2),
+                               dxbc::Src::kYYYY));
+    {
+      // coverage_temp.x = host sample 1 coverage as guest sample 1
+      a_.OpUBFE(coverage_temp_x_dest, dxbc::Src::LU(1), dxbc::Src::LU(1),
+                dxbc::Src::VCoverage());
+      // system_temp_rov_params_.x = host sample 2 coverage as guest sample 0
+      a_.OpUBFE(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+                dxbc::Src::LU(1), dxbc::Src::LU(2), dxbc::Src::VCoverage());
+      // system_temp_rov_params_.x = the guest 2x coverage
+      a_.OpBFI(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+               dxbc::Src::LU(31), dxbc::Src::LU(1), coverage_temp_x_src,
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX));
+    }
+    a_.OpElse();
+    {
+      // No MSAA, the sample 0 coverage is in bit 0 already.
+      a_.OpMov(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+               dxbc::Src::VCoverage());
+    }
+    // Close the 2x MSAA conditional.
+    a_.OpEndIf();
   }
   // Close the 4x MSAA conditional.
   a_.OpEndIf();
+  PopSystemTemp();
 }
 
 void DxbcShaderTranslator::ROV_DepthStencilTest() {
@@ -652,28 +681,45 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
       // Adreno 200 doesn't have PA_SC_VPORT_ZMIN/ZMAX, so likely there's no
       // need to clamp to the viewport depth bounds, just to 0...1 - thus only
       // saturating in the end of the per-sample depth calculation.
+      //
+      // Extrapolate depth to the guest sample's position, not the coverage's
+      // host sample. Resolves and later depth tests read this depth back, so it
+      // should be what real hardware would store.
       switch (i) {
         case 0:
-          // First sample - off-center for MSAA, in the center without it.
-          // Using ForcedSampleCount 4 for both 2x and 4x MSAA because
-          // ForcedSampleCount 2 is not supported on Nvidia, thus the position
-          // of the top-left sample (0 in Xenia) is always that of the top-left
-          // sample of host 4x MSAA.
-          // Calculate the depth in the sample 0 for 2x or 4x MSAA.
+          // Check if 4x MSAA is used.
+          a_.OpIf(true, LoadSystemConstant(
+                            SystemConstants::Index::kSampleCountLog2,
+                            offsetof(SystemConstants, sample_count_log2),
+                            dxbc::Src::kXXXX));
+          // 4x MSAA.
           // temp.x if early = ddx(z)
           // temp.y if early = ddy(z)
           // temp.z = biased depth in the center
           // temp.w if late = unsaturated sample 0 depth at 4x MSAA
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddx_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[0][0] *
-                            (1.0f / 16.0f)),
-              temp_z_src);
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddy_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[0][1] *
-                            (1.0f / 16.0f)),
-              sample_depth_stencil_src);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions4x[0][0] *
+                                 (1.0f / 16.0f)),
+                   temp_z_src);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddy_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions4x[0][1] *
+                                 (1.0f / 16.0f)),
+                   sample_depth_stencil_src);
+          a_.OpElse();
+          // 2x MSAA, or none, the center value is selected afterwards.
+          // temp.x if early = ddx(z)
+          // temp.y if early = ddy(z)
+          // temp.z = biased depth in the center
+          // temp.w if late = unsaturated sample 0 depth at 2x MSAA
+          a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions2x[0][0] *
+                                 (1.0f / 16.0f)),
+                   temp_z_src);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddy_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions2x[0][1] *
+                                 (1.0f / 16.0f)),
+                   sample_depth_stencil_src);
+          a_.OpEndIf();
           // Choose between the sample and the center depth depending on whether
           // at least 2x MSAA is enabled and saturate.
           // temp.x if early = ddx(z)
@@ -688,10 +734,6 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
               sample_depth_stencil_src, temp_z_src, true);
           break;
         case 1:
-          // - 2x MSAA: Bottom sample -> bottom-right (3) with Direct3D 11's
-          //   ForcedSampleCount 4.
-          // - 4x MSAA: Top-right guest sample (the horizontal sample bit is
-          //   bit 0) -> Direct3D 11 sample 1.
           // Check if 4x MSAA is used.
           a_.OpIf(true, LoadSystemConstant(
                             SystemConstants::Index::kSampleCountLog2,
@@ -702,44 +744,37 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
           // temp.y if early = ddy(z)
           // temp.z = biased depth in the center
           // temp.w if late = saturated sample 1 depth at 4x MSAA
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddx_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[1][0] *
-                            (1.0f / 16.0f)),
-              temp_z_src);
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddy_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[1][1] *
-                            (1.0f / 16.0f)),
-              sample_depth_stencil_src, true);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions4x[1][0] *
+                                 (1.0f / 16.0f)),
+                   temp_z_src);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddy_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions4x[1][1] *
+                                 (1.0f / 16.0f)),
+                   sample_depth_stencil_src, true);
           a_.OpElse();
-          // 2x MSAA as ForcedSampleCount 4 on the host.
+          // 2x MSAA.
           // temp.x if early = ddx(z)
           // temp.y if early = ddy(z)
           // temp.z = biased depth in the center
           // temp.w if late = saturated sample 1 depth at 2x MSAA
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddx_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[3][0] *
-                            (1.0f / 16.0f)),
-              temp_z_src);
-          a_.OpMAd(
-              sample_depth_stencil_dest, z_ddy_src,
-              dxbc::Src::LF(draw_util::kD3D10StandardSamplePositions4x[3][1] *
-                            (1.0f / 16.0f)),
-              sample_depth_stencil_src, true);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions2x[1][0] *
+                                 (1.0f / 16.0f)),
+                   temp_z_src);
+          a_.OpMAd(sample_depth_stencil_dest, z_ddy_src,
+                   dxbc::Src::LF(draw_util::kXenosSamplePositions2x[1][1] *
+                                 (1.0f / 16.0f)),
+                   sample_depth_stencil_src, true);
           a_.OpEndIf();
           break;
         default: {
-          // Guest samples 2 and 3, bottom left and bottom right with the
-          // vertical sample bit being bit 1, map to Direct3D 11 samples 2
-          // and 3.
+          // Guest samples 2 and 3, 4x only.
           // temp.x if early = ddx(z)
           // temp.y if early = ddy(z)
           // temp.z = biased depth in the center
           // temp.w if late = saturated sample 2 or 3 depth
-          const int8_t* sample_position =
-              draw_util::kD3D10StandardSamplePositions4x[i];
+          const int8_t* sample_position = draw_util::kXenosSamplePositions4x[i];
           a_.OpMAd(sample_depth_stencil_dest, z_ddx_src,
                    dxbc::Src::LF(sample_position[0] * (1.0f / 16.0f)),
                    temp_z_src);

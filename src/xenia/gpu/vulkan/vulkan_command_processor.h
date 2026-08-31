@@ -200,6 +200,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
       uint32_t src_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
       uint32_t dst_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
       bool skip_if_equal = true);
+  // sample_locations has to stay valid until barriers are submitted.
   bool PushImageMemoryBarrier(
       VkImage image, const VkImageSubresourceRange& subresource_range,
       VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask,
@@ -207,7 +208,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
       VkImageLayout old_layout, VkImageLayout new_layout,
       uint32_t src_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
       uint32_t dst_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
-      bool skip_if_equal = true);
+      bool skip_if_equal = true,
+      const VkSampleLocationsInfoEXT* sample_locations = nullptr);
   // Returns whether any barriers have been submitted - if true is returned, the
   // render pass will also be closed.
   bool SubmitBarriers(bool force_end_render_pass);

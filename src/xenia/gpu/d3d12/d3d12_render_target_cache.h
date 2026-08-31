@@ -320,6 +320,14 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
     uint32_t temporary_sort_index_ = 0;
   };
 
+  // Transitions render targets using their sample positions for depth.
+  // Multisampled depth drawn at Xenos sample positions is decompressed in place
+  // before leaving DEPTH_WRITE. Otherwise, shader reads may use the default
+  // positions to interpret compressed depth.
+  // https://microsoft.github.io/DirectX-Specs/d3d/ProgrammableSamplePositions.html
+  void TransitionRenderTarget(D3D12RenderTarget& render_target,
+                              D3D12_RESOURCE_STATES new_state);
+
   enum TransferCBVRegister : uint32_t {
     kTransferCBVRegisterStencilMask,
     kTransferCBVRegisterAddress,
