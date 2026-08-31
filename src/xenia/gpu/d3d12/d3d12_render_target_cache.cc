@@ -2071,6 +2071,17 @@ RenderTargetCache::RenderTarget* D3D12RenderTargetCache::CreateRenderTarget(
   device->CreateShaderResourceView(resource.Get(), &srv_desc,
                                    descriptor_srv.GetHandle());
 
+  if (key.is_depth && key.msaa_samples != xenos::MsaaSamples::k1X &&
+      command_processor_.xenos_sample_positions_used()) {
+    // Clear the whole thing to zero, like the new allocation, under the RT's
+    // Xenos sample pattern. Depth surfaces lock in their pattern on clear,
+    // and fresh ones start on default.
+    command_processor_.UpdateSamplePositions(key.msaa_samples);
+    command_processor_.GetDeferredCommandList().D3DClearDepthStencilView(
+        descriptor_draw_handle,
+        D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0, 0, nullptr);
+  }
+
   return new D3D12RenderTarget(
       key, resource.Get(), std::move(descriptor_draw),
       std::move(descriptor_load_separate), std::move(descriptor_srv),
@@ -2100,6 +2111,39 @@ void D3D12RenderTargetCache::TransitionEdramBuffer(
         EdramBufferModificationStatus::kUnmodified;
   }
   edram_buffer_state_ = new_state;
+}
+
+void D3D12RenderTargetCache::TransitionRenderTarget(
+    D3D12RenderTarget& render_target, D3D12_RESOURCE_STATES new_state) {
+  D3D12_RESOURCE_STATES old_state = render_target.SetResourceState(new_state);
+  if (old_state == new_state) {
+    return;
+  }
+
+  RenderTargetKey key = render_target.key();
+
+  if (key.is_depth) {
+    command_processor_.UpdateSamplePositions(key.msaa_samples);
+    if (old_state == D3D12_RESOURCE_STATE_DEPTH_WRITE &&
+        key.msaa_samples != xenos::MsaaSamples::k1X &&
+        command_processor_.xenos_sample_positions_used()) {
+      // Decompress depth in place before transitioning to the requested state.
+      command_processor_.PushTransitionBarrier(
+          render_target.resource(), old_state,
+          D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+      command_processor_.SubmitBarriers();
+
+      command_processor_.GetDeferredCommandList().D3DResolveSubresourceRegion(
+          render_target.resource(), 0, 0, 0, render_target.resource(), 0,
+          nullptr, GetDepthDSVDXGIFormat(key.GetDepthFormat()),
+          D3D12_RESOLVE_MODE_DECOMPRESS);
+
+      old_state = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+    }
+  }
+
+  command_processor_.PushTransitionBarrier(render_target.resource(), old_state,
+                                           new_state);
 }
 
 void D3D12RenderTargetCache::MarkEdramBufferModified(
@@ -4546,11 +4590,8 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
         // anyway even in the best case, so it's not possible to have all the
         // barriers in one place here.
         TransitionEdramBuffer(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        command_processor_.PushTransitionBarrier(
-            dest_d3d12_rt.resource(),
-            dest_d3d12_rt.SetResourceState(
-                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        TransitionRenderTarget(dest_d3d12_rt,
+                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         // Pipeline.
         command_processor_.SetExternalPipeline(
             host_depth_store_pipelines_[size_t(dest_rt_key.msaa_samples)]);
@@ -4617,11 +4658,8 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
       if (!source_previously_used_as_dest) {
         auto& source_d3d12_rt =
             *static_cast<D3D12RenderTarget*>(transfer.source);
-        command_processor_.PushTransitionBarrier(
-            source_d3d12_rt.resource(),
-            source_d3d12_rt.SetResourceState(
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        TransitionRenderTarget(source_d3d12_rt,
+                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
       }
       // transfer.host_depth_source == dest_rt means the EDRAM buffer will be
       // used instead, no need to transition.
@@ -4629,11 +4667,8 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
           !host_depth_source_previously_used_as_dest) {
         auto& host_depth_source_d3d12_rt =
             *static_cast<D3D12RenderTarget*>(transfer.host_depth_source);
-        command_processor_.PushTransitionBarrier(
-            host_depth_source_d3d12_rt.resource(),
-            host_depth_source_d3d12_rt.SetResourceState(
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        TransitionRenderTarget(host_depth_source_d3d12_rt,
+                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
       }
     }
     // Transition the destination, only if not going to be used as a source
@@ -4652,9 +4687,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
       D3D12_RESOURCE_STATES dest_state =
           dest_d3d12_rt.key().is_depth ? D3D12_RESOURCE_STATE_DEPTH_WRITE
                                        : D3D12_RESOURCE_STATE_RENDER_TARGET;
-      command_processor_.PushTransitionBarrier(
-          dest_d3d12_rt.resource(), dest_d3d12_rt.SetResourceState(dest_state),
-          dest_state);
+      TransitionRenderTarget(dest_d3d12_rt, dest_state);
     }
   }
   if (host_depth_store_set_up) {
@@ -4782,9 +4815,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
     D3D12_RESOURCE_STATES dest_state = dest_rt_key.is_depth
                                            ? D3D12_RESOURCE_STATE_DEPTH_WRITE
                                            : D3D12_RESOURCE_STATE_RENDER_TARGET;
-    command_processor_.PushTransitionBarrier(
-        dest_d3d12_rt.resource(), dest_d3d12_rt.SetResourceState(dest_state),
-        dest_state);
+    TransitionRenderTarget(dest_d3d12_rt, dest_state);
 
     if (!current_transfers.empty()) {
       are_current_command_list_render_targets_valid_ = false;
@@ -4914,6 +4945,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
       // to reduce context switches internally in the driver if clear causes
       // them.
       if (stencil_clear_rectangle_count) {
+        // No need to update sample positions here. Sample clears ignore them.
         command_processor_.SubmitBarriers();
         D3D12_RECT* stencil_clear_rect_write_ptr =
             command_list.ClearDepthStencilViewAllocatedRects(
@@ -5015,24 +5047,21 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
 
         // Late barriers in case there was cross-copying that prevented merging
         // of barriers.
-        command_processor_.PushTransitionBarrier(
-            source_d3d12_rt.resource(),
-            source_d3d12_rt.SetResourceState(
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        TransitionRenderTarget(source_d3d12_rt,
+                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         if (host_depth_source_d3d12_rt) {
           if (transfer_shader_key.host_depth_source_is_copy) {
             // Reading copied host depth from the EDRAM buffer.
             TransitionEdramBuffer(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
           } else {
             // Reading host depth from the texture.
-            command_processor_.PushTransitionBarrier(
-                host_depth_source_d3d12_rt->resource(),
-                host_depth_source_d3d12_rt->SetResourceState(
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            TransitionRenderTarget(*host_depth_source_d3d12_rt,
+                                   D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
           }
         }
+
+        // Restore the destination's sample positions.
+        command_processor_.UpdateSamplePositions(dest_rt_key.msaa_samples);
 
         uint32_t transfer_vertex_count = 6 * transfer_rectangle_count;
         D3D12_VERTEX_BUFFER_VIEW transfer_rectangle_buffer_view;
@@ -5339,6 +5368,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
                 xenos::Float20e4To32(depth_guest_clear_value) * 0.5f;
             break;
         }
+        command_processor_.UpdateSamplePositions(dest_rt_key.msaa_samples);
         command_processor_.PushTransitionBarrier(
             dest_d3d12_rt.resource(),
             dest_d3d12_rt.SetResourceState(D3D12_RESOURCE_STATE_DEPTH_WRITE),
@@ -5431,6 +5461,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
             dest_d3d12_rt.SetResourceState(D3D12_RESOURCE_STATE_RENDER_TARGET),
             D3D12_RESOURCE_STATE_RENDER_TARGET);
         if (clear_via_drawing) {
+          command_processor_.UpdateSamplePositions(dest_rt_key.msaa_samples);
           auto handle =
               (dest_d3d12_rt.descriptor_load_separate().IsValid()
                    ? dest_d3d12_rt.descriptor_load_separate().GetHandle()
@@ -5482,10 +5513,7 @@ void D3D12RenderTargetCache::SetCommandListRenderTargets(
   if (depth_and_color_render_targets[0]) {
     auto& d3d12_rt =
         *static_cast<D3D12RenderTarget*>(depth_and_color_render_targets[0]);
-    command_processor_.PushTransitionBarrier(
-        d3d12_rt.resource(),
-        d3d12_rt.SetResourceState(D3D12_RESOURCE_STATE_DEPTH_WRITE),
-        D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    TransitionRenderTarget(d3d12_rt, D3D12_RESOURCE_STATE_DEPTH_WRITE);
   }
   for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
     RenderTarget* render_target = depth_and_color_render_targets[1 + i];
@@ -6483,11 +6511,8 @@ void D3D12RenderTargetCache::DumpRenderTargets(uint32_t dump_base,
   uint32_t rt_sort_index = 0;
   for (const ResolveCopyDumpRectangle& rectangle : dump_rectangles_) {
     auto& d3d12_rt = *static_cast<D3D12RenderTarget*>(rectangle.render_target);
-    command_processor_.PushTransitionBarrier(
-        d3d12_rt.resource(),
-        d3d12_rt.SetResourceState(
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    TransitionRenderTarget(d3d12_rt,
+                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     if (d3d12_rt.temporary_sort_index() == UINT32_MAX) {
       d3d12_rt.SetTemporarySortIndex(rt_sort_index++);
     }

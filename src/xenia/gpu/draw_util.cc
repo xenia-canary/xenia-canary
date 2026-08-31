@@ -180,6 +180,40 @@ constexpr int8_t kD3D10StandardSamplePositions2x[2][2] = {{4, 4}, {-4, -4}};
 constexpr int8_t kD3D10StandardSamplePositions4x[4][2] = {
     {-2, -6}, {6, -2}, {-6, 2}, {2, 6}};
 
+uint32_t GetHostSampleXenosPositions(xenos::MsaaSamples msaa_samples,
+                                     bool native_2x, bool interlock,
+                                     int8_t (*positions_out)[2]) {
+  assert_true(msaa_samples == xenos::MsaaSamples::k2X ||
+              msaa_samples == xenos::MsaaSamples::k4X);
+
+  static constexpr uint32_t kSampleRemap2x[2] = {1, 0};
+  static constexpr uint32_t kSampleRemap2xAs4x[4] = {0, 1, 0, 1};
+  static constexpr uint32_t kSampleRemap4x[4] = {0, 1, 2, 3};
+  static constexpr uint32_t kSampleRemap4xInterlock[4] = {0, 3, 2, 1};
+
+  const int8_t (*xenos_positions)[2];
+  const uint32_t* sample_remap;
+  uint32_t host_sample_count;
+
+  if (msaa_samples == xenos::MsaaSamples::k4X) {
+    xenos_positions = kXenosSamplePositions4x;
+    sample_remap = interlock ? kSampleRemap4xInterlock : kSampleRemap4x;
+    host_sample_count = 4;
+  } else {
+    xenos_positions = kXenosSamplePositions2x;
+    sample_remap = native_2x ? kSampleRemap2x : kSampleRemap2xAs4x;
+    host_sample_count = native_2x ? 2 : 4;
+  }
+
+  for (uint32_t i = 0; i < host_sample_count; ++i) {
+    const int8_t* position = xenos_positions[sample_remap[i]];
+    positions_out[i][0] = position[0];
+    positions_out[i][1] = position[1];
+  }
+
+  return host_sample_count;
+}
+
 void GetPreferredFacePolygonOffset(const RegisterFile& regs,
                                    bool primitive_polygonal, float& scale_out,
                                    float& offset_out) {
@@ -433,6 +467,39 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       pa_su_vtx_cntl.pix_center == xenos::PixelCenter::kD3DZero) {
     offset_add_xy[0] += 0.5f;
     offset_add_xy[1] += 0.5f;
+  }
+  // Only scale the whole pixel part of the viewport offset. Keep the Xenos
+  // sample offset in host pixels since programmed sample positions don't scale
+  // (see kXenosSamplePositions2x).
+  if (args->xenos_sample_positions &&
+      args->msaa_samples != xenos::MsaaSamples::k1X &&
+      (args->draw_resolution_scale_x > 1 ||
+       args->draw_resolution_scale_y > 1)) {
+    float offset_fraction_xy[2];
+    for (uint32_t i = 0; i < 2; ++i) {
+      float offset_axis = offset_base_xy[i] + offset_add_xy[i];
+      offset_fraction_xy[i] = offset_axis - std::floor(offset_axis) - 0.5f;
+    }
+    const int8_t (*sample_positions)[2] =
+        args->msaa_samples >= xenos::MsaaSamples::k4X ? kXenosSamplePositions4x
+                                                      : kXenosSamplePositions2x;
+    uint32_t sample_count =
+        args->msaa_samples >= xenos::MsaaSamples::k4X ? 4 : 2;
+    for (uint32_t i = 0; i < sample_count; ++i) {
+      if (offset_fraction_xy[0] ==
+              float(sample_positions[i][0]) * (1.0f / 16.0f) &&
+          offset_fraction_xy[1] ==
+              float(sample_positions[i][1]) * (1.0f / 16.0f)) {
+        for (uint32_t j = 0; j < 2; ++j) {
+          uint32_t axis_resolution_scale =
+              j ? args->draw_resolution_scale_y : args->draw_resolution_scale_x;
+          offset_add_xy[j] -= offset_fraction_xy[j] *
+                              float(axis_resolution_scale - 1) /
+                              float(axis_resolution_scale);
+        }
+        break;
+      }
+    }
   }
 
   // The maximum value is at least the maximum host render target size anyway -

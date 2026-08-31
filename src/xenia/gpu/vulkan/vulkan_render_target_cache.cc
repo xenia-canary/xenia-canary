@@ -289,6 +289,48 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
     msaa_2x_no_attachments_supported_ = false;
   }
 
+  // Set up Xenos MSAA sample locations for sample counts the device supports.
+  if (vulkan_device->extensions().ext_EXT_sample_locations) {
+    for (uint32_t i = 0; i < 2; ++i) {
+      bool subpass_has_attachments = i != 0;
+      // FSI always uses Xenos' MSAA sample positions.
+      if (subpass_has_attachments && !cvars::xenos_sample_positions) {
+        continue;
+      }
+      // Draws without attachments can change sample counts within a render
+      // pass, so they need variable sample locations.
+      if (!subpass_has_attachments &&
+          !device_properties.variableSampleLocations) {
+        continue;
+      }
+      for (uint32_t j = 0; j < 2; ++j) {
+        // Use interlock sample mapping for subpasses without attachments.
+        int8_t positions[4][2];
+        uint32_t host_sample_count = draw_util::GetHostSampleXenosPositions(
+            j ? xenos::MsaaSamples::k4X : xenos::MsaaSamples::k2X,
+            IsMsaa2xSupported(subpass_has_attachments),
+            !subpass_has_attachments, positions);
+        if (!(device_properties.sampleLocationSampleCounts &
+              VkSampleCountFlags(host_sample_count))) {
+          continue;
+        }
+        VkSampleLocationEXT* locations = sample_locations_[i][j];
+        for (uint32_t k = 0; k < host_sample_count; ++k) {
+          locations[k].x = 0.5f + float(positions[k][0]) * (1.0f / 16.0f);
+          locations[k].y = 0.5f + float(positions[k][1]) * (1.0f / 16.0f);
+        }
+        VkSampleLocationsInfoEXT& info = sample_locations_info_[i][j];
+        info.sType = VK_STRUCTURE_TYPE_SAMPLE_LOCATIONS_INFO_EXT;
+        info.pNext = nullptr;
+        info.sampleLocationsPerPixel = VkSampleCountFlagBits(host_sample_count);
+        info.sampleLocationGridSize.width = 1;
+        info.sampleLocationGridSize.height = 1;
+        info.sampleLocationsCount = host_sample_count;
+        info.pSampleLocations = locations;
+      }
+    }
+  }
+
   // Descriptor set layouts.
   VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[2];
   descriptor_set_layout_bindings[0].binding = 0;
@@ -1631,16 +1673,8 @@ bool VulkanRenderTargetCache::Update(
         VkImageLayout rt_new_layout;
         VulkanRenderTarget::GetDrawUsage(i == 0, &rt_dst_stage_mask,
                                          &rt_dst_access_mask, &rt_new_layout);
-        command_processor_.PushImageMemoryBarrier(
-            vulkan_rt.image(),
-            ui::vulkan::util::InitializeSubresourceRange(
-                i ? VK_IMAGE_ASPECT_COLOR_BIT
-                  : (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)),
-            vulkan_rt.current_stage_mask(), rt_dst_stage_mask,
-            vulkan_rt.current_access_mask(), rt_dst_access_mask,
-            vulkan_rt.current_layout(), rt_new_layout);
-        vulkan_rt.SetUsage(rt_dst_stage_mask, rt_dst_access_mask,
-                           rt_new_layout);
+        TransitionRenderTarget(vulkan_rt, rt_dst_stage_mask, rt_dst_access_mask,
+                               rt_new_layout);
       }
     } break;
 
@@ -1971,6 +2005,12 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(
     image_create_info.format = GetDepthVulkanFormat(key.GetDepthFormat());
     transfer_format = image_create_info.format;
     image_create_info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    if (GetSampleLocationsInfo(key.msaa_samples, true)) {
+      // Allow depth rendering at Xenos sample locations.
+      // Transitions must use the same locations to preserve compressed depth.
+      image_create_info.flags |=
+          VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT;
+    }
   } else {
     xenos::ColorRenderTargetFormat color_format = key.GetColorFormat();
     image_create_info.format = GetColorVulkanFormat(color_format);
@@ -2262,6 +2302,28 @@ void VulkanRenderTargetCache::CommitEdramBufferShaderWrites(
   PixelShaderInterlockFullEdramBarrierPlaced();
 }
 
+void VulkanRenderTargetCache::TransitionRenderTarget(
+    VulkanRenderTarget& render_target, VkPipelineStageFlags dst_stage_mask,
+    VkAccessFlags dst_access_mask, VkImageLayout new_layout) {
+  RenderTargetKey key = render_target.key();
+
+  // Use the depth's sample locations for all transitions, including those
+  // between read-only layouts.
+  command_processor_.PushImageMemoryBarrier(
+      render_target.image(),
+      ui::vulkan::util::InitializeSubresourceRange(
+          key.is_depth
+              ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+              : VK_IMAGE_ASPECT_COLOR_BIT),
+      render_target.current_stage_mask(), dst_stage_mask,
+      render_target.current_access_mask(), dst_access_mask,
+      render_target.current_layout(), new_layout, VK_QUEUE_FAMILY_IGNORED,
+      VK_QUEUE_FAMILY_IGNORED, true,
+      key.is_depth ? GetSampleLocationsInfo(key.msaa_samples, true) : nullptr);
+
+  render_target.SetUsage(dst_stage_mask, dst_access_mask, new_layout);
+}
+
 const VulkanRenderTargetCache::Framebuffer*
 VulkanRenderTargetCache::GetHostRenderTargetsFramebuffer(
     RenderPassKey render_pass_key, uint32_t pitch_tiles_at_32bpp,
@@ -2370,7 +2432,8 @@ VulkanRenderTargetCache::GetHostRenderTargetsFramebuffer(
   // Creates at a persistent location - safe to use pointers.
   return &framebuffers_
               .emplace(std::piecewise_construct, std::forward_as_tuple(key),
-                       std::forward_as_tuple(framebuffer, host_extent))
+                       std::forward_as_tuple(framebuffer, host_extent,
+                                             render_pass_key))
               .first->second;
 }
 
@@ -4505,6 +4568,18 @@ VkPipeline const* VulkanRenderTargetCache::GetTransferPipelines(
       multisample_state.pSampleMask = &sample_mask;
     }
   }
+  // The destination's sample locations.
+  VkPipelineSampleLocationsStateCreateInfoEXT sample_locations_state;
+  const VkSampleLocationsInfoEXT* sample_locations_info =
+      GetSampleLocationsInfo(key.shader_key.dest_msaa_samples, true);
+  if (sample_locations_info) {
+    sample_locations_state.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_SAMPLE_LOCATIONS_STATE_CREATE_INFO_EXT;
+    sample_locations_state.pNext = nullptr;
+    sample_locations_state.sampleLocationsEnable = VK_TRUE;
+    sample_locations_state.sampleLocationsInfo = *sample_locations_info;
+    multisample_state.pNext = &sample_locations_state;
+  }
 
   // Whether the depth / stencil state is used depends on the presence of a
   // depth attachment in the render pass - but not making assumptions about
@@ -4731,18 +4806,10 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
         UseEdramBuffer(EdramBufferUsage::kComputeWrite);
         // Always transitioning both depth and stencil, not storing separate
         // usage flags for depth and stencil.
-        command_processor_.PushImageMemoryBarrier(
-            dest_vulkan_rt.image(),
-            ui::vulkan::util::InitializeSubresourceRange(
-                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT),
-            dest_vulkan_rt.current_stage_mask(),
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            dest_vulkan_rt.current_access_mask(), VK_ACCESS_SHADER_READ_BIT,
-            dest_vulkan_rt.current_layout(),
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        dest_vulkan_rt.SetUsage(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                VK_ACCESS_SHADER_READ_BIT,
-                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        TransitionRenderTarget(dest_vulkan_rt,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         host_depth_store_set_up = true;
       }
       Transfer::Rectangle
@@ -4810,17 +4877,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       VkImageLayout dest_new_layout;
       dest_vulkan_rt.GetDrawUsage(&dest_dst_stage_mask, &dest_dst_access_mask,
                                   &dest_new_layout);
-      command_processor_.PushImageMemoryBarrier(
-          dest_vulkan_rt.image(),
-          ui::vulkan::util::InitializeSubresourceRange(
-              dest_vulkan_rt.key().is_depth
-                  ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-                  : VK_IMAGE_ASPECT_COLOR_BIT),
-          dest_vulkan_rt.current_stage_mask(), dest_dst_stage_mask,
-          dest_vulkan_rt.current_access_mask(), dest_dst_access_mask,
-          dest_vulkan_rt.current_layout(), dest_new_layout);
-      dest_vulkan_rt.SetUsage(dest_dst_stage_mask, dest_dst_access_mask,
-                              dest_new_layout);
+      TransitionRenderTarget(dest_vulkan_rt, dest_dst_stage_mask,
+                             dest_dst_access_mask, dest_new_layout);
     }
     // Transition the sources, only if not going to be used as destinations
     // earlier.
@@ -4842,17 +4900,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       if (!source_previously_used_as_dest) {
         auto& source_vulkan_rt =
             *static_cast<VulkanRenderTarget*>(transfer.source);
-        command_processor_.PushImageMemoryBarrier(
-            source_vulkan_rt.image(),
-            ui::vulkan::util::InitializeSubresourceRange(
-                source_vulkan_rt.key().is_depth
-                    ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-                    : VK_IMAGE_ASPECT_COLOR_BIT),
-            source_vulkan_rt.current_stage_mask(), kSourceStageMask,
-            source_vulkan_rt.current_access_mask(), kSourceAccessMask,
-            source_vulkan_rt.current_layout(), kSourceLayout);
-        source_vulkan_rt.SetUsage(kSourceStageMask, kSourceAccessMask,
-                                  kSourceLayout);
+        TransitionRenderTarget(source_vulkan_rt, kSourceStageMask,
+                               kSourceAccessMask, kSourceLayout);
       }
       // transfer.host_depth_source == dest_rt means the EDRAM buffer will be
       // used instead, no need to transition.
@@ -4860,16 +4909,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
           !host_depth_source_previously_used_as_dest) {
         auto& host_depth_source_vulkan_rt =
             *static_cast<VulkanRenderTarget*>(transfer.host_depth_source);
-        command_processor_.PushImageMemoryBarrier(
-            host_depth_source_vulkan_rt.image(),
-            ui::vulkan::util::InitializeSubresourceRange(
-                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT),
-            host_depth_source_vulkan_rt.current_stage_mask(), kSourceStageMask,
-            host_depth_source_vulkan_rt.current_access_mask(),
-            kSourceAccessMask, host_depth_source_vulkan_rt.current_layout(),
-            kSourceLayout);
-        host_depth_source_vulkan_rt.SetUsage(kSourceStageMask,
-                                             kSourceAccessMask, kSourceLayout);
+        TransitionRenderTarget(host_depth_source_vulkan_rt, kSourceStageMask,
+                               kSourceAccessMask, kSourceLayout);
       }
     }
   }
@@ -4913,17 +4954,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       VkImageLayout dest_new_layout;
       dest_vulkan_rt.GetDrawUsage(&dest_dst_stage_mask, &dest_dst_access_mask,
                                   &dest_new_layout);
-      command_processor_.PushImageMemoryBarrier(
-          dest_vulkan_rt.image(),
-          ui::vulkan::util::InitializeSubresourceRange(
-              dest_rt_key.is_depth
-                  ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-                  : VK_IMAGE_ASPECT_COLOR_BIT),
-          dest_vulkan_rt.current_stage_mask(), dest_dst_stage_mask,
-          dest_vulkan_rt.current_access_mask(), dest_dst_access_mask,
-          dest_vulkan_rt.current_layout(), dest_new_layout);
-      dest_vulkan_rt.SetUsage(dest_dst_stage_mask, dest_dst_access_mask,
-                              dest_new_layout);
+      TransitionRenderTarget(dest_vulkan_rt, dest_dst_stage_mask,
+                             dest_dst_access_mask, dest_new_layout);
     }
 
     // Get the objects needed for transfers to the destination.
@@ -5078,17 +5110,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
         assert_not_null(it->transfer.source);
         auto& source_vulkan_rt =
             *static_cast<VulkanRenderTarget*>(it->transfer.source);
-        command_processor_.PushImageMemoryBarrier(
-            source_vulkan_rt.image(),
-            ui::vulkan::util::InitializeSubresourceRange(
-                source_vulkan_rt.key().is_depth
-                    ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-                    : VK_IMAGE_ASPECT_COLOR_BIT),
-            source_vulkan_rt.current_stage_mask(), kSourceStageMask,
-            source_vulkan_rt.current_access_mask(), kSourceAccessMask,
-            source_vulkan_rt.current_layout(), kSourceLayout);
-        source_vulkan_rt.SetUsage(kSourceStageMask, kSourceAccessMask,
-                                  kSourceLayout);
+        TransitionRenderTarget(source_vulkan_rt, kSourceStageMask,
+                               kSourceAccessMask, kSourceLayout);
         auto host_depth_source_vulkan_rt =
             static_cast<VulkanRenderTarget*>(it->transfer.host_depth_source);
         if (host_depth_source_vulkan_rt) {
@@ -5101,17 +5124,9 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
             UseEdramBuffer(EdramBufferUsage::kFragmentRead);
           } else {
             // Reading host depth from the texture.
-            command_processor_.PushImageMemoryBarrier(
-                host_depth_source_vulkan_rt->image(),
-                ui::vulkan::util::InitializeSubresourceRange(
-                    VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT),
-                host_depth_source_vulkan_rt->current_stage_mask(),
-                kSourceStageMask,
-                host_depth_source_vulkan_rt->current_access_mask(),
-                kSourceAccessMask,
-                host_depth_source_vulkan_rt->current_layout(), kSourceLayout);
-            host_depth_source_vulkan_rt->SetUsage(
-                kSourceStageMask, kSourceAccessMask, kSourceLayout);
+            TransitionRenderTarget(*host_depth_source_vulkan_rt,
+                                   kSourceStageMask, kSourceAccessMask,
+                                   kSourceLayout);
           }
         }
       }
@@ -6242,18 +6257,9 @@ void VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base,
     auto& vulkan_rt =
         *static_cast<VulkanRenderTarget*>(rectangle.render_target);
     RenderTargetKey rt_key = vulkan_rt.key();
-    command_processor_.PushImageMemoryBarrier(
-        vulkan_rt.image(),
-        ui::vulkan::util::InitializeSubresourceRange(
-            rt_key.is_depth
-                ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-                : VK_IMAGE_ASPECT_COLOR_BIT),
-        vulkan_rt.current_stage_mask(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        vulkan_rt.current_access_mask(), VK_ACCESS_SHADER_READ_BIT,
-        vulkan_rt.current_layout(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    vulkan_rt.SetUsage(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_ACCESS_SHADER_READ_BIT,
-                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    TransitionRenderTarget(vulkan_rt, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     if (vulkan_rt.temporary_sort_index() == UINT32_MAX) {
       vulkan_rt.SetTemporarySortIndex(rt_sort_index++);
     }

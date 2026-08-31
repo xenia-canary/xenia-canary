@@ -89,9 +89,13 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   struct Framebuffer {
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
     VkExtent2D host_extent{};
+    RenderPassKey render_pass_key;
     Framebuffer() = default;
-    Framebuffer(VkFramebuffer framebuffer, const VkExtent2D& host_extent)
-        : framebuffer(framebuffer), host_extent(host_extent) {}
+    Framebuffer(VkFramebuffer framebuffer, const VkExtent2D& host_extent,
+                RenderPassKey render_pass_key)
+        : framebuffer(framebuffer),
+          host_extent(host_extent),
+          render_pass_key(render_pass_key) {}
   };
 
   VulkanRenderTargetCache(const RegisterFile& register_file,
@@ -174,6 +178,20 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   bool IsMsaa2xSupported(bool subpass_has_attachments) const {
     return subpass_has_attachments ? msaa_2x_attachments_supported_
                                    : msaa_2x_no_attachments_supported_;
+  }
+
+  // Xenos sample locations for pipelines at the guest sample count.
+  // nullptr for the default locations.
+  const VkSampleLocationsInfoEXT* GetSampleLocationsInfo(
+      xenos::MsaaSamples msaa_samples, bool subpass_has_attachments) const {
+    if (msaa_samples != xenos::MsaaSamples::k2X &&
+        msaa_samples != xenos::MsaaSamples::k4X) {
+      return nullptr;
+    }
+    const VkSampleLocationsInfoEXT& info =
+        sample_locations_info_[subpass_has_attachments]
+                              [msaa_samples == xenos::MsaaSamples::k4X];
+    return info.sampleLocationsCount ? &info : nullptr;
   }
 
   // Returns the render pass object, or VK_NULL_HANDLE if failed to create.
@@ -446,6 +464,12 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     // Temporary storage for indices in operations like transfers and dumps.
     uint32_t temporary_sort_index_ = 0;
   };
+
+  // Pushes the barrier to the new usage and records it.
+  void TransitionRenderTarget(VulkanRenderTarget& render_target,
+                              VkPipelineStageFlags dst_stage_mask,
+                              VkAccessFlags dst_access_mask,
+                              VkImageLayout new_layout);
 
   struct FramebufferKey {
     RenderPassKey render_pass_key;
@@ -900,6 +924,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   bool msaa_2x_attachments_supported_ = false;
   bool msaa_2x_no_attachments_supported_ = false;
+
+  // Indexed by subpass_has_attachments, then whether MSAA is 4x.
+  // sampleLocationsCount is 0 when using the default sample locations.
+  VkSampleLocationsInfoEXT sample_locations_info_[2][2] = {};
+  VkSampleLocationEXT sample_locations_[2][2][4];
 
   // VK_NULL_HANDLE if failed to create.
   std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hasher>
