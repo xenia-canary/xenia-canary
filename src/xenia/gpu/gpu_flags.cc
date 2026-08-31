@@ -132,3 +132,8 @@ DEFINE_bool(
     "guest clipping is enabled. X/Y/W clipping is unaffected. On Vulkan, "
     "this requires depthClamp support.",
     "GPU");
+
+DEFINE_bool(
+    protect_zero_alpha_readbacks, true,
+    "Force immediate GPU downscaling and CPU readbacks for k_8_8_8_8 color formats (fixes black character/dog textures and vertex explosions in Fable II).",
+    "GPU");

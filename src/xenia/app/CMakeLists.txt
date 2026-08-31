@@ -53,7 +53,6 @@ target_compile_definitions(xenia-app PRIVATE
 target_link_libraries(xenia-app PRIVATE
   xenia-apu
   xenia-apu-nop
-  xenia-base
   xenia-core
   xenia-cpu
   xenia-gpu
@@ -64,6 +63,7 @@ target_link_libraries(xenia-app PRIVATE
   xenia-patcher
   xenia-ui
   xenia-vfs
+  xenia-base
   # Third-party
   aes_128
   capstone

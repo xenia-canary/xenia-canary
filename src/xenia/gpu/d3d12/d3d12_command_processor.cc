@@ -3177,6 +3177,17 @@ bool D3D12CommandProcessor::IssueCopy() {
     return false;
   }
   ReadbackResolveMode readback_mode = GetReadbackResolveMode();
+
+  auto copy_dest_info = register_file_->Get<reg::RB_COPY_DEST_INFO>();
+  auto copy_control = register_file_->Get<reg::RB_COPY_CONTROL>();
+  bool is_depth_copy = copy_control.copy_src_select >= xenos::kMaxColorRenderTargets;
+  bool is_readback_required = cvars::protect_zero_alpha_readbacks && !is_depth_copy && (copy_dest_info.copy_dest_format == xenos::ColorFormat::k_8_8_8_8);
+
+  if (is_readback_required) {
+    // Force readback resolve path for the morph/diffuse textures that need immediate writeback
+    return IssueCopy_ReadbackResolvePath();
+  }
+
   if (readback_mode == ReadbackResolveMode::kDisabled) {
     uint32_t written_address, written_length;
     return render_target_cache_->Resolve(*memory_, *shared_memory_,
@@ -3199,6 +3210,10 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
   if (!written_length) {
     return true;
   }
+
+  auto copy_control = register_file_->Get<reg::RB_COPY_CONTROL>();
+  bool is_depth_copy = copy_control.copy_src_select >= xenos::kMaxColorRenderTargets;
+  bool is_readback_required = cvars::protect_zero_alpha_readbacks && !is_depth_copy && (copy_dest_info.copy_dest_format == xenos::ColorFormat::k_8_8_8_8);
 
   // Skip all the GPU readback work if the destination memory isn't writable.
   VirtualHeap* physical_heap = memory_->GetPhysicalHeap();
@@ -3277,9 +3292,9 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
         texture_cache_->GetCurrentScaledResolveRangeStartScaled();
     uint64_t range_length_scaled =
         texture_cache_->GetCurrentScaledResolveRangeLengthScaled();
-    if (!range_length_scaled || scaled_start < range_start_scaled ||
+    if (!is_readback_required && (!range_length_scaled || scaled_start < range_start_scaled ||
         scaled_start + scaled_length >
-            range_start_scaled + range_length_scaled) {
+            range_start_scaled + range_length_scaled)) {
       XELOGGPU(
           "Skipping readback of a resolution-scaled resolve to 0x{:08X} - the "
           "written extent is not within the current scaled resolve range",
@@ -3328,6 +3343,9 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
   }
 
   ReadbackResolveMode readback_mode = GetReadbackResolveMode();
+  if (is_readback_required) {
+    readback_mode = ReadbackResolveMode::kFull;
+  }
   uint32_t read_index = readback_mode == ReadbackResolveMode::kFast
                             ? 1 - write_index
                             : write_index;

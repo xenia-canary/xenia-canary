@@ -7,6 +7,10 @@ else()
   project(xenia LANGUAGES C CXX)
 endif()
 
+if(APPLE)
+  include_directories(SYSTEM "/opt/homebrew/include" "/opt/homebrew/include/SDL2")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 17)
@@ -237,13 +241,22 @@ else()
     add_compile_options(
       $<$<COMPILE_LANGUAGE:CXX>:-Wno-shorten-64-to-32>
       -Wno-deprecated-declarations
-      -Wno-character-conversion
+      -Wno-error
+      -Wno-format
     )
-    add_link_options(-Wl,-no_warn_duplicate_libraries)
+    # GTK3 via pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+    include_directories(${GTK3_INCLUDE_DIRS})
+    link_directories(${GTK3_LIBRARY_DIRS})
+    add_compile_options(${GTK3_CFLAGS_OTHER})
+    add_link_options(-Wl,-all_load)
     link_libraries(
       "-framework CoreFoundation"
       "-framework Foundation"
       "-framework IOKit"
+      ${GTK3_LIBRARIES}
+      iconv
       dl
       pthread
     )

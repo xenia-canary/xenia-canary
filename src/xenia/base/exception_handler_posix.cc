@@ -18,6 +18,8 @@
 #include "xenia/base/math.h"
 #include "xenia/base/platform.h"
 
+#ifndef __APPLE__
+
 namespace xe {
 
 bool signal_handlers_installed_ = false;
@@ -283,3 +285,12 @@ void ExceptionHandler::Uninstall(Handler fn, void* data) {
 }
 
 }  // namespace xe
+
+#else
+
+namespace xe {
+void ExceptionHandler::Install(Handler fn, void* data) {}
+void ExceptionHandler::Uninstall(Handler fn, void* data) {}
+}  // namespace xe
+
+#endif
