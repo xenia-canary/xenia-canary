@@ -119,7 +119,7 @@ bool VirtualFileSystem::ResolveSymbolicLink(const std::string_view path,
     // Found symlink!
     auto target_path = (*it).second;
     auto relative_path = result.substr((*it).first.size());
-    result = target_path + relative_path;
+    result = xe::utf8::fix_guest_path_separators(target_path + relative_path);
     was_resolved = true;
   }
   return was_resolved;

@@ -748,7 +748,8 @@ const object_ref<UserModule> KernelState::LoadTitleUpdate(
     const object_ref<UserModule> module) {
   uint32_t content_license = 0;
   X_RESULT open_status = content_manager()->OpenContent(
-      "UPDATE", 0, *title_update, content_license);
+      "UPDATE", 0, *title_update, content_license,
+      module->is_multi_disc_title() ? module->disc_number() : -1);
 
   std::string mount_path = "";
   if (!file_system()->FindSymbolicLink(kDefaultGameSymbolicLink, mount_path)) {
@@ -765,18 +766,15 @@ const object_ref<UserModule> KernelState::LoadTitleUpdate(
     return nullptr;
   }
 
-  std::string disc_dir = "";
-  if (module->is_multi_disc_title()) {
-    disc_dir = fmt::format("disc{:03}", module->disc_number());
-  }
-
   const std::string relative_path =
       module->path().substr(mount_path.size()) + 'p';
 
   xe::vfs::Entry* patch_entry = kernel_state()->file_system()->ResolvePath(
-      resolved_path + disc_dir + relative_path);
+      xe::utf8::join_guest_paths(resolved_path, relative_path));
 
   if (!patch_entry) {
+    XELOGI("Loading XEX patch failed. Path doesn't exist {}",
+           xe::utf8::join_guest_paths(resolved_path, relative_path));
     return nullptr;
   }
 

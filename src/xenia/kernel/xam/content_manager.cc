@@ -71,14 +71,14 @@ X_STATUS ContentManager::ExtractContentHeader(
 
 std::unique_ptr<ContentPackage> ContentManager::OpenPackage(
     const std::filesystem::path host_path) {
+  const std::string device_path = GeneratePackageDevicePath(host_path);
+
   if (std::filesystem::is_directory(host_path)) {
     return std::make_unique<ContentPackageDirectory>(
-        kernel_state_->file_system(), GeneratePackageDevicePath(host_path),
-        host_path);
+        kernel_state_->file_system(), device_path, host_path);
   } else {
     auto package = std::make_unique<ContentPackageContainer>(
-        kernel_state_->file_system(), GeneratePackageDevicePath(host_path),
-        host_path);
+        kernel_state_->file_system(), device_path, host_path);
 
     return package->IsValidPackage() ? std::move(package) : nullptr;
   }
@@ -110,9 +110,11 @@ std::unique_ptr<ContentPackage> ContentManager::CreatePackage(
 }
 
 ContentPackage* ContentManager::OpenAndMountPackage(
-    const std::filesystem::path host_path, const std::string_view root_name) {
+    const std::filesystem::path host_path, const std::string_view root_name,
+    const std::string_view root_path) {
   auto global_lock = global_critical_region_.Acquire();
-  return MountPackage(root_name, OpenPackage(host_path));
+
+  return MountPackage(root_name, OpenPackage(host_path), root_path);
 }
 
 ContentPackage* ContentManager::CreateAndMountPackage(
@@ -139,8 +141,9 @@ ContentPackage* ContentManager::FindPackage(
 }
 
 ContentPackage* ContentManager::MountPackage(
-    const std::string_view root_name, std::unique_ptr<ContentPackage> package) {
-  if (!package || !package->MountPackageAndRegister(root_name)) {
+    const std::string_view root_name, std::unique_ptr<ContentPackage> package,
+    const std::string_view root_path) {
+  if (!package || !package->MountPackageAndRegister(root_name, root_path)) {
     return nullptr;
   }
 
@@ -435,7 +438,8 @@ X_RESULT ContentManager::CreateContent(const std::string_view root_name,
 X_RESULT ContentManager::OpenContent(const std::string_view root_name,
                                      const uint64_t xuid,
                                      const XCONTENT_DATA_INTERNAL& data,
-                                     uint32_t& content_license) {
+                                     uint32_t& content_license,
+                                     const uint32_t disc_number) {
   auto global_lock = global_critical_region_.Acquire();
 
   if (IsContentOpen(root_name)) {
@@ -449,8 +453,11 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     return X_ERROR_FILE_NOT_FOUND;
   }
 
+  const std::string root_path =
+      disc_number != -1 ? fmt::format("disc{:03}", disc_number) : "";
+
   // Open package.
-  auto package = OpenAndMountPackage(package_path, root_name);
+  auto package = OpenAndMountPackage(package_path, root_name, root_path);
   if (!package) {
     return X_ERROR_FILE_NOT_FOUND;
   }

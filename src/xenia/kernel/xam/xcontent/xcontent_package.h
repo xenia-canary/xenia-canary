@@ -47,7 +47,8 @@ class ContentPackage {
 
   // Allows to read package content. Creates dedicated device.
   virtual std::unique_ptr<vfs::Device> MountPackage() = 0;
-  bool MountPackageAndRegister(const std::string_view root_name);
+  bool MountPackageAndRegister(const std::string_view root_name,
+                               const std::string_view root_path = "");
 
   virtual X_RESULT SetThumbnail(std::span<const uint8_t> thumbnail) = 0;
   virtual X_RESULT GetThumbnail(std::vector<uint8_t>& buffer) = 0;

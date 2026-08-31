@@ -61,7 +61,8 @@ class ContentManager {
       const XCONTENT_DATA_INTERNAL& data);
 
   ContentPackage* OpenAndMountPackage(const std::filesystem::path host_path,
-                                      const std::string_view root_name);
+                                      const std::string_view root_name,
+                                      const std::string_view root_path = "");
   ContentPackage* CreateAndMountPackage(const std::filesystem::path host_path,
                                         const std::string_view root_name,
                                         const XCONTENT_DATA_INTERNAL& data);
@@ -88,7 +89,8 @@ class ContentManager {
                          const XCONTENT_DATA_INTERNAL& data);
   X_RESULT OpenContent(const std::string_view root_name, const uint64_t xuid,
                        const XCONTENT_DATA_INTERNAL& data,
-                       uint32_t& content_license);
+                       uint32_t& content_license,
+                       const uint32_t disc_number = -1);
   X_RESULT CloseContent(const std::string_view root_name);
   X_RESULT CloseContentByDeviceName(const std::string_view device_name);
   X_RESULT GetContentThumbnail(const uint64_t xuid,
@@ -118,7 +120,8 @@ class ContentManager {
   // Used in case of mounting package on guest (via XAM). Package is
   // autoregistered.
   ContentPackage* MountPackage(const std::string_view root_name,
-                               std::unique_ptr<ContentPackage> package);
+                               std::unique_ptr<ContentPackage> package,
+                               const std::string_view root_path = "");
 
   std::filesystem::path ResolvePackageRoot(
       const uint64_t xuid, const uint32_t title_id,
