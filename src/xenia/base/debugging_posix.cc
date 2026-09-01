@@ -1,3 +1,4 @@
+#ifndef __APPLE__
 /**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
@@ -58,3 +59,4 @@ void DebugPrint(const char* s) { std::clog << s << std::endl; }
 
 }  // namespace debugging
 }  // namespace xe
+#endif

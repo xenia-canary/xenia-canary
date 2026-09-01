@@ -81,17 +81,6 @@ function(xe_platform_sources target base_path)
       "${base_path}/*_mac.h"
       "${base_path}/*_mac.cc"
     )
-    # Exclude posix implementations that are overridden by Mac-specific ones
-    set(_mac_overrides)
-    foreach(src ${_plat_sources})
-      get_filename_component(_name_we ${src} NAME_WE)
-      if(_name_we MATCHES "threading_posix$" OR _name_we MATCHES "debugging_posix$")
-        list(APPEND _mac_overrides ${src})
-      endif()
-    endforeach()
-    if(_mac_overrides)
-      list(REMOVE_ITEM _plat_sources ${_mac_overrides})
-    endif()
   endif()
 
   list(APPEND _sources ${_plat_sources})

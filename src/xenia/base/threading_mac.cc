@@ -1,3 +1,4 @@
+#if 0
 /**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
@@ -36,3 +37,4 @@ void Sleep(std::chrono::microseconds duration) {
 
 }  // namespace threading
 }  // namespace xe
+#endif

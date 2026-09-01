@@ -31,5 +31,11 @@ void Break() {
   __builtin_debugtrap();
 }
 
+namespace internal {
+void DebugPrint(const char* s) {
+  fprintf(stderr, "%s\n", s);
+}
+}  // namespace internal
+
 }  // namespace debugging
 }  // namespace xe

@@ -32,10 +32,17 @@ if(WIN32)
     )
   endif()
 else()
-  target_sources(xenia-app PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
-    ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_posix.cc
-  )
+  if(APPLE)
+    target_sources(xenia-app PRIVATE
+      ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
+      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_mac.cc
+    )
+  else()
+    target_sources(xenia-app PRIVATE
+      ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
+      ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_posix.cc
+    )
+  endif()
   if(NOT MSVC AND XE_TARGET_X86_64)
     set_source_files_properties(
       ${PROJECT_SOURCE_DIR}/src/xenia/base/main_init_posix.cc
