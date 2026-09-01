@@ -11,8 +11,10 @@
 #define XENIA_BASE_CHRONO_STEADY_CAST_H_
 
 #include <atomic>
+#include <limits>
 
 #include "xenia/base/chrono.h"
+#include "xenia/base/math.h"
 
 // This is in a separate header because casting to and from steady time points
 // usually doesn't make sense and is imprecise. However, NT uses the FileTime
@@ -66,8 +68,32 @@ struct clock_time_conversion<std::chrono::steady_clock,
     auto nt_now = WinSystemClock_::now();
     std::atomic_thread_fence(std::memory_order_acq_rel);
 
-    auto delta = t - nt_now;
-    return steady_now + delta;
+    // Saturate rather than overflow. The NT epoch is 1601, so a time point
+    // near it is about four centuries from now: ~1.3e19 ns, more than an
+    // int64 of nanoseconds holds, and the wrapped result lands arbitrarily
+    // far in the future instead of in the past. Guests do pass such values
+    // (a due time of 0 means "already elapsed").
+    using steady_duration = steady_clock_::duration;
+    using steady_rep = steady_duration::rep;
+    constexpr auto kMin = std::numeric_limits<steady_rep>::min();
+    constexpr auto kMax = std::numeric_limits<steady_rep>::max();
+
+    // t - nt_now is safe in the source period; it is the cast down to the
+    // steady clock's period that can overflow, so test the range in double
+    // first and only cast when it fits.
+    const auto raw = t - nt_now;
+    const auto raw_ns =
+        std::chrono::duration_cast<
+            std::chrono::duration<double, steady_duration::period>>(raw)
+            .count();
+    const steady_duration delta =
+        (raw_ns > static_cast<double>(kMin) &&
+         raw_ns < static_cast<double>(kMax))
+            ? std::chrono::duration_cast<steady_duration>(raw)
+            : steady_duration(raw_ns < 0 ? kMin : kMax);
+
+    return steady_clock_::time_point(steady_duration(
+        xe::sat_add(steady_now.time_since_epoch().count(), delta.count())));
   }
 };
 
