@@ -190,8 +190,8 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
     if (offset < 4) {
       // Pack 1x1 Z mipmaps along Z - not reached for 2D.
       uint32_t log2_depth = xe::log2_ceil(depth);
-      if (log2_depth > 1 + packed_mip) {
-        z_blocks = (log2_depth - packed_mip) * 4;
+      if (log2_depth > 1 + mip) {
+        z_blocks = (log2_depth - mip) * 4;
       } else {
         z_blocks = 4;
       }
@@ -243,6 +243,11 @@ TextureGuestLayout GetGuestTextureLayout(
     std::memset(&layout, 0, sizeof(layout));
     return layout;
   }
+  // D3D's FindTextureSize aligns non-base 2D array levels to four slices.
+  uint32_t mip_array_size =
+      dimension == xenos::DataDimension::k2DOrStacked && layout.array_size > 1
+          ? xe::align(layout.array_size, xenos::kTextureTileDepth)
+          : layout.array_size;
 
   // For safety, clamp the maximum level.
   uint32_t max_level_for_dimensions =
@@ -348,8 +353,10 @@ TextureGuestLayout GetGuestTextureLayout(
         level_layout.row_pitch_bytes * level_layout.z_slice_stride_block_rows;
     uint32_t z_stride_bytes = level_layout.array_slice_stride_bytes;
     if (dimension == xenos::DataDimension::k3D) {
-      level_layout.array_slice_stride_bytes *=
-          xe::align(depth_or_array_size, xenos::kTextureTileDepth);
+      level_layout.array_slice_stride_bytes *= xe::align(
+          is_base ? depth
+                  : std::max(xe::next_pow2(depth) >> level, uint32_t(1)),
+          xenos::kTextureTileDepth);
     }
     level_layout.array_slice_stride_bytes =
         xe::align(level_layout.array_slice_stride_bytes,
@@ -444,7 +451,7 @@ TextureGuestLayout GetGuestTextureLayout(
           std::max(layout.mips_total_extent_bytes,
                    mip_offset_bytes + level_layout.level_data_extent_bytes);
       mip_offset_bytes +=
-          level_layout.array_slice_stride_bytes * layout.array_size;
+          level_layout.array_slice_stride_bytes * mip_array_size;
     }
   }
 
