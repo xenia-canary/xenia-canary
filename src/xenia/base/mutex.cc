@@ -93,7 +93,7 @@ inline int futex_wake(std::atomic<uint32_t>* addr, int count) {
 // no syscall, and unique among live threads. It is only compared for
 // equality, to detect the owner re-entering. The former gettid() syscall on
 // every lock was ~39,000 syscalls a second on the GPU command processor
-// thread in Eternal Sonata's intro cutscene.
+// thread of one title.
 inline uint64_t xe_current_thread_id() {
   return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
 }
