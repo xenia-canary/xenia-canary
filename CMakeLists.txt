@@ -278,9 +278,11 @@ else()
 
   # --- Per-configuration flags ---
   # Checked
-  string(APPEND CMAKE_C_FLAGS_CHECKED " -fsanitize=address")
-  string(APPEND CMAKE_CXX_FLAGS_CHECKED " -fsanitize=address")
-  string(APPEND CMAKE_EXE_LINKER_FLAGS_CHECKED " -fsanitize=address")
+  if(NOT APPLE)
+    string(APPEND CMAKE_C_FLAGS_CHECKED " -fsanitize=address")
+    string(APPEND CMAKE_CXX_FLAGS_CHECKED " -fsanitize=address")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS_CHECKED " -fsanitize=address")
+  endif()
   add_compile_definitions(
     $<$<CONFIG:Checked>:DEBUG>
   )
