@@ -687,7 +687,38 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+  // Get execution info. For module and each package
+  const auto title_exec_info = title_module->xex_module()->opt_execution_info();
+  xex2_opt_execution_info best_tu_match{};
+
+  xam::XCONTENT_DATA_INTERNAL selected_tu = title_updates.front();
+
+  for (const auto& entry : title_updates) {
+    const auto package = content_manager()->OpenPackage(0, entry);
+
+    const auto package_exec_info =
+        package->GetContainerMetadata()->execution_info;
+    const auto installer_version =
+        package->GetContainerHeader()->extra_fields.installer_version;
+
+    // For now only verify title_id and media_id. If they match then it's a
+    // match.
+    if (title_exec_info->title_id == package_exec_info.title_id) {
+      if (title_exec_info->media_id != package_exec_info.media_id &&
+          !cvars::allow_incompatible_title_update) {
+        continue;
+      }
+
+      // Select TU with the highest version.
+      if (installer_version > best_tu_match.version_value) {
+        best_tu_match = package_exec_info;
+        best_tu_match.version_value = installer_version;
+        selected_tu = entry;
+      }
+    }
+  }
+
+  auto patch_module = LoadTitleUpdate(&selected_tu, title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
   }

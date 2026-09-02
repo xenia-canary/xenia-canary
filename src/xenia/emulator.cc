@@ -1537,12 +1537,6 @@ std::string Emulator::FindLaunchModule() {
   return path + "default.xex";
 }
 
-static std::string format_version(xex2_version version) {
-  // fmt::format doesn't like bit fields we use + to bypass it
-  return fmt::format("{}.{}.{}.{}", +version.major, +version.minor,
-                     +version.build, +version.qfe);
-}
-
 X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                   const std::string_view module_path) {
   // Making changes to the UI (setting the icon) and executing game config
