@@ -144,8 +144,10 @@ bool CreateEmptyFile(const std::filesystem::path& path) {
 
 class PosixFileHandle : public FileHandle {
  public:
-  PosixFileHandle(std::filesystem::path path, int handle)
-      : FileHandle(std::move(path)), handle_(handle) {}
+  PosixFileHandle(std::filesystem::path path, int handle, bool append_only)
+      : FileHandle(std::move(path)),
+        handle_(handle),
+        append_only_(append_only) {}
   ~PosixFileHandle() override {
     close(handle_);
     handle_ = -1;
@@ -163,7 +165,11 @@ class PosixFileHandle : public FileHandle {
   }
   bool Write(size_t file_offset, const void* buffer, size_t buffer_length,
              size_t* out_bytes_written) override {
-    ssize_t out = pwrite(handle_, buffer, buffer_length, file_offset);
+    // Linux pwrite(2) ignores the offset on an O_APPEND descriptor and
+    // appends instead, so an append-only handle has to use write().
+    ssize_t out = append_only_
+                      ? write(handle_, buffer, buffer_length)
+                      : pwrite(handle_, buffer, buffer_length, file_offset);
     if (out >= 0) {
       *out_bytes_written = out;
       return true;
@@ -179,6 +185,7 @@ class PosixFileHandle : public FileHandle {
 
  private:
   int handle_ = -1;
+  bool append_only_ = false;
 };
 
 std::unique_ptr<FileHandle> FileHandle::OpenExisting(
@@ -196,7 +203,10 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
   if (desired_access & FileAccess::kFileReadData) {
     open_access |= O_RDONLY;
   }
-  if (desired_access & FileAccess::kFileWriteData) {
+  // Append counts as a write right: an append-only handle still has to be
+  // opened writable, or every write to it fails.
+  if (desired_access &
+      (FileAccess::kFileWriteData | FileAccess::kFileAppendData)) {
     open_access |= O_WRONLY;
   }
   if (desired_access & FileAccess::kGenericRead &&
@@ -204,13 +214,23 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
     open_access = O_RDWR;
   }
   if (desired_access & FileAccess::kFileReadData &&
-      desired_access & FileAccess::kFileWriteData) {
+      desired_access &
+          (FileAccess::kFileWriteData | FileAccess::kFileAppendData)) {
     open_access = O_RDWR;
   }
   if (desired_access & FileAccess::kGenericAll) {
     open_access = O_RDWR;
   }
-  if (desired_access & FileAccess::kFileAppendData) {
+  // O_APPEND only when append is the sole write right, matching Win32 where
+  // FILE_APPEND_DATA without FILE_WRITE_DATA is what makes a handle
+  // append-only. Linux pwrite(2) ignores the offset on an O_APPEND
+  // descriptor, so setting it for a handle that also writes normally sends
+  // every positioned write to the end of the file.
+  const bool append_only = (desired_access & FileAccess::kFileAppendData) &&
+                           !(desired_access & (FileAccess::kGenericWrite |
+                                               FileAccess::kFileWriteData |
+                                               FileAccess::kGenericAll));
+  if (append_only) {
     open_access |= O_APPEND;
   }
   int handle = open(path.c_str(), open_access);
@@ -218,7 +238,7 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
     // TODO(benvanik): pick correct response.
     return nullptr;
   }
-  return std::make_unique<PosixFileHandle>(path, handle);
+  return std::make_unique<PosixFileHandle>(path, handle, append_only);
 }
 
 std::optional<FileInfo> GetInfo(const std::filesystem::path& path) {
