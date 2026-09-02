@@ -72,7 +72,11 @@ bool SDLAudioDriver::Initialize() {
   desired_spec.freq = frame_frequency_;
   desired_spec.format = AUDIO_F32;
   desired_spec.channels = frame_channels_;
-  desired_spec.samples = 1024;
+  // Match the SDL device buffer to Xenia's frame size so each callback consumes
+  // exactly one queued frame - a mismatched (e.g. hardcoded) value forces the
+  // callback to split frames and, when it isn't an exact multiple (stereo uses
+  // 768), silently drops the remainder of a frame each call.
+  desired_spec.samples = channel_samples_;
   desired_spec.callback = SDLCallback;
   desired_spec.userdata = this;
   // Allow the hardware to decide between 5.1 and stereo,

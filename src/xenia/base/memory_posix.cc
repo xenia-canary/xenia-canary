@@ -156,13 +156,12 @@ static void InstallCleanupHandlers() {
 #endif  // !XE_PLATFORM_ANDROID
 
 #if XE_PLATFORM_MAC
-// macOS has no MAP_FIXED_NOREPLACE, and mmap(MAP_FIXED) silently unmaps whatever
-// is already at the target address. Callers such as AllocateContext() and the
-// code-cache/trampoline allocators depend on a fixed request FAILING when the
-// range is occupied so they can advance to the next candidate address. Probe the
-// range first and report a conflict, mirroring MAP_FIXED_NOREPLACE.
-static bool MacFixedRangeIsFree(void* base_address, size_t length) {
-  mach_vm_address_t region_addr = reinterpret_cast<mach_vm_address_t>(base_address);
+// Query the first VM region at or above `address`. Returns false when there is
+// none (KERN_INVALID_ADDRESS past the last mapping); otherwise fills whichever
+// of start / size / protection the caller asked for.
+static bool MacQueryVmRegion(void* address, mach_vm_address_t* out_start,
+                             mach_vm_size_t* out_size, vm_prot_t* out_protection) {
+  mach_vm_address_t region_addr = reinterpret_cast<mach_vm_address_t>(address);
   mach_vm_size_t region_size = 0;
   vm_region_basic_info_data_64_t info;
   mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
@@ -171,14 +170,36 @@ static bool MacFixedRangeIsFree(void* base_address, size_t length) {
       mach_task_self(), &region_addr, &region_size, VM_REGION_BASIC_INFO_64,
       reinterpret_cast<vm_region_info_t>(&info), &count, &object_name);
   if (kr != KERN_SUCCESS) {
+    return false;
+  }
+  if (out_start) {
+    *out_start = region_addr;
+  }
+  if (out_size) {
+    *out_size = region_size;
+  }
+  if (out_protection) {
+    *out_protection = info.protection;
+  }
+  return true;
+}
+
+// macOS has no MAP_FIXED_NOREPLACE, and mmap(MAP_FIXED) silently unmaps whatever
+// is already at the target address. Callers such as AllocateContext() and the
+// code-cache/trampoline allocators depend on a fixed request FAILING when the
+// range is occupied so they can advance to the next candidate address. Probe the
+// range first and report a conflict, mirroring MAP_FIXED_NOREPLACE.
+static bool MacFixedRangeIsFree(void* base_address, size_t length) {
+  mach_vm_address_t existing_start;
+  mach_vm_size_t existing_size;
+  if (!MacQueryVmRegion(base_address, &existing_start, &existing_size, nullptr)) {
     // No region at or above the requested address; the range is free.
     return true;
   }
-  mach_vm_address_t requested_start =
-      reinterpret_cast<mach_vm_address_t>(base_address);
+  auto requested_start = reinterpret_cast<mach_vm_address_t>(base_address);
   mach_vm_address_t requested_end = requested_start + length;
-  mach_vm_address_t existing_end = region_addr + region_size;
-  return !(region_addr < requested_end && requested_start < existing_end);
+  return !(existing_start < requested_end &&
+           requested_start < existing_start + existing_size);
 }
 #endif  // XE_PLATFORM_MAC
 
@@ -266,22 +287,16 @@ bool Protect(void* base_address, size_t length, PageAccess access,
 
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
 #if XE_PLATFORM_MAC
-  mach_vm_address_t address = reinterpret_cast<mach_vm_address_t>(base_address);
   mach_vm_size_t size = 0;
-  vm_region_basic_info_data_64_t info;
-  mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
-  mach_port_t object_name = MACH_PORT_NULL;
-  kern_return_t kr = mach_vm_region(
-      mach_task_self(), &address, &size, VM_REGION_BASIC_INFO_64,
-      reinterpret_cast<vm_region_info_t>(&info), &count, &object_name);
-  if (kr != KERN_SUCCESS) {
+  vm_prot_t protection = 0;
+  if (!MacQueryVmRegion(base_address, nullptr, &size, &protection)) {
     return false;
   }
   length = static_cast<size_t>(size);
   access_out = PageAccess::kNoAccess;
-  bool r = (info.protection & VM_PROT_READ) != 0;
-  bool w = (info.protection & VM_PROT_WRITE) != 0;
-  bool x = (info.protection & VM_PROT_EXECUTE) != 0;
+  bool r = (protection & VM_PROT_READ) != 0;
+  bool w = (protection & VM_PROT_WRITE) != 0;
+  bool x = (protection & VM_PROT_EXECUTE) != 0;
   if (r && w && x) {
     access_out = PageAccess::kExecuteReadWrite;
   } else if (r && w) {
@@ -479,30 +494,14 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
   uint32_t prot = ToPosixProtectFlags(access);
 
 #if XE_PLATFORM_MAC
-  if (base_address != nullptr) {
-    mach_vm_address_t address = reinterpret_cast<mach_vm_address_t>(base_address);
-    mach_vm_size_t region_size = 0;
-    vm_region_basic_info_data_64_t info;
-    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
-    mach_port_t object_name = MACH_PORT_NULL;
-    kern_return_t kr = mach_vm_region(
-        mach_task_self(), &address, &region_size,
-        VM_REGION_BASIC_INFO_64, reinterpret_cast<vm_region_info_t>(&info),
-        &count, &object_name);
-    if (kr == KERN_SUCCESS) {
-      mach_vm_address_t requested_start =
-          reinterpret_cast<mach_vm_address_t>(base_address);
-      mach_vm_address_t requested_end = requested_start + length;
-      mach_vm_address_t existing_start = address;
-      mach_vm_address_t existing_end = address + region_size;
-      if (existing_start < requested_end && requested_start < existing_end) {
-        XELOGW(
-            "MapFileView: requested address [0x{:X}, 0x{:X}) overlaps "
-            "existing VM region [0x{:X}, 0x{:X})",
-            requested_start, requested_end, existing_start, existing_end);
-        return nullptr;
-      }
-    }
+  // Same MAP_FIXED_NOREPLACE emulation as AllocFixed: MAP_FIXED would silently
+  // clobber an existing mapping.
+  if (base_address != nullptr && !MacFixedRangeIsFree(base_address, length)) {
+    XELOGW("MapFileView: requested address [0x{:X}, 0x{:X}) overlaps an existing "
+           "VM region",
+           reinterpret_cast<uintptr_t>(base_address),
+           reinterpret_cast<uintptr_t>(base_address) + length);
+    return nullptr;
   }
 #endif
 
