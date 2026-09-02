@@ -11,6 +11,7 @@
 
 #include "xenia/kernel/kernel_state.h"
 
+#include "xenia/app/title_update_selector_dialog.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
@@ -30,7 +31,17 @@
 
 #include "third_party/crypto/TinySHA1.hpp"
 
-DEFINE_bool(apply_title_update, true, "Apply title updates.", "Kernel");
+DEFINE_string(
+    apply_title_update, "latest",
+    "Apply title updates.\n"
+    "Use: [off, select, latest]\n"
+    " off:\n"
+    "  No TU is applied to any title.\n"
+    " select:\n"
+    "  Allows user to select TU if multiple compatible TUs are found.\n"
+    " latest:\n"
+    "  If available always selects latest possible TU.",
+    "Kernel");
 DEFINE_bool(allow_incompatible_title_update, false,
             "Allow title updates with mismatched signatures to be applied.",
             "Kernel");
@@ -687,7 +698,66 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+  // Get execution info. For module and each package
+  const auto title_exec_info = title_module->xex_module()->opt_execution_info();
+  xex2_opt_execution_info best_tu_match{};
+
+  xam::XCONTENT_DATA_INTERNAL selected_tu = title_updates.front();
+
+  if (title_updates.size() > 1 && cvars::apply_title_update == "latest") {
+    for (const auto& entry : title_updates) {
+      const auto package = content_manager()->OpenPackage(0, entry);
+
+      const auto package_exec_info =
+          package->GetContainerMetadata()->execution_info;
+      const auto installer_version =
+          package->GetContainerHeader()->extra_fields.installer_version;
+
+      // For now only verify title_id and media_id. If they match then it's a
+      // match.
+      if (title_exec_info->title_id == package_exec_info.title_id) {
+        if (title_exec_info->media_id != package_exec_info.media_id &&
+            !cvars::allow_incompatible_title_update) {
+          continue;
+        }
+
+        // Select TU with the highest version.
+        if (installer_version > best_tu_match.version_value) {
+          best_tu_match = package_exec_info;
+          best_tu_match.version_value = installer_version;
+          selected_tu = entry;
+        }
+      }
+    }
+  }
+
+  if (title_updates.size() > 1 && cvars::apply_title_update == "select") {
+    uint8_t selected_entry = 0xFF;
+
+    xe::threading::Fence fence;
+    xe::ui::WindowedAppContext& app_context =
+        kernel_state()->emulator()->display_window()->app_context();
+
+    auto dialog = new xe::app::TitleUpdateSelectorDialog(
+        kernel_state()->emulator()->imgui_drawer(),
+        kernel_state()->content_manager(), title_updates, &selected_entry);
+
+    if (app_context.CallInUIThreadSynchronous(
+            [&dialog, &fence]() { dialog->Then(&fence); })) {
+      fence.Wait();
+    }
+
+    // No TU selected. Default to none.
+    if (selected_entry == 0xFF) {
+      return X_STATUS_SUCCESS;
+    }
+
+    if (selected_entry < title_updates.size()) {
+      selected_tu = title_updates[selected_entry];
+    }
+  }
+
+  auto patch_module = LoadTitleUpdate(&selected_tu, title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
   }
@@ -734,7 +804,7 @@ X_RESULT KernelState::ApplyTitleUpdate(
 
 std::vector<xam::XCONTENT_DATA_INTERNAL> KernelState::FindTitleUpdate(
     const uint32_t title_id) const {
-  if (!cvars::apply_title_update) {
+  if (cvars::apply_title_update == "off") {
     return {};
   }
 
