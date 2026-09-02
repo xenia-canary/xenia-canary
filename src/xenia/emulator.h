@@ -60,6 +60,12 @@ static constexpr std::string_view kDefaultGameSymbolicLink = "GAME:";
 static constexpr std::string_view kDefaultPartitionSymbolicLink = "D:";
 static constexpr std::string_view kDefaultUpdateSymbolicLink = "UPDATE:";
 
+static std::string format_version(xex2_version version) {
+  // fmt::format doesn't like bit fields we use + to bypass it
+  return fmt::format("{}.{}.{}.{}", +version.major, +version.minor,
+                     +version.build, +version.qfe);
+}
+
 // The main type that runs the whole emulator.
 // This is responsible for initializing and managing all the various subsystems.
 class Emulator {

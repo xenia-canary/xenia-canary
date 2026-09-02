@@ -84,7 +84,7 @@ class EmulatorWindow {
 
   void OnEmulatorInitialized();
 
-  xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
+  void RunTitle(const std::filesystem::path& path_to_file);
   void UpdateTitle();
   void SetFullscreen(bool fullscreen);
   void ToggleFullscreen();
@@ -330,6 +330,8 @@ class EmulatorWindow {
   std::unique_ptr<XMPConfigDialog> xmp_config_dialog_;
 
   std::vector<RecentTitleEntry> recently_launched_titles_;
+
+  std::atomic<bool> is_title_launch_in_progress_ = false;
 };
 
 }  // namespace app
