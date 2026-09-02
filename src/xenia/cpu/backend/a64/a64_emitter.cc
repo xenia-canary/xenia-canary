@@ -330,6 +330,23 @@ void A64Emitter::UnimplementedInstr(const hir::Instr* i) {
   DebugBreak();
 }
 
+void A64Emitter::EmitResolveGuestCallTarget() {
+  // w16 already holds the guest address (also consumed by resolve_function_thunk).
+  if (code_cache_->has_indirection_table()) {
+    ldr(x17, ptr(x19, static_cast<uint32_t>(offsetof(
+                          A64BackendContext, indirection_table_offset))));
+    add(x8, x17, x16, Xbyak_aarch64::UXTW, 1);
+    ldr(x9, ptr(x8));
+    mov(x17, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
+    cmp(x9, 0);
+    csel(x9, x9, x17, Xbyak_aarch64::NE);
+  } else {
+    // No indirection table: route through resolve_function_thunk, which
+    // preserves registers and triggers compilation on the first call.
+    mov(x9, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
+  }
+}
+
 void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   assert_not_null(function);
   ForgetFpcrMode();
@@ -359,21 +376,8 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
     return;
   }
 
-  if (code_cache_->has_indirection_table()) {
-    // Load host code address from indirection table.
-    mov(w16, function->address());
-    ldr(x17, ptr(x19, static_cast<uint32_t>(offsetof(
-                          A64BackendContext, indirection_table_offset))));
-    add(x8, x17, x16, Xbyak_aarch64::UXTW, 1);
-    ldr(x9, ptr(x8));
-    mov(x17, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
-    cmp(x9, 0);
-    csel(x9, x9, x17, Xbyak_aarch64::NE);
-  } else {
-    // Fallback: route through resolve_function_thunk which preserves registers and handles compilation.
-    mov(w16, static_cast<uint32_t>(function->address()));
-    mov(x9, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
-  }
+  mov(w16, function->address());
+  EmitResolveGuestCallTarget();
 
   if (instr->flags & hir::CALL_TAIL) {
     PopStackpoint();
@@ -406,21 +410,8 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
     cbz(target_w, epilog_label());
   }
 
-  // Load host code address from indirection table.
-  if (code_cache_->has_indirection_table()) {
-    mov(w16, target_w);  // w16 = guest address (also used by resolve thunk)
-    ldr(x17, ptr(x19, static_cast<uint32_t>(offsetof(
-                          A64BackendContext, indirection_table_offset))));
-    add(x8, x17, x16, Xbyak_aarch64::UXTW, 1);
-    ldr(x9, ptr(x8));
-    mov(x17, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
-    cmp(x9, 0);
-    csel(x9, x9, x17, Xbyak_aarch64::NE);
-  } else {
-    // Fallback: route through resolve_function_thunk which preserves registers and handles compilation.
-    mov(w16, target_w);
-    mov(x9, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
-  }
+  mov(w16, target_w);  // w16 = guest address (also consumed by resolve thunk)
+  EmitResolveGuestCallTarget();
 
   if (instr->flags & hir::CALL_TAIL) {
     // Tail call: pass our return address to the callee.

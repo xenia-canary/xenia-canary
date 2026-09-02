@@ -166,46 +166,37 @@ VirtualKey MapMacKeyToVirtualKey(unsigned short keyCode) {
   return NSMakePoint(backingPoint.x, backingSize.height - backingPoint.y);
 }
 
+- (void)dispatchMouseButton:(NSEvent*)event
+                     button:(xe::ui::MouseEvent::Button)button
+                       down:(BOOL)down {
+  if (!_macWindow) return;
+  NSPoint p = [self convertLocation:event];
+  int32_t x = static_cast<int32_t>(p.x);
+  int32_t y = static_cast<int32_t>(p.y);
+  if (down) {
+    _macWindow->HandleMouseDown(x, y, button);
+  } else {
+    _macWindow->HandleMouseUp(x, y, button);
+  }
+}
+
 - (void)mouseDown:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseDown(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                              xe::ui::MouseEvent::Button::kLeft);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kLeft down:YES];
 }
-
 - (void)mouseUp:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseUp(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                            xe::ui::MouseEvent::Button::kLeft);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kLeft down:NO];
 }
-
 - (void)rightMouseDown:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseDown(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                              xe::ui::MouseEvent::Button::kRight);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kRight down:YES];
 }
-
 - (void)rightMouseUp:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseUp(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                            xe::ui::MouseEvent::Button::kRight);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kRight down:NO];
 }
-
 - (void)otherMouseDown:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseDown(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                              xe::ui::MouseEvent::Button::kMiddle);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kMiddle down:YES];
 }
-
 - (void)otherMouseUp:(NSEvent*)event {
-  if (!_macWindow) return;
-  NSPoint p = [self convertLocation:event];
-  _macWindow->HandleMouseUp(static_cast<int32_t>(p.x), static_cast<int32_t>(p.y),
-                            xe::ui::MouseEvent::Button::kMiddle);
+  [self dispatchMouseButton:event button:xe::ui::MouseEvent::Button::kMiddle down:NO];
 }
 
 - (void)mouseMoved:(NSEvent*)event {
@@ -249,32 +240,30 @@ VirtualKey MapMacKeyToVirtualKey(unsigned short keyCode) {
 
 - (void)keyDown:(NSEvent*)event {
   if (!_macWindow) return;
-  xe::ui::VirtualKey key = xe::ui::MapMacKeyToVirtualKey(event.keyCode);
   NSEventModifierFlags flags = [event modifierFlags];
   bool shift = (flags & NSEventModifierFlagShift) != 0;
   bool ctrl = (flags & NSEventModifierFlagControl) != 0;
   bool alt = (flags & NSEventModifierFlagOption) != 0;
   bool super_key = (flags & NSEventModifierFlagCommand) != 0;
-  _macWindow->HandleKeyDown(key, shift, ctrl, alt, super_key);
+  _macWindow->HandleKeyDown(xe::ui::MapMacKeyToVirtualKey(event.keyCode), shift,
+                            ctrl, alt, super_key);
 
   NSString* chars = [event characters];
-  if (chars && [chars length] > 0) {
-    for (NSUInteger i = 0; i < [chars length]; ++i) {
-      unichar ch = [chars characterAtIndex:i];
-      _macWindow->HandleKeyChar(static_cast<xe::ui::VirtualKey>(ch), shift, ctrl, alt, super_key);
-    }
+  for (NSUInteger i = 0; i < [chars length]; ++i) {
+    _macWindow->HandleKeyChar(
+        static_cast<xe::ui::VirtualKey>([chars characterAtIndex:i]), shift, ctrl,
+        alt, super_key);
   }
 }
 
 - (void)keyUp:(NSEvent*)event {
   if (!_macWindow) return;
-  xe::ui::VirtualKey key = xe::ui::MapMacKeyToVirtualKey(event.keyCode);
   NSEventModifierFlags flags = [event modifierFlags];
-  bool shift = (flags & NSEventModifierFlagShift) != 0;
-  bool ctrl = (flags & NSEventModifierFlagControl) != 0;
-  bool alt = (flags & NSEventModifierFlagOption) != 0;
-  bool super_key = (flags & NSEventModifierFlagCommand) != 0;
-  _macWindow->HandleKeyUp(key, shift, ctrl, alt, super_key);
+  _macWindow->HandleKeyUp(xe::ui::MapMacKeyToVirtualKey(event.keyCode),
+                          (flags & NSEventModifierFlagShift) != 0,
+                          (flags & NSEventModifierFlagControl) != 0,
+                          (flags & NSEventModifierFlagOption) != 0,
+                          (flags & NSEventModifierFlagCommand) != 0);
 }
 
 @end
