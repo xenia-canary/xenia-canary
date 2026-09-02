@@ -507,6 +507,13 @@ uint64_t GetTiledAddressUpperBound3D(uint32_t right, uint32_t bottom,
       // - Pitch = 64, 128, 192...: (Pitch / 64) * 0x1000 + 0xC00
       upper_bound += ((pitch_aligned >> 6) << 12) + 0xC00 +
                      ((pitch_aligned & (1 << 5)) << (10 - 5));
+      // There's one extra case where the last bank sits 0x800 past the base
+      // extent: if pitch and X are both in the second, 32 wide half of their
+      // 64 block wide period, while Z is still in the first 4 slices.
+      if ((pitch_aligned & (1 << 5)) && ((right - 1) & (1 << 5)) &&
+          !((back - 1) & (1 << 2))) {
+        upper_bound += 0x800;
+      }
       break;
     default:
       // 32x32x8 portions have independent addressing.
