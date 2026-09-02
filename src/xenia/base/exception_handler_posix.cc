@@ -289,8 +289,122 @@ void ExceptionHandler::Uninstall(Handler fn, void* data) {
 #else
 
 namespace xe {
-void ExceptionHandler::Install(Handler fn, void* data) {}
-void ExceptionHandler::Uninstall(Handler fn, void* data) {}
+
+static bool signal_handlers_installed_ = false;
+static struct sigaction original_sigill_handler_;
+static struct sigaction original_sigsegv_handler_;
+static struct sigaction original_sigbus_handler_;
+
+constexpr size_t kMaxHandlerCount = 8;
+static std::pair<ExceptionHandler::Handler, void*> handlers_[kMaxHandlerCount];
+
+static void DarwinExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
+                                           void* signal_context) {
+  ucontext_t* uc = reinterpret_cast<ucontext_t*>(signal_context);
+  mcontext_t mc = uc->uc_mcontext;
+
+  HostThreadContext thread_context;
+
+#if XE_ARCH_ARM64
+  for (int i = 0; i < 29; ++i) {
+    thread_context.x[i] = mc->__ss.__x[i];
+  }
+  thread_context.x[29] = mc->__ss.__fp;
+  thread_context.x[30] = mc->__ss.__lr;
+  thread_context.sp = mc->__ss.__sp;
+  thread_context.pc = mc->__ss.__pc;
+  thread_context.pstate = mc->__ss.__cpsr;
+  thread_context.fpsr = mc->__ns.__fpsr;
+  thread_context.fpcr = mc->__ns.__fpcr;
+  std::memcpy(thread_context.v, mc->__ns.__v, sizeof(thread_context.v));
+#endif
+
+  Exception ex;
+  switch (signal_number) {
+    case SIGILL:
+      ex.InitializeIllegalInstruction(&thread_context);
+      break;
+    case SIGBUS:
+    case SIGSEGV: {
+      Exception::AccessViolationOperation access_violation_operation =
+          Exception::AccessViolationOperation::kUnknown;
+#if XE_ARCH_ARM64
+      bool instruction_is_store = false;
+      if (mc->__ss.__pc &&
+          IsArm64LoadPrefetchStore(
+              *reinterpret_cast<const uint32_t*>(mc->__ss.__pc),
+              instruction_is_store)) {
+        access_violation_operation =
+            instruction_is_store ? Exception::AccessViolationOperation::kWrite
+                                 : Exception::AccessViolationOperation::kRead;
+      }
+#endif
+      ex.InitializeAccessViolation(
+          &thread_context, reinterpret_cast<uint64_t>(signal_info->si_addr),
+          access_violation_operation);
+    } break;
+    default:
+      return;
+  }
+
+  for (size_t i = 0; i < xe::countof(handlers_) && handlers_[i].first; ++i) {
+    if (handlers_[i].first(&ex, handlers_[i].second)) {
+#if XE_ARCH_ARM64
+      for (int r = 0; r < 29; ++r) {
+        mc->__ss.__x[r] = thread_context.x[r];
+      }
+      mc->__ss.__fp = thread_context.x[29];
+      mc->__ss.__lr = thread_context.x[30];
+      mc->__ss.__sp = thread_context.sp;
+      mc->__ss.__pc = thread_context.pc;
+      mc->__ss.__cpsr = thread_context.pstate;
+      mc->__ns.__fpsr = thread_context.fpsr;
+      mc->__ns.__fpcr = thread_context.fpcr;
+      std::memcpy(mc->__ns.__v, thread_context.v, sizeof(thread_context.v));
+#endif
+      return;
+    }
+  }
+
+  signal(signal_number, SIG_DFL);
+  raise(signal_number);
+}
+
+void ExceptionHandler::Install(Handler fn, void* data) {
+  if (!signal_handlers_installed_) {
+    struct sigaction signal_handler;
+    std::memset(&signal_handler, 0, sizeof(signal_handler));
+    signal_handler.sa_sigaction = DarwinExceptionHandlerCallback;
+    signal_handler.sa_flags = SA_SIGINFO;
+
+    sigaction(SIGILL, &signal_handler, &original_sigill_handler_);
+    sigaction(SIGSEGV, &signal_handler, &original_sigsegv_handler_);
+    sigaction(SIGBUS, &signal_handler, &original_sigbus_handler_);
+    signal_handlers_installed_ = true;
+  }
+
+  for (size_t i = 0; i < xe::countof(handlers_); ++i) {
+    if (!handlers_[i].first) {
+      handlers_[i].first = fn;
+      handlers_[i].second = data;
+      return;
+    }
+  }
+}
+
+void ExceptionHandler::Uninstall(Handler fn, void* data) {
+  for (size_t i = 0; i < xe::countof(handlers_); ++i) {
+    if (handlers_[i].first == fn && handlers_[i].second == data) {
+      for (; i < xe::countof(handlers_) - 1; ++i) {
+        handlers_[i] = handlers_[i + 1];
+      }
+      handlers_[i].first = nullptr;
+      handlers_[i].second = nullptr;
+      break;
+    }
+  }
+}
+
 }  // namespace xe
 
 #endif

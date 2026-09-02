@@ -487,6 +487,7 @@ XE_NOINLINE XE_COLD void CommandProcessor::LogKickoffInitator(uint32_t value) {
 }
 
 void CommandProcessor::UpdateWritePointer(uint32_t value) {
+  XELOGI("CommandProcessor::UpdateWritePointer -> {:08X}", value);
   XE_UNLIKELY_IF(cvars::log_ringbuffer_kickoff_initiator_bts) {
     LogKickoffInitator(value);
   }

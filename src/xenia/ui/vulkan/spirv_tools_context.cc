@@ -14,7 +14,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
 #include <dlfcn.h>
 #elif XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
@@ -26,13 +26,13 @@ namespace vulkan {
 
 bool SpirvToolsContext::Initialize(unsigned int spirv_version) {
   const char* vulkan_sdk_env = std::getenv("VULKAN_SDK");
+#if XE_PLATFORM_LINUX
   if (!vulkan_sdk_env) {
     XELOGE("SPIRV-Tools: Failed to get the VULKAN_SDK environment variable");
     Shutdown();
     return false;
   }
   std::filesystem::path vulkan_sdk_path(vulkan_sdk_env);
-#if XE_PLATFORM_LINUX
   library_ = dlopen((vulkan_sdk_path / "bin/libSPIRV-Tools-shared.so").c_str(),
                     RTLD_NOW | RTLD_LOCAL);
   if (!library_) {
@@ -41,7 +41,34 @@ bool SpirvToolsContext::Initialize(unsigned int spirv_version) {
     Shutdown();
     return false;
   }
+#elif XE_PLATFORM_MAC
+  const char* const lib_names[] = {
+      "libSPIRV-Tools-shared.dylib",
+      "/opt/homebrew/lib/libSPIRV-Tools-shared.dylib",
+      "/opt/homebrew/lib/libSPIRV-Tools.dylib",
+      "/usr/local/lib/libSPIRV-Tools-shared.dylib",
+  };
+  for (const auto* name : lib_names) {
+    library_ = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+    if (library_) break;
+  }
+  if (!library_ && vulkan_sdk_env) {
+    std::filesystem::path vulkan_sdk_path(vulkan_sdk_env);
+    library_ = dlopen((vulkan_sdk_path / "lib/libSPIRV-Tools-shared.dylib").c_str(),
+                      RTLD_NOW | RTLD_LOCAL);
+  }
+  if (!library_) {
+    XELOGE("SPIRV-Tools: Failed to load libSPIRV-Tools library");
+    Shutdown();
+    return false;
+  }
 #elif XE_PLATFORM_WIN32
+  if (!vulkan_sdk_env) {
+    XELOGE("SPIRV-Tools: Failed to get the VULKAN_SDK environment variable");
+    Shutdown();
+    return false;
+  }
+  std::filesystem::path vulkan_sdk_path(vulkan_sdk_env);
   library_ = LoadLibraryW(
       (vulkan_sdk_path / "Bin/SPIRV-Tools-shared.dll").wstring().c_str());
   if (!library_) {
@@ -86,7 +113,7 @@ void SpirvToolsContext::Shutdown() {
     context_ = nullptr;
   }
   if (library_) {
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
     dlclose(library_);
 #elif XE_PLATFORM_WIN32
     FreeLibrary(library_);

@@ -440,8 +440,8 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
     // clears the watch we just hit).
     // Do this under the lock so we don't introduce another race condition.
     auto lock = global_critical_region_.Acquire();
-#if XE_PLATFORM_LINUX
-    // On Linux, exception handling runs inside a signal handler (SIGSEGV).
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+    // On POSIX (Linux/macOS), exception handling runs inside a signal handler.
     // QueryProtect uses std::ifstream to read /proc/self/maps, which is NOT
     // async-signal-safe and can corrupt heap state or deadlock if the signal
     // interrupted malloc or another non-reentrant function.

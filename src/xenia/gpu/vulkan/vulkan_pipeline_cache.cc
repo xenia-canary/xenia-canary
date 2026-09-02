@@ -2845,6 +2845,33 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   input_assembly_state.primitiveRestartEnable =
       description.primitive_restart ? VK_TRUE : VK_FALSE;
 
+  // MoltenVK / Metal cannot *disable* primitive restart for strip / fan
+  // topologies (Metal always breaks a strip on the 0xFFFF / 0xFFFFFFFF index),
+  // so vkCreateGraphicsPipelines fails with VK_ERROR_FEATURE_NOT_PRESENT when
+  // primitiveRestartEnable is VK_FALSE on those. Force it enabled there; this
+  // only changes behavior if a guest index buffer legitimately uses the restart
+  // sentinel as a real vertex index, which is rare for Xbox 360 content.
+  // Metal always keeps primitive restart enabled for strip / fan topologies and
+  // cannot disable it, so MoltenVK returns VK_ERROR_FEATURE_NOT_PRESENT for
+  // primitiveRestartEnable == VK_FALSE on those (the pipeline fails and every
+  // draw using it is dropped). Force it on there. Do NOT do this for list
+  // topologies: Metal doesn't restart lists, and forcing it on splits list
+  // geometry at any 0xFFFF/0xFFFFFFFF index.
+  if (command_processor_.GetVulkanDevice()->properties().driverID ==
+      VK_DRIVER_ID_MOLTENVK) {
+    switch (input_assembly_state.topology) {
+      case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP:
+      case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+      case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+      case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY:
+      case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY:
+        input_assembly_state.primitiveRestartEnable = VK_TRUE;
+        break;
+      default:
+        break;
+    }
+  }
+
   VkPipelineViewportStateCreateInfo viewport_state;
   viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
   viewport_state.pNext = nullptr;

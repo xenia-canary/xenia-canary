@@ -1,4 +1,4 @@
-﻿/**
+/**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
@@ -61,6 +61,8 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
 
   // Compute path, possibly attrs relative.
   auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
+  XELOGI("NtCreateFile path='{}'", target_path);
+  xe::FlushLog();
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
@@ -869,8 +871,12 @@ void IoDeleteDevice_entry(pointer_t<X_DEVICE_OBJECT> device_ptr,
     kernel_mem->SystemHeapFree(device_ptr);
   }
 }
-
 DECLARE_XBOXKRNL_EXPORT1(IoDeleteDevice, kFileSystem, kStub);
+
+dword_result_t IoDismountVolumeByFileHandle_entry(dword_t file_handle) {
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolumeByFileHandle, kFileSystem, kStub);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

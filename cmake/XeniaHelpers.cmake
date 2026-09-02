@@ -27,10 +27,13 @@ function(xe_platform_sources target base_path)
   endif()
 
   # Glob all source files
-  file(${glob_mode} _all_sources    "${base_path}/*.h"
+  file(${glob_mode} _all_sources
+    "${base_path}/*.h"
     "${base_path}/*.cc"
     "${base_path}/*.cpp"
     "${base_path}/*.c"
+    "${base_path}/*.mm"
+    "${base_path}/*.m"
     "${base_path}/*.inc"
   )
 
@@ -38,7 +41,7 @@ function(xe_platform_sources target base_path)
   set(_excluded)
   foreach(src ${_all_sources})
     get_filename_component(_name_we ${src} NAME_WE)
-    # Exclude *_main.cc, *_test.cc, and *_demo.cc
+    # Exclude *_main.cc, *_main.mm, *_test.cc, and *_demo.cc
     if(_name_we MATCHES "_main$" OR _name_we MATCHES "_test$" OR _name_we MATCHES "_demo$")
       list(APPEND _excluded ${src})
       continue()
@@ -60,11 +63,13 @@ function(xe_platform_sources target base_path)
 
   # Add back platform-specific files
   if(WIN32)
-    file(${glob_mode} _plat_sources      "${base_path}/*_win.h"
+    file(${glob_mode} _plat_sources
+      "${base_path}/*_win.h"
       "${base_path}/*_win.cc"
     )
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    file(${glob_mode} _plat_sources      "${base_path}/*_posix.h"
+    file(${glob_mode} _plat_sources
+      "${base_path}/*_posix.h"
       "${base_path}/*_posix.cc"
       "${base_path}/*_linux.h"
       "${base_path}/*_linux.cc"
@@ -76,10 +81,13 @@ function(xe_platform_sources target base_path)
       "${base_path}/*_gtk.cc"
     )
   elseif(APPLE)
-    file(${glob_mode} _plat_sources      "${base_path}/*_posix.h"
+    file(${glob_mode} _plat_sources
+      "${base_path}/*_posix.h"
       "${base_path}/*_posix.cc"
       "${base_path}/*_mac.h"
       "${base_path}/*_mac.cc"
+      "${base_path}/*_mac.mm"
+      "${base_path}/*_mac.m"
     )
   endif()
 

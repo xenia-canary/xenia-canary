@@ -332,6 +332,7 @@ static dword_result_t XamShowMessageBoxUi(
     pointer_t<XAM_OVERLAPPED> overlapped) {
   std::string title = title_ptr ? xe::to_utf8(title_ptr.value()) : "";
   std::string text = text_ptr ? xe::to_utf8(text_ptr.value()) : "";
+  XELOGI("XamShowMessageBoxUi title='{}' text='{}'", title, text);
 
   std::vector<std::string> buttons;
   for (uint32_t i = 0; i < button_count; ++i) {

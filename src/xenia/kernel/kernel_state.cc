@@ -1036,6 +1036,17 @@ std::vector<uint32_t> KernelState::GetAllThreadIDs() {
   return thread_ids;
 }
 
+std::vector<object_ref<XThread>> KernelState::GetGuestThreads() {
+  auto global_lock = global_critical_region_.Acquire();
+  std::vector<object_ref<XThread>> result;
+  for (const auto& [id, thread] : threads_by_id_) {
+    if (thread && thread->is_guest_thread()) {
+      result.push_back(retain_object(thread));
+    }
+  }
+  return result;
+}
+
 void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
   auto global_lock = global_critical_region_.Acquire();
   notify_listeners_.push_back(retain_object(listener));

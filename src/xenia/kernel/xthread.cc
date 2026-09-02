@@ -69,9 +69,9 @@ XThread::XThread(KernelState* kernel_state, uint32_t stack_size,
   // bit 0 = 1 to create suspended
   creation_params_.creation_flags = creation_flags;
 
-  // Adjust stack size - min of 16k.
-  if (creation_params_.stack_size < 16 * 1024) {
-    creation_params_.stack_size = 16 * 1024;
+  // Adjust stack size - min of 256k to prevent stack overflow during level decompression on 16K-page hosts.
+  if (creation_params_.stack_size < 256 * 1024) {
+    creation_params_.stack_size = 256 * 1024;
   }
   creation_params_.guest_process = guest_process;
   // The kernel does not take a reference. We must unregister in the dtor.
@@ -291,9 +291,8 @@ bool XThread::AllocateStack(uint32_t size) {
   stack_limit_ = address + (padding / 2);
   stack_base_ = stack_limit_ + size;
 
-  // Setup the guard pages
+  // Setup the bottom guard page for stack overflow detection.
   heap->Protect(stack_alloc_base_, padding / 2, kMemoryProtectNoAccess);
-  heap->Protect(stack_base_, padding / 2, kMemoryProtectNoAccess);
 
   return true;
 }
@@ -475,6 +474,7 @@ X_STATUS XThread::Create() {
 X_STATUS XThread::Exit(int exit_code) {
   // This may only be called on the thread itself.
   assert_true(XThread::GetCurrentThread() == this);
+  XELOGI("XThread::Exit thid {:08X} exit_code={}", thread_id_, exit_code);
   // TODO(chrispy): not sure if this order is correct, should it come after
   // apcs?
   auto kthread = guest_object<X_KTHREAD>();
@@ -570,17 +570,11 @@ void XThread::Execute() {
   }
 
   // Set up reentry mechanism for fiber-based stack switching.
-  // When Reenter() is called (e.g., by KeSetCurrentStackPointers), it
-  // unwinds back here to re-enter at a new guest address.
-  //
-  // On Linux, C++ exceptions are used so that DWARF unwind info (registered
-  // for JIT code via __register_frame) allows proper destructor/RAII cleanup
-  // through both JIT and host C++ frames.
-  //
-  // On Windows, setjmp/longjmp is used because MSVC's longjmp performs SEH
-  // stack unwinding which already calls destructors.
+  XELOGI("XThread::Execute starting thid={:08X} name={} address={:08X}",
+         thread_id_, thread_name_, address);
+  xe::FlushLog();
   uint32_t next_address;
-#if !XE_PLATFORM_WIN32
+#if !XE_FIBER_REENTRY_SJLJ
   try {
     exit_code = static_cast<int>(kernel_state()->processor()->Execute(
         thread_state_, address, args.data(), args.size()));
@@ -637,6 +631,8 @@ void XThread::Execute() {
 
   // If we got here it means the execute completed without an exit being called.
   // Treat the return code as an implicit exit code (if desired).
+  XELOGI("XThread::Execute implicitly exiting thid {:08X} with code {}",
+         thread_id_, !want_exit_code ? 0 : exit_code);
   Exit(!want_exit_code ? 0 : exit_code);
 }
 
@@ -644,7 +640,7 @@ void XThread::Reenter(uint32_t address) {
   // Called when the game switches fiber stacks (e.g., via
   // KeSetCurrentStackPointers in games like Forza Horizon 2).
   // Must unwind through all frames between here and Execute().
-#if !XE_PLATFORM_WIN32
+#if !XE_FIBER_REENTRY_SJLJ
   // Throw a C++ exception that unwinds through JIT frames (using DWARF
   // .eh_frame info) and host frames (using compiler-generated DWARF),
   // calling destructors properly along the way.
@@ -873,6 +869,14 @@ bool XThread::SetTLSValue(uint32_t slot, uint32_t value) {
   auto mem = memory()->TranslateVirtual(tls_dynamic_address_ + slot * 4);
   xe::store_and_swap<uint32_t>(mem, value);
   return true;
+}
+
+bool XThread::is_alive() const {
+  if (!is_guest_thread()) {
+    return running_;
+  }
+  auto kthread = guest_object<X_KTHREAD>();
+  return kthread && !kthread->terminated;
 }
 
 uint32_t XThread::suspend_count() {

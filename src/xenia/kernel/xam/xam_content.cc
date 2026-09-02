@@ -27,7 +27,7 @@
 #include "xenia/xbox.h"
 
 DEFINE_int32(
-    license_mask, 0,
+    license_mask, 1,
     "Set license mask for activated content.\n"
     " 0 = No licenses enabled.\n"
     " 1 = First license enabled. Generally the full version license in\n"

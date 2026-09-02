@@ -70,12 +70,15 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
   type_ = type;
   proto_ = proto;
 
+  int native_proto = proto;
   if (proto == Protocol::XE_IPPROTO_VDP) {
     // VDP is a layer on top of UDP.
-    proto = Protocol::XE_IPPROTO_UDP;
+    native_proto = IPPROTO_UDP;
   }
 
-  native_handle_ = socket(af, type, proto);
+  native_handle_ = socket(af, type, native_proto);
+  XELOGI("XSocket::Initialize af={} type={} proto={} (native_proto={}) -> handle={} errno={}",
+         (int)af, (int)type, (int)proto, native_proto, (int64_t)native_handle_, errno);
   if (native_handle_ == -1) {
     return X_STATUS_UNSUCCESSFUL;
   }

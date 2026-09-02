@@ -44,18 +44,6 @@ dword_result_t XamTaskSchedule_entry(lpvoid_t callback,
                                      pointer_t<XTASK_MESSAGE> message,
                                      dword_t optional_ptr, lpdword_t handle_ptr,
                                      const ppc_context_t& ctx) {
-  // TODO(gibbed): figure out what this is for
-  *handle_ptr = 12345;
-
-  if (optional_ptr) {
-    auto option = ctx->TranslateVirtual<XAM_TASK_ARGS*>(optional_ptr);
-
-    auto v1 = option->flags;
-    auto v2 = option->value2;  // typically 0?
-
-    XELOGI("Got xam task args: v1 = {:08X}, v2 = {:08X}", v1.get(), v2.get());
-  }
-
   uint32_t stack_size = kernel_state()->GetExecutableModule()->stack_size();
 
   // Stack must be aligned to 16kb pages
@@ -71,6 +59,10 @@ dword_result_t XamTaskSchedule_entry(lpvoid_t callback,
     // Failed!
     XELOGE("XAM task creation failed: {:08X}", result);
     return result;
+  }
+
+  if (handle_ptr) {
+    *handle_ptr = thread->handle();
   }
 
   XELOGD("XAM task ({:08X}) scheduled asynchronously",

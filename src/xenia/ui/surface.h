@@ -27,6 +27,8 @@ class Surface {
     // this enumeration, so xe::bit_scan_forward can be used to try creating
     // surfaces of all types supported by both the graphics provider and the
     // window.
+    // macOS.
+    kTypeIndex_MetalLayer,
     // Android.
     kTypeIndex_AndroidNativeWindow,
     // GNU/Linux.
@@ -36,6 +38,7 @@ class Surface {
   };
   using TypeFlags = uint32_t;
   enum : TypeFlags {
+    kTypeFlag_MetalLayer = TypeFlags(1) << kTypeIndex_MetalLayer,
     kTypeFlag_AndroidNativeWindow = TypeFlags(1)
                                     << kTypeIndex_AndroidNativeWindow,
     kTypeFlag_XcbWindow = TypeFlags(1) << kTypeIndex_XcbWindow,

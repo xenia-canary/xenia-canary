@@ -34,6 +34,8 @@
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
 #include "xenia/cpu/thread_state.h"
+
+DECLARE_bool(record_mmio_access_exceptions);
 #include "xenia/cpu/xex_module.h"
 
 DEFINE_int64(a64_max_stackpoints, 65536,
@@ -314,6 +316,7 @@ GuestToHostThunk A64HelperEmitter::EmitGuestToHostThunk() {
 //   x20 = context
 //   x30 = return address (from the BLR that got us here)
 ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
+  using namespace Xbyak_aarch64;
   struct {
     size_t prolog;
     size_t prolog_stack_alloc;
@@ -324,36 +327,99 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
 
   code_offsets.prolog = getSize();
 
-  const size_t thunk_stack = StackLayout::THUNK_STACK_SIZE;
+  // Save all volatile GPRs (x0-x18), frame/link registers (x29, x30),
+  // and all SIMD/vector registers (q0-q31) so that calling ResolveFunction (C++)
+  // does not clobber any caller arguments, frame pointers (r11/r12 in __savegprlr/__restgprlr),
+  // or scratch registers.
+  //
+  // Layout:
+  //   sp + 0x000..0x0A8: x0..x19, x29, x30 (11 pairs = 176 bytes)
+  //   sp + 0x0B0..0x2A8: q0..q31 (16 pairs = 512 bytes)
+  //   Total = 0x2B0 = 688 bytes (16-byte aligned)
+  const size_t thunk_stack = 688;
   sub(sp, sp, static_cast<uint32_t>(thunk_stack));
   code_offsets.prolog_stack_alloc = getSize();
 
-  // Save x29/x30 and x0 (guest return address, needed by the resolved
-  // function's prolog). x19 is callee-saved so it survives the C call.
-  stp(x29, x30, ptr(sp, 0x50));
-  stp(x0, x19, ptr(sp, 0x00));  // save x0 (guest ret addr) and x19
+  // Save GPRs.
+  stp(x0, x1, ptr(sp, 0x000));
+  stp(x2, x3, ptr(sp, 0x010));
+  stp(x4, x5, ptr(sp, 0x020));
+  stp(x6, x7, ptr(sp, 0x030));
+  stp(x8, x9, ptr(sp, 0x040));
+  stp(x10, x11, ptr(sp, 0x050));
+  stp(x12, x13, ptr(sp, 0x060));
+  stp(x14, x15, ptr(sp, 0x070));
+  stp(x16, x17, ptr(sp, 0x080));
+  stp(x18, x19, ptr(sp, 0x090));
+  stp(x29, x30, ptr(sp, 0x0A0));
+
+  // Save Vector/SIMD registers.
+  stp(QReg(0), QReg(1), ptr(sp, 0x0B0));
+  stp(QReg(2), QReg(3), ptr(sp, 0x0D0));
+  stp(QReg(4), QReg(5), ptr(sp, 0x0F0));
+  stp(QReg(6), QReg(7), ptr(sp, 0x110));
+  stp(QReg(8), QReg(9), ptr(sp, 0x130));
+  stp(QReg(10), QReg(11), ptr(sp, 0x150));
+  stp(QReg(12), QReg(13), ptr(sp, 0x170));
+  stp(QReg(14), QReg(15), ptr(sp, 0x190));
+  stp(QReg(16), QReg(17), ptr(sp, 0x1B0));
+  stp(QReg(18), QReg(19), ptr(sp, 0x1D0));
+  stp(QReg(20), QReg(21), ptr(sp, 0x1F0));
+  stp(QReg(22), QReg(23), ptr(sp, 0x210));
+  stp(QReg(24), QReg(25), ptr(sp, 0x230));
+  stp(QReg(26), QReg(27), ptr(sp, 0x250));
+  stp(QReg(28), QReg(29), ptr(sp, 0x270));
+  stp(QReg(30), QReg(31), ptr(sp, 0x290));
 
   code_offsets.body = getSize();
 
   // Call ResolveFunction(context, target_address).
   mov(x0, x20);  // x0 = PPCContext*
   mov(x1, x16);  // x1 = guest address (32-bit in w16)
-  // Load address of ResolveFunction.
   mov(x9, reinterpret_cast<uint64_t>(&ResolveFunction));
   blr(x9);
-  // x0 now holds the resolved host machine code address.
-  mov(x9, x0);
+
+  // Store the resolved target machine code into the saved x9 stack slot.
+  str(x0, ptr(sp, 0x048));
 
   code_offsets.epilog = getSize();
 
-  // Restore x0 (guest return address) and saved regs.
-  ldp(x0, x19, ptr(sp, 0x00));
-  ldp(x29, x30, ptr(sp, 0x50));
+  // Restore Vector/SIMD registers.
+  ldp(QReg(0), QReg(1), ptr(sp, 0x0B0));
+  ldp(QReg(2), QReg(3), ptr(sp, 0x0D0));
+  ldp(QReg(4), QReg(5), ptr(sp, 0x0F0));
+  ldp(QReg(6), QReg(7), ptr(sp, 0x110));
+  ldp(QReg(8), QReg(9), ptr(sp, 0x130));
+  ldp(QReg(10), QReg(11), ptr(sp, 0x150));
+  ldp(QReg(12), QReg(13), ptr(sp, 0x170));
+  ldp(QReg(14), QReg(15), ptr(sp, 0x190));
+  ldp(QReg(16), QReg(17), ptr(sp, 0x1B0));
+  ldp(QReg(18), QReg(19), ptr(sp, 0x1D0));
+  ldp(QReg(20), QReg(21), ptr(sp, 0x1F0));
+  ldp(QReg(22), QReg(23), ptr(sp, 0x210));
+  ldp(QReg(24), QReg(25), ptr(sp, 0x230));
+  ldp(QReg(26), QReg(27), ptr(sp, 0x250));
+  ldp(QReg(28), QReg(29), ptr(sp, 0x270));
+  ldp(QReg(30), QReg(31), ptr(sp, 0x290));
+
+  // Restore GPRs (x9 will receive the resolved host machine code pointer).
+  ldp(x0, x1, ptr(sp, 0x000));
+  ldp(x2, x3, ptr(sp, 0x010));
+  ldp(x4, x5, ptr(sp, 0x020));
+  ldp(x6, x7, ptr(sp, 0x030));
+  ldp(x8, x9, ptr(sp, 0x040));
+  ldp(x10, x11, ptr(sp, 0x050));
+  ldp(x12, x13, ptr(sp, 0x060));
+  ldp(x14, x15, ptr(sp, 0x070));
+  ldp(x16, x17, ptr(sp, 0x080));
+  ldp(x18, x19, ptr(sp, 0x090));
+  ldp(x29, x30, ptr(sp, 0x0A0));
+
   add(sp, sp, static_cast<uint32_t>(thunk_stack));
 
-  cbz(x9, 8);   // skip br x9 if null, fall through to brk
-  br(x9);       // Jump to the resolved function (tail call — preserves LR).
+  cbnz(x9, 8);  // skip brk if non-null, jump to br x9
   brk(0xF000);  // Resolution failed — trap for debugging.
+  br(x9);       // Jump to the resolved function (tail call — preserves LR).
 
   code_offsets.tail = getSize();
 
@@ -366,7 +432,7 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
   func_info.prolog_stack_alloc_offset =
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = thunk_stack;
-  func_info.lr_save_offset = 0x058;  // stp x29, x30, [sp, #0x50]
+  func_info.lr_save_offset = 0x0A8;  // stp x29, x30, [sp, #0x0A0]
 
   void* fn = Emplace(func_info);
   return reinterpret_cast<ResolveFunctionThunk>(fn);
@@ -460,8 +526,8 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   br(x8);
 
   L(underflow);
-  // Should be impossible — stackpoint array underflowed.
-  brk(0xF001);  // assertion failure
+  // Stackpoint array underflowed or no matching frame found — safely resume caller.
+  br(x8);
 
   code_offsets.epilog = getSize();
   code_offsets.tail = getSize();
@@ -483,21 +549,41 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
 // ResolveFunction — runtime function resolution.
 // ==========================================================================
 uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
+  if (!target_address) {
+    XELOGW("ResolveFunction called with target_address = 0");
+    return 0;
+  }
   auto guest_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   auto thread_state = guest_context->thread_state;
-  assert_not_zero(target_address);
+
+  if (target_address >= GUEST_TRAMPOLINE_BASE &&
+      target_address < GUEST_TRAMPOLINE_END) {
+    auto backend =
+        static_cast<A64Backend*>(thread_state->processor()->backend());
+    size_t index =
+        (target_address - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
+    return reinterpret_cast<uint64_t>(
+        &backend->guest_trampoline_memory()[kGuestTrampolineSize * index]);
+  }
 
   auto fn = thread_state->processor()->ResolveFunction(
       static_cast<uint32_t>(target_address));
   if (!fn) {
-    // Unresolvable — return 0 which will fault.
+    XELOGE("ResolveFunction: Failed to resolve guest function 0x{:08X}", (uint32_t)target_address);
     return 0;
   }
 
   auto guest_fn = static_cast<GuestFunction*>(fn);
   auto code = guest_fn->machine_code();
   if (!code) {
+    XELOGE("ResolveFunction: Guest function 0x{:08X} has no machine code", (uint32_t)target_address);
     return 0;
+  }
+  auto backend = static_cast<A64Backend*>(thread_state->processor()->backend());
+  if (backend->code_cache()->has_indirection_table()) {
+    backend->code_cache()->AddIndirection(
+        static_cast<uint32_t>(target_address),
+        reinterpret_cast<uintptr_t>(code));
   }
   return reinterpret_cast<uint64_t>(code);
 }
@@ -532,7 +618,6 @@ static void EncodeMovImm64(uint32_t* out, uint32_t reg, uint64_t imm) {
       0xF2E00000 | (static_cast<uint32_t>((imm >> 48) & 0xFFFF) << 5) | reg;
 }
 
-static constexpr size_t kGuestTrampolineSize = 68;  // 17 instructions × 4
 static constexpr uint32_t kTrampolineOffsetProc = 0x00;
 static constexpr uint32_t kTrampolineOffsetArg1 = 0x10;
 static constexpr uint32_t kTrampolineOffsetArg2 = 0x20;
@@ -557,6 +642,13 @@ A64Backend::A64Backend() {
   code_cache_ = A64CodeCache::Create();
 
   // Allocate executable memory for guest trampolines.
+#ifdef __APPLE__
+  void* buf = memory::AllocFixed(
+      nullptr,
+      kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
+      xe::memory::AllocationType::kReserveCommit,
+      xe::memory::PageAccess::kExecuteReadWrite);
+#else
   uint32_t base_address = 0x10000;
   void* buf = nullptr;
   while (base_address < 0x80000000) {
@@ -571,9 +663,22 @@ A64Backend::A64Backend() {
       break;
     }
   }
+  if (!buf) {
+    buf = memory::AllocFixed(
+        nullptr,
+        kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
+        xe::memory::AllocationType::kReserveCommit,
+        xe::memory::PageAccess::kExecuteReadWrite);
+  }
+#endif
   xenia_assert(buf);
   guest_trampoline_memory_ = reinterpret_cast<uint8_t*>(buf);
   guest_trampoline_address_bitmap_.Resize(MAX_GUEST_TRAMPOLINES);
+}
+
+static void ForwardMMIOAccessForRecording(void* context, void* hostaddr) {
+  reinterpret_cast<A64Backend*>(context)
+      ->RecordMMIOExceptionForGuestInstruction(hostaddr);
 }
 
 A64Backend::~A64Backend() {
@@ -617,45 +722,63 @@ bool A64Backend::Initialize(Processor* processor) {
   vec_set.count = A64Emitter::VEC_COUNT;
 
   // Generate thunks using ARM64 assembler.
+  XELOGI("A64Backend::Initialize: Generating thunks...");
   XbyakA64Allocator allocator;
   A64HelperEmitter thunk_emitter(this, &allocator);
 
-  host_to_guest_thunk_ = thunk_emitter.EmitHostToGuestThunk();
-  guest_to_host_thunk_ = thunk_emitter.EmitGuestToHostThunk();
-  resolve_function_thunk_ = thunk_emitter.EmitResolveFunctionThunk();
+  {
+    xe::memory::ScopedJitWrite jit_write;
+    host_to_guest_thunk_ = thunk_emitter.EmitHostToGuestThunk();
+    guest_to_host_thunk_ = thunk_emitter.EmitGuestToHostThunk();
+    resolve_function_thunk_ = thunk_emitter.EmitResolveFunctionThunk();
 
-  if (!host_to_guest_thunk_ || !guest_to_host_thunk_ ||
-      !resolve_function_thunk_) {
-    XELOGE("A64Backend: Failed to generate thunks");
-    return false;
+    if (!host_to_guest_thunk_ || !guest_to_host_thunk_ ||
+        !resolve_function_thunk_) {
+      XELOGE("A64Backend: Failed to generate thunks");
+      return false;
+    }
+
+    if (cvars::a64_enable_host_guest_stack_synchronization) {
+      synchronize_guest_and_host_stack_helper_ =
+          thunk_emitter.EmitGuestAndHostSynchronizeStackHelper();
+    }
+  }
+  XELOGI("A64Backend::Initialize: Thunks generated successfully");
+
+  if (code_cache_->has_indirection_table()) {
+    // Set the indirection table default to point at the resolve thunk.
+    code_cache_->set_indirection_default(
+        reinterpret_cast<uint64_t>(resolve_function_thunk_));
+
+    XELOGI("A64Backend::Initialize: Committing guest trampoline range...");
+    // Commit the indirection table range used by guest trampolines so that
+    // CreateGuestTrampoline can call AddIndirection without faulting.
+    code_cache_->CommitExecutableRange(GUEST_TRAMPOLINE_BASE,
+                                       GUEST_TRAMPOLINE_END);
+
+    XELOGI("A64Backend::Initialize: Committing special indirection range...");
+    // Commit special indirection ranges (force return address, etc.).
+    code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
   }
 
-  if (cvars::a64_enable_host_guest_stack_synchronization) {
-    synchronize_guest_and_host_stack_helper_ =
-        thunk_emitter.EmitGuestAndHostSynchronizeStackHelper();
-  }
-
-  // Set the indirection table default to point at the resolve thunk.
-  code_cache_->set_indirection_default(
-      uint32_t(reinterpret_cast<uint64_t>(resolve_function_thunk_)));
-
-  // Commit the indirection table range used by guest trampolines so that
-  // CreateGuestTrampoline can call AddIndirection without faulting.
-  code_cache_->CommitExecutableRange(GUEST_TRAMPOLINE_BASE,
-                                     GUEST_TRAMPOLINE_END);
-
-  // Commit special indirection ranges (force return address, etc.).
-  code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
-
+  XELOGI("A64Backend::Initialize: Installing exception handler...");
   // Register exception handler for MMIO access from JIT code.
   ExceptionHandler::Install(ExceptionCallbackThunk, this);
+  if (cvars::record_mmio_access_exceptions) {
+    processor->memory()->SetMMIOExceptionRecordingCallback(
+        ForwardMMIOAccessForRecording, (void*)this);
+  }
+
+  XELOGI("A64Backend::Initialize: Successfully initialized A64Backend!");
 
   return true;
 }
 
 void A64Backend::CommitExecutableRange(uint32_t guest_low,
                                        uint32_t guest_high) {
-  code_cache_->CommitExecutableRange(guest_low, guest_high);
+  if (code_cache_->has_indirection_table()) {
+    code_cache_->CommitExecutableRange(guest_low, guest_high);
+  }
 }
 
 std::unique_ptr<Assembler> A64Backend::CreateAssembler() {
@@ -724,6 +847,14 @@ void A64Backend::InitializeBackendContext(void* ctx) {
   a64_ctx->flags = (1U << kA64BackendNJMOn);  // NJM on by default
   a64_ctx->guest_tick_count = Clock::GetGuestTickCountPointer();
 
+  if (code_cache_ && code_cache_->has_indirection_table()) {
+    a64_ctx->indirection_table_offset =
+        reinterpret_cast<uint64_t>(
+            reinterpret_cast<A64CodeCache*>(code_cache_.get())
+                ->indirection_table_base()) -
+        (0x80000000ull << 1);
+  }
+
   // Allocate stackpoints for longjmp detection.
   if (cvars::a64_enable_host_guest_stack_synchronization) {
     uint64_t max_stackpoints = cvars::a64_max_stackpoints;
@@ -764,9 +895,12 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
   uint8_t* write_pos =
       &guest_trampoline_memory_[kGuestTrampolineSize * new_index];
 
-  BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
-                       userdata2,
-                       reinterpret_cast<void*>(guest_to_host_thunk_));
+  {
+    xe::memory::ScopedJitWrite jit_write;
+    BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
+                         userdata2,
+                         reinterpret_cast<void*>(guest_to_host_thunk_));
+  }
 
   // Flush instruction cache for the new trampoline code.
 #if XE_PLATFORM_WIN32
@@ -781,9 +915,11 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
       GUEST_TRAMPOLINE_BASE +
       (static_cast<uint32_t>(new_index) * GUEST_TRAMPOLINE_MIN_LEN);
 
-  code_cache()->AddIndirection(
-      indirection_guest_addr,
-      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(write_pos)));
+  if (code_cache()->has_indirection_table()) {
+    code_cache()->AddIndirection(
+        indirection_guest_addr,
+        reinterpret_cast<uintptr_t>(write_pos));
+  }
 
   return indirection_guest_addr;
 }

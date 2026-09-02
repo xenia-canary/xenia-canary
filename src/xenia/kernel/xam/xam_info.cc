@@ -457,11 +457,21 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
 }
 DECLARE_XAM_EXPORT1(XamLoaderLaunchTitle, kNone, kSketchy);
 
-void XamLoaderTerminateTitle_entry() {
+void XamLoaderTerminateTitle_entry(const ppc_context_t& ctx) {
   std::string title = "Title terminated";
   std::string message = "Game requested exit to dashboard.";
-  assert_always("Game requested exit to dashboard via XamLoaderTerminateTitle");
-
+  XELOGI(
+      "Game requested exit to dashboard via XamLoaderTerminateTitle (guest "
+      "LR={:08X} thid={:08X})",
+      ctx->lr, ctx->thread_id);
+  auto mem = kernel_state()->memory()->TranslateVirtual(0x82CBBE30);
+  if (mem) {
+    XELOGI("Instructions at 0x82CBBE30:");
+    for (int i = 0; i < 10; ++i) {
+      uint32_t instr = xe::load_and_swap<uint32_t>(mem + i * 4);
+      XELOGI("  [{:08X}] {:08X}", 0x82CBBE30 + i * 4, instr);
+    }
+  }
   auto display_window = kernel_state()->emulator()->display_window();
   auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
 
@@ -608,6 +618,43 @@ dword_result_t XGetOverlappedExtendedError_entry(
   return static_cast<uint32_t>(overlapped_ptr->extended_error);
 }
 DECLARE_XAM_EXPORT1(XGetOverlappedExtendedError, kNone, kImplemented);
+
+dword_result_t XGetOverlappedResult_entry(
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr, lpdword_t length_ptr,
+    dword_t wait) {
+  if (!overlapped_ptr) {
+    return XThread::GetLastError();
+  }
+
+  uint32_t result = X_STATUS_SUCCESS;
+
+  if (overlapped_ptr->result != X_ERROR_IO_PENDING) {
+    result = overlapped_ptr->result;
+  } else if (wait && overlapped_ptr->event) {
+    auto ev = kernel_state()->object_table()->LookupObject<XEvent>(
+        overlapped_ptr->event);
+    if (ev) {
+      result = ev->Wait(3, 1, 0, nullptr);
+    }
+  } else {
+    result = X_STATUS_TIMEOUT;
+  }
+
+  if (result == X_STATUS_TIMEOUT) {
+    return X_ERROR_IO_INCOMPLETE;
+  }
+
+  if (XFAILED(result)) {
+    return XThread::GetLastError();
+  }
+
+  if (length_ptr) {
+    *length_ptr = overlapped_ptr->length;
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XGetOverlappedResult, kNone, kImplemented);
 
 dword_result_t GetLastError_entry() { return RtlGetLastError_entry(); }
 DECLARE_XAM_EXPORT1(GetLastError, kNone, kImplemented);

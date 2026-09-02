@@ -74,6 +74,31 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
 #define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                 \
   functions_loaded &= (ifn.name = PFN_##name(GetProcAddress( \
                            vulkan_instance->loader_, #name))) != nullptr;
+#elif XE_PLATFORM_MAC
+  const char* const loader_library_names[] = {
+      "libvulkan.1.dylib",
+      "libvulkan.dylib",
+      "/opt/homebrew/lib/libvulkan.1.dylib",
+      "/opt/homebrew/lib/libMoltenVK.dylib",
+      "/usr/local/lib/libvulkan.1.dylib",
+      "/usr/local/lib/libMoltenVK.dylib",
+      "libMoltenVK.dylib",
+  };
+  for (const auto* name : loader_library_names) {
+    vulkan_instance->loader_ = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+    if (vulkan_instance->loader_) {
+      XELOGI("Loaded Vulkan loader library: {}", name);
+      break;
+    }
+  }
+  if (!vulkan_instance->loader_) {
+    XELOGE("Failed to load Vulkan loader / MoltenVK library on macOS");
+    return nullptr;
+  }
+#define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
+  functions_loaded &=                                                    \
+      (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
+      nullptr;
 #else
 #error No Vulkan loader library loading provided for the target platform.
 #endif
@@ -157,6 +182,12 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     requested_extensions.emplace(
         "VK_KHR_win32_surface",
         &vulkan_instance->extensions_.ext_KHR_win32_surface);
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    // #218.
+    requested_extensions.emplace(
+        "VK_EXT_metal_surface",
+        &vulkan_instance->extensions_.ext_EXT_metal_surface);
 #endif
   }
 
@@ -439,6 +470,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
 #ifdef VK_USE_PLATFORM_WIN32_KHR
   if (vulkan_instance->extensions_.ext_KHR_win32_surface) {
 #include "xenia/ui/vulkan/functions/instance_khr_win32_surface.inc"
+  }
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+  if (vulkan_instance->extensions_.ext_EXT_metal_surface) {
+#include "xenia/ui/vulkan/functions/instance_ext_metal_surface.inc"
   }
 #endif
   if (vulkan_instance->extensions_.ext_KHR_surface) {

@@ -38,9 +38,16 @@ SDLInputDriver::SDLInputDriver(xe::ui::Window* window, size_t window_z_order)
       sdl_events_unflushed_(0),
       sdl_pumpevents_queued_(false),
       controllers_(),
-      keystroke_states_() {}
+      keystroke_states_() {
+  if (window) {
+    window->AddInputListener(this, window_z_order);
+  }
+}
 
 SDLInputDriver::~SDLInputDriver() {
+  if (window()) {
+    window()->RemoveInputListener(this);
+  }
   // Make sure the CallInUIThread is executed before destroying the references.
   if (sdl_pumpevents_queued_) {
     window()->app_context().CallInUIThreadSynchronous([this]() {
@@ -200,6 +207,21 @@ X_RESULT SDLInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
 
   auto controller = GetControllerState(user_index);
   if (!controller) {
+    if (user_index == 0) {
+      out_caps->type = XINPUT_DEVTYPE_GAMEPAD;
+      out_caps->sub_type = XINPUT_DEVSUBTYPE_GAMEPAD;
+      out_caps->flags = 0;
+      out_caps->gamepad.buttons = 0xFFFF;
+      out_caps->gamepad.left_trigger = 0xFF;
+      out_caps->gamepad.right_trigger = 0xFF;
+      out_caps->gamepad.thumb_lx = static_cast<int16_t>(0xFFFFu);
+      out_caps->gamepad.thumb_ly = static_cast<int16_t>(0xFFFFu);
+      out_caps->gamepad.thumb_rx = static_cast<int16_t>(0xFFFFu);
+      out_caps->gamepad.thumb_ry = static_cast<int16_t>(0xFFFFu);
+      out_caps->vibration.left_motor_speed = 0;
+      out_caps->vibration.right_motor_speed = 0;
+      return X_ERROR_SUCCESS;
+    }
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -215,7 +237,7 @@ X_RESULT SDLInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
 X_RESULT SDLInputDriver::GetState(uint32_t user_index,
                                   X_INPUT_STATE* out_state) {
   assert(sdl_events_initialized_ && sdl_gamecontroller_initialized_);
-  if (user_index >= HID_SDL_USER_COUNT) {
+  if (user_index >= HID_SDL_USER_COUNT || !out_state) {
     return X_ERROR_BAD_ARGUMENTS;
   }
 
@@ -223,6 +245,12 @@ X_RESULT SDLInputDriver::GetState(uint32_t user_index,
 
   auto controller = GetControllerState(user_index);
   if (!controller) {
+    if (user_index == 0) {
+      std::memset(out_state, 0, sizeof(*out_state));
+      GetKeyboardState(out_state->gamepad);
+      out_state->packet_number = ++kb_packet_number_;
+      return X_ERROR_SUCCESS;
+    }
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -231,6 +259,9 @@ X_RESULT SDLInputDriver::GetState(uint32_t user_index,
     controller->state_changed = false;
   }
   std::memcpy(out_state, &controller->state, sizeof(*out_state));
+  if (user_index == 0) {
+    GetKeyboardState(out_state->gamepad);
+  }
   return X_ERROR_SUCCESS;
 }
 
@@ -407,7 +438,9 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
   return X_ERROR_EMPTY;
 }
 
-InputType SDLInputDriver::GetInputType() const { return InputType::Controller; }
+InputType SDLInputDriver::GetInputType() const {
+  return InputType(InputType::Controller | InputType::Keyboard);
+}
 
 void SDLInputDriver::HandleEvent(const SDL_Event& event) {
   // This callback will likely run on the thread that posts the event, which
@@ -726,10 +759,16 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state) {
 
 void SDLInputDriver::QueueControllerUpdate() {
   // To minimize consecutive event pumps do not queue before previous pump is
-  // finished.
+  // finished, and rate-limit to at most once every 100ms to avoid IOKit Mach IPC
+  // storms on macOS.
+  static std::atomic<uint64_t> last_pump_time{0};
+  uint64_t now = xe::Clock::QueryGuestUptimeMillis();
+  if (now - last_pump_time.load(std::memory_order_relaxed) < 100) {
+    return;
+  }
   bool is_queued = false;
-  sdl_pumpevents_queued_.compare_exchange_strong(is_queued, true);
-  if (!is_queued) {
+  if (sdl_pumpevents_queued_.compare_exchange_strong(is_queued, true)) {
+    last_pump_time.store(now, std::memory_order_relaxed);
     window()->app_context().CallInUIThread([this]() {
       SDL_PumpEvents();
       sdl_pumpevents_queued_ = false;
@@ -778,6 +817,227 @@ inline uint64_t SDLInputDriver::AnalogToKeyfield(
     thumb_y = gamepad.thumb_ry;
   }
   return f;
+}
+
+void SDLInputDriver::OnKeyDown(xe::ui::KeyEvent& e) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+  if (pressed_keys_.insert(e.virtual_key()).second) {
+    key_press_times_[e.virtual_key()] = xe::Clock::QueryGuestUptimeMillis();
+  }
+}
+
+void SDLInputDriver::OnKeyUp(xe::ui::KeyEvent& e) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+  pressed_keys_.erase(e.virtual_key());
+  key_press_times_.erase(e.virtual_key());
+}
+
+void SDLInputDriver::OnMouseDown(xe::ui::MouseEvent& e) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+  if (e.button() == xe::ui::MouseEvent::Button::kLeft) {
+    mouse_left_down_ = true;
+  } else if (e.button() == xe::ui::MouseEvent::Button::kRight) {
+    mouse_right_down_ = true;
+  } else if (e.button() == xe::ui::MouseEvent::Button::kMiddle) {
+    mouse_middle_down_ = true;
+  }
+  last_mouse_x_ = e.x();
+  last_mouse_y_ = e.y();
+}
+
+void SDLInputDriver::OnMouseUp(xe::ui::MouseEvent& e) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+  if (e.button() == xe::ui::MouseEvent::Button::kLeft) {
+    mouse_left_down_ = false;
+  } else if (e.button() == xe::ui::MouseEvent::Button::kRight) {
+    mouse_right_down_ = false;
+  } else if (e.button() == xe::ui::MouseEvent::Button::kMiddle) {
+    mouse_middle_down_ = false;
+  }
+}
+
+void SDLInputDriver::OnMouseMove(xe::ui::MouseEvent& e) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+  const bool had_previous = last_mouse_x_ != 0 || last_mouse_y_ != 0;
+  const int32_t dx = e.x() - last_mouse_x_;
+  const int32_t dy = e.y() - last_mouse_y_;
+  last_mouse_x_ = e.x();
+  last_mouse_y_ = e.y();
+  // Skip the first sample, and any discontinuity from a mouse-capture toggle,
+  // window warp, or alt-tab, which arrive as one huge jump.
+  constexpr int32_t kMaxStep = 480;
+  if (!had_previous || dx > kMaxStep || dx < -kMaxStep || dy > kMaxStep ||
+      dy < -kMaxStep) {
+    return;
+  }
+  mouse_accum_dx_ += dx;
+  mouse_accum_dy_ += dy;
+}
+
+void SDLInputDriver::GetKeyboardState(X_INPUT_GAMEPAD& pad) {
+  std::lock_guard<std::mutex> guard(input_mutex_);
+
+  uint16_t buttons = pad.buttons;
+  uint64_t now_ms = xe::Clock::QueryGuestUptimeMillis();
+
+  // Helper to handle menu tap vs hold cadence for digital direction keys
+  auto get_axis_rate = [&](xe::ui::VirtualKey key, int16_t max_val, uint16_t dpad_flag) -> int16_t {
+    if (!pressed_keys_.count(key)) {
+      return 0;
+    }
+    uint64_t start_time = key_press_times_[key];
+    uint64_t elapsed = (now_ms >= start_time) ? (now_ms - start_time) : 0;
+    if (elapsed < 60) {
+      // First 60ms pulse: 1 clean menu tick
+      buttons |= dpad_flag;
+      return static_cast<int16_t>(max_val / 2);
+    } else if (elapsed < 250) {
+      // 60ms-250ms: repeat debounce delay (prevents menu runaway)
+      return 0;
+    } else {
+      // 250ms+: full in-game movement
+      return max_val;
+    }
+  };
+
+  // Left Stick (Movement): WASD
+  int16_t ly = 0;
+  if (pressed_keys_.count(xe::ui::VirtualKey::kW)) {
+    ly += get_axis_rate(xe::ui::VirtualKey::kW, 32767, X_INPUT_GAMEPAD_DPAD_UP);
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kS)) {
+    ly += get_axis_rate(xe::ui::VirtualKey::kS, -32768, X_INPUT_GAMEPAD_DPAD_DOWN);
+  }
+  pad.thumb_ly = ly;
+
+  int16_t lx = 0;
+  if (pressed_keys_.count(xe::ui::VirtualKey::kD)) {
+    lx += get_axis_rate(xe::ui::VirtualKey::kD, 32767, X_INPUT_GAMEPAD_DPAD_RIGHT);
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kA)) {
+    lx += get_axis_rate(xe::ui::VirtualKey::kA, -32768, X_INPUT_GAMEPAD_DPAD_LEFT);
+  }
+  pad.thumb_lx = lx;
+
+  // D-Pad / Arrow Keys:
+  if (pressed_keys_.count(xe::ui::VirtualKey::kUp)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_UP;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kDown)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_DOWN;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kLeft)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_LEFT;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kRight)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_RIGHT;
+  }
+
+  // Right Stick (Aiming/Camera): IJKL
+  if (pressed_keys_.count(xe::ui::VirtualKey::kI)) {
+    pad.thumb_ry = 32767;
+  } else if (pressed_keys_.count(xe::ui::VirtualKey::kK)) {
+    pad.thumb_ry = -32768;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::kL)) {
+    pad.thumb_rx = 32767;
+  } else if (pressed_keys_.count(xe::ui::VirtualKey::kJ)) {
+    pad.thumb_rx = -32768;
+  }
+
+  // Mouse Delta Aiming
+  if (mouse_accum_dx_ != 0 || mouse_accum_dy_ != 0) {
+    constexpr int32_t kSensitivity = 800;
+    int32_t rx = static_cast<int32_t>(pad.thumb_rx) + (mouse_accum_dx_ * kSensitivity);
+    int32_t ry = static_cast<int32_t>(pad.thumb_ry) - (mouse_accum_dy_ * kSensitivity);
+    pad.thumb_rx = static_cast<int16_t>(std::clamp(rx, -32768, 32767));
+    pad.thumb_ry = static_cast<int16_t>(std::clamp(ry, -32768, 32767));
+    mouse_accum_dx_ = 0;
+    mouse_accum_dy_ = 0;
+  }
+
+  // Action Buttons:
+  // Space / Enter: Select / Jump / Confirm (A)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kSpace) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kReturn)) {
+    buttons |= X_INPUT_GAMEPAD_A;
+  }
+  // B / T / Backspace: Melee / Cancel / Back (B)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kB) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kT) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kBack)) {
+    buttons |= X_INPUT_GAMEPAD_B;
+  }
+  // E / F: Action / Reload (X)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kE) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kF)) {
+    buttons |= X_INPUT_GAMEPAD_X;
+  }
+  // Y / X: Switch Weapon (Y)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kY) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kX)) {
+    buttons |= X_INPUT_GAMEPAD_Y;
+  }
+
+  // Shoulders & Triggers:
+  // Left Click / Enter: Fire (Right Trigger)
+  if (mouse_left_down_) {
+    pad.right_trigger = 255;
+  }
+  // Right Click / V: Zoom / Secondary (Left Trigger)
+  if (mouse_right_down_ || pressed_keys_.count(xe::ui::VirtualKey::kV)) {
+    pad.left_trigger = 255;
+  }
+  // Q / Middle Click / G: Grenade (Left Shoulder)
+  if (mouse_middle_down_ || pressed_keys_.count(xe::ui::VirtualKey::kQ) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kG)) {
+    buttons |= X_INPUT_GAMEPAD_LEFT_SHOULDER;
+  }
+  // R / Left Shift: Melee / Equipment (Right Shoulder)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kR) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kShift)) {
+    buttons |= X_INPUT_GAMEPAD_RIGHT_SHOULDER;
+  }
+
+  // Thumb clicks:
+  // C / Left Ctrl: Crouch (Left Thumb Click)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kC) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kControl)) {
+    buttons |= X_INPUT_GAMEPAD_LEFT_THUMB;
+  }
+  // Z / Tab: Scope / Zoom (Right Thumb Click)
+  if (pressed_keys_.count(xe::ui::VirtualKey::kZ) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kTab)) {
+    buttons |= X_INPUT_GAMEPAD_RIGHT_THUMB;
+  }
+
+  // Menu / System:
+  // Escape / Enter: Start
+  if (pressed_keys_.count(xe::ui::VirtualKey::kEscape) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kReturn)) {
+    buttons |= X_INPUT_GAMEPAD_START;
+  }
+  // Backspace / M: Back
+  if (pressed_keys_.count(xe::ui::VirtualKey::kBack) ||
+      pressed_keys_.count(xe::ui::VirtualKey::kM)) {
+    buttons |= X_INPUT_GAMEPAD_BACK;
+  }
+
+  // Number Keys 1-4 for D-Pad:
+  if (pressed_keys_.count(xe::ui::VirtualKey::k1)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_UP;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::k2)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_DOWN;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::k3)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_LEFT;
+  }
+  if (pressed_keys_.count(xe::ui::VirtualKey::k4)) {
+    buttons |= X_INPUT_GAMEPAD_DPAD_RIGHT;
+  }
+
+  pad.buttons = buttons;
 }
 
 }  // namespace sdl

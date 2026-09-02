@@ -53,6 +53,8 @@ class SDLAudioDriver : public AudioDriver {
   uint32_t channel_samples_;
   uint32_t frame_size_;
   bool need_format_conversion_;
+  static constexpr size_t kPreRollFrames = 2;
+  bool is_buffering_ = true;
   std::queue<float*> frames_queued_ = {};
   std::stack<float*> frames_unused_ = {};
   std::mutex frames_mutex_ = {};

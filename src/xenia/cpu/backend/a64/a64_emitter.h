@@ -11,6 +11,7 @@
 #define XENIA_CPU_BACKEND_A64_A64_EMITTER_H_
 
 #include <functional>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -45,7 +46,7 @@ enum class FPCRMode : uint32_t { Unknown, Fpu, Vmx };
 // Unfortunately due to the design of xbyak we have to pass this to the ctor.
 class XbyakA64Allocator : public Xbyak_aarch64::Allocator {
  public:
-  virtual bool useProtect() const { return false; }
+  virtual bool useProtect() const override { return false; }
 };
 
 class A64Emitter;

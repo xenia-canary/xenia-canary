@@ -125,8 +125,8 @@ inline void sequential_6_BE_to_interleaved_2_LE(float* output,
     float fl = xe::byte_swap(input[0 * ch_sample_count + sample]);
     float fr = xe::byte_swap(input[1 * ch_sample_count + sample]);
     float fc = xe::byte_swap(input[2 * ch_sample_count + sample]);
-    float br = xe::byte_swap(input[4 * ch_sample_count + sample]);
-    float bl = xe::byte_swap(input[5 * ch_sample_count + sample]);
+    float bl = xe::byte_swap(input[4 * ch_sample_count + sample]);
+    float br = xe::byte_swap(input[5 * ch_sample_count + sample]);
     float center_halved = fc * 0.5f;
     output[sample * 2] = (fl + bl + center_halved) * (1.0f / 2.5f);
     output[sample * 2 + 1] = (fr + br + center_halved) * (1.0f / 2.5f);

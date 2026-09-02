@@ -181,8 +181,8 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
                 }
               }
 #endif
-#if XE_PLATFORM_LINUX
-              // Linux: Use simplified timing logic to avoid oversleeping
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+              // POSIX/macOS: Use simplified timing logic to avoid oversleeping
               MarkVblank();
 
               if (cvars::vsync || normalized_framerate_limit > 0) {

@@ -191,6 +191,10 @@ class XObject {
   T* guest_object() {
     return memory()->TranslateVirtual<T*>(guest_object_ptr_);
   }
+  template <typename T>
+  const T* guest_object() const {
+    return memory()->TranslateVirtual<const T*>(guest_object_ptr_);
+  }
 
   void RetainHandle();
   bool ReleaseHandle();

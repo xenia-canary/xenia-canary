@@ -44,8 +44,12 @@ namespace apu {
 AudioSystem::AudioSystem(cpu::Processor* processor)
     : memory_(processor->memory()),
       processor_(processor),
-      worker_running_(false) {
-  std::memset(clients_, 0, sizeof(clients_));
+      worker_running_(false),
+      clients_{} {
+  // NOTE: clients_ is value-initialized above rather than memset. Each element
+  // holds a std::mutex, and a zeroed pthread_mutex_t is only valid on glibc
+  // (== PTHREAD_MUTEX_INITIALIZER); on macOS the initializer is non-zero, so a
+  // memset'd mutex makes pthread_mutex_lock() fail with EINVAL.
 
   for (size_t i = 0; i < kMaximumClientCount; ++i) {
     client_semaphores_[i] =
@@ -131,8 +135,11 @@ void AudioSystem::WorkerThreadMain() {
         const uint64_t min_us =
             scalar > 0.0 ? static_cast<uint64_t>(kAudioPumpInterval / scalar)
                          : kAudioPumpInterval;
-        clients_[client_index].next_pump_us =
-            (earliest_pump_us > now ? earliest_pump_us : now) + min_us;
+        if (now > earliest_pump_us + 50000 || earliest_pump_us == 0) {
+          clients_[client_index].next_pump_us = now + min_us;
+        } else {
+          clients_[client_index].next_pump_us = earliest_pump_us + min_us;
+        }
       }
     }
 
@@ -174,7 +181,7 @@ void AudioSystem::WorkerThreadMain() {
     // Submit only if the host has a free output slot;
     if (client_callback &&
         xe::threading::Wait(client_semaphores_[client_index].get(), false,
-                            std::chrono::milliseconds(0)) ==
+                            std::chrono::milliseconds(20)) ==
             xe::threading::WaitResult::kSuccess) {
       std::lock_guard<std::mutex> guard(clients_[client_index].lock);
 

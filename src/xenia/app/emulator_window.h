@@ -153,6 +153,8 @@ class EmulatorWindow {
     void OnClosing(ui::UIEvent& e) override;
     void OnFileDrop(ui::FileDropEvent& e) override;
 
+    void OnLostFocus(ui::UISetupEvent& e) override;
+
     void OnKeyDown(ui::KeyEvent& e) override;
 
     void OnMouseDown(ui::MouseEvent& e) override;
@@ -266,6 +268,12 @@ class EmulatorWindow {
   void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);
   void OnMouseUp(const ui::MouseEvent& e);
+  void OnLostFocus();
+  // Engage / release relative-pointer mouse-look (cursor hidden, motion drives
+  // the emulated right stick). Engaged by clicking into a running title,
+  // released on focus loss or Cmd+Tab.
+  void SetMouseCaptured(bool captured);
+  bool mouse_captured_ = false;
   void FileOpen();
   void FileClose();
   void InstallContent();

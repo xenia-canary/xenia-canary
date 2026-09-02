@@ -89,6 +89,24 @@ bool IsWritableExecutableMemorySupported();
 // writable executable memory on a system with it.
 bool IsWritableExecutableMemoryPreferred();
 
+#if defined(__APPLE__) && defined(__aarch64__)
+#include <pthread.h>
+inline void EnableJitWrite() {
+  pthread_jit_write_protect_np(0);
+}
+inline void DisableJitWrite() {
+  pthread_jit_write_protect_np(1);
+}
+#else
+inline void EnableJitWrite() {}
+inline void DisableJitWrite() {}
+#endif
+
+struct ScopedJitWrite {
+  ScopedJitWrite() { EnableJitWrite(); }
+  ~ScopedJitWrite() { DisableJitWrite(); }
+};
+
 // Allocates a block of memory at the given page-aligned base address.
 // Fails if the memory is not available.
 // Specify nullptr for base_address to leave it up to the system.

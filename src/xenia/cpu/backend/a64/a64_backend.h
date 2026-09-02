@@ -37,6 +37,7 @@ static constexpr uint32_t GUEST_TRAMPOLINE_END = 0x80040000;
 static constexpr uint32_t GUEST_TRAMPOLINE_MIN_LEN = 8;
 static constexpr uint32_t MAX_GUEST_TRAMPOLINES =
     (GUEST_TRAMPOLINE_END - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
+static constexpr size_t kGuestTrampolineSize = 68;  // 17 instructions × 4 bytes
 
 #define A64_RESERVE_BLOCK_SHIFT 16
 #define A64_RESERVE_NUM_ENTRIES \
@@ -76,6 +77,7 @@ struct A64BackendContext {
   uint64_t* guest_tick_count;
   A64BackendStackpoint* stackpoints;
   uint64_t cached_reserve_offset;
+  uint64_t indirection_table_offset;
   uint32_t cached_reserve_bit;
   unsigned int current_stackpoint_depth;
   unsigned int fpcr_fpu;
@@ -109,6 +111,7 @@ class A64Backend : public Backend {
   void* synchronize_guest_and_host_stack_helper() const {
     return synchronize_guest_and_host_stack_helper_;
   }
+  uint8_t* guest_trampoline_memory() const { return guest_trampoline_memory_; }
 
   bool Initialize(Processor* processor) override;
 

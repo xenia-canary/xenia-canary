@@ -28,10 +28,17 @@
 
 DEFINE_bool(protect_zero, true, "Protect the zero page from reads and writes.",
             "Memory");
+#if XE_ARCH_ARM64
+DEFINE_bool(emit_inline_mmio_checks, true,
+            "Emit inline MMIO range checks for all I32 loads/stores instead "
+            "of relying on exception-based MMIO detection.",
+            "CPU");
+#else
 DEFINE_bool(emit_inline_mmio_checks, false,
             "Emit inline MMIO range checks for all I32 loads/stores instead "
             "of relying on exception-based MMIO detection.",
             "CPU");
+#endif
 DEFINE_bool(emit_mmio_aware_stores_for_recorded_exception_addresses, true,
             "Uses info gathered via record_mmio_access_exceptions to emit "
             "special stores that are faster than trapping the exception",
@@ -104,15 +111,29 @@ void CrashDump() {
 }
 
 static inline bool ShouldSkipHostCommit(const BaseHeap& heap) {
-  // When the host page size is larger than 4 KB (e.g. 16 KB on macOS ARM64,
-  // 64 KB on some ARM64 Linux kernels), mprotect on 4 KB guest page boundaries
-  // fails with EINVAL. All heaps are backed by a shared file mapping
-  // (MapFileView) that is already mapped RW, so the commit is a no-op — skip
-  // it.
-  if (xe::memory::page_size() > 0x1000) {
-    return true;
+  // All heaps are backed by a shared file mapping (MapFileView) that starts out
+  // mapped RW, so in the common case a commit is a no-op. However it is NOT
+  // safe to skip the host commit unconditionally: XThread::AllocateStack punches
+  // PROT_NONE guard pages into the 64 KB v40000000 heap via Protect(), and
+  // BaseHeap::Release does not restore host protection, so once a thread exits
+  // its freed guard range stays PROT_NONE. The next allocation that reuses that
+  // range must host-commit (mprotect back to RW) or the guest faults on it.
+  //
+  // The only reason to skip is the EINVAL that mprotect returns when asked to
+  // operate on a sub-host-page range: guest heaps whose page size is smaller
+  // than the host page (the 4 KB virtual/physical heaps on a 16 KB macOS ARM64
+  // or 64 KB ARM64 Linux kernel) cannot be committed per guest page. Those keep
+  // relying on the file mapping already being RW.
+  //
+  // Restrict the host-commit to non-physical heaps: the physical mirror heaps
+  // carry the GPU write-watch / MMIO protection machinery and only ever hand out
+  // fresh (never guard-punched) ranges, so healing there is unnecessary and
+  // risks fighting that subsystem.
+  if (heap.heap_type() != HeapType::kGuestPhysical &&
+      heap.page_size() >= uint32_t(xe::memory::page_size())) {
+    return false;
   }
-  return false;
+  return true;
 }
 
 void RandomizeMemory(void* range_start, uint32_t size) {
@@ -175,7 +196,7 @@ Memory::~Memory() {
 }
 
 bool Memory::Initialize() {
-  file_name_ = fmt::format("xenia_memory_{}", Clock::QueryHostTickCount());
+  file_name_ = fmt::format("x_mem_{:x}", Clock::QueryHostTickCount());
 
   // Create main page file-backed mapping. This is all reserved but
   // uncommitted (so it shouldn't expand page file).
@@ -192,7 +213,7 @@ bool Memory::Initialize() {
   // Attempt to create our views. This may fail at the first address
   // we pick, so try a few times.
   mapping_base_ = 0;
-  for (size_t n = 32; n < 64; n++) {
+  for (size_t n = 34; n < 64; n++) {
     auto mapping_base = reinterpret_cast<uint8_t*>(1ull << n);
     if (!MapViews(mapping_base)) {
       mapping_base_ = mapping_base;

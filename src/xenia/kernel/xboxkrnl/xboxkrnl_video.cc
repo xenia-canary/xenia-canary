@@ -223,17 +223,20 @@ void VdQueryVideoMode(X_VIDEO_MODE* video_mode,
   // Later calculate if resolution is widescreen or not and apply flag
   // accordingly. Technically possible resolutions should depend on av_pack, but
   // we can ignore it.
-  const auto resolution =
-      Resolution(kernel_state()->xconfig()->ReadSetting<uint32_t>(
-          XCONFIG_USER_CATEGORY, XCONFIG_USER_AV_COMPOSITE_SCREENSZ));
+  auto res_val = kernel_state()->xconfig()->ReadSetting<uint32_t>(
+      XCONFIG_USER_CATEGORY, XCONFIG_USER_AV_COMPONENT_SCREENSZ);
+  if (!res_val) {
+    res_val = XHDTVResolution.at(1).to_host();
+  }
+  const auto resolution = Resolution(res_val);
 
-  const auto is_widescreen = IsWidescreen(kernel_state(), resolution);
+  const auto is_widescreen = true;
 
-  video_mode->display_width = resolution.width_.get();
-  video_mode->display_height = resolution.height_.get();
+  video_mode->display_width = resolution.width_.get() ? resolution.width_.get() : 1280;
+  video_mode->display_height = resolution.height_.get() ? resolution.height_.get() : 720;
   video_mode->is_interlaced = cvars::interlaced;
   video_mode->is_widescreen = is_widescreen;
-  video_mode->is_hi_def = video_mode->display_width >= 0x500;
+  video_mode->is_hi_def = true;
   video_mode->refresh_rate = GetVideoRefreshRate(kernel_state());
   video_mode->video_standard =
       static_cast<uint32_t>(GetVideoStandard(kernel_state()));
@@ -294,49 +297,39 @@ DECLARE_XBOXKRNL_EXPORT1(VdSetDisplayModeOverride, kVideo, kStub);
 dword_result_t VdInitializeEngines_entry(unknown_t unk0, function_t callback,
                                          lpvoid_t arg, lpdword_t pfp_ptr,
                                          lpdword_t me_ptr) {
-  // r3 = 0x4F810000
-  // r4 = function ptr (cleanup callback?)
-  // r5 = function arg
-  // r6 = PFP Microcode
-  // r7 = ME Microcode
+  XELOGI("VdInitializeEngines called");
   return 1;
 }
 DECLARE_XBOXKRNL_EXPORT1(VdInitializeEngines, kVideo, kStub);
 
 void VdShutdownEngines_entry() {
-  // Ignored for now.
-  // Games seem to call an Initialize/Shutdown pair to query info, then
-  // re-initialize.
+  XELOGI("VdShutdownEngines called");
 }
 DECLARE_XBOXKRNL_EXPORT1(VdShutdownEngines, kVideo, kStub);
 
 dword_result_t VdGetGraphicsAsicID_entry() {
-  // Games compare for < 0x10 and do VdInitializeEDRAM, else other
-  // (retrain/etc).
+  XELOGI("VdGetGraphicsAsicID called -> 0x11");
   return 0x11;
 }
 DECLARE_XBOXKRNL_EXPORT1(VdGetGraphicsAsicID, kVideo, kStub);
 
 dword_result_t VdEnableDisableClockGating_entry(dword_t enabled) {
-  // Ignored, as it really doesn't matter.
   return 0;
 }
 DECLARE_XBOXKRNL_EXPORT1(VdEnableDisableClockGating, kVideo, kStub);
 
 void VdSetGraphicsInterruptCallback_entry(function_t callback,
                                           lpvoid_t user_data) {
-  // callback takes 2 params
-  // r3 = bool 0/1 - 0 is normal interrupt, 1 is some acquire/lock mumble
-  // r4 = user_data (r4 of VdSetGraphicsInterruptCallback)
+  XELOGI("VdSetGraphicsInterruptCallback called: callback={:08X}",
+         static_cast<uint32_t>(callback));
   auto graphics_system = kernel_state()->emulator()->graphics_system();
   graphics_system->SetInterruptCallback(callback, user_data);
 }
 DECLARE_XBOXKRNL_EXPORT1(VdSetGraphicsInterruptCallback, kVideo, kImplemented);
 
 void VdInitializeRingBuffer_entry(lpvoid_t ptr, int_t size_log2) {
-  // r3 = result of MmGetPhysicalAddress
-  // r4 = log2(size)
-  // Buffer pointers are from MmAllocatePhysicalMemory with WRITE_COMBINE.
+  XELOGI("VdInitializeRingBuffer called: ptr={:08X}, size_log2={}",
+         ptr.guest_address(), static_cast<int>(size_log2));
   auto graphics_system = kernel_state()->emulator()->graphics_system();
   graphics_system->InitializeRingBuffer(ptr, size_log2);
 }

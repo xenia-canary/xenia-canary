@@ -36,6 +36,11 @@
 #include "xenia/base/main_android.h"
 #endif
 
+#if XE_PLATFORM_MAC
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#endif
+
 #if XE_PLATFORM_GNU_LINUX
 #ifndef MFD_EXEC
 #define MFD_EXEC 0x0010U
@@ -150,6 +155,33 @@ static void InstallCleanupHandlers() {
 }
 #endif  // !XE_PLATFORM_ANDROID
 
+#if XE_PLATFORM_MAC
+// macOS has no MAP_FIXED_NOREPLACE, and mmap(MAP_FIXED) silently unmaps whatever
+// is already at the target address. Callers such as AllocateContext() and the
+// code-cache/trampoline allocators depend on a fixed request FAILING when the
+// range is occupied so they can advance to the next candidate address. Probe the
+// range first and report a conflict, mirroring MAP_FIXED_NOREPLACE.
+static bool MacFixedRangeIsFree(void* base_address, size_t length) {
+  mach_vm_address_t region_addr = reinterpret_cast<mach_vm_address_t>(base_address);
+  mach_vm_size_t region_size = 0;
+  vm_region_basic_info_data_64_t info;
+  mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+  mach_port_t object_name = MACH_PORT_NULL;
+  kern_return_t kr = mach_vm_region(
+      mach_task_self(), &region_addr, &region_size, VM_REGION_BASIC_INFO_64,
+      reinterpret_cast<vm_region_info_t>(&info), &count, &object_name);
+  if (kr != KERN_SUCCESS) {
+    // No region at or above the requested address; the range is free.
+    return true;
+  }
+  mach_vm_address_t requested_start =
+      reinterpret_cast<mach_vm_address_t>(base_address);
+  mach_vm_address_t requested_end = requested_start + length;
+  mach_vm_address_t existing_end = region_addr + region_size;
+  return !(region_addr < requested_end && requested_start < existing_end);
+}
+#endif  // XE_PLATFORM_MAC
+
 void* AllocFixed(void* base_address, size_t length,
                  AllocationType allocation_type, PageAccess access) {
   // mmap does not support reserve / commit, so ignore allocation_type.
@@ -165,14 +197,28 @@ void* AllocFixed(void* base_address, size_t length,
     }
 #ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#elif XE_PLATFORM_MAC
+    if (!MacFixedRangeIsFree(base_address, length)) {
+      return nullptr;
+    }
+    flags |= MAP_FIXED;
+#else
+    flags |= MAP_FIXED;
 #endif
   }
+#ifdef __APPLE__
+  if ((prot & PROT_EXEC) && !(flags & MAP_FIXED)) {
+    flags |= MAP_JIT;
+  }
+#endif
 
   void* result = mmap(base_address, length, prot, flags, -1, 0);
 
   if (result != MAP_FAILED) {
     return result;
   }
+  XELOGE("AllocFixed mmap({}, 0x{:X}, prot={:X}, flags={:X}) failed: {} ({})",
+         base_address, length, prot, flags, strerror(errno), errno);
   return nullptr;
 }
 
@@ -219,6 +265,36 @@ bool Protect(void* base_address, size_t length, PageAccess access,
 }
 
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
+#if XE_PLATFORM_MAC
+  mach_vm_address_t address = reinterpret_cast<mach_vm_address_t>(base_address);
+  mach_vm_size_t size = 0;
+  vm_region_basic_info_data_64_t info;
+  mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+  mach_port_t object_name = MACH_PORT_NULL;
+  kern_return_t kr = mach_vm_region(
+      mach_task_self(), &address, &size, VM_REGION_BASIC_INFO_64,
+      reinterpret_cast<vm_region_info_t>(&info), &count, &object_name);
+  if (kr != KERN_SUCCESS) {
+    return false;
+  }
+  length = static_cast<size_t>(size);
+  access_out = PageAccess::kNoAccess;
+  bool r = (info.protection & VM_PROT_READ) != 0;
+  bool w = (info.protection & VM_PROT_WRITE) != 0;
+  bool x = (info.protection & VM_PROT_EXECUTE) != 0;
+  if (r && w && x) {
+    access_out = PageAccess::kExecuteReadWrite;
+  } else if (r && w) {
+    access_out = PageAccess::kReadWrite;
+  } else if (x) {
+    // Xenia has no execute-only enumerant; treat any executable mapping that
+    // isn't writable as execute+read.
+    access_out = PageAccess::kExecuteReadOnly;
+  } else if (r) {
+    access_out = PageAccess::kReadOnly;
+  }
+  return true;
+#else
   // No generic POSIX solution exists. The Linux solution should work on all
   // Linux kernel based OS, including Android.
   std::ifstream memory_maps;
@@ -264,6 +340,7 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
 
   memory_maps.close();
   return false;
+#endif
 }
 
 FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
@@ -334,9 +411,27 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
            path.string(), strerror(errno), errno);
   }
 #endif  // XE_PLATFORM_GNU_LINUX
-  int ret = shm_open(full_path.c_str(), oflag, 0777);
+
+#ifdef __APPLE__
+  std::string tmp_file = "/tmp/xe_map_" + path.filename().string();
+  int ret = open(tmp_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
   if (ret < 0) {
-    XELOGE("shm_open({}) failed: {} ({})", full_path.string(), strerror(errno),
+    XELOGE("open({}) failed: {} ({})", tmp_file, strerror(errno), errno);
+    return kFileMappingHandleInvalid;
+  }
+  unlink(tmp_file.c_str());
+  if (ftruncate(ret, length) < 0) {
+    XELOGE("ftruncate({}, 0x{:X}) failed: {} ({})", tmp_file, length,
+           strerror(errno), errno);
+    close(ret);
+    return kFileMappingHandleInvalid;
+  }
+  return ret;
+#else
+  int ret = shm_open(full_path.c_str(), oflag, 0777);
+  auto actual_path_str = full_path.string();
+  if (ret < 0) {
+    XELOGE("shm_open({}) failed: {} ({})", actual_path_str, strerror(errno),
            errno);
     return kFileMappingHandleInvalid;
   }
@@ -354,6 +449,7 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
   }
   InstallCleanupHandlers();
   return ret;
+#endif
 #endif
 }
 
@@ -382,10 +478,40 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
                   PageAccess access, size_t file_offset) {
   uint32_t prot = ToPosixProtectFlags(access);
 
+#if XE_PLATFORM_MAC
+  if (base_address != nullptr) {
+    mach_vm_address_t address = reinterpret_cast<mach_vm_address_t>(base_address);
+    mach_vm_size_t region_size = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object_name = MACH_PORT_NULL;
+    kern_return_t kr = mach_vm_region(
+        mach_task_self(), &address, &region_size,
+        VM_REGION_BASIC_INFO_64, reinterpret_cast<vm_region_info_t>(&info),
+        &count, &object_name);
+    if (kr == KERN_SUCCESS) {
+      mach_vm_address_t requested_start =
+          reinterpret_cast<mach_vm_address_t>(base_address);
+      mach_vm_address_t requested_end = requested_start + length;
+      mach_vm_address_t existing_start = address;
+      mach_vm_address_t existing_end = address + region_size;
+      if (existing_start < requested_end && requested_start < existing_end) {
+        XELOGW(
+            "MapFileView: requested address [0x{:X}, 0x{:X}) overlaps "
+            "existing VM region [0x{:X}, 0x{:X})",
+            requested_start, requested_end, existing_start, existing_end);
+        return nullptr;
+      }
+    }
+  }
+#endif
+
   int flags = MAP_SHARED;
   if (base_address != nullptr) {
 #ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
+#else
+    flags |= MAP_FIXED;
 #endif
   }
 
@@ -398,7 +524,8 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
          reinterpret_cast<uintptr_t>(result) + length});
     return result;
   }
-
+  XELOGE("MapFileView mmap({}, 0x{:X}, prot={:X}, flags={:X}, handle={}, offset={:X}) failed: {} ({})",
+         base_address, length, prot, flags, handle, file_offset, strerror(errno), errno);
   return nullptr;
 }
 

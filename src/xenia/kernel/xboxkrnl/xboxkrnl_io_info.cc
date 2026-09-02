@@ -387,7 +387,7 @@ dword_result_t NtQueryVolumeInformationFile_entry(
       XELOGW("Stub XFileFsDeviceInformation!");
       info->device_type =
           FILE_DEVICE_UNKNOWN;  // 415608D8 checks for FILE_DEVICE_EHSTOR;
-      info->characteristics = 0;
+      info->characteristics = FILE_DEVICE_IS_MOUNTED;
       out_length = sizeof(X_FILE_FS_DEVICE_INFORMATION);
       break;
     }

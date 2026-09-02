@@ -14,10 +14,14 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "SDL.h"
 #include "third_party/rapidcsv/src/rapidcsv.h"
 #include "xenia/hid/input_driver.h"
+#include "xenia/ui/virtual_key.h"
+#include "xenia/ui/window_listener.h"
 
 #define HID_SDL_USER_COUNT 4
 #define HID_SDL_THUMB_THRES 0x4E00
@@ -29,7 +33,8 @@ namespace xe {
 namespace hid {
 namespace sdl {
 
-class SDLInputDriver final : public InputDriver {
+class SDLInputDriver final : public InputDriver,
+                             public xe::ui::WindowInputListener {
  public:
   explicit SDLInputDriver(xe::ui::Window* window, size_t window_z_order);
   ~SDLInputDriver() override;
@@ -44,7 +49,14 @@ class SDLInputDriver final : public InputDriver {
   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration) override;
   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                         X_INPUT_KEYSTROKE* out_keystroke) override;
-  virtual InputType GetInputType() const override;
+  InputType GetInputType() const override;
+
+  // WindowInputListener overrides:
+  void OnKeyDown(xe::ui::KeyEvent& e) override;
+  void OnKeyUp(xe::ui::KeyEvent& e) override;
+  void OnMouseDown(xe::ui::MouseEvent& e) override;
+  void OnMouseUp(xe::ui::MouseEvent& e) override;
+  void OnMouseMove(xe::ui::MouseEvent& e) override;
 
  private:
   struct ControllerState {
@@ -81,6 +93,7 @@ class SDLInputDriver final : public InputDriver {
   bool TestSDLVersion() const;
   void UpdateXCapabilities(ControllerState& state);
   void QueueControllerUpdate();
+  void GetKeyboardState(X_INPUT_GAMEPAD& pad);
 
   bool sdl_events_initialized_;
   bool sdl_gamecontroller_initialized_;
@@ -88,6 +101,18 @@ class SDLInputDriver final : public InputDriver {
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
+
+  std::mutex input_mutex_;
+  std::unordered_set<xe::ui::VirtualKey> pressed_keys_;
+  std::unordered_map<xe::ui::VirtualKey, uint64_t> key_press_times_;
+  bool mouse_left_down_ = false;
+  bool mouse_right_down_ = false;
+  bool mouse_middle_down_ = false;
+  int32_t last_mouse_x_ = 0;
+  int32_t last_mouse_y_ = 0;
+  int32_t mouse_accum_dx_ = 0;
+  int32_t mouse_accum_dy_ = 0;
+  uint32_t kb_packet_number_ = 1;
 };
 
 }  // namespace sdl

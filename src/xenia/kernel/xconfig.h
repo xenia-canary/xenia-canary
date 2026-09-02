@@ -199,6 +199,7 @@ enum X_AV_REGION : uint32_t {
 enum X_VIDEO_FLAGS : uint32_t {
   RatioNormal = 0x00000000,
   Widescreen = 0x00010000,
+  Pal60 = 0x00020000,
 };
 
 constexpr std::array<uint8_t, 4> kNoDate = {0x00, 0x00, 0x00, 0x00};

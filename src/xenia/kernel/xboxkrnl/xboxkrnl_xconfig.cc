@@ -50,6 +50,16 @@ dword_result_t ExGetXConfigSetting_entry(word_t category, word_t setting,
       xeExGetXConfigSetting(static_cast<X_CONFIG_CATEGORY>(category.value()),
                             setting, buffer_ptr, buffer_size, &required_size);
 
+  uint32_t val = 0;
+  if (buffer_ptr && buffer_size >= 4) {
+    val = xe::load_and_swap<uint32_t>(
+        kernel_memory()->TranslateVirtual(buffer_ptr));
+  }
+  XELOGI(
+      "ExGetXConfigSetting category={:04X} setting={:04X} size={} -> "
+      "result={:08X} (val={:08X})",
+      category.value(), setting.value(), buffer_size.value(), result, val);
+
   if (required_size_ptr) {
     *required_size_ptr = required_size;
   }

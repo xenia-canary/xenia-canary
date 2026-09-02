@@ -25,7 +25,19 @@ thread_local ThreadState* thread_state_ = nullptr;
 
 static void* AllocateContext() {
   size_t granularity = xe::memory::allocation_granularity();
+#ifdef __APPLE__
+  // Each guest thread needs its own PPCContext. The low 32 bits must be
+  // 0xE0000000 (backends key off that), so threads are distinguished by the
+  // high 32 bits (pos32). macOS user VA is 47-bit; start well above the guest
+  // membase (~0x4_00000000) and the JIT code cache (~0x2_40000000) so a context
+  // never aliases guest memory or another context, and give a wide range so
+  // titles that spawn many threads don't run out. (macOS mmap has no
+  // MAP_FIXED_NOREPLACE and MAP_FIXED silently clobbers, so AllocFixed on macOS
+  // was made to fail on an occupied range — see memory_posix.cc.)
+  for (unsigned pos32 = 0x10; pos32 < 0x4000; ++pos32) {
+#else
   for (unsigned pos32 = 0x40; pos32 < 8192; ++pos32) {
+#endif
     /*
         we want our register which points to the context to have 0xE0000000 in
        the low 32 bits, for checking for whether we need the 4k offset, but also

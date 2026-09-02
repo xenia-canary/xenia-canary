@@ -94,6 +94,8 @@ include_directories(
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/src
   ${CMAKE_BINARY_DIR}
+  ${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include
+  ${PROJECT_SOURCE_DIR}/third_party/glslang
 )
 # Third-party headers as SYSTEM to suppress warnings under -Werror
 include_directories(SYSTEM
@@ -305,18 +307,20 @@ else()
     $<$<CONFIG:Release>:_NO_DEBUG_HEAP=1>
   )
   add_compile_options($<$<CONFIG:Release>:-O3>)
-  # Link-time optimization (use lld and llvm-ar/ranlib to avoid system
-  # linker/archiver LTO plugin version mismatch with clang's bitcode)
-  add_compile_options($<$<CONFIG:Release>:-flto=thin>)
-  add_link_options($<$<CONFIG:Release>:-flto=thin>)
-  add_link_options($<$<CONFIG:Release>:-fuse-ld=lld>)
-  find_program(LLVM_AR NAMES llvm-ar)
-  find_program(LLVM_RANLIB NAMES llvm-ranlib)
-  if(LLVM_AR)
-    set(CMAKE_AR "${LLVM_AR}" CACHE FILEPATH "" FORCE)
-  endif()
-  if(LLVM_RANLIB)
-    set(CMAKE_RANLIB "${LLVM_RANLIB}" CACHE FILEPATH "" FORCE)
+  if(NOT APPLE)
+    # Link-time optimization (use lld and llvm-ar/ranlib to avoid system
+    # linker/archiver LTO plugin version mismatch with clang's bitcode)
+    add_compile_options($<$<CONFIG:Release>:-flto=thin>)
+    add_link_options($<$<CONFIG:Release>:-flto=thin>)
+    add_link_options($<$<CONFIG:Release>:-fuse-ld=lld>)
+    find_program(LLVM_AR NAMES llvm-ar)
+    find_program(LLVM_RANLIB NAMES llvm-ranlib)
+    if(LLVM_AR)
+      set(CMAKE_AR "${LLVM_AR}" CACHE FILEPATH "" FORCE)
+    endif()
+    if(LLVM_RANLIB)
+      set(CMAKE_RANLIB "${LLVM_RANLIB}" CACHE FILEPATH "" FORCE)
+    endif()
   endif()
   # No symbols in release on non-Windows
   string(REPLACE "-g" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")

@@ -50,6 +50,15 @@ DEFINE_string(
     "  Choose what is considered the most optimal for the system (currently "
     "always FB because the FSI path is much slower now).",
     "GPU");
+DEFINE_bool(
+    vulkan_allow_fsi_moltenvk, false,
+    "Permit the fragment shader interlock (\"fsi\") render target path on "
+    "MoltenVK. Off by default: MoltenVK advertises "
+    "VK_EXT_fragment_shader_interlock but maps it onto Metal raster order "
+    "groups without reliable ordering/atomics under heavy blending, which "
+    "resolves the whole scene to white. The host render target (\"fbo\") path "
+    "is forced instead unless this is enabled.",
+    "GPU");
 
 namespace xe {
 namespace gpu {
@@ -216,6 +225,19 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
   if (cvars::render_target_path_vulkan == "fsi") {
     path_ = Path::kPixelShaderInterlock;
   } else {
+    path_ = Path::kHostRenderTargets;
+  }
+  // MoltenVK exposes fragment shader interlock but its Metal raster-order-group
+  // mapping doesn't hold ordering/atomics under concurrent blending, so the FSI
+  // EDRAM emulation resolves the whole scene to white. Force the host render
+  // target path unless explicitly overridden.
+  if (path_ == Path::kPixelShaderInterlock &&
+      device_properties.driverID == VK_DRIVER_ID_MOLTENVK &&
+      !cvars::vulkan_allow_fsi_moltenvk) {
+    XELOGW(
+        "MoltenVK detected: overriding render_target_path_vulkan \"fsi\" -> "
+        "\"fbo\" (fragment shader interlock is unreliable on Metal). Pass "
+        "--vulkan_allow_fsi_moltenvk=true to keep FSI.");
     path_ = Path::kHostRenderTargets;
   }
   // Fragment shader interlock is a feature implemented by pretty advanced GPUs,

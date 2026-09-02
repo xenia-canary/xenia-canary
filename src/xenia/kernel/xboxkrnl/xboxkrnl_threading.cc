@@ -182,6 +182,11 @@ uint32_t ExCreateThread(xe::be<uint32_t>* handle_ptr, uint32_t stack_size,
     if (thread_id_ptr) {
       *thread_id_ptr = thread->thread_id();
     }
+    XELOGI(
+        "ExCreateThread thid={:08X} handle={:08X} start={:08X} startup={:08X} "
+        "flags={:08X}",
+        thread->thread_id(), thread->handle(), start_address,
+        xapi_thread_startup, creation_flags);
   }
   return result;
 }
@@ -219,6 +224,8 @@ uint32_t NtResumeThread(uint32_t handle, uint32_t* suspend_count_ptr) {
   if (thread) {
     if (thread->type() == XObject::Type::Thread) {
       result = thread->Resume(&suspend_count);
+      XELOGI("NtResumeThread handle={:08X} thid={:08X} prev_suspend={}", handle,
+             thread->thread_id(), suspend_count);
     } else {
       return X_STATUS_OBJECT_TYPE_MISMATCH;
     }
@@ -254,8 +261,12 @@ dword_result_t KeResumeThread_entry(pointer_t<X_KTHREAD> thread_ptr) {
                                                   ThreadObject);
   if (thread) {
     result = thread->Resume();
+    XELOGI("KeResumeThread_entry thread_ptr={:08X} thid={:08X}",
+           thread_ptr.guest_address(), thread->thread_id());
   } else {
     result = X_STATUS_INVALID_HANDLE;
+    XELOGE("KeResumeThread_entry invalid thread_ptr={:08X}",
+           thread_ptr.guest_address());
   }
 
   return result;
@@ -401,8 +412,13 @@ DECLARE_XBOXKRNL_EXPORT1(KeQueryBasePriorityThread, kThreading, kImplemented);
 dword_result_t KeSetBasePriorityThread_entry(pointer_t<X_KTHREAD> thread_ptr,
                                              dword_t increment) {
   int32_t prev_priority = 0;
-  auto thread = XObject::GetNativeObject<XThread>(kernel_state(), thread_ptr,
-                                                  ThreadObject);
+  object_ref<XThread> thread;
+  if (!thread_ptr) {
+    thread = retain_object(XThread::GetCurrentThread());
+  } else {
+    thread = XObject::GetNativeObject<XThread>(kernel_state(), thread_ptr,
+                                               ThreadObject);
+  }
 
   if (thread) {
     prev_priority = thread->QueryPriority();
@@ -519,7 +535,7 @@ DECLARE_XBOXKRNL_EXPORT1(KeQuerySystemTime, kThreading, kImplemented);
 dword_result_t KeTlsAlloc_entry(const ppc_context_t& context) {
   uint32_t slot = kernel_state()->AllocateTLS(context);
   XThread::GetCurrentThread()->SetTLSValue(slot, 0);
-
+  XELOGI("KeTlsAlloc -> slot={:08X}", slot);
   return slot;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeTlsAlloc, kThreading, kImplemented);
@@ -554,7 +570,10 @@ DECLARE_XBOXKRNL_EXPORT2(KeTlsGetValue, kThreading, kImplemented,
 dword_result_t KeTlsSetValue_entry(dword_t tls_index, dword_t tls_value) {
   // xboxkrnl doesn't actually have an error branch - it always succeeds, even
   // if it overflows the TLS.
-  if (XThread::GetCurrentThread()->SetTLSValue(tls_index, tls_value)) {
+  bool ok = XThread::GetCurrentThread()->SetTLSValue(tls_index, tls_value);
+  XELOGI("KeTlsSetValue slot={:08X} val={:08X} -> ok={}", tls_index.value(),
+         tls_value.value(), ok);
+  if (ok) {
     return 1;
   }
 

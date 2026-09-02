@@ -41,6 +41,9 @@ XConfig::XConfig(const std::filesystem::path& xconfig_path)
 
   fread(&xconfig_data_, sizeof(XConfigData), 1, file);
   fclose(file);
+  xconfig_data_.user.video_flags =
+      static_cast<uint32_t>(xconfig_data_.user.video_flags) | Widescreen |
+      Pal60;
 }
 
 void XConfig::ReadSetting(const X_CONFIG_CATEGORY category,
@@ -99,7 +102,7 @@ void XConfig::SetDefaults() {
   xconfig_data_.user.av_pack_component_sz = XHDTVResolution.at(1).to_host();
   xconfig_data_.user.av_pack_vga_sz = XVGAResolution.at(3).to_host();
   xconfig_data_.user.retail_flags = DashboardInitialized;
-  xconfig_data_.user.video_flags = RatioNormal;
+  xconfig_data_.user.video_flags = Widescreen | Pal60;
   xconfig_data_.user.parental_control_flags =
       XBLAllowed | XBLMembershipCreationAllowed;
   xconfig_data_.user.parental_control_game = NoGameRestrictions;

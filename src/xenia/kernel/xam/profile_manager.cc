@@ -132,6 +132,20 @@ ProfileManager::ProfileManager(KernelState* kernel_state,
               cvars::logged_profile_slot_3_xuid, true),
           3);
   }
+
+  if (!IsAnyProfileSignedIn()) {
+    if (accounts_.empty()) {
+      X_XAMACCOUNTINFO default_account = {};
+      const std::u16string gamertag_u16 = xe::to_utf16("Player1");
+      string_util::copy_and_swap_truncating(default_account.gamertag, gamertag_u16,
+                                            xe::countof(default_account.gamertag));
+      uint64_t default_xuid = 0xB13EBABEBABEBABE;
+      accounts_[default_xuid] = default_account;
+      Login(default_xuid, 0);
+    } else {
+      Login(accounts_.begin()->first, 0);
+    }
+  }
 }
 
 void ProfileManager::ReloadProfile(const uint64_t xuid) {
@@ -458,7 +472,9 @@ bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
                                    bool default_xuid) {
   const auto xuid = !default_xuid ? GenerateXuid() : 0xB13EBABEBABEBABE;
   const auto profile_path = GetProfilePath(xuid);
-  if (!std::filesystem::create_directories(profile_path)) {
+  std::error_code ec;
+  std::filesystem::create_directories(profile_path, ec);
+  if (ec || !std::filesystem::exists(profile_path)) {
     return false;
   }
 
@@ -468,7 +484,7 @@ bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
   data.xuid = xuid;
   data.set_file_name(fmt::format("{:016X}", xuid));
 
-  if (!kernel_state_->content_manager()->CreateAndMountPackage(
+  if (!content_manager_->CreateAndMountPackage(
           profile_path, fmt::format(kDefaultMountFormat, xuid), data)) {
     return false;
   }
@@ -487,7 +503,9 @@ bool ProfileManager::CreateProfile(const X_XAMACCOUNTINFO* account_info,
   }
 
   const auto profile_path = GetProfilePath(xuid);
-  if (!std::filesystem::create_directories(profile_path)) {
+  std::error_code ec;
+  std::filesystem::create_directories(profile_path, ec);
+  if (ec || !std::filesystem::exists(profile_path)) {
     return false;
   }
 
@@ -496,7 +514,7 @@ bool ProfileManager::CreateProfile(const X_XAMACCOUNTINFO* account_info,
   data.content_type = XContentType::kProfile;
   data.xuid = xuid;
 
-  if (!kernel_state_->content_manager()->CreateAndMountPackage(
+  if (!content_manager_->CreateAndMountPackage(
           profile_path, fmt::format(kDefaultMountFormat, xuid), data)) {
     return false;
   }

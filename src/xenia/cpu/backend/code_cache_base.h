@@ -105,29 +105,49 @@ class CodeCacheBase : public CodeCache {
 
   const std::filesystem::path& file_name() const override { return file_name_; }
   uintptr_t execute_base_address() const override {
-    return kGeneratedCodeExecuteBase;
+    return reinterpret_cast<uintptr_t>(generated_code_execute_base_);
   }
   size_t total_size() const override { return kGeneratedCodeSize; }
 
   bool has_indirection_table() { return indirection_table_base_ != nullptr; }
+  uint8_t* indirection_table_base() const { return indirection_table_base_; }
 
-  void set_indirection_default(uint32_t default_value) {
+  void set_indirection_default(uint64_t default_value) {
     indirection_default_value_ = default_value;
   }
 
-  void AddIndirection(uint32_t guest_address, uint32_t host_address) {
+  void AddIndirection(uint32_t guest_address, uintptr_t host_address) {
     if (!indirection_table_base_) {
       return;
     }
+#if XE_ARCH_ARM64
+    uint64_t* indirection_slot = reinterpret_cast<uint64_t*>(
+        indirection_table_base_ +
+        ((static_cast<uint64_t>(guest_address) - kIndirectionTableBase) * 2));
+    *indirection_slot = host_address;
+#else
     uint32_t* indirection_slot = reinterpret_cast<uint32_t*>(
         indirection_table_base_ + (guest_address - kIndirectionTableBase));
-    *indirection_slot = host_address;
+    *indirection_slot = static_cast<uint32_t>(host_address);
+#endif
   }
 
   void CommitExecutableRange(uint32_t guest_low, uint32_t guest_high) {
     if (!indirection_table_base_) {
       return;
     }
+#if XE_ARCH_ARM64
+    xe::memory::AllocFixed(
+        indirection_table_base_ +
+            ((static_cast<uint64_t>(guest_low) - kIndirectionTableBase) * 2),
+        (static_cast<size_t>(guest_high) - guest_low) * 2,
+        xe::memory::AllocationType::kCommit,
+        xe::memory::PageAccess::kReadWrite);
+    uint64_t* p = reinterpret_cast<uint64_t*>(indirection_table_base_);
+    for (uint32_t address = guest_low; address < guest_high; address += 4) {
+      p[(address - kIndirectionTableBase) / 4] = indirection_default_value_;
+    }
+#else
     xe::memory::AllocFixed(
         indirection_table_base_ + (guest_low - kIndirectionTableBase),
         guest_high - guest_low, xe::memory::AllocationType::kCommit,
@@ -136,6 +156,7 @@ class CodeCacheBase : public CodeCache {
     for (uint32_t address = guest_low; address < guest_high; ++address) {
       p[(address - kIndirectionTableBase) / 4] = indirection_default_value_;
     }
+#endif
   }
 
   void PlaceHostCode(uint32_t guest_address, void* machine_code,
@@ -185,13 +206,16 @@ class CodeCacheBase : public CodeCache {
       // Commit memory if needed.
       EnsureCommitted(high_mark);
 
-      // Copy code.
-      std::memcpy(code_write_address, machine_code, func_info.code_size.total);
+      // Copy code and fill gaps under JIT write protection.
+      {
+        xe::memory::ScopedJitWrite jit_write;
+        std::memcpy(code_write_address, machine_code, func_info.code_size.total);
 
-      // Fill unused tail/unwind gap with arch-specific trap instructions.
-      self().FillCode(
-          tail_write_address,
-          static_cast<size_t>(end_write_address - tail_write_address));
+        // Fill unused tail/unwind gap with arch-specific trap instructions.
+        self().FillCode(
+            tail_write_address,
+            static_cast<size_t>(end_write_address - tail_write_address));
+      }
 
       // Flush I-cache for code and fill regions.
       self().FlushCodeRange(code_write_address, func_info.code_size.total);
@@ -212,10 +236,17 @@ class CodeCacheBase : public CodeCache {
 
     // Fix up indirection table.
     if (guest_address && indirection_table_base_) {
+#if XE_ARCH_ARM64
+      uint64_t* indirection_slot = reinterpret_cast<uint64_t*>(
+          indirection_table_base_ +
+          ((static_cast<uint64_t>(guest_address) - kIndirectionTableBase) * 2));
+      *indirection_slot = reinterpret_cast<uint64_t>(code_execute_address);
+#else
       uint32_t* indirection_slot = reinterpret_cast<uint32_t*>(
           indirection_table_base_ + (guest_address - kIndirectionTableBase));
       *indirection_slot =
           uint32_t(reinterpret_cast<uint64_t>(code_execute_address));
+#endif
     }
   }
 
@@ -269,10 +300,20 @@ class CodeCacheBase : public CodeCache {
   }
 
  protected:
+#if XE_ARCH_ARM64
+  static constexpr size_t kIndirectionTableSize = 0x3FFFFFFE;
+#else
   static constexpr size_t kIndirectionTableSize = 0x1FFFFFFF;
+#endif
   static constexpr uintptr_t kIndirectionTableBase = 0x80000000;
   static constexpr size_t kGeneratedCodeSize = 0x0FFFFFFF;
+#ifdef __APPLE__
+  static constexpr uintptr_t kIndirectionTableBaseAlloc = 0x200000000ull;
+  static constexpr uintptr_t kGeneratedCodeExecuteBase = 0x240000000ull;
+#else
+  static constexpr uintptr_t kIndirectionTableBaseAlloc = 0x80000000;
   static constexpr uintptr_t kGeneratedCodeExecuteBase = 0xA0000000;
+#endif
   static const uintptr_t kGeneratedCodeWriteBase =
       kGeneratedCodeExecuteBase + kGeneratedCodeSize + 1;
   static constexpr size_t kMaximumFunctionCount = 1000000;
@@ -286,8 +327,34 @@ class CodeCacheBase : public CodeCache {
   CodeCacheBase() = default;
 
   bool Initialize() {
+#ifdef __APPLE__
     indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
-        reinterpret_cast<void*>(kIndirectionTableBase), kIndirectionTableSize,
+        reinterpret_cast<void*>(kIndirectionTableBaseAlloc), kIndirectionTableSize,
+        xe::memory::AllocationType::kReserveCommit,
+        xe::memory::PageAccess::kReadWrite));
+    if (!indirection_table_base_) {
+      indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+          nullptr, kIndirectionTableSize,
+          xe::memory::AllocationType::kReserveCommit,
+          xe::memory::PageAccess::kReadWrite));
+    }
+    if (!indirection_table_base_) {
+      XELOGE("Unable to allocate code cache indirection table on macOS");
+      return false;
+    }
+
+    generated_code_execute_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+        nullptr, kGeneratedCodeSize,
+        xe::memory::AllocationType::kReserveCommit,
+        xe::memory::PageAccess::kExecuteReadWrite));
+    generated_code_write_base_ = generated_code_execute_base_;
+    if (!generated_code_execute_base_) {
+      XELOGE("Unable to allocate code cache generated code storage");
+      return false;
+    }
+#else
+    indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+        reinterpret_cast<void*>(kIndirectionTableBaseAlloc), kIndirectionTableSize,
         xe::memory::AllocationType::kReserve,
         xe::memory::PageAccess::kReadWrite));
     if (!indirection_table_base_) {
@@ -300,7 +367,7 @@ class CodeCacheBase : public CodeCache {
     }
 
     file_name_ =
-        fmt::format("xenia_code_cache_{}", Clock::QueryHostTickCount());
+        fmt::format("x_cc_{:x}", Clock::QueryHostTickCount());
     mapping_ = xe::memory::CreateFileMappingHandle(
         file_name_, kGeneratedCodeSize,
         xe::memory::PageAccess::kExecuteReadWrite, false);
@@ -346,6 +413,7 @@ class CodeCacheBase : public CodeCache {
         return false;
       }
     }
+#endif
 
     generated_code_map_.reserve(kMaximumFunctionCount);
     return true;
@@ -359,7 +427,7 @@ class CodeCacheBase : public CodeCache {
   xe::memory::FileMappingHandle mapping_ =
       xe::memory::kFileMappingHandleInvalid;
   xe::global_critical_region global_critical_region_;
-  uint32_t indirection_default_value_ = 0xFEEDF00D;
+  uint64_t indirection_default_value_ = 0xFEEDF00D;
   uint8_t* indirection_table_base_ = nullptr;
   uint8_t* generated_code_execute_base_ = nullptr;
   uint8_t* generated_code_write_base_ = nullptr;

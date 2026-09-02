@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/backend/a64/a64_function.h"
 
+#include "xenia/base/logging.h"
 #include "xenia/cpu/backend/a64/a64_backend.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/thread_state.h"
@@ -36,6 +37,8 @@ bool A64Function::CallImpl(ThreadState* thread_state, uint32_t return_address) {
   auto thunk = backend->host_to_guest_thunk();
   auto* code = machine_code_.load(std::memory_order_acquire);
   if (!thunk || !code) {
+    XELOGE("A64Function::CallImpl: thunk={:p}, code={:p} for address {:08X}",
+           (void*)thunk, (void*)code, address());
     return false;
   }
   thunk(code, thread_state->context(),

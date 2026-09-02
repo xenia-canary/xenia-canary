@@ -10,6 +10,7 @@
 #include "xenia/ui/windowed_app_context.h"
 
 #include "xenia/base/assert.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/threading.h"
 
 namespace xe {
@@ -108,6 +109,7 @@ bool WindowedAppContext::CallInUIThreadSynchronous(
 }
 
 void WindowedAppContext::QuitFromUIThread() {
+  XELOGI("WindowedAppContext::QuitFromUIThread called!");
   assert_true(IsInUIThread());
   bool has_quit_previously = has_quit_;
   // Make sure PlatformQuitFromUIThread is called only once, not from nested

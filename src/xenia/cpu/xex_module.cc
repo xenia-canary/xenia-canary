@@ -1400,7 +1400,10 @@ bool XexModule::SetupLibraryImports(const std::string_view name,
 }
 
 bool XexModule::ContainsAddress(uint32_t address) {
-  return address >= low_address_ && address < high_address_;
+  if (address >= low_address_ && address < high_address_) {
+    return true;
+  }
+  return LookupSymbol(address, false) != nullptr;
 }
 
 std::unique_ptr<Function> XexModule::CreateFunction(uint32_t address) {

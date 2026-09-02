@@ -1456,6 +1456,8 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                        uint32_t frontbuffer_width,
                                        uint32_t frontbuffer_height) {
   SCOPE_profile_cpu_f("gpu");
+  XELOGI("VulkanCommandProcessor::IssueSwap called (fb_ptr={:08X}, {}x{})",
+         frontbuffer_ptr, frontbuffer_width, frontbuffer_height);
 
   ui::Presenter* presenter = graphics_system_->presenter();
   if (!presenter) {
@@ -2497,6 +2499,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             Shader::HostVertexShaderType::kVertex &&
         primitive_processing_result.host_vertex_shader_type !=
             Shader::HostVertexShaderType::kPointListAsTriangleStrip &&
+        primitive_processing_result.host_vertex_shader_type !=
+            Shader::HostVertexShaderType::kRectangleListAsTriangleStrip &&
         !Shader::IsHostVertexShaderTypeDomain(
             primitive_processing_result.host_vertex_shader_type)) {
       return false;

@@ -14,12 +14,29 @@
 #include <string>
 
 #include "xenia/base/mutex.h"
+#include "xenia/base/platform.h"
+
+// Fiber stack switches (XThread::Reenter, from KeSetCurrentStackPointers) abandon
+// the current host call stack. Windows and macOS use setjmp/longjmp; other POSIX
+// platforms throw a C++ exception that unwinds the JIT frames via DWARF .eh_frame
+// info registered with __register_frame. The a64 JIT does not register that info
+// on macOS (a64_code_cache_posix.cc), so an exception thrown from a kernel export
+// called by JIT code cannot propagate and hits std::terminate — hence macOS uses
+// SJLJ, with the a64 backend's host/guest stackpoint synchronization
+// (a64_enable_host_guest_stack_synchronization) rebuilding the guest stack after
+// the longjmp skips the intervening frames.
+#if XE_PLATFORM_WIN32 || XE_PLATFORM_MAC
+#define XE_FIBER_REENTRY_SJLJ 1
+#else
+#define XE_FIBER_REENTRY_SJLJ 0
+#endif
+
 #if !XE_PLATFORM_WIN32
 #include <condition_variable>
 #include <csignal>
 #include <mutex>
 #endif
-#if XE_PLATFORM_WIN32
+#if XE_FIBER_REENTRY_SJLJ
 #include <csetjmp>
 #endif
 #include "xenia/base/threading.h"
@@ -371,7 +388,7 @@ struct X_KTHREAD {
 };
 static_assert_size(X_KTHREAD, 0xAB0);
 
-#if !XE_PLATFORM_WIN32
+#if !XE_FIBER_REENTRY_SJLJ
 // Exception thrown by XThread::Reenter() to unwind through JIT frames.
 // C++ exception unwinding uses DWARF .eh_frame info registered for JIT code,
 // ensuring destructors and RAII guards in host C++ frames are properly called.
@@ -423,6 +440,7 @@ class XThread : public XObject, public cpu::Thread {
   bool is_guest_thread() const { return guest_thread_; }
   bool main_thread() const { return main_thread_; }
   bool is_running() const { return running_; }
+  bool is_alive() const;
 
   uint32_t thread_id() const { return thread_id_; }
   uint32_t last_error();
@@ -544,10 +562,11 @@ class XThread : public XObject, public cpu::Thread {
 #endif
 
   // Reentry mechanism for fiber-based stack switching.
-  // On Linux, C++ exceptions are used instead of setjmp/longjmp so that
-  // destructors and RAII guards in host C++ frames are properly unwound.
+  // Non-SJLJ platforms use C++ exceptions instead of setjmp/longjmp so that
+  // destructors and RAII guards in host C++ frames are properly unwound;
   // JIT code has DWARF .eh_frame unwind info registered via __register_frame.
-#if XE_PLATFORM_WIN32
+  // Windows and macOS use setjmp/longjmp (see XE_FIBER_REENTRY_SJLJ).
+#if XE_FIBER_REENTRY_SJLJ
   std::jmp_buf reentry_jmp_buf_;
   uint32_t reentry_address_ = 0;
 #endif

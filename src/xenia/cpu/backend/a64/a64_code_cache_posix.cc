@@ -157,6 +157,7 @@ void PosixA64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,
                                   const EmitFunctionInfo& func_info,
                                   void* code_execute_address,
                                   UnwindReservation unwind_reservation) {
+#ifndef __APPLE__
   InitializeUnwindEntry(unwind_reservation.entry_address, code_execute_address,
                         func_info);
 
@@ -165,6 +166,7 @@ void PosixA64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,
                                  generated_code_execute_base_;
   __register_frame(unwind_execute_address);
   registered_frames_.push_back(unwind_execute_address);
+#endif
 }
 
 void PosixA64CodeCache::InitializeUnwindEntry(

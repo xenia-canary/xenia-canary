@@ -1144,6 +1144,18 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // in the current execution of the translated code.
   // bool.
   spv::Id main_memexport_allowed_;
+  // VS, only for HostVertexShaderType::kRectangleListAsTriangleStrip.
+  spv::Id var_rect_loop_i_;
+  spv::Id var_rect_acc_position_;
+  std::array<spv::Id, xenos::kMaxInterpolators> var_rect_acc_interpolators_;
+  std::vector<spv::Id> var_rect_acc_clip_distance_;
+  std::vector<spv::Id> var_rect_acc_cull_distance_;
+  spv::Id var_rect_acc_point_size_;
+  spv::Id rect_end_i_;
+  spv::Id rect_is_corner_3_;
+  spv::Block* rect_loop_header_;
+  spv::Block* rect_loop_continue_;
+  spv::Block* rect_loop_merge_;
   // VS only - float3 (special exports).
   spv::Id var_main_point_size_edge_flag_kill_vertex_;
   // PS, only when needed - bool.

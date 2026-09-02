@@ -72,7 +72,7 @@ bool SDLAudioDriver::Initialize() {
   desired_spec.freq = frame_frequency_;
   desired_spec.format = AUDIO_F32;
   desired_spec.channels = frame_channels_;
-  desired_spec.samples = channel_samples_;
+  desired_spec.samples = 1024;
   desired_spec.callback = SDLCallback;
   desired_spec.userdata = this;
   // Allow the hardware to decide between 5.1 and stereo,
@@ -81,7 +81,7 @@ bool SDLAudioDriver::Initialize() {
       frame_channels_ != 2 ? SDL_AUDIO_ALLOW_CHANNELS_CHANGE : 0;
   for (int i = 0; i < 2; i++) {
     sdl_device_id_ = SDL_OpenAudioDevice(nullptr, 0, &desired_spec,
-                                         &obtained_spec, allowed_change);
+                                          &obtained_spec, allowed_change);
     if (sdl_device_id_ <= 0) {
       XELOGE("SDL_OpenAudioDevice() failed.");
       return false;
@@ -109,11 +109,11 @@ void SDLAudioDriver::SubmitFrame(float* frame) {
   float* output_frame;
   {
     std::unique_lock<std::mutex> guard(frames_mutex_);
-    if (frames_unused_.empty()) {
-      output_frame = new float[frame_channels_ * channel_samples_];
-    } else {
+    if (!frames_unused_.empty()) {
       output_frame = frames_unused_.top();
       frames_unused_.pop();
+    } else {
+      output_frame = new float[frame_size_ / sizeof(float)];
     }
   }
 
@@ -125,9 +125,17 @@ void SDLAudioDriver::SubmitFrame(float* frame) {
   }
 }
 
-void SDLAudioDriver::Pause() { SDL_PauseAudioDevice(sdl_device_id_, 1); }
+void SDLAudioDriver::Pause() {
+  std::unique_lock<std::mutex> guard(frames_mutex_);
+  is_buffering_ = true;
+  SDL_PauseAudioDevice(sdl_device_id_, 1);
+}
 
-void SDLAudioDriver::Resume() { SDL_PauseAudioDevice(sdl_device_id_, 0); }
+void SDLAudioDriver::Resume() {
+  std::unique_lock<std::mutex> guard(frames_mutex_);
+  is_buffering_ = true;
+  SDL_PauseAudioDevice(sdl_device_id_, 0);
+}
 
 void SDLAudioDriver::Shutdown() {
   if (sdl_device_id_ > 0) {
@@ -156,17 +164,37 @@ void SDLAudioDriver::SDLCallback(void* userdata, Uint8* stream, int len) {
     return;
   }
   const auto driver = static_cast<SDLAudioDriver*>(userdata);
-  assert_true(len == sizeof(float) * driver->channel_samples_ *
-                         driver->sdl_device_channels_);
+  const size_t output_frame_bytes = sizeof(float) * driver->channel_samples_ *
+                                     driver->sdl_device_channels_;
+  if (output_frame_bytes == 0) {
+    std::memset(stream, 0, len);
+    return;
+  }
 
   std::unique_lock<std::mutex> guard(driver->frames_mutex_);
-  if (driver->frames_queued_.empty()) {
-    std::memset(stream, 0, len);
-  } else {
+
+  if (driver->is_buffering_) {
+    if (driver->frames_queued_.size() < kPreRollFrames) {
+      std::memset(stream, 0, len);
+      return;
+    }
+    driver->is_buffering_ = false;
+  }
+
+  while (len > 0) {
+    if (driver->frames_queued_.empty()) {
+      driver->is_buffering_ = true;
+      std::memset(stream, 0, len);
+      break;
+    }
+
     auto buffer = driver->frames_queued_.front();
     driver->frames_queued_.pop();
+
+    int chunk_len = static_cast<int>(std::min(static_cast<size_t>(len), output_frame_bytes));
+
     if (cvars::mute) {
-      std::memset(stream, 0, len);
+      std::memset(stream, 0, chunk_len);
     } else if (driver->need_format_conversion_) {
       switch (driver->sdl_device_channels_) {
         case 2:
@@ -186,18 +214,21 @@ void SDLAudioDriver::SDLCallback(void* userdata, Uint8* stream, int len) {
     } else {
       assert_true(driver->sdl_device_channels_ == driver->frame_channels_);
       if (driver->volume_ != 1.0f) {
-        std::memset(stream, 0, len);
+        std::memset(stream, 0, chunk_len);
         SDL_MixAudioFormat(
-            stream, reinterpret_cast<Uint8*>(buffer), AUDIO_F32, len,
+            stream, reinterpret_cast<Uint8*>(buffer), AUDIO_F32, chunk_len,
             static_cast<int>(driver->volume_ * SDL_MIX_MAXVOLUME));
       } else {
-        std::memcpy(stream, buffer, len);
+        std::memcpy(stream, buffer, chunk_len);
       }
     }
-    driver->frames_unused_.push(buffer);
 
+    driver->frames_unused_.push(buffer);
     auto ret = driver->semaphore_->Release(1, nullptr);
     assert_true(ret);
+
+    stream += chunk_len;
+    len -= chunk_len;
   }
 };
 }  // namespace sdl

@@ -362,14 +362,17 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   if (code_cache_->has_indirection_table()) {
     // Load host code address from indirection table.
     mov(w16, function->address());
-    ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
+    ldr(x17, ptr(x19, static_cast<uint32_t>(offsetof(
+                          A64BackendContext, indirection_table_offset))));
+    add(x8, x17, x16, Xbyak_aarch64::UXTW, 1);
+    ldr(x9, ptr(x8));
+    mov(x17, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
+    cmp(x9, 0);
+    csel(x9, x9, x17, Xbyak_aarch64::NE);
   } else {
-    // Fallback: resolve at runtime.
-    mov(x0, x20);  // context
-    mov(x1, static_cast<uint64_t>(function->address()));
-    mov(x9, reinterpret_cast<uint64_t>(&ResolveFunction));
-    blr(x9);
-    mov(x9, x0);  // resolved address in x9
+    // Fallback: route through resolve_function_thunk which preserves registers and handles compilation.
+    mov(w16, static_cast<uint32_t>(function->address()));
+    mov(x9, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
   }
 
   if (instr->flags & hir::CALL_TAIL) {
@@ -400,21 +403,23 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
     ldr(w0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
     cmp(target_w, w0);
     b(EQ, epilog_label());
+    cbz(target_w, epilog_label());
   }
 
   // Load host code address from indirection table.
   if (code_cache_->has_indirection_table()) {
     mov(w16, target_w);  // w16 = guest address (also used by resolve thunk)
-    ldr(w9, ptr(x16, static_cast<uint32_t>(
-                         0)));  // w9 = host code from indirection table
+    ldr(x17, ptr(x19, static_cast<uint32_t>(offsetof(
+                          A64BackendContext, indirection_table_offset))));
+    add(x8, x17, x16, Xbyak_aarch64::UXTW, 1);
+    ldr(x9, ptr(x8));
+    mov(x17, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
+    cmp(x9, 0);
+    csel(x9, x9, x17, Xbyak_aarch64::NE);
   } else {
-    // Fallback: resolve at runtime.
+    // Fallback: route through resolve_function_thunk which preserves registers and handles compilation.
     mov(w16, target_w);
-    mov(x0, x20);  // context
-    mov(x1, x16);  // guest address
-    mov(x9, reinterpret_cast<uint64_t>(&ResolveFunction));
-    blr(x9);
-    mov(x9, x0);  // resolved address
+    mov(x9, reinterpret_cast<uint64_t>(backend_->resolve_function_thunk()));
   }
 
   if (instr->flags & hir::CALL_TAIL) {
@@ -556,6 +561,15 @@ void A64Emitter::PushStackpoint() {
   ldr(w9, ptr(x19, static_cast<uint32_t>(
                        offsetof(A64BackendContext, current_stackpoint_depth))));
 
+  // Check for overflow before indexing into array.
+  mov(w10, static_cast<uint32_t>(cvars::a64_max_stackpoints));
+  cmp(w9, w10);
+  auto& overflow_label = AddToTail([](A64Emitter& e, Label& lbl) {
+    e.CallNativeSafe(
+        reinterpret_cast<void*>(A64Emitter::HandleStackpointOverflowError));
+  });
+  b(GE, overflow_label);
+
   // Compute offset into array: x10 = w9 * sizeof(A64BackendStackpoint)
   mov(w10, static_cast<uint32_t>(sizeof(A64BackendStackpoint)));
   umull(x10, w9, w10);
@@ -578,27 +592,21 @@ void A64Emitter::PushStackpoint() {
   add(w9, w9, 1);
   str(w9, ptr(x19, static_cast<uint32_t>(
                        offsetof(A64BackendContext, current_stackpoint_depth))));
-
-  // Check for overflow.
-  mov(w10, static_cast<uint32_t>(cvars::a64_max_stackpoints));
-  cmp(w9, w10);
-  auto& overflow_label = AddToTail([](A64Emitter& e, Label& lbl) {
-    e.CallNativeSafe(
-        reinterpret_cast<void*>(A64Emitter::HandleStackpointOverflowError));
-  });
-  b(GE, overflow_label);
 }
 
 void A64Emitter::PopStackpoint() {
   if (!cvars::a64_enable_host_guest_stack_synchronization) {
     return;
   }
-  // Decrement current_stackpoint_depth.
+  // Decrement current_stackpoint_depth (saturating at 0 to avoid underflow).
   ldr(w8, ptr(x19, static_cast<uint32_t>(
                        offsetof(A64BackendContext, current_stackpoint_depth))));
+  auto& skip = NewCachedLabel();
+  cbz(w8, skip);
   sub(w8, w8, 1);
   str(w8, ptr(x19, static_cast<uint32_t>(
                        offsetof(A64BackendContext, current_stackpoint_depth))));
+  L(skip);
 }
 
 void A64Emitter::EnsureSynchronizedGuestAndHostStack() {

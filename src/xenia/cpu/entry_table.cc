@@ -19,21 +19,19 @@ EntryTable::EntryTable() = default;
 
 EntryTable::~EntryTable() {
   auto global_lock = global_critical_region_.Acquire();
-  for (auto it : map_.Values()) {
-    Entry* entry = it;
-    delete entry;
+  for (auto& pair : map_) {
+    delete pair.second;
   }
 }
 
 Entry* EntryTable::Get(uint32_t address) {
   auto global_lock = global_critical_region_.Acquire();
-  uint32_t idx = map_.IndexForKey(address);
-  if (idx == map_.size() || *map_.KeyAt(idx) != address) {
+  auto it = map_.find(address);
+  if (it == map_.end()) {
     return nullptr;
   }
-  Entry* entry = *map_.ValueAt(idx);
+  Entry* entry = it->second;
   if (entry) {
-    // TODO(benvanik): wait if needed?
     if (entry->status != Entry::STATUS_READY) {
       entry = nullptr;
     }
@@ -42,27 +40,17 @@ Entry* EntryTable::Get(uint32_t address) {
 }
 
 Entry::Status EntryTable::GetOrCreate(uint32_t address, Entry** out_entry) {
-  // TODO(benvanik): replace with a map with wait-free for find.
-  // https://github.com/facebook/folly/blob/master/folly/AtomicHashMap.h
-
   auto global_lock = global_critical_region_.Acquire();
 
-  uint32_t idx = map_.IndexForKey(address);
-
-  Entry* entry = idx != map_.size() && *map_.KeyAt(idx) == address
-                     ? *map_.ValueAt(idx)
-                     : nullptr;
+  auto it = map_.find(address);
+  Entry* entry = (it != map_.end()) ? it->second : nullptr;
   Entry::Status status;
   if (entry) {
     // If we aren't ready yet spin and wait.
     if (entry->status == Entry::STATUS_COMPILING) {
-      // chrispy: i think this is dead code, if we are compiling we're holding
-      // the global lock, arent we? so we wouldnt be executing here
-      // Still compiling, so spin.
       do {
         global_lock.unlock();
-        // TODO(benvanik): sleep for less time?
-        xe::threading::Sleep(std::chrono::microseconds(10));
+        xe::threading::MaybeYield();
         global_lock.lock();
       } while (entry->status == Entry::STATUS_COMPILING);
     }
@@ -73,9 +61,8 @@ Entry::Status EntryTable::GetOrCreate(uint32_t address, Entry** out_entry) {
     entry->address = address;
     entry->end_address = 0;
     entry->status = Entry::STATUS_COMPILING;
-    entry->function = 0;
-    map_.InsertAt(address, entry, idx);
-    // map_[address] = entry;
+    entry->function = nullptr;
+    map_[address] = entry;
     status = Entry::STATUS_NEW;
   }
   global_lock.unlock();
@@ -98,20 +85,20 @@ void EntryTable::MarkFailed(Entry* entry) {
 
 void EntryTable::Delete(uint32_t address) {
   auto global_lock = global_critical_region_.Acquire();
-  // doesnt this leak memory by not deleting the entry?
-  uint32_t idx = map_.IndexForKey(address);
-  if (idx != map_.size() && *map_.KeyAt(idx) == address) {
-    map_.EraseAt(idx);
+  auto it = map_.find(address);
+  if (it != map_.end()) {
+    delete it->second;
+    map_.erase(it);
   }
 }
 
 std::vector<Function*> EntryTable::FindWithAddress(uint32_t address) {
   auto global_lock = global_critical_region_.Acquire();
   std::vector<Function*> fns;
-  for (auto& it : map_.Values()) {
-    Entry* entry = it;
+  for (const auto& pair : map_) {
+    Entry* entry = pair.second;
     if (address >= entry->address && address <= entry->end_address) {
-      if (entry->status == Entry::STATUS_READY) {
+      if (entry->status == Entry::STATUS_READY && entry->function) {
         fns.push_back(entry->function);
       }
     }

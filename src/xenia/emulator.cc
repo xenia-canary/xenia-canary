@@ -300,7 +300,9 @@ X_STATUS Emulator::Setup(
   }
 
   // Add inputSystem to UI
-  imgui_drawer_->LoadInputSystem(input_system_.get());
+  if (imgui_drawer_) {
+    imgui_drawer_->LoadInputSystem(input_system_.get());
+  }
 
   XELOGI("{}: Initializing VFS...", __func__);
   // Bring up the virtual filesystem used by the kernel.
@@ -1375,10 +1377,7 @@ bool Emulator::ExceptionCallback(Exception* ex) {
     return false;
   }
 
-  // Within range. Pause the emulator and eat the exception.
-  Pause();
-
-  // Dump information into the log.
+  // Dump information into the log first before pausing.
   auto current_thread = kernel::XThread::GetCurrentThread();
   assert_not_null(current_thread);
 
@@ -1428,6 +1427,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
                     context->v[i].u32[2], context->v[i].u32[3]));
   }
   XELOGE("{}", crash_msg);
+  xe::FlushLog();
+
+  // Within range. Pause the emulator and eat the exception.
+  Pause();
   std::string crash_dlg = fmt::format(
       "The guest has crashed.\n\n"
       "Xenia has now paused itself.\n\n"
@@ -1458,8 +1461,22 @@ void Emulator::WaitUntilExit() {
     if (restoring_) {
       restore_fence_.Wait();
     } else {
-      // Not restoring and the thread exited. We're finished.
-      break;
+      bool any_guest_thread_alive = false;
+      if (kernel_state_) {
+        auto guest_threads = kernel_state_->GetGuestThreads();
+        for (const auto& thread : guest_threads) {
+          if (thread && thread->is_alive()) {
+            any_guest_thread_alive = true;
+            xe::threading::Wait(thread->thread(), false,
+                                std::chrono::milliseconds(250));
+            break;
+          }
+        }
+      }
+      if (!any_guest_thread_alive) {
+        XELOGI("Emulator::WaitUntilExit: all guest threads have exited");
+        break;
+      }
     }
   }
 

@@ -95,6 +95,7 @@ FileLogSink::~FileLogSink() {
 void FileLogSink::Write(const char* buf, size_t size) {
   if (file_) {
     fwrite(buf, 1, size, file_);
+    fflush(file_);
   }
 }
 

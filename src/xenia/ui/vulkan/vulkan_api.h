@@ -42,6 +42,12 @@
 #endif
 #endif
 
+#if XE_PLATFORM_MAC
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+#endif
+
 #include "third_party/Vulkan-Headers/include/vulkan/vulkan.h"
 
 #include "third_party/Vulkan-Headers/include/vulkan/vulkan_hpp_macros.hpp"

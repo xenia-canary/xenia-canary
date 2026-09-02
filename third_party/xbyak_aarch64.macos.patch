@@ -1,0 +1,13 @@
+diff --git a/xbyak_aarch64/xbyak_aarch64_code_array.h b/xbyak_aarch64/xbyak_aarch64_code_array.h
+index 215ea94..f57dbba 100644
+--- a/xbyak_aarch64/xbyak_aarch64_code_array.h
++++ b/xbyak_aarch64/xbyak_aarch64_code_array.h
+@@ -165,6 +165,8 @@ public:
+     }
+   }
+   bool setProtectMode(ProtectMode mode, bool throwException = true) {
++    if (!useProtect())
++      return true;
+     bool isOK = protect(top_, getMaxSize(), mode);
+     if (isOK)
+       return true;

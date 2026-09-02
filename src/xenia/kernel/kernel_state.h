@@ -269,6 +269,7 @@ class KernelState {
   void OnThreadExit(XThread* thread);
   object_ref<XThread> GetThreadByID(uint32_t thread_id);
   std::vector<uint32_t> GetAllThreadIDs();
+  std::vector<object_ref<XThread>> GetGuestThreads();
 
   void RegisterNotifyListener(XNotifyListener* listener);
   void UnregisterNotifyListener(XNotifyListener* listener);

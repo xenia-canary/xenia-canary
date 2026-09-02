@@ -1017,15 +1017,12 @@ struct RESERVED_LOAD_I32
     : Sequence<RESERVED_LOAD_I32, I<OPCODE_RESERVED_LOAD, I32Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     auto addr = ComputeMemoryAddress(e, i.src1);
-    // Save guest address before load — dest may alias addr register.
-    e.mov(e.w0, WReg(addr.getIdx()));
-    // Load the value (may clobber addr if dest == addr).
-    e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
-    // Save reservation: address and value in backend context.
+    // Save reservation address in backend context before load (dest may clobber scratch).
     auto bctx = LoadBackendCtxPtr(e);
-    // Store the guest address (already saved in x0).
-    e.str(e.x0, ptr(bctx, static_cast<uint32_t>(offsetof(
+    e.str(addr, ptr(bctx, static_cast<uint32_t>(offsetof(
                               A64BackendContext, cached_reserve_offset))));
+    // Load the value.
+    e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
     // Store the loaded value (zero-extended to 64-bit).
     e.mov(e.w1, i.dest);
     e.str(e.x1, ptr(bctx, static_cast<uint32_t>(offsetof(
@@ -1042,14 +1039,10 @@ struct RESERVED_LOAD_I64
     : Sequence<RESERVED_LOAD_I64, I<OPCODE_RESERVED_LOAD, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     auto addr = ComputeMemoryAddress(e, i.src1);
-    // Save guest address before load — dest may alias addr register.
-    e.mov(e.w0, WReg(addr.getIdx()));
-    // Load the value (may clobber addr if dest == addr).
-    e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
-    // Save reservation in backend context.
     auto bctx = LoadBackendCtxPtr(e);
-    e.str(e.x0, ptr(bctx, static_cast<uint32_t>(offsetof(
+    e.str(addr, ptr(bctx, static_cast<uint32_t>(offsetof(
                               A64BackendContext, cached_reserve_offset))));
+    e.ldr(i.dest, ptr(e.GetMembaseReg(), addr));
     e.str(i.dest, ptr(bctx, static_cast<uint32_t>(offsetof(
                                 A64BackendContext, cached_reserve_value_))));
     e.ldr(e.w1,
@@ -1082,8 +1075,7 @@ struct RESERVED_STORE_I32
     // Check if address matches.
     e.ldr(e.x4, ptr(bctx, static_cast<uint32_t>(offsetof(
                               A64BackendContext, cached_reserve_offset))));
-    e.mov(e.w5, WReg(addr.getIdx()));
-    e.cmp(e.x4, e.x5);
+    e.cmp(e.x4, addr);
     e.b(Xbyak_aarch64::NE, no_reserve);
     // Address matches. Do atomic compare-exchange.
     // Expected value from cached_reserve_value_.
@@ -1094,7 +1086,7 @@ struct RESERVED_STORE_I32
       e.mov(e.w6,
             static_cast<uint64_t>(static_cast<uint32_t>(i.src2.constant())));
     } else {
-      e.mov(e.w6, WReg(i.src2.reg().getIdx()));
+      e.mov(e.w6, i.src2);
     }
     // Compute host address.
     e.add(e.x4, e.GetMembaseReg(), addr);
@@ -1120,6 +1112,8 @@ struct RESERVED_STORE_I32
       e.b(done);
       e.L(cas_fail);
       e.clrex(15);
+      e.mov(i.dest, 0);
+      e.b(done);
     }
     e.L(no_reserve);
     e.mov(i.dest, 0);
@@ -1143,8 +1137,7 @@ struct RESERVED_STORE_I64
           ptr(bctx, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
     e.ldr(e.x4, ptr(bctx, static_cast<uint32_t>(offsetof(
                               A64BackendContext, cached_reserve_offset))));
-    e.mov(e.w5, WReg(addr.getIdx()));
-    e.cmp(e.x4, e.x5);
+    e.cmp(e.x4, addr);
     e.b(Xbyak_aarch64::NE, no_reserve);
     // 64-bit compare-exchange.
     e.ldr(e.x5, ptr(bctx, static_cast<uint32_t>(offsetof(
@@ -1152,7 +1145,7 @@ struct RESERVED_STORE_I64
     if (i.src2.is_constant) {
       e.mov(e.x6, static_cast<uint64_t>(i.src2.constant()));
     } else {
-      e.mov(e.x6, XReg(i.src2.reg().getIdx()));
+      e.mov(e.x6, i.src2);
     }
     e.add(e.x4, e.GetMembaseReg(), addr);
 
@@ -1175,6 +1168,8 @@ struct RESERVED_STORE_I64
       e.b(done);
       e.L(cas_fail);
       e.clrex(15);
+      e.mov(i.dest, 0);
+      e.b(done);
     }
     e.L(no_reserve);
     e.mov(i.dest, 0);

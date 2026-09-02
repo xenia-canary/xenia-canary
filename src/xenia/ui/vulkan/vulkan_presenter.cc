@@ -27,6 +27,9 @@
 #if XE_PLATFORM_WIN32
 #include "xenia/ui/surface_win.h"
 #endif
+#if XE_PLATFORM_MAC
+#include "xenia/ui/surface_mac.h"
+#endif
 
 // Note: If the priorities in the description are changed, update the actual
 // present mode selection logic.
@@ -216,6 +219,11 @@ Surface::TypeFlags VulkanPresenter::GetSurfaceTypesSupportedByInstance(
 #if XE_PLATFORM_WIN32
   if (instance_extensions.ext_KHR_win32_surface) {
     type_flags |= Surface::kTypeFlag_Win32Hwnd;
+  }
+#endif
+#if XE_PLATFORM_MAC
+  if (instance_extensions.ext_EXT_metal_surface) {
+    type_flags |= Surface::kTypeFlag_MetalLayer;
   }
 #endif
   return type_flags;
@@ -615,6 +623,20 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(
         surface_create_info.hwnd = win32_hwnd_surface.hwnd();
         vulkan_surface_create_result =
             ifn.vkCreateWin32SurfaceKHR(instance, &surface_create_info, nullptr,
+                                        &paint_context_.vulkan_surface);
+      } break;
+#endif
+#if XE_PLATFORM_MAC
+      case Surface::kTypeIndex_MetalLayer: {
+        auto& mac_surface = static_cast<const MacSurface&>(new_surface);
+        VkMetalSurfaceCreateInfoEXT surface_create_info;
+        surface_create_info.sType =
+            VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+        surface_create_info.pNext = nullptr;
+        surface_create_info.flags = 0;
+        surface_create_info.pLayer = mac_surface.metal_layer();
+        vulkan_surface_create_result =
+            ifn.vkCreateMetalSurfaceEXT(instance, &surface_create_info, nullptr,
                                         &paint_context_.vulkan_surface);
       } break;
 #endif
@@ -2120,8 +2142,10 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
   }
   switch (present_result) {
     case VK_SUCCESS:
+      XELOGI("VulkanPresenter: Swapchain image presented (VK_SUCCESS)");
       return PaintResult::kPresented;
     case VK_SUBOPTIMAL_KHR:
+      XELOGI("VulkanPresenter: Swapchain image presented (VK_SUBOPTIMAL_KHR)");
       return PaintResult::kPresentedSuboptimal;
     case VK_ERROR_DEVICE_LOST:
       XELOGE(

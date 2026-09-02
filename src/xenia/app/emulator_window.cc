@@ -295,6 +295,10 @@ void EmulatorWindow::EmulatorWindowListener::OnFileDrop(ui::FileDropEvent& e) {
   emulator_window_.FileDrop(e.filename());
 }
 
+void EmulatorWindow::EmulatorWindowListener::OnLostFocus(ui::UISetupEvent& e) {
+  emulator_window_.OnLostFocus();
+}
+
 void EmulatorWindow::EmulatorWindowListener::OnKeyDown(ui::KeyEvent& e) {
   emulator_window_.OnKeyDown(e);
 }
@@ -1139,10 +1143,35 @@ void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
   if (e.button() == ui::MouseEvent::Button::kLeft) {
     ToggleFullscreenOnDoubleClick();
   }
+
+  // Clicking into a running title engages relative-pointer mouse-look. Cmd+Tab
+  // away (focus loss) releases it.
+  if (!mouse_captured_ && emulator_initialized_ && emulator_ &&
+      emulator_->is_title_open()) {
+    SetMouseCaptured(true);
+  }
 }
 
 void EmulatorWindow::OnMouseUp(const ui::MouseEvent& e) {
   last_mouse_up = steady_clock::now();
+}
+
+void EmulatorWindow::OnLostFocus() { SetMouseCaptured(false); }
+
+void EmulatorWindow::SetMouseCaptured(bool captured) {
+  if (captured == mouse_captured_) {
+    return;
+  }
+  mouse_captured_ = captured;
+  if (captured) {
+    window_->CaptureMouse();
+    window_->SetCursorVisibility(ui::Window::CursorVisibility::kHidden);
+  } else {
+    window_->SetCursorVisibility(
+        window_->IsFullscreen() ? ui::Window::CursorVisibility::kAutoHidden
+                                : ui::Window::CursorVisibility::kVisible);
+    window_->ReleaseMouse();
+  }
 }
 
 void EmulatorWindow::TakeScreenshot() {
@@ -1284,7 +1313,10 @@ void EmulatorWindow::FileOpen() {
   }
 }
 
-void EmulatorWindow::FileClose() { emulator_->TerminateTitle(); }
+void EmulatorWindow::FileClose() {
+  SetMouseCaptured(false);
+  emulator_->TerminateTitle();
+}
 
 void EmulatorWindow::InstallContent() {
   std::vector<std::filesystem::path> paths;

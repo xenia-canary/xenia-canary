@@ -17,11 +17,12 @@ namespace ui {
 
 class MacWindowedAppContext : public WindowedAppContext {
  public:
-  MacWindowedAppContext() = default;
+  MacWindowedAppContext();
+  ~MacWindowedAppContext() override;
 
  protected:
-  void NotifyUILoopOfPendingFunctions() override {}
-  void PlatformQuitFromUIThread() override {}
+  void NotifyUILoopOfPendingFunctions() override;
+  void PlatformQuitFromUIThread() override;
 };
 
 }  // namespace ui
