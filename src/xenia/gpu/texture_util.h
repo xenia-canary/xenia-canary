@@ -105,8 +105,8 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
 // 545407E0 (8x8 linear DXT1 - pairs of orange lights in the bottom of gambling
 // machines).
 //
-// Linear texture rows are aligned to 256 bytes, for both the base and the mips
-// (for the base, Direct3D 9 writes an already 256-byte-aligned pitch to the
+// Linear texture rows are aligned to max(256 / block size, 32), for both the
+// base and the mips (for the base, Direct3D 9 writes the aligned pitch to the
 // fetch constant).
 //
 // However, all the 32x32x4 padding, being just padding, is not necessarily
