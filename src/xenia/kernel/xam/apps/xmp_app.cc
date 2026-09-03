@@ -604,6 +604,24 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
           args->storage_ptr.get(), args->storage_length.get());
       return X_E_SUCCESS;
     }
+    case 0x00070046: {
+      // XMPGetMediaSource
+      // Called on when deleting music in storage
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XMP_GET_MEDIA_SOURCE));
+      XMP_GET_MEDIA_SOURCE* args =
+          reinterpret_cast<XMP_GET_MEDIA_SOURCE*>(buffer);
+
+      XELOGD(
+          "XMPGetMediaSource({:08X}, {:08X}, {:08X}), "
+          "unimplemented",
+          uint32_t(args->xmp_client.get()), args->unk1.get(),
+          args->media_resources_ptr.get());
+      if (!args->media_resources_ptr) {
+        return X_E_INVALIDARG;
+      }
+      return X_E_SUCCESS;
+    }
     case 0x00070053: {
       // Called on the blades dashboard Version 4532-5787 after clicking on the
       // picture or video library. It only receives buffer
