@@ -306,6 +306,8 @@ class Emulator {
   bool RestoreFromFile(const std::filesystem::path& path);
 
   // The game can request another title to be loaded.
+  const std::filesystem::path GetNewDiscPathPrediction(
+      std::string disc_number = "");
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
   void WaitUntilExit();
