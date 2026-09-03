@@ -12,6 +12,7 @@
 
 #include <memory>
 
+#include "xenia/kernel/util/guest_arena.h"
 #include "xenia/kernel/xam/achievement_manager.h"
 #include "xenia/kernel/xam/app_manager.h"
 #include "xenia/kernel/xam/content_manager.h"
@@ -89,6 +90,8 @@ class XamState {
   std::unique_ptr<ProfileManager> profile_manager_;
 
   std::unique_ptr<SpaInfo> spa_info_;
+
+  util::GuestArena global_allocator_;
 
   // Custom XAM stuff
   std::array<uint32_t, 0x12> language_fallback_address_{};

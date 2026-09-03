@@ -926,6 +926,10 @@ DECLARE_XAM_EXPORT1(XamIsIptvEnabled, kNone, kImplemented);
 
 dword_result_t XamIptvGetServiceName_entry(lpdword_t service_name_ptr) {
   auto address = kernel_state()->xam_state()->GetIptvNameAddress();
+  if (!address) {
+    return X_ERROR_SUCCESS;
+  }
+
   auto buffer = kernel_state()->memory()->TranslateVirtual(address);
   char16_t* data_ptr = reinterpret_cast<char16_t*>(buffer);
   kernel_state()->xconfig()->ReadSetting(
