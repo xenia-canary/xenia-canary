@@ -629,6 +629,10 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
   // future.
   file_system_->RegisterSymbolicLink("\\SystemRoot", mount_path);
 
+  // Xenia-Cadash: expose dashboard resource namespaces.
+  file_system_->RegisterSymbolicLink("xam", mount_path);
+  file_system_->RegisterSymbolicLink("DASHUSER:", mount_path);
+
   auto module = kernel_state_->LoadUserModule("xam.xex");
 
   if (!module) {

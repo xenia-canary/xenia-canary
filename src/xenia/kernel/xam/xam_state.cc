@@ -65,12 +65,12 @@ void XamState::LoadLanguageLocaleFallback() {
 void XamState::LoadLanguageTypefacePatch() {
   const std::array<std::u16string, 7> patch_data = {
       u"",
-      u"file://media:/XenonSCLatin.xttp2",
-      u"file://media:/XenonCLatin.xttp2",
-      u"file://media:/XenonJKLatin.xttp2",
-      u"file://media:/XenonSCLatin.xttp1",
-      u"file://media:/XenonCLatin.xttp1",
-      u"file://media:/XenonJKLatin.xttp1"};
+      u"",
+      u"file://media:/xenonclatin.xttp",
+      u"file://media:/xenonjklatin.xttp",
+      u"",
+      u"file://media:/xenonclatin.xttp",
+      u"file://media:/xenonjklatin.xttp"};
 
   constexpr uint32_t array_start = 0x80D10000;
 
