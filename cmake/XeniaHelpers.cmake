@@ -133,6 +133,74 @@ function(xe_target_defaults target)
   endif()
 endfunction()
 
+# xe_embed_binary_assets(target source_dir output_namespace)
+#
+# Embeds every file in source_dir as a static byte array in a generated
+# embedded_<namespace>.{h,cc} pair. Symbol names mirror the filename with
+# '-' and '.' replaced by '_'. Generated files land in the build dir and
+# are added to target's sources / include path. Adding, removing or
+# changing an asset re-runs configure on the next build.
+function(xe_embed_binary_assets target source_dir output_namespace)
+  file(GLOB asset_files CONFIGURE_DEPENDS "${source_dir}/*")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      ${asset_files})
+  set(header_path "${CMAKE_CURRENT_BINARY_DIR}/embedded_${output_namespace}.h")
+  set(source_path "${CMAKE_CURRENT_BINARY_DIR}/embedded_${output_namespace}.cc")
+  set(ns "xe::ui::embedded_${output_namespace}")
+
+  # Buffer to a single string; unquoted expansion to file(WRITE) would split
+  # on ';' and silently drop every C++ semicolon.
+  set(header_buf "// Auto-generated from ${source_dir}.\n")
+  string(APPEND header_buf "#pragma once\n#include <cstddef>\n")
+  string(APPEND header_buf "namespace ${ns} {\n")
+  string(APPEND header_buf "struct Asset { const char* name; const unsigned char* data; size_t size; };\n")
+
+  set(source_buf "// Auto-generated from ${source_dir}.\n")
+  string(APPEND source_buf "#include \"embedded_${output_namespace}.h\"\n")
+  string(APPEND source_buf "namespace ${ns} {\n")
+
+  set(index_lines "")
+  foreach(path ${asset_files})
+    if(IS_DIRECTORY "${path}")
+      continue()
+    endif()
+    get_filename_component(name "${path}" NAME)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" symbol "${name}")
+    if("${symbol}" MATCHES "^[0-9]")
+      set(symbol "_${symbol}")
+    endif()
+    file(READ "${path}" hex HEX)
+    string(REGEX REPLACE "(..)" "0x\\1," bytes "${hex}")
+    string(REGEX REPLACE ",$" "" bytes "${bytes}")
+    string(APPEND header_buf "extern const unsigned char ${symbol}_data[];\n")
+    string(APPEND header_buf "extern const size_t ${symbol}_size;\n")
+    string(APPEND source_buf "const unsigned char ${symbol}_data[] = { ${bytes} };\n")
+    string(APPEND source_buf "const size_t ${symbol}_size = sizeof(${symbol}_data);\n")
+    list(APPEND index_lines
+        "  { \"${name}\", ${symbol}_data, sizeof(${symbol}_data) }")
+  endforeach()
+
+  string(JOIN ",\n" index_body ${index_lines})
+  string(APPEND header_buf "extern const Asset kAll[];\n")
+  string(APPEND header_buf "extern const size_t kAllCount;\n")
+  string(APPEND header_buf "}  // namespace ${ns}\n")
+  string(APPEND source_buf "const Asset kAll[] = {\n${index_body}\n};\n")
+  string(APPEND source_buf "const size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);\n")
+  string(APPEND source_buf "}  // namespace ${ns}\n")
+
+  # configure_file COPYONLY skips the copy when bytes match, preserving mtime
+  # so reconfigures don't force a multi-MB embedded_*.cc recompile.
+  file(WRITE "${header_path}.in" "${header_buf}")
+  configure_file("${header_path}.in" "${header_path}" COPYONLY)
+  file(REMOVE "${header_path}.in")
+  file(WRITE "${source_path}.in" "${source_buf}")
+  configure_file("${source_path}.in" "${source_path}" COPYONLY)
+  file(REMOVE "${source_path}.in")
+
+  target_sources(${target} PRIVATE "${source_path}")
+  target_include_directories(${target} PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
+endfunction()
+
 # xe_shader_rules_spirv(target shader_dir)
 #
 # Ensures SPIR-V shaders are compiled before the target builds.
