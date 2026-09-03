@@ -468,6 +468,12 @@ void XeCryptShaFinal_entry(pointer_t<XECRYPT_SHA_STATE> sha_state,
   std::copy_n(digest, std::min<size_t>(xe::countof(digest), out_size),
               static_cast<uint8_t*>(out));
   std::copy_n(sha.getDigest(), xe::countof(sha_state->state), sha_state->state);
+  // The console pads in place, so the last block it compressed is left in the
+  // context buffer, not the message tail. Only shows up when a title finalizes
+  // the same context twice and the padding needed a second block, where the
+  // tail no longer survives the first call.
+  std::copy_n(sha.getBlock(), xe::countof(sha_state->buffer),
+              sha_state->buffer);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptShaFinal, kNone, kImplemented);
 
