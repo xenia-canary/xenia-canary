@@ -35,7 +35,7 @@ X_RESULT MessengerApp::DispatchMessageSync(uint32_t message,
       }* args = memory_->TranslateVirtual<decltype(args)>(buffer_ptr);
       static_assert_size(decltype(*args), 12);
 
-      XELOGD("MessengerUnk200002({:08X}, {:08X}, {:08X}), unimplemented",
+      XELOGD("XMsgrUnk200002({:08X}, {:08X}, {:08X}), unimplemented",
              args->user_index.get(), args->unk1.get(), args->unk2.get());
       return X_E_FAIL;
     }
@@ -49,8 +49,9 @@ X_RESULT MessengerApp::DispatchMessageSync(uint32_t message,
       }* args = memory_->TranslateVirtual<decltype(args)>(buffer_ptr);
       static_assert_size(decltype(*args), 12);
 
-      XELOGD("MessengerUnk200018({:08X}, {:08X}, {:08X}), unimplemented",
-             args->user_index.get(), args->unk1.get(), args->unk2.get());
+      XELOGD("XMsgrUnk200018({:08X}, {:08X}, {:08X})", args->user_index.get(),
+             args->unk1.get(), args->unk2.get());
+
       return X_E_FAIL;
     }
   }

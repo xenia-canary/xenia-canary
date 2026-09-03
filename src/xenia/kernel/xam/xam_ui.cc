@@ -1026,11 +1026,11 @@ dword_result_t XamShowSigninUIEx_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowSigninUIEx, kUserProfiles, kSketchy);
 
-dword_result_t XamShowNuiSigninUI_entry(dword_t unk, dword_t user_index,
+dword_result_t XamShowNuiSigninUI_entry(dword_t tracking_id, dword_t user_index,
                                         dword_t flags) {
   uint32_t users_needed = 1;
   uint32_t sent_flags = flags | static_cast<uint32_t>(SigninUiFlags::NUI);
-  // xeXamNuiHudCheck(unk) = success then continue else return
+  // xeXamNuiHudCheck(tracking_id) = success then continue else return
   return xeXamShowSigninUI(user_index, users_needed, sent_flags);
 }
 DECLARE_XAM_EXPORT1(XamShowNuiSigninUI, kUserProfiles, kSketchy);
