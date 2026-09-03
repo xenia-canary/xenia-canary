@@ -535,6 +535,11 @@ void KeyboardInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
       key_binding.is_pressed = is_down;
       break;
     }
+
+    if (!key_binding.uppercase && !key_binding.lowercase) {
+      key_binding.is_pressed = is_down;
+      break;
+    }
   }
 }
 
