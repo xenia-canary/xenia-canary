@@ -127,6 +127,8 @@ class GraphicsSystem {
   std::unique_ptr<CommandProcessor> command_processor_;
 
   bool paused_ = false;
+  // Set on resume; the vblank thread starts its deadline from now.
+  std::atomic<bool> vblank_deadline_reset_{false};
 
   uint32_t scaled_aspect_x_ = 0;
   uint32_t scaled_aspect_y_ = 0;
