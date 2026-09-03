@@ -16,3 +16,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(xenia-ui PRIVATE xcb X11 X11-xcb fontconfig ${GTK3_LIBRARIES})
 endif()
 xe_target_defaults(xenia-ui)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Japanese glyphs for ImGui. fontconfig's CJK match is often a CFF or
+  # variable font that stb_truetype cannot load (see LoadJapaneseFont).
+  xe_embed_binary_assets(xenia-ui "${PROJECT_SOURCE_DIR}/assets/font" font)
+endif()
