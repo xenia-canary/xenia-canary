@@ -152,6 +152,8 @@ class UserProfile {
                 sizeof(account_info_.passcode));
   };
 
+  bool IsPlayerMuted(uint64_t xuid) const;
+
   friend class UserTracker;
   friend class GpdAchievementBackend;
 
@@ -162,6 +164,7 @@ class UserProfile {
   GpdInfoProfile dashboard_gpd_;
   std::map<uint32_t, GpdInfoTitle> games_gpd_;
   std::vector<Property> properties_;  // Includes contexts!
+  std::vector<uint64_t> muted_players_;
 
   std::map<XTileType, std::vector<uint8_t>> profile_images_;
 
