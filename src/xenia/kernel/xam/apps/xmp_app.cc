@@ -110,35 +110,70 @@ X_HRESULT XmpApp::XMPPlayTitlePlaylist(uint32_t playlist_handle,
   return X_E_SUCCESS;
 }
 
-X_HRESULT XmpApp::XMPContinue() {
-  XELOGD("XMPContinue()");
+X_HRESULT XmpApp::XMPAccessCheck(apu::XMP_CLIENT xmp_client) {
+  /* Notes:
+          - A shared function that checks xmp client, which controller, queue
+     mode and if title is in playback mode from the xmp thread, and one unk
+     variables held by xmp thread. If any fail it returns X_E_ACCESS_DENIED;
+          - Used by XMPContinue, XMPStop, XMPPause, XMPNext, XMPPrevious,
+     XMPPlayTitlePlaylistEx, XMPPlayUserContent, XMPPlayMediaContainer,
+     XMPRestartPlayback, XMPSetVolumeEx, and XMPSetPlaybackBehaviorEx */
+
+  auto audio_media_player_ = kernel_state_->emulator()->audio_media_player();
+  auto controller = audio_media_player_->GetPlaybackController();
+  auto queue_mode = audio_media_player_->GetQueueMode();
+  auto title_control = audio_media_player_->IsTitleInPlaybackControl();
+  if (xmp_client == apu::XMP_CLIENT::Game &&
+      (title_control == false || controller != apu::PlaybackController::Game)) {
+    return X_E_ACCESS_DENIED;
+  } else if (xmp_client != apu::XMP_CLIENT::Game &&
+             controller == apu::PlaybackController::Game) {
+    return X_E_ACCESS_DENIED;
+  }
+  if (controller == apu::PlaybackController::Dash ||
+      controller == apu::PlaybackController::MCE) {
+    return X_E_ACCESS_DENIED;
+  }
+  if (xmp_client == apu::XMP_CLIENT::Remote &&
+      controller == apu::PlaybackController::User && queue_mode == 1) {
+    return X_E_ACCESS_DENIED;
+  }
+  return X_E_SUCCESS;
+}
+
+X_HRESULT XmpApp::XMPContinue(apu::XMP_CLIENT xmp_client) {
+  XELOGD("XMPContinue(XMP Client: 0x{:08X})",
+         static_cast<uint32_t>(xmp_client));
   kernel_state_->emulator()->audio_media_player()->Continue();
-  return X_E_SUCCESS;
+  return XMPAccessCheck(xmp_client);
 }
 
-X_HRESULT XmpApp::XMPStop(uint32_t unk) {
-  assert_zero(unk);
-  XELOGD("XMPStop({:08X})", unk);
+X_HRESULT XmpApp::XMPStop(apu::XMP_CLIENT xmp_client, uint32_t allow_restart) {
+  assert_zero(allow_restart);
+  XELOGD("XMPStop(XMP Client: 0x{:08X}, Allow Restart: 0x{:08X})",
+         static_cast<uint32_t>(xmp_client),
+         static_cast<uint32_t>(allow_restart));
   kernel_state_->emulator()->audio_media_player()->Stop(true, false);
-  return X_E_SUCCESS;
+  return XMPAccessCheck(xmp_client);
 }
 
-X_HRESULT XmpApp::XMPPause() {
-  XELOGD("XMPPause()");
+X_HRESULT XmpApp::XMPPause(apu::XMP_CLIENT xmp_client) {
+  XELOGD("XMPPause(XMP Client: 0x{:08X})", static_cast<uint32_t>(xmp_client));
   kernel_state_->emulator()->audio_media_player()->Pause();
-  return X_E_SUCCESS;
+  return XMPAccessCheck(xmp_client);
 }
 
-X_HRESULT XmpApp::XMPNext() {
-  XELOGD("XMPNext()");
+X_HRESULT XmpApp::XMPNext(apu::XMP_CLIENT xmp_client) {
+  XELOGD("XMPNext(XMP Client: 0x{:08X})", static_cast<uint32_t>(xmp_client));
   kernel_state_->emulator()->audio_media_player()->Next();
-  return X_E_SUCCESS;
+  return XMPAccessCheck(xmp_client);
 }
 
-X_HRESULT XmpApp::XMPPrevious() {
-  XELOGD("XMPPrevious()");
+X_HRESULT XmpApp::XMPPrevious(apu::XMP_CLIENT xmp_client) {
+  XELOGD("XMPPrevious(XMP Client: 0x{:08X})",
+         static_cast<uint32_t>(xmp_client));
   kernel_state_->emulator()->audio_media_player()->Previous();
-  return X_E_SUCCESS;
+  return XMPAccessCheck(xmp_client);
 }
 
 X_HRESULT XmpApp::XMPGetTitlePlaylistBufferSize(apu::XMP_CLIENT xmp_client,
@@ -169,6 +204,7 @@ X_HRESULT XmpApp::XMPGetTitlePlaylistBufferSize(apu::XMP_CLIENT xmp_client,
 X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                       uint32_t buffer_length) {
   // NOTE: buffer_length may be zero or valid.
+  // TODO: Allow for message_ids to set extended error, only a few set length.
   auto buffer = memory_->TranslateVirtual(buffer_ptr);
   switch (message) {
     case 0x00070002: {
@@ -186,34 +222,34 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       apu::XMP_CLIENT xmp_client =
           static_cast<apu::XMP_CLIENT>(xe::load_and_swap<uint32_t>(buffer));
       assert_true(xmp_client == apu::XMP_CLIENT::Game);
-      return XMPContinue();
+      return XMPContinue(xmp_client);
     }
     case 0x00070004: {
       assert_true(!buffer_length || buffer_length == sizeof(XMP_STOP));
       XMP_STOP* args = reinterpret_cast<XMP_STOP*>(buffer);
       assert_true(args->xmp_client == apu::XMP_CLIENT::Game);
-      return XMPStop(args->allow_restart);
+      return XMPStop(args->xmp_client, args->allow_restart);
     }
     case 0x00070005: {
       assert_true(!buffer_length || buffer_length == 4);
       apu::XMP_CLIENT xmp_client =
           static_cast<apu::XMP_CLIENT>(xe::load_and_swap<uint32_t>(buffer));
       assert_true(xmp_client == apu::XMP_CLIENT::Game);
-      return XMPPause();
+      return XMPPause(xmp_client);
     }
     case 0x00070006: {
       assert_true(!buffer_length || buffer_length == 4);
       apu::XMP_CLIENT xmp_client =
           static_cast<apu::XMP_CLIENT>(xe::load_and_swap<uint32_t>(buffer));
       assert_true(xmp_client == apu::XMP_CLIENT::Game);
-      return XMPNext();
+      return XMPNext(xmp_client);
     }
     case 0x00070007: {
       assert_true(!buffer_length || buffer_length == 4);
       apu::XMP_CLIENT xmp_client =
           static_cast<apu::XMP_CLIENT>(xe::load_and_swap<uint32_t>(buffer));
       assert_true(xmp_client == apu::XMP_CLIENT::Game);
-      return XMPPrevious();
+      return XMPPrevious(xmp_client);
     }
     case 0x00070008: {
       /* Notes:

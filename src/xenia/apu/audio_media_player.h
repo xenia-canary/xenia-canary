@@ -85,6 +85,10 @@ class AudioMediaPlayer {
 
   XMP_CLIENT GetXMPClient() const { return xmp_client_; }
 
+  uint32_t GetQueueMode() const { return queue_mode_; }
+
+  void SetQueueMode(uint32_t queue_mode) { queue_mode_ = queue_mode; }
+
   bool IsTitleInPlaybackControl() const {
     if (IsXMPOverrideEnabled()) {
       return false;
@@ -120,6 +124,7 @@ class AudioMediaPlayer {
   XmpApp::PlaybackFlags playback_flags_ = XmpApp::PlaybackFlags::kDefault;
   PlaybackController playback_controller_ = PlaybackController::Game;
   XMP_CLIENT xmp_client_ = XMP_CLIENT::Game;
+  uint32_t queue_mode_ = 0;  // bool?
   std::atomic<float> volume_ = 0.0f;
   uint32_t dash_init_state = 0;
 
