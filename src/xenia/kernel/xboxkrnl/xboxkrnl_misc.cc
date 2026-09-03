@@ -22,15 +22,21 @@ namespace kernel {
 namespace xboxkrnl {
 
 enum class XMicRequestType : uint16_t {
-  MicGain = 0x0001,
-  MicIoPending = 0x0007,
+  MicGetStatus = 0x0000,
+  MicStart = 0x0001,
+  MicSetGain = 0x0002,
+  MicGetData = 0x0007,
+  MicGetSampleRates = 0x0008,
   MicGetCapabilities = 0x0009,
   MicUnk = 0x000B,
 };
 
 enum class XMicState : uint32_t {
   MicNotConnected = 0x00000000,
-  MicInitilizied = 0x00000005,
+  MicConnected = 0x00000001,
+  MicConnected2 = 0x00000002,
+  MicConnected3 = 0x00000003,
+  MicRecording = 0x00000005,
 };
 
 struct X_MIC_INFO {
@@ -122,27 +128,26 @@ dword_result_t MicDeviceRequest_entry(pointer_t<X_MIC_DEVICE> device_ptr) {
     return X_STATUS_INVALID_DEVICE_REQUEST;
   }
 
-  device_ptr->info.state = cvars::allow_mic_initialization
-                               ? XMicState::MicInitilizied
-                               : XMicState::MicNotConnected;
-
   switch (device_ptr->info.request_type) {
-    case XMicRequestType::MicGain:
-      // GAIN
+    case XMicRequestType::MicGetStatus:
+      device_ptr->info.state = cvars::allow_mic_initialization
+                                   ? XMicState::MicConnected
+                                   : XMicState::MicNotConnected;
+      return X_ERROR_SUCCESS;
+    case XMicRequestType::MicStart:
       break;
-    case XMicRequestType::MicIoPending:
-      return X_STATUS_PENDING;
+    case XMicRequestType::MicGetData:
+      break;
     case XMicRequestType::MicGetCapabilities:
       device_ptr->capabilities.features = 0x100;
       device_ptr->capabilities.format_tag = 1;
       device_ptr->capabilities.mic_color = 0;
       break;
     default:
-      // 0 Seems like initialization!
       break;
   }
 
-  return X_ERROR_SUCCESS;
+  return X_STATUS_PENDING;
 }
 DECLARE_XBOXKRNL_EXPORT1(MicDeviceRequest, kNone, kStub);
 
