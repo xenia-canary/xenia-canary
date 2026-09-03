@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_strings.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 
@@ -150,7 +151,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         // fall through, don't need to goto restart
       }
 
-      // https://msdn.microsoft.com/en-us/library/8aky45ct.aspx
+        // https://msdn.microsoft.com/en-us/library/8aky45ct.aspx
       case FS_Flags: {
         if (c == '-') {
           flags |= FF_LeftJustify;
@@ -172,7 +173,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         // fall through, don't need to goto restart
       }
 
-      // https://msdn.microsoft.com/en-us/library/25366k66.aspx
+        // https://msdn.microsoft.com/en-us/library/25366k66.aspx
       case FS_Width: {
         if (c == '*') {
           width = (int32_t)args.get32();
@@ -191,7 +192,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         // fall through, don't need to goto restart
       }
 
-      // https://msdn.microsoft.com/en-us/library/0ecbz014.aspx
+        // https://msdn.microsoft.com/en-us/library/0ecbz014.aspx
       case FS_PrecisionStart: {
         if (c == '.') {
           state = FS_Precision;
@@ -202,7 +203,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         goto restart;
       }
 
-      // https://msdn.microsoft.com/en-us/library/0ecbz014.aspx
+        // https://msdn.microsoft.com/en-us/library/0ecbz014.aspx
       case FS_Precision: {
         if (c == '*') {
           precision = (int32_t)args.get32();
@@ -220,7 +221,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         // fall through
       }
 
-      // https://msdn.microsoft.com/en-us/library/tcxf1dw6.aspx
+        // https://msdn.microsoft.com/en-us/library/tcxf1dw6.aspx
       case FS_Size: {
         if (c == 'l') {
           if (data.peek(0) == 'l') {
@@ -264,7 +265,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
         // fall through
       }
 
-      // https://msdn.microsoft.com/en-us/library/hf4y5e3w.aspx
+        // https://msdn.microsoft.com/en-us/library/hf4y5e3w.aspx
       case FS_Type: {
         // wide character
         switch (c) {
@@ -273,7 +274,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             // fall through
           }
 
-          // character
+            // character
           case 'c': {
             bool is_wide;
             if (flags & (FF_IsLong | FF_IsWide)) {
@@ -306,7 +307,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             break;
           }
 
-          // signed decimal integer
+            // signed decimal integer
           case 'd':
           case 'i': {
             flags |= FF_IsSigned;
@@ -370,7 +371,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             break;
           }
 
-          // unsigned octal integer
+            // unsigned octal integer
           case 'o': {
             digits = "01234567";
             radix = 8;
@@ -380,14 +381,14 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             goto integer;
           }
 
-          // unsigned decimal integer
+            // unsigned decimal integer
           case 'u': {
             digits = "0123456789";
             radix = 10;
             goto integer;
           }
 
-          // unsigned hexadecimal integer
+            // unsigned hexadecimal integer
           case 'x':
           case 'X': {
             digits = c == 'x' ? "0123456789abcdef" : "0123456789ABCDEF";
@@ -402,13 +403,13 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             goto integer;
           }
 
-          // floating-point with exponent
+            // floating-point with exponent
           case 'e':
           case 'E': {
             // fall through
           }
 
-          // floating-point without exponent
+            // floating-point without exponent
           case 'f': {
           floatingpoint:
             flags |= FF_IsSigned;
@@ -437,19 +438,19 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             break;
           }
 
-          // floating-point with or without exponent
+            // floating-point with or without exponent
           case 'g':
           case 'G': {
             goto floatingpoint;
           }
 
-          // floating-point in hexadecimal
+            // floating-point in hexadecimal
           case 'a':
           case 'A': {
             goto floatingpoint;
           }
 
-          // pointer to integer
+            // pointer to integer
           case 'n': {
             auto pointer = (uint32_t)args.get32();
             if (flags & FF_IsShort) {
@@ -462,7 +463,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             continue;
           }
 
-          // pointer
+            // pointer
           case 'p': {
             digits = "0123456789ABCDEF";
             radix = 16;
@@ -472,13 +473,13 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             goto integer;
           }
 
-          // wide string
+            // wide string
           case 'S': {
             flags |= FF_InvertWide;
             // fall through
           }
 
-          // string
+            // string
           case 's': {
             uint32_t pointer = args.get32();
             int32_t cap = precision < 0 ? INT32_MAX : precision;
@@ -523,7 +524,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
             break;
           }
 
-          // ANSI_STRING / UNICODE_STRING
+            // ANSI_STRING / UNICODE_STRING
           case 'Z': {
             assert_always();
             break;
@@ -641,6 +642,10 @@ dword_result_t DbgPrint_entry(lpstring_t format, const ppc_context_t& ctx) {
 
   // trim whitespace from end of message
   XELOGI("(DbgPrint) {}", string_util::rtrim(data.str()));
+
+  if (cpu::DebugListener* listener = ctx->processor->debug_listener()) {
+    listener->OnDebugPrint(string_util::rtrim(data.str()));
+  }
 
   return X_STATUS_SUCCESS;
 }
