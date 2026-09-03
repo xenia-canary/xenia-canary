@@ -161,17 +161,21 @@ TEST_CASE("PhysicalHeap vE0000000 alignment", "[memory]") {
     REQUIRE(translation_offset % heap.page_size() == 0);
   }
 
-  SECTION("alloc with alignment larger than page_size is rejected") {
-    // vE0000000 has a 0x1000 physical translation offset, so a 64KB
-    // alignment request can't produce a 64KB-aligned guest address.
-    // PhysicalHeap::Alloc forces top-down, which here lands one stride
-    // past the end of the child heap and BaseHeap::AllocFixed rejects
-    // it as out of range.
+  SECTION("alloc with alignment larger than page_size succeeds aligned") {
+    // vE0000000 has a 0x1000 physical translation offset, so a naive
+    // 0-phase search of the parent heap can never land on a candidate that
+    // translates to a 64KB-aligned guest address (it's always short by
+    // exactly 0x1000, mod 0x10000). PhysicalHeap::Alloc passes an
+    // alignment_phase of physical_base % alignment through to the parent
+    // search to compensate, so this now succeeds with a correctly aligned
+    // address instead of failing.
     uint32_t alignment = 0x10000;  // 64KB
     uint32_t addr = 0;
     bool ok = heap.Alloc(0x10000, alignment, kMemoryAllocationReserve,
                          kMemoryProtectRead, false, &addr);
-    REQUIRE_FALSE(ok);
+    REQUIRE(ok);
+    REQUIRE(addr % alignment == 0);
+    REQUIRE(addr >= 0xE0000000);
   }
 }
 
@@ -193,12 +197,12 @@ TEST_CASE("PhysicalHeap vE0000000 AllocRange alignment", "[memory]") {
     REQUIRE(addr % 0x1000 == 0);
   }
 
-  SECTION("AllocRange with large alignment succeeds via bottom-up") {
-    // Bottom-up search picks a low parent address that translates to a
-    // guest address inside the child heap, so BaseHeap::AllocFixed accepts
-    // it. The PhysicalHeap alignment check is host-based
-    // ((addr + host_address_offset_) % alignment), so the misalignment of
-    // the guest address itself is not rejected here.
+  SECTION("AllocRange with large alignment succeeds correctly aligned") {
+    // PhysicalHeap::AllocRange passes physical_base % alignment through to
+    // the parent search as its alignment_phase, so both bottom-up and
+    // top-down now land on a parent address that translates back to a
+    // properly aligned child address instead of one that merely happens to
+    // fall inside heap bounds.
     uint32_t alignment = 0x10000;
     uint32_t addr = 0;
     bool ok = heap.AllocRange(0xE0000000, 0xFFFCFFFF, 0x10000, alignment,
@@ -206,6 +210,25 @@ TEST_CASE("PhysicalHeap vE0000000 AllocRange alignment", "[memory]") {
                               false, &addr);
     REQUIRE(ok);
     REQUIRE(addr >= 0xE0000000);
+    REQUIRE(addr % alignment == 0);
+  }
+
+  SECTION("32KB-aligned 2.5MB allocation through the 4KB-page vE0000000 heap") {
+    // Regression test for a guest MmAllocatePhysicalMemoryEx call observed
+    // in title 4D5307F1: a 0x280000-byte request at 0x8000 (32KB) alignment
+    // routed through the 4KB-page physical heap. Before the alignment_phase
+    // fix this failed deterministically (not as a rare collision) because
+    // the 0x1000 translation offset made a 0-phase parent search unable to
+    // produce any 32KB-aligned child address; the guest received a null
+    // pointer and faulted downstream on it.
+    uint32_t alignment = 0x8000;
+    uint32_t addr = 0;
+    bool ok = heap.AllocRange(0xE0000000, 0xFFFCFFFF, 0x280000, alignment,
+                              kMemoryAllocationReserve, kMemoryProtectRead,
+                              true, &addr);
+    REQUIRE(ok);
+    REQUIRE(addr >= 0xE0000000);
+    REQUIRE(addr % alignment == 0);
   }
 }
 
