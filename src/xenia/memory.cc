@@ -1830,11 +1830,15 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment,
   // Given the address we've reserved in the parent heap, pin that here.
   // Shouldn't be possible for it to be allocated already.
   const uint32_t address = heap_base_ + parent_address - parent_heap_start;
-  if ((address + host_address_offset_) % alignment != 0) {
+  const uint32_t host_alignment = std::min(
+      alignment,
+      std::max(page_size_, uint32_t(xe::memory::allocation_granularity())));
+  if ((address + host_address_offset_) % host_alignment != 0) {
     XELOGE(
         "PhysicalHeap::Alloc translated address {:08X} misaligned "
-        "(alignment {:08X}, physical base offset {:08X})",
-        address, alignment, parent_heap_start);
+        "(host alignment {:08X} of requested {:08X}, physical base "
+        "offset {:08X})",
+        address, host_alignment, alignment, parent_heap_start);
     parent_heap_->Release(parent_address);
     return false;
   }
@@ -1875,11 +1879,15 @@ bool PhysicalHeap::AllocFixed(uint32_t base_address, uint32_t size,
   // Shouldn't be possible for it to be allocated already.
   const uint32_t address =
       heap_base_ + parent_base_address - GetPhysicalAddress(heap_base_);
-  if ((address + host_address_offset_) % alignment != 0) {
+  const uint32_t host_alignment = std::min(
+      alignment,
+      std::max(page_size_, uint32_t(xe::memory::allocation_granularity())));
+  if ((address + host_address_offset_) % host_alignment != 0) {
     XELOGE(
         "PhysicalHeap::AllocFixed translated address {:08X} misaligned "
-        "(alignment {:08X}, physical base offset {:08X})",
-        address, alignment, GetPhysicalAddress(heap_base_));
+        "(host alignment {:08X} of requested {:08X}, physical base "
+        "offset {:08X})",
+        address, host_alignment, alignment, GetPhysicalAddress(heap_base_));
     parent_heap_->Release(parent_base_address);
     return false;
   }
@@ -1927,11 +1935,29 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   // Shouldn't be possible for it to be allocated already.
   const uint32_t address =
       heap_base_ + parent_address - GetPhysicalAddress(heap_base_);
-  if ((address + host_address_offset_) % alignment != 0) {
+  // The caller's alignment is a physical one, and the parent heap has already
+  // satisfied it: what the guest reads back through MmGetPhysicalAddress is
+  // parent_address. This check is about the host pointer, which is
+  // membase_ + address + host_address_offset_, so it only has to hold to what
+  // the host itself needs to map and protect at.
+  //
+  // The two can differ. A heap at or above 0xE0000000 has a physical base of
+  // 0x1000 (GetPhysicalAddress), so its host pointer sits 0x1000 below an
+  // aligned parent_address unless host_address_offset_ puts it back. That
+  // offset is only set when the host allocation granularity is above 0x1000,
+  // which is true on Windows and false on Linux, where the granularity is one
+  // 4 KiB page. Testing the caller's alignment here therefore failed every
+  // allocation above page size on that heap on Linux while the same call
+  // succeeded on Windows.
+  const uint32_t host_alignment = std::min(
+      alignment,
+      std::max(page_size_, uint32_t(xe::memory::allocation_granularity())));
+  if ((address + host_address_offset_) % host_alignment != 0) {
     XELOGE(
-        "PhysicalHeap::AllocRange translated address {:08X} misaligned "
-        "(alignment {:08X}, physical base offset {:08X})",
-        address, alignment, GetPhysicalAddress(heap_base_));
+        "PhysicalHeap::AllocRange translated address {:08X} misaligned for the "
+        "host (host alignment {:08X}, requested {:08X}, physical base offset "
+        "{:08X})",
+        address, host_alignment, alignment, GetPhysicalAddress(heap_base_));
     parent_heap_->Release(parent_address);
     return false;
   }
