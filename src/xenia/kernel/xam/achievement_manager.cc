@@ -149,11 +149,12 @@ void AchievementManager::ShowAchievementEarnedNotification(
   ui::WindowedAppContext& app_context =
       emulator->display_window()->app_context();
   ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  const uint8_t position =
+      static_cast<uint8_t>(kernel_state()->notification_position_);
 
-  app_context.CallInUIThread([imgui_drawer, description]() {
+  app_context.CallInUIThread([imgui_drawer, description, position]() {
     new xe::ui::AchievementNotificationWindow(
-        imgui_drawer, "Achievement unlocked", description, 0,
-        kernel_state()->notification_position_);
+        imgui_drawer, "Achievement unlocked", description, 0, position);
   });
 }
 
