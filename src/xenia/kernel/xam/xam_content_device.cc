@@ -166,7 +166,8 @@ dword_result_t XamContentCreateDeviceEnumerator_entry(dword_t content_type,
 
   auto e = make_object<XStaticEnumerator<X_CONTENT_DEVICE_DATA>>(kernel_state(),
                                                                  max_count);
-  auto result = e->Initialize(XUserIndexNone, 0xFE, 0x2000A, 0x20009, 0);
+  auto result =
+      e->Initialize(XUserIndexNone, 0xFE, 0x2000A, 0x20009, 0, 0x8, nullptr);
   if (XFAILED(result)) {
     return result;
   }
@@ -197,6 +198,14 @@ dword_result_t XamContentCreateDeviceEnumerator_entry(dword_t content_type,
           xe::countof(device_data->name_chars));
     }
   }
+
+  auto object = kernel_state()->memory()->TranslateVirtual(e->guest_object());
+
+  X_ENUMERATOR_ALLOC_DEVICE_ENUM* args =
+      reinterpret_cast<X_ENUMERATOR_ALLOC_DEVICE_ENUM*>(object);
+  args->xcontent_flags = content_flags.value();
+  args->unk1 = 0;
+  // args->unk2 = addresss;
 
   *handle_out = e->handle();
   return X_ERROR_SUCCESS;

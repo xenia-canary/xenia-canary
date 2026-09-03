@@ -118,8 +118,13 @@ dword_result_t XamCreateEnumeratorHandle_entry(
   uint32_t enum_handle = 0;
   X_STATUS result = 0;
 
+  // 58039 offline: Crackdown, guitar hero 5, guitar hero world, GOW 2
+  // 58042 offline: GOW Judgement
+
   switch (open_message) {
     case XMPCreateUserPlaylistEnumeratorMessage: {
+      // Games used in:
+      // 494707D4
       result = XMPCreateUserPlaylistEnumeratorHandle(
           user_index, app_id, open_message, close_message, extra_size,
           item_count, flags, enum_handle);
@@ -155,6 +160,9 @@ dword_result_t XamGetPrivateEnumStructureFromHandle_entry(
   // It's released in ObDereferenceObject.
   e->RetainHandle();
 
+  // TODO:
+  // Enumerator objects don't have X_DISPATCH_HEADER currently it's included in
+  // object, but should be removed.
   if (out_object_ptr.guest_address()) {
     *out_object_ptr = e->guest_object();
   }
