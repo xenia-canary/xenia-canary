@@ -1263,10 +1263,19 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
           // Denormalize and offset Z (re-apply the offset not to lose precision
           // as a result of division) if stacked.
           a_.OpIf(false, dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW));
-          a_.OpMAd(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
-                   coord_operand.SelectFromSwizzled(2),
-                   dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
-                   dxbc::Src::LF(offsets[2]));
+          {
+            a_.OpMax(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(0.0f));
+            uint32_t clamp_temp = PushSystemTemp();
+            a_.OpAdd(dxbc::Dest::R(clamp_temp, 0b0001),
+                     dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(-1.0f));
+            a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::R(clamp_temp, dxbc::Src::kXXXX));
+            PopSystemTemp();
+          }
           a_.OpEndIf();
         } else {
           // Denormalize Z if stacked, and revert to normalized if 3D.
