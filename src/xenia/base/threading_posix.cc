@@ -422,6 +422,12 @@ class PosixCondition<Event> : public PosixConditionBase {
     signal_ = false;
   }
 
+  EventInfo Query() {
+    auto lock = std::unique_lock(mutex_);
+    // EVENT_TYPE: NotificationEvent = 0, SynchronizationEvent = 1.
+    return EventInfo{manual_reset_ ? 0u : 1u, signal_ ? 1u : 0u};
+  }
+
  private:
   [[nodiscard]] bool signaled() const override { return signal_; }
   void post_execution() override {
@@ -1130,11 +1136,7 @@ class PosixEvent final : public PosixConditionHandle<Event> {
   ~PosixEvent() override = default;
   void Set() override { handle_.Signal(); }
   void Reset() override { handle_.Reset(); }
-  EventInfo Query() override {
-    EventInfo result{};
-    assert_always();
-    return result;
-  }
+  EventInfo Query() override { return handle_.Query(); }
   void Pulse() override {
     using namespace std::chrono_literals;
     handle_.Signal();
@@ -1319,14 +1321,23 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
     std::unique_lock lock(thread->handle_.state_mutex_);
     thread->handle_.state_ =
         create_suspended ? State::kSuspended : State::kRunning;
+    // The initial suspend count has to be published together with the
+    // state, before the notify. Resume() returns from WaitStarted() as soon
+    // as the state is set, and if it took the lock between that and a later
+    // "suspend_count_ = 1" it saw a count of zero, did nothing, and this
+    // thread then waited forever for a resume that had already happened.
+    if (create_suspended) {
+      thread->handle_.suspend_count_ = 1;
+    }
     thread->handle_.state_signal_.notify_all();
   }
 
   if (create_suspended) {
-    std::unique_lock lock(thread->handle_.state_mutex_);
-    thread->handle_.suspend_count_ = 1;
-    thread->handle_.state_signal_.wait(
-        lock, [thread] { return thread->handle_.suspend_count_ == 0; });
+    // Block on the same semaphore Resume() posts when the count reaches
+    // zero. A post that lands before this wait is not lost, and using the
+    // semaphore here means Resume()'s post is consumed rather than left
+    // behind for a later Suspend() to trip over.
+    thread->handle_.WaitSuspended();
   }
 
   start_routine();
