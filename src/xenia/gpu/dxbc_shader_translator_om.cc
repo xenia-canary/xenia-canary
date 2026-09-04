@@ -17,6 +17,7 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/texture_cache.h"
+#include "xenia/gpu/xenos_zpd_report.h"
 
 DEFINE_bool(use_fuzzy_alpha_epsilon, false,
             "Use approximate compare for alpha values to prevent flickering on "
@@ -834,6 +835,13 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
     // Depth test has failed.
     a_.OpElse();
     {
+      if (zpd_full_counters_) {
+        // Remember for the ZFail ZPD counter. Stencil is tested after this and
+        // might move the sample to the StencilFail counter instead.
+        a_.OpOr(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+                dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+                dxbc::Src::LU(1 << (12 + i)));
+      }
       // Exclude the bit from the covered sample mask.
       // sample_temp.x = old depth/stencil
       // sample_temp.y = old depth
@@ -982,6 +990,15 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
         // sample_temp.z = free
         a_.OpUBFE(sample_temp_y_dest, dxbc::Src::LU(3), dxbc::Src::LU(3),
                   sample_temp_z_src);
+        if (zpd_full_counters_) {
+          // Stencil failure takes precedence over depth failure.
+          a_.OpAnd(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+                   dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+                   dxbc::Src::LU(~uint32_t(1 << (12 + i))));
+          a_.OpOr(dxbc::Dest::R(system_temp_rov_params_, 0b0001),
+                  dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+                  dxbc::Src::LU(1 << (16 + i)));
+        }
         // Exclude the bit from the covered sample mask.
         // sample_temp.x = old depth/stencil
         // sample_temp.y = stencil operation
@@ -1220,6 +1237,12 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
   }
 
   if (ROV_IsDepthStencilEarly()) {
+    if (zpd_full_counters_) {
+      // We need to count failed samples here because early-depth testing
+      // discards quads before they can reach the end of the shader.
+      ROV_AddMSAASamplesToZPD(false, true);
+    }
+
     // Check if safe to discard the whole 2x2 quad early, without running the
     // translated pixel shader, by checking if coverage is 0 in all pixels in
     // the quad and if there are no samples which failed the depth test, but
@@ -2171,7 +2194,8 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMaskSample(
   }
 }
 
-void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
+void DxbcShaderTranslator::CompletePixelShader_AlphaToMask(
+    uint32_t zpd_coverage_temp) {
   // Check if alpha to coverage can be done at all in this shader.
   if (!current_shader().writes_color_target(0) ||
       IsForceEarlyDepthStencilGlobalFlagEnabled()) {
@@ -2282,6 +2306,10 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
   } else {
     dxbc::Src coverage_src(
         dxbc::Src::R(coverage_temp, coverage_temp_component));
+    if (zpd_coverage_temp != UINT32_MAX) {
+      a_.OpAnd(dxbc::Dest::R(zpd_coverage_temp, 0b0001),
+               dxbc::Src::R(zpd_coverage_temp, dxbc::Src::kXXXX), coverage_src);
+    }
     a_.OpDiscard(false, coverage_src);
     a_.OpMov(dxbc::Dest::OMask(), coverage_src);
   }
@@ -2293,9 +2321,10 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
   a_.OpEndIf();
 }
 
-void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
-  if (uav_index_zpd_rov_counter_ == kBindingIndexUnallocated) {
-    uav_index_zpd_rov_counter_ = uav_count_++;
+void DxbcShaderTranslator::ROV_AddMSAASamplesToZPD(bool count_passed,
+                                                   bool count_failed) {
+  if (uav_index_zpd_counter_ == kBindingIndexUnallocated) {
+    uav_index_zpd_counter_ = uav_count_++;
   }
 
   uint32_t temp = PushSystemTemp();
@@ -2303,33 +2332,93 @@ void DxbcShaderTranslator::ROV_AddPassedMSAASamplesToZPD() {
   dxbc::Src temp_x_src(dxbc::Src::R(temp, dxbc::Src::kXXXX));
   dxbc::Dest temp_y_dest(dxbc::Dest::R(temp, 0b0010));
   dxbc::Src temp_y_src(dxbc::Src::R(temp, dxbc::Src::kYYYY));
+  dxbc::Dest temp_z_dest(dxbc::Dest::R(temp, 0b0100));
+  dxbc::Src temp_z_src(dxbc::Src::R(temp, dxbc::Src::kZZZZ));
 
   dxbc::Src counter_index_src(LoadSystemConstant(
-      SystemConstants::Index::kZpdRovCounterIndex,
-      offsetof(SystemConstants, zpd_rov_counter_index), dxbc::Src::kXXXX));
+      SystemConstants::Index::kZpdCounterIndex,
+      offsetof(SystemConstants, zpd_counter_index), dxbc::Src::kXXXX));
 
   // UINT32_MAX means no ZPD segment is currently open for this draw.
   a_.OpINE(temp_x_dest, counter_index_src, dxbc::Src::LU(UINT32_MAX));
   a_.OpIf(true, temp_x_src);
-
   {
-    // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil
-    // writes and don't contribute to the counter.
-    a_.OpAnd(temp_x_dest,
-             dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-             dxbc::Src::LU((uint32_t(1) << 4) - 1));
-    a_.OpCountBits(temp_x_dest, temp_x_src);
+    // One counter slot is one uint32_t per ZPD counter.
+    a_.OpUMul(dxbc::Dest::Null(), temp_y_dest, counter_index_src,
+              dxbc::Src::LU(XenosZPDReport::kCounterSizeBytes));
+
+    auto add_lane = [&](uint32_t sample_bits, uint32_t lane) {
+      a_.OpAnd(temp_x_dest,
+               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+               dxbc::Src::LU(sample_bits));
+      a_.OpCountBits(temp_x_dest, temp_x_src);
+      a_.OpIf(true, temp_x_src);
+      {
+        a_.OpIAdd(temp_z_dest, temp_y_src,
+                  dxbc::Src::LU(lane * sizeof(uint32_t)));
+        a_.OpAtomicIAdd(dxbc::Dest::U(uav_index_zpd_counter_,
+                                      uint32_t(UAVRegister::kZpdCounter), 0),
+                        temp_z_src, 0b0001, temp_x_src);
+      }
+      a_.OpEndIf();
+    };
+    if (count_passed) {
+      // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil
+      // writes and don't contribute to the counter.
+      add_lane(0b1111, XenosZPDReport::kZPass);
+    }
+    if (count_failed) {
+      add_lane(0b1111 << 12, XenosZPDReport::kZFail);
+      add_lane(0b1111 << 16, XenosZPDReport::kStencilFail);
+    }
+  }
+  a_.OpEndIf();
+
+  PopSystemTemp();
+}
+
+void DxbcShaderTranslator::RTV_AddMSAASamplesToZPDTotal(
+    dxbc::Src coverage_src) {
+  if (uav_index_zpd_counter_ == kBindingIndexUnallocated) {
+    uav_index_zpd_counter_ = uav_count_++;
+  }
+
+  uint32_t temp = PushSystemTemp();
+  dxbc::Dest temp_x_dest(dxbc::Dest::R(temp, 0b0001));
+  dxbc::Src temp_x_src(dxbc::Src::R(temp, dxbc::Src::kXXXX));
+  dxbc::Dest temp_y_dest(dxbc::Dest::R(temp, 0b0010));
+  dxbc::Src temp_y_src(dxbc::Src::R(temp, dxbc::Src::kYYYY));
+  dxbc::Dest temp_z_dest(dxbc::Dest::R(temp, 0b0100));
+  dxbc::Src temp_z_src(dxbc::Src::R(temp, dxbc::Src::kZZZZ));
+
+  dxbc::Src counter_index_src(LoadSystemConstant(
+      SystemConstants::Index::kZpdCounterIndex,
+      offsetof(SystemConstants, zpd_counter_index), dxbc::Src::kXXXX));
+
+  a_.OpINE(temp_z_dest, counter_index_src, dxbc::Src::LU(UINT32_MAX));
+  a_.OpIf(true, temp_z_src);
+  {
+    // Total is the slot's first counter.
+    a_.OpUMul(dxbc::Dest::Null(), temp_y_dest, counter_index_src,
+              dxbc::Src::LU(XenosZPDReport::kCounterSizeBytes));
+    a_.OpCountBits(temp_x_dest, coverage_src);
+
+    // Every sample-frequency runs always get the pixel's full primitive
+    // coverage (per D3D11.3 spec 16.3.2). To avoid double counting, only the
+    // first covered sample adds it, matching memexport.
+    if (IsSampleRate()) {
+      a_.OpFirstBitLo(temp_z_dest, coverage_src);
+      a_.OpIEq(
+          temp_z_dest,
+          dxbc::Src::V1D(in_reg_ps_front_face_sample_index_, dxbc::Src::kYYYY),
+          temp_z_src);
+      a_.OpAnd(temp_x_dest, temp_x_src, temp_z_src);
+    }
+
     a_.OpIf(true, temp_x_src);
     {
-      // The counter UAV is raw, so address it in bytes.
-      // One counter slot is one uint32_t.
-      a_.OpUMul(dxbc::Dest::Null(), temp_y_dest, counter_index_src,
-                dxbc::Src::LU(sizeof(uint32_t)));
-      // Add the number of samples that survived depth/stencil for this pixel to
-      // the active query slot. This slot is copied to the readback buffer when
-      // the ZPD segment is closed.
-      a_.OpAtomicIAdd(dxbc::Dest::U(uav_index_zpd_rov_counter_,
-                                    uint32_t(UAVRegister::kZpdRovCounter), 0),
+      a_.OpAtomicIAdd(dxbc::Dest::U(uav_index_zpd_counter_,
+                                    uint32_t(UAVRegister::kZpdCounter), 0),
                       temp_y_src, 0b0001, temp_x_src);
     }
     a_.OpEndIf();
@@ -2397,7 +2486,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
   // system_temp_rov_params_.y (the depth / stencil sample address) is not
   // needed anymore, can be used for color writing.
 
-  ROV_AddPassedMSAASamplesToZPD();
+  ROV_AddMSAASamplesToZPD(true,
+                          zpd_full_counters_ && !ROV_IsDepthStencilEarly());
 
   if (!is_depth_only_pixel_shader_) {
     // Check if any sample is still covered after depth testing and writing,
@@ -3416,11 +3506,29 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
 }
 
 void DxbcShaderTranslator::CompletePixelShader() {
+  // The ZPD Total counter tracks coverage entering the shader until all
+  // pre-depth/stencil tests finish dropping samples.
+  uint32_t zpd_coverage_temp = UINT32_MAX;
+  if (GetDxbcShaderModification().pixel.zpd_total) {
+    zpd_coverage_temp = PushSystemTemp();
+    a_.OpMov(dxbc::Dest::R(zpd_coverage_temp, 0b0001), dxbc::Src::VCoverage());
+  }
+
   if (is_depth_only_pixel_shader_) {
     // The depth-only shader only needs to do the depth test and to write the
     // depth to the ROV.
     if (edram_rov_used_) {
       CompletePixelShader_WriteToROV();
+    } else {
+      // Only applies with RTV if zpd_total is true.
+      if (zpd_coverage_temp != UINT32_MAX) {
+        RTV_AddMSAASamplesToZPDTotal(
+            dxbc::Src::R(zpd_coverage_temp, dxbc::Src::kXXXX));
+      }
+      CompletePixelShader_DSV_DepthTo24Bit();
+    }
+    if (zpd_coverage_temp != UINT32_MAX) {
+      PopSystemTemp();
     }
     return;
   }
@@ -3558,12 +3666,18 @@ void DxbcShaderTranslator::CompletePixelShader() {
     PopSystemTemp();
 
     // Discard samples with alpha to coverage.
-    CompletePixelShader_AlphaToMask();
+    CompletePixelShader_AlphaToMask(zpd_coverage_temp);
 
     if (edram_rov_used_) {
       // Close the render target 0 written check.
       a_.OpEndIf();
     }
+  }
+
+  if (zpd_coverage_temp != UINT32_MAX) {
+    RTV_AddMSAASamplesToZPDTotal(
+        dxbc::Src::R(zpd_coverage_temp, dxbc::Src::kXXXX));
+    PopSystemTemp();
   }
 
   // Write the values to the render targets. Not applying the exponent bias yet
