@@ -12,6 +12,7 @@
 #include "xenia/base/platform_win.h"
 #elif XE_PLATFORM_LINUX == 1
 #include <linux/futex.h>
+#include <pthread.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif
@@ -88,13 +89,20 @@ inline int futex_wake(std::atomic<uint32_t>* addr, int count) {
                  0);
 }
 
-inline pid_t gettid() { return static_cast<pid_t>(syscall(SYS_gettid)); }
+// Cheap, stable per-thread identity: pthread_self() is a thread-local read,
+// no syscall, and unique among live threads. It is only compared for
+// equality, to detect the owner re-entering. The former gettid() syscall on
+// every lock was ~39,000 syscalls a second on the GPU command processor
+// thread of one title.
+inline uint64_t xe_current_thread_id() {
+  return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+}
 
 }  // namespace
 
 // xe_global_mutex implementation (recursive)
 void xe_global_mutex::lock() {
-  pid_t self = gettid();
+  uint64_t self = xe_current_thread_id();
 
   // Fast path: check if we already own it (recursive lock)
   if (owner_.load(std::memory_order_relaxed) == self) {
@@ -115,7 +123,7 @@ void xe_global_mutex::lock() {
 }
 
 void xe_global_mutex::lock_slow() {
-  pid_t self = gettid();
+  uint64_t self = xe_current_thread_id();
 
   // Spin phase
   for (int i = 0; i < XE_LINUX_MUTEX_SPINCOUNT; ++i) {
@@ -170,7 +178,7 @@ void xe_global_mutex::unlock() {
 }
 
 bool xe_global_mutex::try_lock() {
-  pid_t self = gettid();
+  uint64_t self = xe_current_thread_id();
 
   // Check for recursive lock
   if (owner_.load(std::memory_order_relaxed) == self) {

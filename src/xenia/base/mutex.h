@@ -91,7 +91,7 @@ using xe_mutex = xe_fast_mutex;
 // Mimics Windows CRITICAL_SECTION behavior: spin before blocking
 class alignas(4096) xe_global_mutex {
   std::atomic<uint32_t> state_{0};  // 0 = unlocked, 1 = locked, 2 = contended
-  std::atomic<pid_t> owner_{0};
+  std::atomic<uint64_t> owner_{0};  // pthread_self() of the owner, 0 = free
   uint32_t recursion_count_{0};
 
   void lock_slow();
