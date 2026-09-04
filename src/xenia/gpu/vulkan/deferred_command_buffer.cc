@@ -137,6 +137,22 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
         dfn.vkCmdResetQueryPool(command_buffer, args.query_pool,
                                 args.first_query, args.query_count);
       } break;
+      case Command::kVkBeginConditionalRenderingEXT: {
+        auto& args =
+            *reinterpret_cast<const ArgsVkBeginConditionalRenderingEXT*>(
+                stream);
+        VkConditionalRenderingBeginInfoEXT begin_info;
+        begin_info.sType =
+            VK_STRUCTURE_TYPE_CONDITIONAL_RENDERING_BEGIN_INFO_EXT;
+        begin_info.pNext = nullptr;
+        begin_info.buffer = args.buffer;
+        begin_info.offset = args.offset;
+        begin_info.flags = args.flags;
+        dfn.vkCmdBeginConditionalRenderingEXT(command_buffer, &begin_info);
+      } break;
+      case Command::kVkEndConditionalRenderingEXT: {
+        dfn.vkCmdEndConditionalRenderingEXT(command_buffer);
+      } break;
 
       case Command::kVkClearAttachments: {
         auto& args = *reinterpret_cast<const ArgsVkClearAttachments*>(stream);

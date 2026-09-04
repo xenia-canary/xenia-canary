@@ -1173,8 +1173,15 @@ bool VulkanCommandProcessor::SetupContext() {
   }
 
   // Initialize the ZPD occlusion query pool and resources.
-  zpd_host_query_pool_ = std::make_unique<VulkanZPDQueryPool>();
+  zpd_host_query_pool_ =
+      std::make_unique<VulkanOcclusionQueryPool>(/*precise_queries=*/true);
   EnsureZPDQueryResources();
+
+  // VIZ visibility surveys only need zero vs nonzero.
+  // Slots are allocated lazily.
+  viz_host_query_pool_ =
+      std::make_unique<VulkanOcclusionQueryPool>(/*precise_queries=*/false);
+  viz_active_query_ = {};
 
   // Just not to expose uninitialized memory.
   std::memset(&system_constants_, 0, sizeof(system_constants_));
@@ -1190,6 +1197,9 @@ void VulkanCommandProcessor::ShutdownContext() {
 
   ShutdownZPDQueryResources();
   zpd_host_query_pool_.reset();
+
+  ShutdownVIZQueryResources();
+  viz_host_query_pool_.reset();
 
   const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
@@ -1988,7 +1998,8 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
     return;
   }
   if (current_render_pass_ != VK_NULL_HANDLE) {
-    deferred_command_buffer_.CmdVkEndRenderPass();
+    // Close VIZ and ZPD queries along with the pass.
+    EndRenderPass();
   }
   current_render_pass_ = render_pass;
   current_framebuffer_ = framebuffer;
@@ -2017,6 +2028,7 @@ void VulkanCommandProcessor::EndRenderPass() {
   // Close native Vulkan occlusion queries before ending the pass. FSI counter
   // segments don't use vkCmdBeginQuery / vkCmdEndQuery and can stay logically
   // open across render passes.
+  CloseVIZOcclusionSegment();
   if (GetZPDMode() != ZPDMode::kFake && zpd_active_segment_.segment_active &&
       !zpd_active_query_is_fsi_) {
     CloseQuerySegment();
@@ -2031,6 +2043,8 @@ void VulkanCommandProcessor::EndRenderPass() {
   deferred_command_buffer_.CmdVkEndRenderPass();
   current_render_pass_ = VK_NULL_HANDLE;
   current_framebuffer_ = nullptr;
+  // Record any deferred predicate copies.
+  RecordVIZCopies();
 }
 
 VkDescriptorSet VulkanCommandProcessor::AllocateSingleTransientDescriptor(
@@ -2376,20 +2390,39 @@ Shader* VulkanCommandProcessor::LoadShader(xenos::ShaderType shader_type,
   return pipeline_cache_->LoadShader(shader_type, host_address, dword_count);
 }
 
-bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
-                                       uint32_t index_count,
-                                       IndexBufferInfo* index_buffer_info,
-                                       bool major_mode_explicit) {
+bool VulkanCommandProcessor::IssueDraw(
+    xenos::PrimitiveType prim_type, uint32_t index_count,
+    IndexBufferInfo* index_buffer_info, bool major_mode_explicit,
+    VIZQueryDrawResult* viz_query_draw_result) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
+
+  const bool viz_query_draw = viz_query_draw_result != nullptr;
+  viz_survey_draw_active_ = viz_query_draw;
+  if (viz_query_draw_result) {
+    *viz_query_draw_result = VIZQueryDrawResult::kFailed;
+  }
+  auto set_viz_query_draw_result = [&](VIZQueryDrawResult result) {
+    if (viz_query_draw_result) {
+      *viz_query_draw_result = result;
+    }
+  };
+  // Bailing out keeps the sequence visible when the survey can't be measured.
+  auto viz_query_draw_bailout = [&](VIZQueryDrawResult result) {
+    set_viz_query_draw_result(result);
+    NoteVIZDraw(false);
+    return true;
+  };
 
   const RegisterFile& regs = *register_file_;
 
   xenos::EdramMode edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
   if (edram_mode == xenos::EdramMode::kCopy) {
     // Special copy handling.
-    return IssueCopy();
+    return viz_query_draw
+               ? viz_query_draw_bailout(VIZQueryDrawResult::kFallback)
+               : IssueCopy();
   }
 
   if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 0) {
@@ -2408,9 +2441,15 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   auto vertex_shader = static_cast<VulkanShader*>(active_vertex_shader());
   if (!vertex_shader) {
     // Always need a vertex shader.
-    return false;
+    return viz_query_draw
+               ? viz_query_draw_bailout(VIZQueryDrawResult::kFallback)
+               : false;
   }
   pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
+  if (viz_query_draw && vertex_shader->memexport_eM_written() != 0) {
+    // Memexport writes memory, which a survey must not do and can't measure.
+    return viz_query_draw_bailout(VIZQueryDrawResult::kFallback);
+  }
   // TODO(Triang3l): If the shader uses memory export, but
   // vertexPipelineStoresAndAtomics is not supported, convert the vertex shader
   // to a compute shader and dispatch it after the draw if the draw doesn't use
@@ -2420,6 +2459,12 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     draw_util::AddMemExportRanges(regs, *vertex_shader, memexport_ranges_);
   }
 
+  // FSI surveys count through the pixel shader, so they keep it.
+  // FBO surveys drop it and let native queries count coverage.
+  const bool viz_fsi_survey =
+      viz_query_draw && render_target_cache_->GetPath() ==
+                            RenderTargetCache::Path::kPixelShaderInterlock;
+
   // Pixel shader analysis.
   bool primitive_polygonal = draw_util::IsPrimitivePolygonal(regs);
   bool is_rasterization_done =
@@ -2428,7 +2473,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   if (is_rasterization_done) {
     // See xenos::EdramMode for explanation why the pixel shader is only used
     // when it's kColorDepth here.
-    if (edram_mode == xenos::EdramMode::kColorDepth) {
+    if ((!viz_query_draw || viz_fsi_survey) &&
+        edram_mode == xenos::EdramMode::kColorDepth) {
       pixel_shader = static_cast<VulkanShader*>(active_pixel_shader());
       if (pixel_shader) {
         pipeline_cache_->AnalyzeShaderUcode(*pixel_shader);
@@ -2443,10 +2489,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     // cache.
     if (memexport_ranges_.empty()) {
       // This draw has no effect.
+      set_viz_query_draw_result(VIZQueryDrawResult::kEmpty);
       return true;
     }
   }
-  if (pixel_shader && pixel_shader->memexport_eM_written() != 0 &&
+  if (viz_fsi_survey && !pixel_shader) {
+    // Depth-only draw, nothing to count through the pixel shader.
+    return viz_query_draw_bailout(VIZQueryDrawResult::kFallback);
+  }
+  if (viz_query_draw && pixel_shader &&
+      pixel_shader->memexport_eM_written() != 0) {
+    // Surveys don't run the guest's memexport writes.
+    return viz_query_draw_bailout(VIZQueryDrawResult::kFallback);
+  }
+  if (!viz_query_draw && pixel_shader &&
+      pixel_shader->memexport_eM_written() != 0 &&
       device_properties.fragmentStoresAndAtomics) {
     draw_util::AddMemExportRanges(regs, *pixel_shader, memexport_ranges_);
   }
@@ -2482,10 +2539,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
     // Process primitives.
     if (!primitive_processor_->Process(primitive_processing_result)) {
-      return false;
+      return viz_query_draw
+                 ? viz_query_draw_bailout(VIZQueryDrawResult::kFallback)
+                 : false;
     }
     if (!primitive_processing_result.host_draw_vertex_count) {
       // Nothing to draw.
+      set_viz_query_draw_result(VIZQueryDrawResult::kEmpty);
       return true;
     }
     // TODO(Triang3l): Geometry-type-specific vertex shader, vertex shader as
@@ -2503,12 +2563,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
 
     normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);
+    if (viz_query_draw) {
+      // Surveys must not disturb the depth/stencil buffer. Zeroed before the
+      // shader modification below derives from it.
+      normalized_depth_control.z_write_enable = 0;
+      normalized_depth_control.stencil_enable = 0;
+    }
 
     // Compute which color render targets are used.
+    // Surveys only check if anything survived, so no color writes even when the
+    // pixel shader stays.
     normalized_color_mask =
-        pixel_shader ? draw_util::GetNormalizedColorMask(
-                           regs, pixel_shader->writes_color_targets())
-                     : 0;
+        (pixel_shader && !viz_query_draw)
+            ? draw_util::GetNormalizedColorMask(
+                  regs, pixel_shader->writes_color_targets())
+            : 0;
     apply_host_depth_polygon_offset =
         pixel_shader && !pixel_shader->writes_depth() &&
         render_target_cache_->GetPath() ==
@@ -2618,7 +2687,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   if (!render_target_cache_->Update(is_rasterization_done,
                                     normalized_depth_control,
                                     normalized_color_mask, *vertex_shader)) {
-    return false;
+    return viz_query_draw
+               ? viz_query_draw_bailout(VIZQueryDrawResult::kFallback)
+               : false;
   }
 
   // Create the pipeline (for this, need the render pass from the render target
@@ -2784,6 +2855,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferTessellation);
   }
 
+  // The borrowed ZPD slot has to be in the system constants before they upload
+  // and its clear recorded outside a render pass, so FSI surveys open their
+  // segment here instead of at the draw.
+  if (viz_fsi_survey) {
+    UpdateVIZSegment();
+  }
+
   // Update system constants before uploading them.
   UpdateSystemConstantValues(
       primitive_polygonal, primitive_processing_result, shader_32bit_index_dma,
@@ -2926,12 +3004,34 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       render_target_cache_->last_update_render_pass(),
       render_target_cache_->last_update_framebuffer());
 
+  // Consumer VIZ draws run under conditional rendering instead of blocking.
+  VkDeviceSize predicate_offset = 0;
+  const VkBuffer predicate_buffer = BindVIZPredicate(predicate_offset);
+  const auto begin_viz_draw = [&]() {
+    if (render_target_cache_->GetPath() !=
+        RenderTargetCache::Path::kPixelShaderInterlock) {
+      UpdateVIZSegment();
+    }
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      ++viz_stats_.draws_predicated;
+      deferred_command_buffer_.CmdVkBeginConditionalRenderingEXT(
+          predicate_buffer, predicate_offset, 0);
+    }
+  };
+  const auto end_viz_draw = [&]() {
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      deferred_command_buffer_.CmdVkEndConditionalRenderingEXT();
+    }
+  };
+
   // Draw.
   if (primitive_processing_result.index_buffer_type ==
           PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
       shader_32bit_index_dma) {
+    begin_viz_draw();
     deferred_command_buffer_.CmdVkDraw(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
+    end_viz_draw();
   } else {
     std::pair<VkBuffer, VkDeviceSize> index_buffer;
     switch (primitive_processing_result.index_buffer_type) {
@@ -2950,7 +3050,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         break;
       default:
         assert_unhandled_case(primitive_processing_result.index_buffer_type);
-        return false;
+        return viz_query_draw
+                   ? viz_query_draw_bailout(VIZQueryDrawResult::kFallback)
+                   : false;
     }
     deferred_command_buffer_.CmdVkBindIndexBuffer(
         index_buffer.first, index_buffer.second,
@@ -2958,8 +3060,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                 xenos::IndexFormat::kInt16
             ? VK_INDEX_TYPE_UINT16
             : VK_INDEX_TYPE_UINT32);
+    begin_viz_draw();
     deferred_command_buffer_.CmdVkDrawIndexed(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
+    end_viz_draw();
   }
 
   // Invalidate textures in memexported memory and watch for changes.
@@ -3042,6 +3146,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
   }
 
+  set_viz_query_draw_result(VIZQueryDrawResult::kDrawn);
   return true;
 }
 
@@ -3691,6 +3796,12 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
     return QueryOpenResult::kDeferred;
   }
 
+  // Vulkan allows just one active query per command buffer, and a VIZ
+  // survey might be holding it.
+  if (!use_fsi_counter_path) {
+    CloseVIZOcclusionSegment();
+  }
+
   bool retried_after_submission_flip = false;
   while (true) {
     bool is_pool_exhausted = !zpd_host_query_pool_->has_free_indices();
@@ -3983,6 +4094,379 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
          (it->second.pending_segments == 0 && it->second.ended);
 }
 
+void VulkanCommandProcessor::AwaitSubmittedVIZResolve(
+    uint64_t wait_for_submission) {
+  if (wait_for_submission >= GetCurrentSubmission()) {
+    return;
+  }
+
+  if (wait_for_submission > GetCompletedSubmission()) {
+    ++viz_stats_.waits;
+    completion_timeline_.AwaitSubmissionAndUpdateCompleted(wait_for_submission);
+  }
+
+  PumpVIZResolves();
+}
+
+bool VulkanCommandProcessor::EnsureVIZPredicateBuffer() {
+  if (viz_predicate_buffer_ != VK_NULL_HANDLE) {
+    return true;
+  }
+  if (viz_predicate_buffer_failed_) {
+    // Don't retry and relog on every close.
+    return false;
+  }
+
+  const ui::vulkan::VulkanDevice* vulkan_device = GetVulkanDevice();
+  if (!vulkan_device->properties().conditionalRendering) {
+    return false;
+  }
+
+  if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
+          vulkan_device, sizeof(uint32_t) * uint32_t(viz_slots_.size()),
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+              VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT,
+          ui::vulkan::util::MemoryPurpose::kDeviceLocal, viz_predicate_buffer_,
+          viz_predicate_buffer_memory_)) {
+    XELOGE("VIZ/Vulkan: Failed to create the predicate buffer");
+    viz_predicate_buffer_ = VK_NULL_HANDLE;
+    viz_predicate_buffer_memory_ = VK_NULL_HANDLE;
+    viz_predicate_buffer_failed_ = true;
+    return false;
+  }
+
+  return true;
+}
+
+void VulkanCommandProcessor::CloseVIZOcclusionSegment() {
+  // vkCmdEndQuery has to land inside the pass that began the query. FSI
+  // segments have no native query and stay logically open across passes.
+  if (!viz_active_query_.is_fsi) {
+    CloseVIZSegment();
+  }
+}
+
+void VulkanCommandProcessor::RecordVIZCopies() {
+  if (viz_pending_copies_.empty()) {
+    return;
+  }
+
+  if (current_render_pass_ != VK_NULL_HANDLE) {
+    // vkCmdCopyQueryPoolResults isn't valid inside a render pass, so split it
+    // and resume for the draw that needed the predicate value.
+    const VkRenderPass saved_render_pass = current_render_pass_;
+    const VulkanRenderTargetCache::Framebuffer* saved_framebuffer =
+        current_framebuffer_;
+    EndRenderPass();
+    SubmitBarriersAndEnterRenderTargetCacheRenderPass(saved_render_pass,
+                                                      saved_framebuffer);
+    return;
+  }
+
+  // Earlier conditional rendering may still be reading slots, and earlier
+  // copies may still be writing them. Both have to settle first.
+  PushBufferMemoryBarrier(viz_predicate_buffer_, 0, VK_WHOLE_SIZE,
+                          VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT |
+                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+                          VK_PIPELINE_STAGE_TRANSFER_BIT,
+                          VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT |
+                              VK_ACCESS_TRANSFER_WRITE_BIT,
+                          VK_ACCESS_TRANSFER_WRITE_BIT);
+  SubmitBarriers(false);
+  // 32 bit results with the query wait folded into the copy. Non-zero draws.
+  for (const PendingVIZCopy& copy : viz_pending_copies_) {
+    deferred_command_buffer_.CmdVkCopyQueryPoolResults(
+        viz_host_query_pool_->query_pool(), copy.query_index, 1,
+        viz_predicate_buffer_, VkDeviceSize(copy.id) * sizeof(uint32_t),
+        sizeof(uint32_t), VK_QUERY_RESULT_WAIT_BIT);
+  }
+  viz_pending_copies_.clear();
+  // Make the values visible to conditional rendering.
+  PushBufferMemoryBarrier(viz_predicate_buffer_, 0, VK_WHOLE_SIZE,
+                          VK_PIPELINE_STAGE_TRANSFER_BIT,
+                          VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT,
+                          VK_ACCESS_TRANSFER_WRITE_BIT,
+                          VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT);
+}
+
+VkBuffer VulkanCommandProcessor::BindVIZPredicate(VkDeviceSize& offset_out) {
+  const VIZSlot* predicate_slot = GetVIZPredicate();
+  if (!predicate_slot ||
+      !GetVulkanDevice()->properties().conditionalRendering) {
+    return VK_NULL_HANDLE;
+  }
+
+  if (predicate_slot->predicate_uses_interlock_counter) {
+    // The FSI survey borrowed a ZPD FSI counter slot, so conditional rendering
+    // can point straight at that binary value without a query copy.
+    if (!zpd_host_query_pool_ || !zpd_host_query_pool_->fsi_initialized()) {
+      return VK_NULL_HANDLE;
+    }
+    offset_out =
+        VkDeviceSize(predicate_slot->predicate_query_index) * sizeof(uint32_t);
+    return zpd_host_query_pool_->fsi_counter_buffer();
+  }
+
+  if (viz_predicate_buffer_ == VK_NULL_HANDLE) {
+    return VK_NULL_HANDLE;
+  }
+
+  for (const PendingVIZCopy& copy : viz_pending_copies_) {
+    if (copy.id == viz_predicate_draw_.slot_id) {
+      // The value is still queued and this draw needs it, even at the cost of
+      // splitting the pass. Everything queued rides the same split.
+      RecordVIZCopies();
+      break;
+    }
+  }
+
+  offset_out = VkDeviceSize(viz_predicate_draw_.slot_id) * sizeof(uint32_t);
+  return viz_predicate_buffer_;
+}
+
+CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenVIZQuery(
+    uint32_t, uint64_t) {
+  if (render_target_cache_->GetPath() ==
+      RenderTargetCache::Path::kPixelShaderInterlock) {
+    if (!submission_open_) {
+      return QueryOpenResult::kDeferred;
+    }
+    if (!zpd_host_query_pool_ || !zpd_host_query_pool_->fsi_initialized()) {
+      return QueryOpenResult::kFailed;
+    }
+    if (!zpd_host_query_pool_->has_free_indices()) {
+      PumpVIZResolves();
+      PumpQueryResolves();
+      if (!zpd_host_query_pool_->has_free_indices()) {
+        return QueryOpenResult::kPoolExhausted;
+      }
+    }
+
+    uint32_t query_index = UINT32_MAX;
+    uint32_t query_generation = 0;
+    if (!zpd_host_query_pool_->AcquireQueryIndex(query_index,
+                                                 query_generation)) {
+      return QueryOpenResult::kPoolExhausted;
+    }
+
+    // vkCmdFillBuffer can't be recorded inside a render pass.
+    if (current_render_pass_ != VK_NULL_HANDLE) {
+      const VkRenderPass saved_render_pass = current_render_pass_;
+      const VulkanRenderTargetCache::Framebuffer* saved_framebuffer =
+          current_framebuffer_;
+      deferred_command_buffer_.CmdVkEndRenderPass();
+      current_render_pass_ = VK_NULL_HANDLE;
+      current_framebuffer_ = nullptr;
+      zpd_host_query_pool_->ClearFSICounter(deferred_command_buffer_,
+                                            query_index);
+      SubmitBarriersAndEnterRenderTargetCacheRenderPass(saved_render_pass,
+                                                        saved_framebuffer);
+    } else {
+      zpd_host_query_pool_->ClearFSICounter(deferred_command_buffer_,
+                                            query_index);
+    }
+
+    viz_active_query_.query_index = query_index;
+    viz_active_query_.query_generation = query_generation;
+    viz_active_query_.valid = true;
+    viz_active_query_.is_fsi = true;
+    zpd_fsi_counter_index_force_update_ = true;
+    return QueryOpenResult::kOpened;
+  }
+
+  if (!submission_open_ || current_render_pass_ == VK_NULL_HANDLE) {
+    return QueryOpenResult::kDeferred;
+  }
+
+  // Vulkan allows one active occlusion query per command buffer, and ZPD
+  // reports get it first. VIZ falls back rather than fight over it.
+  if (zpd_active_segment_.segment_active && !zpd_active_query_is_fsi_) {
+    return QueryOpenResult::kFailed;
+  }
+
+  if (!viz_host_query_pool_ ||
+      !viz_host_query_pool_->EnsureInitialized(
+          GetVulkanDevice(), kVIZQueryPoolCapacity,
+          !viz_host_query_pool_->has_pending_resolve_batch() &&
+              viz_resolves_in_flight_.empty(),
+          /*initialize_fsi_counter=*/false)) {
+    return QueryOpenResult::kFailed;
+  }
+
+  if (!viz_host_query_pool_->has_free_indices()) {
+    // Free slots from completed submissions before giving up.
+    PumpVIZResolves();
+  }
+
+  uint32_t query_index = UINT32_MAX;
+  uint32_t query_generation = 0;
+  if (!viz_host_query_pool_->AcquireQueryIndex(query_index, query_generation)) {
+    return QueryOpenResult::kPoolExhausted;
+  }
+
+  viz_active_query_.query_index = query_index;
+  viz_active_query_.query_generation = query_generation;
+  viz_active_query_.valid = true;
+  viz_active_query_.is_fsi = false;
+
+  viz_host_query_pool_->BeginQuery(deferred_command_buffer_, query_index);
+  return QueryOpenResult::kOpened;
+}
+
+bool VulkanCommandProcessor::CloseVIZQuery(uint32_t id, uint64_t generation) {
+  if (!viz_active_query_.valid) {
+    return false;
+  }
+
+  const uint32_t query_index = viz_active_query_.query_index;
+  const uint32_t query_generation = viz_active_query_.query_generation;
+  const bool is_fsi = viz_active_query_.is_fsi;
+  viz_active_query_ = {};
+
+  if (is_fsi) {
+    if (!zpd_host_query_pool_ || !zpd_host_query_pool_->fsi_initialized()) {
+      return false;
+    }
+    zpd_fsi_counter_index_force_update_ = true;
+    if (CanArmVIZPredicate(id, generation) &&
+        GetVulkanDevice()->properties().conditionalRendering) {
+      PushBufferMemoryBarrier(zpd_host_query_pool_->fsi_counter_buffer(),
+                              VkDeviceSize(query_index) * sizeof(uint32_t),
+                              sizeof(uint32_t),
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT,
+                              VK_ACCESS_SHADER_WRITE_BIT,
+                              VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT);
+      ArmVIZPredicate(id, generation, query_index,
+                      /*uses_interlock_counter=*/true);
+    } else {
+      DisarmVIZPredicate(id, generation);
+    }
+    zpd_host_query_pool_->QueueQueryResolve(query_index,
+                                            /*uses_fsi_counter=*/true);
+    viz_resolves_in_flight_.push_back({GetCurrentSubmission(), id, generation,
+                                       query_index, query_generation,
+                                       /*uses_interlock_counter=*/true});
+    return true;
+  }
+
+  if (!viz_host_query_pool_) {
+    return false;
+  }
+
+  if (!submission_open_ || current_render_pass_ == VK_NULL_HANDLE) {
+    // Host query reset lets the slot be released without a paired EndQuery.
+    viz_host_query_pool_->ReleaseQueryIndex(query_index, query_generation);
+    return false;
+  }
+
+  viz_host_query_pool_->EndQuery(deferred_command_buffer_, query_index);
+  if (GetVulkanDevice()->properties().conditionalRendering) {
+    if (CanArmVIZPredicate(id, generation) && EnsureVIZPredicateBuffer()) {
+      // The copy into the predicate slot waits for a pass boundary, or for a
+      // consumer draw that can't. For two surveys on the same ID, make sure the
+      // older generation can't be consumed. Reuse its queue entry, don't push
+      // a second one.
+      PendingVIZCopy* queued = nullptr;
+      for (PendingVIZCopy& copy : viz_pending_copies_) {
+        if (copy.id == id) {
+          queued = &copy;
+          break;
+        }
+      }
+      if (queued) {
+        queued->query_index = query_index;
+      } else {
+        viz_pending_copies_.push_back({id, query_index});
+      }
+      ArmVIZPredicate(id, generation, query_index,
+                      /*uses_interlock_counter=*/false);
+    } else {
+      DisarmVIZPredicate(id, generation);
+    }
+  }
+  viz_host_query_pool_->QueueQueryResolve(query_index,
+                                          /*uses_fsi_counter=*/false);
+  viz_resolves_in_flight_.push_back({GetCurrentSubmission(), id, generation,
+                                     query_index, query_generation,
+                                     /*uses_interlock_counter=*/false});
+  return true;
+}
+
+void VulkanCommandProcessor::PumpVIZResolves() {
+  if (const VIZSlot* predicate_slot = GetVIZPredicate();
+      predicate_slot && predicate_slot->predicate_uses_interlock_counter) {
+    // FSI predicates read the counter slot directly. Pumping here could
+    // prematurely release a slot.
+    return;
+  }
+
+  const uint64_t completed = GetCompletedSubmission();
+  if (completed == 0) {
+    return;
+  }
+
+  // Each readback gets one invalidate in case memory isn't host coherent.
+  bool viz_invalidated = false;
+  bool zpd_invalidated = false;
+  while (!viz_resolves_in_flight_.empty()) {
+    if (viz_resolves_in_flight_.front().end_submission > completed) {
+      break;
+    }
+    PendingVIZResolve resolve = viz_resolves_in_flight_.front();
+    viz_resolves_in_flight_.pop_front();
+
+    VulkanOcclusionQueryPool* pool = resolve.uses_interlock_counter
+                                         ? zpd_host_query_pool_.get()
+                                         : viz_host_query_pool_.get();
+    if (!pool) {
+      continue;
+    }
+    if (resolve.uses_interlock_counter) {
+      if (!zpd_invalidated) {
+        zpd_host_query_pool_->InvalidateReadback();
+        zpd_invalidated = true;
+      }
+    } else if (!viz_invalidated) {
+      viz_host_query_pool_->InvalidateReadback();
+      viz_invalidated = true;
+    }
+    if (!pool->GenerationMatches(resolve.query_index,
+                                 resolve.query_generation)) {
+      continue;
+    }
+    const uint64_t raw_value = pool->GetQueryReadbackValue(
+        resolve.query_index, resolve.uses_interlock_counter);
+    pool->ReleaseQueryIndex(resolve.query_index, resolve.query_generation);
+    OnVIZResolved(resolve.slot_id, resolve.slot_sequence_id, raw_value != 0);
+  }
+}
+
+void VulkanCommandProcessor::ShutdownVIZQueryResources() {
+  viz_resolves_in_flight_.clear();
+  viz_active_query_ = {};
+  viz_pending_copies_.clear();
+  viz_survey_draw_active_ = false;
+  if (viz_host_query_pool_) {
+    viz_host_query_pool_->Shutdown();
+  }
+  if (viz_predicate_buffer_ != VK_NULL_HANDLE) {
+    const ui::vulkan::VulkanDevice* vulkan_device = GetVulkanDevice();
+    const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+    const VkDevice device = vulkan_device->device();
+    dfn.vkDestroyBuffer(device, viz_predicate_buffer_, nullptr);
+    viz_predicate_buffer_ = VK_NULL_HANDLE;
+  }
+  if (viz_predicate_buffer_memory_ != VK_NULL_HANDLE) {
+    const ui::vulkan::VulkanDevice* vulkan_device = GetVulkanDevice();
+    const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+    const VkDevice device = vulkan_device->device();
+    dfn.vkFreeMemory(device, viz_predicate_buffer_memory_, nullptr);
+    viz_predicate_buffer_memory_ = VK_NULL_HANDLE;
+  }
+  viz_predicate_buffer_failed_ = false;
+}
+
 void VulkanCommandProcessor::InitializeTrace() {
   CommandProcessor::InitializeTrace();
 
@@ -4010,6 +4494,7 @@ void VulkanCommandProcessor::PollCompletedSubmission() {
   completion_timeline_.AwaitSubmissionAndUpdateCompleted(
       GetCompletedSubmission());
   PumpQueryResolves();
+  PumpVIZResolves();
 }
 
 void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
@@ -4178,6 +4663,8 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
 
   if (is_opening_frame) {
     frame_open_ = true;
+
+    LogVIZStats(frame_current_);
 
     // Swap all readback buffers for delayed sync (one frame behind)
     for (auto& pair : readback_buffers_) {
@@ -4409,6 +4896,8 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
 
     // Can't cross command buffer boundaries. Close the active segment first.
     CloseQuerySegment();
+    // This closes FSI surveys that stay open across passes.
+    CloseVIZSegment();
 
     SubmitBarriers(true);
 
@@ -4432,9 +4921,13 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     }
     deferred_command_buffer_.Execute(command_buffer.buffer);
 
-    // Record ZPD resolves before submitting.
+    // Record ZPD resolves before submitting. VIZ occlusion resolves live in the
+    // VIZ pool; borrowed FSI resolves are flushed by the ZPD batch above.
     if (zpd_host_query_pool_) {
       zpd_host_query_pool_->RecordResolveBatch(command_buffer.buffer);
+    }
+    if (viz_host_query_pool_) {
+      viz_host_query_pool_->RecordResolveBatch(command_buffer.buffer);
     }
 
     if (dfn.vkEndCommandBuffer(command_buffer.buffer) != VK_SUCCESS) {
@@ -4479,6 +4972,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     // Process any ZPD resolves that completed with this submission.
     // Block if strict mode has a pending result waiting on the guest sentinel.
     PumpQueryResolves();
+    PumpVIZResolves();
     PumpPendingRetire();
   }
 
@@ -5159,12 +5653,20 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
   dirty |= system_constants_.alpha_to_mask != alpha_to_mask;
   system_constants_.alpha_to_mask = alpha_to_mask;
 
-  // FSI ZPD counter.
+  // FSI ZPD counter, shared with borrowed VIZ FSI surveys.
   uint32_t zpd_fsi_counter_index = UINT32_MAX;
-  if (edram_fragment_shader_interlock &&
-      zpd_active_query_index_ != UINT32_MAX && zpd_active_query_is_fsi_ &&
-      zpd_host_query_pool_->fsi_initialized()) {
-    zpd_fsi_counter_index = zpd_active_query_index_;
+  if (edram_fragment_shader_interlock) {
+    if (viz_survey_draw_active_) {
+      // Surveys write their borrowed slot, never an open ZPD segment's.
+      if (viz_active_query_.valid && viz_active_query_.is_fsi &&
+          zpd_host_query_pool_->fsi_initialized()) {
+        zpd_fsi_counter_index = viz_active_query_.query_index;
+      }
+    } else if (zpd_active_query_index_ != UINT32_MAX &&
+               zpd_active_query_is_fsi_ &&
+               zpd_host_query_pool_->fsi_initialized()) {
+      zpd_fsi_counter_index = zpd_active_query_index_;
+    }
   }
   dirty |= zpd_fsi_counter_index_force_update_ ||
            system_constants_.zpd_fsi_counter_index != zpd_fsi_counter_index;
