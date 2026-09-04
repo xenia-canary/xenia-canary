@@ -964,85 +964,38 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
 
   uint32_t report_address =
       register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
-  uint32_t report_record_base = XenosZPDReport::GetRecordBase(report_address);
-  bool is_begin_record = XenosZPDReport::IsBeginRecord(report_address);
-  bool is_end_record = XenosZPDReport::IsEndRecord(report_address);
+  // RB_SAMPLE_COUNT_CTL is unused by real hardware.
 
-  xe_gpu_depth_sample_counts* report =
-      report_record_base
-          ? memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-                report_record_base)
-          : nullptr;
-
-  // True if the record has the pending D3D sentinel.
-  // Useful as a hint, but not authoritative for report boundaries.
-  // QueryBatch titles can have multiple pending sentinels in a row and don't
-  // necessarily update in an order we currently observe.
-  bool guest_marks_end = report && XenosZPDReport::HasPendingSentinel(report);
-  bool logical_active = zpd_active_segment_.logical_active;
-
-  // QueryBatch fake fallback, which ignores record layout and just returns an
-  // incrementing sample count on each event.
-  if (cvars::occlusion_query_querybatch_range > 0) {
-    uint32_t sample_count =
-        XenosZPDReport::QueryBatchFakeSamples(querybatch_zpd_sample_count_);
-    if (report) {
-      // Both QueryBatch and conventional fake samples skip elective saturation.
-      XenosZPDReport::WriteSampleCount(report, sample_count, false);
-    }
+  if (!report_address) {
     return true;
   }
 
-  if (GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_) {
-    if (logical_active && is_end_record) {
-      COMMAND_PROCESSOR::EndZPDReport(report_address, false);
-      return true;
-    }
-    if (is_begin_record) {
-      // Clear the record so the game knows the BEGIN was processed and
-      // stale sentinel data from a prior query lifetime doesn't persist.
-      if (report) {
-        std::memset(report, 0, sizeof(xe_gpu_depth_sample_counts));
-      }
-      COMMAND_PROCESSOR::BeginZPDReport(report_address);
-      return true;
-    }
-    if (!logical_active && is_end_record) {
-      // No logical report is active for this slot, so this is likely an
-      // orphaned END. In fast mode, replay the last cached delta so polling
-      // code does not sit on the sentinel forever.
-      if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
-        uint32_t cached_delta = 1;
-        auto cache_it = fast_zpd_report_cached_values_.find(report_record_base);
-        if (cache_it != fast_zpd_report_cached_values_.end()) {
-          cached_delta = cache_it->second;
-        }
-        COMMAND_PROCESSOR::WriteZPDReport(0, report_record_base, 0,
-                                          cached_delta, false);
-      } else {
-        // In strict mode, just pump in case a previous report has resolved.
-        COMMAND_PROCESSOR::PumpQueryResolves();
-      }
-      return true;
-    }
-    // Address is neither BEGIN nor END (non-standard layout). Fall through
-    // to the fake path so the guest at least gets a result written rather
-    // than leaving the sentinel in place forever.
-  }
-
-  // Conventional fake fallback, which only touches records marked as pending.
-  if (cvars::occlusion_query_fake_lower_threshold < 0 || !report_record_base ||
-      !guest_marks_end) {
+  if (zpd_mode_ != ZPDMode::kFake && !zpd_force_fake_fallback_) {
+    // Z-Pass Done (ZPD) facilitates all D3D occlusion queries.
+    // D3D fills the counters (usually ZPass_A + ZPass_B, but some 2005-2006 D3D
+    // versions use ZFail_A + ZFail_B, and sometimes even both counters' B
+    // fields are kept zero) with a swapped 0xFFFFFEED sentinel while counting.
+    // Rather than trying to clumsily infer boundaries here, the command
+    // processor treats each event as a free-running sample counter snapshot.
+    // VIZ_QUERY is a coarse hi-Z visibility test, not strictly an OQ.
+    COMMAND_PROCESSOR::QueueZPDReport(report_address);
     return true;
   }
 
+  // Fake / fallback mode.
+  if (cvars::occlusion_query_fake_lower_threshold < 0) {
+    return true;
+  }
   fake_zpd_sample_count_ =
       (fake_zpd_sample_count_ <=
        static_cast<uint32_t>(cvars::occlusion_query_fake_lower_threshold))
           ? static_cast<uint32_t>(cvars::occlusion_query_fake_upper_threshold)
           : fake_zpd_sample_count_ - 1;
 
-  XenosZPDReport::WriteSampleCount(report, fake_zpd_sample_count_, false);
+  zpd_speculative_sample_counter_ +=
+      XenosZPDReport::FromNativeQuery(fake_zpd_sample_count_);
+  zpd_sample_counter_ = zpd_speculative_sample_counter_;
+  COMMAND_PROCESSOR::WriteZPDReport(report_address, zpd_sample_counter_);
   return true;
 }
 

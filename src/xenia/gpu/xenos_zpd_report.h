@@ -11,153 +11,135 @@
 #define XENIA_GPU_XENOS_ZPD_REPORT_H_
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 
-#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/xenos.h"
 
 namespace xe {
 namespace gpu {
 
-// Guest memory helpers for occlusion query ZPD reports.
+// One EVENT_WRITE_ZPD occlusion query sample counter report.
+//
+// Z-Pass Done (ZPD) reports are a headache to emulate for a few reasons:
+//
+// 1. D3D has two ZPD occlusion query APIs, and some titles use both.
+//    - A conventional query brackets a draw interval within BEGIN and END calls
+//      then reads the result back with GetData.
+//    - QueryBatch writes a cumulative counter snapshot for every Issue call.
+//      Lock readies the snapshot and results are gotten by subtracting adjacent
+//      slots. So N intervals need N + 1 reports:
+//        Issue, draw_A, Issue, draw_B, Issue
+//
+// 2. Xenos doesn't have a hardware counter for each query. EVENT_WRITE_ZPD
+//    writes the counters to RB_SAMPLE_COUNT_ADDR, and D3D subtracts the BEGIN
+//    report from the END report in software to get the sample counts. So we
+//    have to track every interval between writes, including ones that aren't
+//    bracketed by BEGIN and END.
+//
+// 3. Each report contains four counters, each with A and B lanes:
+//    - ZFail: samples that fail depth
+//    - ZPass: samples that pass depth
+//    - StencilFail: samples that fail stencil
+//    - Total: ZFail + ZPass + StencilFail
+//
+//    D3D sums A and B. The exact meaning of the A/B lane split still isn't
+//    known. But for every 50 titles that merely ask for the summed ZPass,
+//    there's one example like 425307EC that masks each lane to 24 bits before
+//    summing, so we need to evenly split the counts. Samples rejected by hi-Z
+//    or hi-stencil aren't included in ZFail or StencilFail respectively.
+//
+// Modern PC GPUs can only count ZPass. For finicky titles that need the other
+// counts, ROV & FSI can count them all in shader at the cost of heavy atomics
+// (see occlusion_query_full_counters) and RTV & FBO can supplement ZPass with
+// pre-test coverage for an approximate Total, but can't distinguish ZFail from
+// StencilFail.
 struct XenosZPDReport {
-  static constexpr uint32_t kRecordSizeBytes = 0x20;
-  static constexpr uint32_t kRecordAlignMask = ~(kRecordSizeBytes - 1);
+  // Host counter buffer slot layout, one slot per pool query index.
+  enum CounterIndex : uint32_t {
+    kTotal,
+    kZFail,
+    kZPass,
+    kStencilFail,
+    kCount,
+  };
+  static constexpr uint32_t kCounterSizeBytes = kCount * sizeof(uint32_t);
 
-  // Each slot holds one BEGIN record and one END record.
-  // END is at the slot base, and BEGIN is +0x20.
-  static constexpr uint32_t kSlotSizeBytes = 0x40;
-  static constexpr uint32_t kSlotAlignMask = ~(kSlotSizeBytes - 1);
+  uint64_t z_fail = 0;
+  uint64_t z_pass = 0;
+  uint64_t stencil_fail = 0;
+  uint64_t total() const { return z_fail + z_pass + stencil_fail; }
 
-  static constexpr uint32_t GetRecordBase(uint32_t address) {
-    return address & kRecordAlignMask;
+  bool operator==(const XenosZPDReport& other) const = default;
+
+  XenosZPDReport& operator+=(const XenosZPDReport& other) {
+    z_fail += other.z_fail;
+    z_pass += other.z_pass;
+    stencil_fail += other.stencil_fail;
+    return *this;
   }
 
-  static constexpr uint32_t GetSlotBase(uint32_t address) {
-    return address & kSlotAlignMask;
+  // Native host occlusion query. ZPass only.
+  static XenosZPDReport FromNativeQuery(uint64_t passed) {
+    XenosZPDReport report;
+    report.z_pass = passed;
+    return report;
+  }
+  // Native query ZPass plus the pre-test coverage counted from Total, if
+  // occlusion_query_full_counters.
+  // Rejected samples go in ZFail - the host can't tell them from StencilFail.
+  static XenosZPDReport FromNativeQueryAndTotal(uint64_t passed,
+                                                uint64_t coverage) {
+    XenosZPDReport report;
+    report.z_pass = passed;
+    report.z_fail = std::max(coverage, passed) - passed;
+    return report;
   }
 
-  static constexpr uint32_t GetBeginRecordBase(uint32_t address) {
-    return GetSlotBase(address) + kRecordSizeBytes;
+  // Counter slot filled by the interlock shaders.
+  static XenosZPDReport FromCounterSlot(const uint32_t* slot) {
+    XenosZPDReport report;
+    report.z_fail = slot[kZFail];
+    report.z_pass = slot[kZPass];
+    report.stencil_fail = slot[kStencilFail];
+    return report;
   }
 
-  static constexpr uint32_t GetEndRecordBase(uint32_t address) {
-    return GetSlotBase(address);
+  // Divides host counts by the draw scale area, rounding to nearest.
+  XenosZPDReport Normalized(uint32_t scale_area) const {
+    auto normalize = [scale_area](uint64_t count) {
+      return scale_area <= 1 || !count
+                 ? count
+                 : std::max<uint64_t>(1,
+                                      (count + (scale_area >> 1)) / scale_area);
+    };
+    XenosZPDReport report;
+    report.z_fail = normalize(z_fail);
+    report.z_pass = normalize(z_pass);
+    report.stencil_fail = normalize(stencil_fail);
+    return report;
   }
 
-  static constexpr bool IsBeginRecord(uint32_t address) {
-    uint32_t record_base = GetRecordBase(address);
-    return record_base && record_base == GetBeginRecordBase(record_base);
-  }
-
-  static constexpr bool IsEndRecord(uint32_t address) {
-    uint32_t record_base = GetRecordBase(address);
-    return record_base && record_base == GetEndRecordBase(record_base);
-  }
-
-  // ZPass is where titles almost always test pending boundaries. Some older
-  // D3D may also check ZFail, so both should be covered. A few titles, like
-  // 4D5307E8, write distinct B values, but this is rare, and still, there
-  // isn't any documented case of B lanes mattering for boundary detection.
-  static bool HasPendingSentinel(
-      const xenos::xe_gpu_depth_sample_counts* report) {
-    constexpr uint32_t kSentinelLE = 0xEDFEFFFFu;
-    constexpr uint32_t kSentinelBE = 0xFFFFFEEDu;
-
-    if (report->ZPass_A == kSentinelLE || report->ZPass_A == kSentinelBE) {
-      return true;
-    }
-    if (report->ZFail_A == kSentinelLE || report->ZFail_A == kSentinelBE) {
-      return true;
-    }
-    return false;
-  }
-
-  // Xenos has real Total/ZFail/StencilFail counters. Total should technically
-  // be the sum of all sample counts, not just copied from ZPass. But host
-  // occlusion queries can only give us the final passing sample count, so
-  // treat that as ZPass_A and mirror it to Total_A for titles that check it.
-  // Theoretically, the EDRAM paths could count ZFail/StencilFail since they
-  // run the emulated depth/stencil test, but that adds more shader work,
-  // atomics, and resolve challenges for counters that haven't been actually
-  // proven to be useful yet. That doesn't mean that titles that test those
-  // counters are unsupported, just that there might be some attenuation
-  // differences from real hardware in ways we can't confirm yet.
-  static void WriteSampleCount(xenos::xe_gpu_depth_sample_counts* report,
-                               uint32_t sample_count, bool saturate = true) {
-    if (saturate) {
-      sample_count = SaturateSampleCount(sample_count);
-    }
-
-    report->Total_A = sample_count;
-    report->Total_B = 0;
-    report->ZFail_A = 0;
-    report->ZFail_B = 0;
-    report->ZPass_A = sample_count;
-    report->ZPass_B = 0;
-    report->StencilFail_A = 0;
-    report->StencilFail_B = 0;
-  }
-
-  static uint32_t SaturateSampleCount(uint32_t sample_count) {
-    double saturation = std::clamp(
-        static_cast<double>(cvars::occlusion_query_saturation), 0.0, 1.0);
-
-    if (sample_count == 0 || saturation >= 1.0) {
-      return sample_count;
-    }
-    if (saturation <= 0.0) {
-      return 1;
-    }
-
-    // Preserve lower sample counts often used for visibility testing and
-    // compress only the higher range used by effects. The knee here is somewhat
-    // arbitrary but seems to provide a good balance of safety and tunability.
-    const double knee = 32.0;
-    if (static_cast<double>(sample_count) <= knee) {
-      return sample_count;
-    }
-
-    const double attenuation = 1.0 - saturation;
-    const double exponent = 1.0 - (1.0 - 0.35) * (attenuation * attenuation *
-                                                  (3.0 - 2.0 * attenuation));
-    double saturated_count =
-        knee + std::pow(static_cast<double>(sample_count) - knee, exponent);
-
-    return static_cast<uint32_t>(saturated_count + 0.5);
-  }
-
-  // Fake mode for titles (425307EC, 4D5309B1) that use QueryBatch and expect
-  // the sample count to accumulate across multiple records.
-  static uint32_t QueryBatchFakeSamples(uint32_t& sample_count) {
-    int32_t lower = cvars::occlusion_query_fake_lower_threshold;
-    uint32_t base = lower > 0 ? static_cast<uint32_t>(lower) : 0;
-    uint32_t range =
-        static_cast<uint32_t>(cvars::occlusion_query_querybatch_range);
-
-    if (sample_count - base >= range) {
-      sample_count = base;
-    }
-
-    uint32_t current_sample_count = sample_count++;
-    if (sample_count - base >= range) {
-      sample_count = base;
-    }
-    return current_sample_count;
-  }
-
-  static void WriteReportDelta(xenos::xe_gpu_depth_sample_counts* begin_report,
-                               xenos::xe_gpu_depth_sample_counts* end_report,
-                               uint32_t begin_value, uint32_t delta_value,
-                               bool write_begin_report) {
-    delta_value = SaturateSampleCount(delta_value);
-    uint32_t end_value = begin_value + delta_value;
-
-    if (write_begin_report && begin_report && end_report != begin_report) {
-      WriteSampleCount(begin_report, begin_value, false);
-    }
-    WriteSampleCount(end_report, end_value, false);
+  // Writes the report to guest memory, each counter split across the A and B
+  // lanes. Low 32 bits only, the hardware counters wrap and so do we.
+  // GetData (usually) wakes on the ZPass lanes and QueryBatch Lock on ZPass_A
+  // or StencilFail_B, so those four are written last, in one copy.
+  void WriteTo(xenos::xe_gpu_depth_sample_counts* guest) const {
+    auto lane_a = [](uint64_t count) {
+      return uint32_t(count) - (uint32_t(count) >> 1);
+    };
+    auto lane_b = [](uint64_t count) { return uint32_t(count) >> 1; };
+    guest->Total_A = lane_a(total());
+    guest->Total_B = lane_b(total());
+    guest->ZFail_A = lane_a(z_fail);
+    guest->ZFail_B = lane_b(z_fail);
+    xenos::xe_gpu_depth_sample_counts values;
+    values.ZPass_A = lane_a(z_pass);
+    values.ZPass_B = lane_b(z_pass);
+    values.StencilFail_A = lane_a(stencil_fail);
+    values.StencilFail_B = lane_b(stencil_fail);
+    std::memcpy(
+        &guest->ZPass_A, &values.ZPass_A,
+        sizeof(values) - offsetof(xenos::xe_gpu_depth_sample_counts, ZPass_A));
   }
 };
 

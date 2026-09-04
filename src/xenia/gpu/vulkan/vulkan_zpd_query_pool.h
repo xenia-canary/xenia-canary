@@ -34,8 +34,7 @@ class DeferredCommandBuffer;
 // when no pass is open and segments split at pass boundaries.
 //
 // Requires VK_EXT_host_query_reset (1.2 core) so slots can be reset on the
-// CPU at release time, no paired vkCmdEndQuery needed, and also allows
-// DiscardZPDQuery work outside a pass.
+// CPU at release time, no paired vkCmdEndQuery needed.
 //
 // VK_QUERY_RESULT_WAIT_BIT in the copy removes the need for a separate
 // availability check. Transfer barrier before InvalidateReadback covers non-
@@ -49,7 +48,7 @@ class VulkanZPDQueryPool {
 
   bool EnsureInitialized(const ui::vulkan::VulkanDevice* vulkan_device,
                          uint32_t requested_capacity, bool can_recreate,
-                         bool initialize_fsi_counter = false);
+                         bool initialize_counter = false);
   void Shutdown();
 
   bool fbo_initialized() const {
@@ -58,23 +57,25 @@ class VulkanZPDQueryPool {
            capacity_ != 0;
   }
 
-  bool fsi_initialized() const {
-    return fsi_counter_buffer_ != VK_NULL_HANDLE &&
-           fsi_counter_memory_ != VK_NULL_HANDLE &&
-           fsi_counter_readback_buffer_ != VK_NULL_HANDLE &&
-           fsi_counter_readback_mapping_ != nullptr && capacity_ != 0;
+  bool counter_initialized() const {
+    return counter_buffer_ != VK_NULL_HANDLE &&
+           counter_memory_ != VK_NULL_HANDLE &&
+           counter_readback_buffer_ != VK_NULL_HANDLE &&
+           counter_readback_mapping_ != nullptr && capacity_ != 0;
   }
 
   uint32_t capacity() const { return capacity_; }
 
   bool has_pending_resolve_batch() const {
     return !resolve_batch_indices_.empty() ||
-           !fsi_counter_resolve_batch_indices_.empty();
+           !counter_resolve_batch_indices_.empty();
   }
 
-  VkBuffer fsi_counter_buffer() const { return fsi_counter_buffer_; }
+  VkBuffer counter_buffer() const { return counter_buffer_; }
 
-  bool has_free_indices() const { return !free_indices_.empty(); }
+  bool has_free_indices() const {
+    return !free_indices_.empty() || !counter_dirty_indices_.empty();
+  }
 
   bool AcquireQueryIndex(uint32_t& query_index, uint32_t& query_generation);
   void ReleaseQueryIndex(uint32_t query_index, uint32_t query_generation);
@@ -84,15 +85,24 @@ class VulkanZPDQueryPool {
                   uint32_t query_index) const;
   void EndQuery(DeferredCommandBuffer& deferred_command_buffer,
                 uint32_t query_index) const;
-  void QueueQueryResolve(uint32_t query_index, bool uses_fsi_counter = false);
-  void ClearFSICounter(DeferredCommandBuffer& deferred_command_buffer,
-                       uint32_t query_index) const;
+  void QueueQueryResolve(uint32_t query_index, bool counter = false);
+  bool has_dirty_counters() const { return !counter_dirty_indices_.empty(); }
+  bool IsCounterDirty(uint32_t query_index) const {
+    return query_index < counter_dirty_.size() &&
+           counter_dirty_[query_index] != 0;
+  }
+  // Clears one acquired slot. Must be recorded outside a render pass.
+  void ClearCounter(DeferredCommandBuffer& deferred_command_buffer,
+                    uint32_t query_index);
+  // Clears every dirty free slot with as few fills as possible. Must be
+  // recorded outside a render pass.
+  void FlushCounterClears(DeferredCommandBuffer& deferred_command_buffer);
   void RecordResolveBatch(VkCommandBuffer command_buffer);
 
   void InvalidateReadback();
 
-  uint64_t GetQueryReadbackValue(uint32_t query_index,
-                                 bool uses_fsi_counter = false) const;
+  XenosZPDReport GetQueryReadbackValue(uint32_t query_index, bool counter,
+                                       bool hybrid) const;
 
  private:
   const ui::vulkan::VulkanDevice* vulkan_device_ = nullptr;
@@ -105,13 +115,17 @@ class VulkanZPDQueryPool {
   // If not HOST_COHERENT, call InvalidateReadback before reading.
   bool readback_is_coherent_ = true;
 
-  VkBuffer fsi_counter_buffer_ = VK_NULL_HANDLE;
-  VkDeviceMemory fsi_counter_memory_ = VK_NULL_HANDLE;
+  VkBuffer counter_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory counter_memory_ = VK_NULL_HANDLE;
 
-  VkBuffer fsi_counter_readback_buffer_ = VK_NULL_HANDLE;
-  VkDeviceMemory fsi_counter_readback_memory_ = VK_NULL_HANDLE;
-  uint32_t* fsi_counter_readback_mapping_ = nullptr;
-  bool fsi_counter_readback_is_coherent_ = true;
+  VkBuffer counter_readback_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory counter_readback_memory_ = VK_NULL_HANDLE;
+  uint32_t* counter_readback_mapping_ = nullptr;
+  bool counter_readback_is_coherent_ = true;
+  // Slots that still hold counts from a previous occupant. Free dirty slots
+  // are listed here rather than in free_indices_.
+  std::vector<uint8_t> counter_dirty_;
+  std::vector<uint32_t> counter_dirty_indices_;
 
   uint32_t capacity_ = 0;
   std::vector<uint32_t> free_indices_;
@@ -119,17 +133,13 @@ class VulkanZPDQueryPool {
   // Bumped on each acquire so stale copies from recycled slots get dropped.
   std::vector<uint32_t> index_generations_;
 
-  std::vector<uint8_t> resolve_batch_pending_;
-  // Active indices with resolve_batch_pending_[i] == 1, so flush iterates
-  // only the active entries instead of scanning the full capacity.
   std::vector<uint32_t> resolve_batch_indices_;
-  std::vector<uint8_t> fsi_counter_resolve_batch_pending_;
-  std::vector<uint32_t> fsi_counter_resolve_batch_indices_;
+  std::vector<uint32_t> counter_resolve_batch_indices_;
   // Reusable scratch for coalesced contiguous ranges during flush.
   std::vector<ResolveRange> resolve_batch_ranges_;
-  // Reusable scratch for FSI counter resolve barriers and copy regions.
-  std::vector<VkBufferMemoryBarrier> fsi_resolve_barrier_scratch_;
-  std::vector<VkBufferCopy> fsi_resolve_copy_scratch_;
+  // Reusable scratch for counter resolve barriers and copy regions.
+  std::vector<VkBufferMemoryBarrier> counter_resolve_barrier_scratch_;
+  std::vector<VkBufferCopy> counter_resolve_copy_scratch_;
 };
 
 }  // namespace vulkan

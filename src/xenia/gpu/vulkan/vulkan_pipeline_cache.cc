@@ -70,11 +70,12 @@ VulkanPipelineCache::VulkanPipelineCache(
     VulkanCommandProcessor& command_processor,
     const RegisterFile& register_file,
     VulkanRenderTargetCache& render_target_cache,
-    VkShaderStageFlags guest_shader_vertex_stages)
+    VkShaderStageFlags guest_shader_vertex_stages, bool zpd_hybrid_supported)
     : command_processor_(command_processor),
       register_file_(register_file),
       render_target_cache_(render_target_cache),
-      guest_shader_vertex_stages_(guest_shader_vertex_stages) {}
+      guest_shader_vertex_stages_(guest_shader_vertex_stages),
+      zpd_hybrid_supported_(zpd_hybrid_supported) {}
 
 VulkanPipelineCache::~VulkanPipelineCache() { Shutdown(); }
 
@@ -101,7 +102,7 @@ bool VulkanPipelineCache::Initialize() {
       render_target_cache_.draw_resolution_scale_x(),
       render_target_cache_.draw_resolution_scale_y());
 
-  if (edram_fragment_shader_interlock) {
+  {
     std::vector<uint8_t> depth_only_fragment_shader_code =
         shader_translator_->CreateDepthOnlyFragmentShader();
     depth_only_fragment_shader_ = ui::vulkan::util::CreateShaderModule(
@@ -112,8 +113,32 @@ bool VulkanPipelineCache::Initialize() {
     if (depth_only_fragment_shader_ == VK_NULL_HANDLE) {
       XELOGE(
           "VulkanPipelineCache: Failed to create the depth/stencil-only "
-          "fragment shader for the fragment shader interlock render backend "
-          "implementation");
+          "fragment shader");
+      return false;
+    }
+  }
+
+  if (zpd_hybrid_supported_) {
+    using DepthStencilMode =
+        SpirvShaderTranslator::Modification::DepthStencilMode;
+    auto build = [&](DepthStencilMode mode, VkShaderModule& out) -> bool {
+      std::vector<uint8_t> code =
+          shader_translator_->CreateDepthOnlyFragmentShader(mode, true);
+      out = ui::vulkan::util::CreateShaderModule(
+          vulkan_device, reinterpret_cast<const uint32_t*>(code.data()),
+          code.size());
+      return out != VK_NULL_HANDLE;
+    };
+    if (!build(DepthStencilMode::kNoModifiers,
+               zpd_total_depth_only_fragment_shader_) ||
+        (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+         (!build(DepthStencilMode::kFloat24Truncating,
+                 zpd_total_float24_truncate_fragment_shader_) ||
+          !build(DepthStencilMode::kFloat24Rounding,
+                 zpd_total_float24_round_fragment_shader_)))) {
+      XELOGE(
+          "VulkanPipelineCache: Failed to create a ZPD Total depth-only "
+          "fragment shader");
       return false;
     }
   }
@@ -330,6 +355,14 @@ void VulkanPipelineCache::Shutdown() {
   // Destroy all internal shaders.
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          depth_only_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
+                                         zpd_total_depth_only_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(
+      dfn.vkDestroyShaderModule, device,
+      zpd_total_float24_truncate_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(
+      dfn.vkDestroyShaderModule, device,
+      zpd_total_float24_round_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          float24_truncate_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
@@ -599,7 +632,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
     const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
     reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
-    VulkanRenderTargetCache::RenderPassKey render_pass_key,
+    VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
     VulkanPipelineCache::Pipeline** pipeline_out) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
@@ -609,7 +642,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
   if (!GetCurrentStateDescription(
           vertex_shader, pixel_shader, primitive_processing_result,
           normalized_depth_control, normalized_color_mask, render_pass_key,
-          description)) {
+          zpd_total, description)) {
     return false;
   }
   if (last_pipeline_ && last_pipeline_->first == description) {
@@ -1201,7 +1234,7 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
     const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
     reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
-    VulkanRenderTargetCache::RenderPassKey render_pass_key,
+    VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
     PipelineDescription& description_out) const {
   description_out.Reset();
 
@@ -1220,6 +1253,7 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
     description_out.pixel_shader_modification = pixel_shader->modification();
   }
   description_out.render_pass_key = render_pass_key;
+  description_out.zpd_total = uint32_t(zpd_total);
 
   // TODO(Triang3l): Implement primitive types currently using geometry shaders
   // without them.
@@ -1442,6 +1476,10 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
 
 bool VulkanPipelineCache::ArePipelineRequirementsMet(
     const PipelineDescription& description) const {
+  if (description.zpd_total && !zpd_hybrid_supported_) {
+    return false;
+  }
+
   VkShaderStageFlags vertex_shader_stage =
       Shader::IsHostVertexShaderTypeDomain(
           SpirvShaderTranslator::Modification(
@@ -2765,7 +2803,22 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
         creation_arguments.pixel_shader->shader_module();
     assert_true(shader_stage_fragment.module != VK_NULL_HANDLE);
   } else {
-    if (edram_fragment_shader_interlock) {
+    if (description.zpd_total) {
+      // Native ZPD query without a guest pixel shader.
+      // Coverage still has to be counted.
+      shader_stage_fragment.module = zpd_total_depth_only_fragment_shader_;
+      if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
+          (description.depth_write_enable ||
+           description.depth_compare_op != xenos::CompareFunction::kAlways) &&
+          (description.render_pass_key.depth_and_color_used & 0b1) &&
+          description.render_pass_key.depth_format ==
+              xenos::DepthRenderTargetFormat::kD24FS8) {
+        shader_stage_fragment.module =
+            render_target_cache_.depth_float24_round()
+                ? zpd_total_float24_round_fragment_shader_
+                : zpd_total_float24_truncate_fragment_shader_;
+      }
+    } else if (edram_fragment_shader_interlock) {
       shader_stage_fragment.module = depth_only_fragment_shader_;
     } else if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
                (description.depth_write_enable ||
@@ -2780,6 +2833,12 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       shader_stage_fragment.module = render_target_cache_.depth_float24_round()
                                          ? float24_round_fragment_shader_
                                          : float24_truncate_fragment_shader_;
+    } else if (!description.depth_write_enable) {
+      // Bind an empty PS to force rasterization.
+      // D3D drops PS-less draws without depth/stencil writes,
+      // breaking occlusion queries (4541096E, 5553083B).
+      // Vulkan stencil write mask is dynamic state. Only check depth.
+      shader_stage_fragment.module = depth_only_fragment_shader_;
     }
   }
   if (shader_stage_fragment.module == VK_NULL_HANDLE) {
@@ -3247,8 +3306,11 @@ void VulkanPipelineCache::InitializeShaderStorage(
 
   ShaderStorageWriter<PipelineStoredDescription>::PipelineStorageConfig
       pipeline_config;
-  pipeline_config.file_suffix =
-      fmt::format(".{}.vk.xpso", edram_fsi_used ? "fsi" : "fbo");
+  // Full ZPD counters change every FSI fragment shader, so they get their own
+  // storage.
+  pipeline_config.file_suffix = fmt::format(
+      ".{}{}.vk.xpso", edram_fsi_used ? "fsi" : "fbo",
+      edram_fsi_used && cvars::occlusion_query_full_counters ? "-fc" : "");
   pipeline_config.api_magic = kPipelineStorageAPIMagicVulkan;
   pipeline_config.version =
       std::max(PipelineDescription::kVersion,

@@ -32,9 +32,7 @@ DECLARE_int32(occlusion_query_fake_lower_threshold);
 
 DECLARE_int32(occlusion_query_fake_upper_threshold);
 
-DECLARE_int32(occlusion_query_querybatch_range);
-
-DECLARE_double(occlusion_query_saturation);
+DECLARE_bool(occlusion_query_full_counters);
 
 DECLARE_int32(anisotropic_override);
 
