@@ -53,6 +53,12 @@ void ContentListDialog::Initialize() {
           .path = package->GetPackageHostPath(),
       };
 
+      if (package->GetContainerMetadata()->content_type ==
+          XContentType::kInstaller) {
+        content_entry.version = format_version(static_cast<xex2_version>(
+            package->GetContainerHeader()->extra_fields.installer_version));
+      }
+
       content_entry.title_name = package->GetContainerMetadata()->title_name();
 
       std::vector<uint8_t> buffer{};
@@ -137,6 +143,10 @@ void ContentListDialog::OnEntryDraw(ImGuiIO& io, const XContentType type,
   ImGui::Text("Content Installation Type: %s",
               entry.is_package ? "Package" : "Directory");
   ImGui::Text("Installation Size: %s", size_to_string(entry.size).c_str());
+
+  if (entry.version) {
+    ImGui::Text("Version: %s", entry.version.value().c_str());
+  }
 
   // Third Column
   ImGui::TableNextColumn();

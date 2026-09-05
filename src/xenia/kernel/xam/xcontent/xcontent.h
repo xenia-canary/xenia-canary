@@ -313,7 +313,6 @@ struct XContentHeader {
   }
 };
 static_assert_size(XContentHeader, 0x344);
-#pragma pack(pop)
 
 struct XContentContainerHeader {
   XContentHeader content_header;
@@ -331,7 +330,16 @@ struct XContentContainerHeader {
 
   // Custom extension for Xenia to handle savefiles with janky filenames. Like
   // trailing space in filename.
-  char file_name_raw[42];
+  union {
+    char file_name_raw[42];
+
+    struct {
+      char magic[4];
+      be<uint32_t> base_version;
+      be<uint32_t> installer_version;
+      char unused[30];
+    } extra_fields;
+  };
 
   std::string file_name() const {
     std::string value;
@@ -348,7 +356,9 @@ struct XContentContainerHeader {
         file_name_raw, value, xe::countof(file_name_raw));
   }
 };
-static_assert_size(XContentContainerHeader, 0x971A + 42);
+static_assert_size(XContentContainerHeader,
+                   sizeof(XContentHeader) + sizeof(XContentMetadata) + 42);
+#pragma pack(pop)
 
 struct XCONTENT_DATA {
   be<uint32_t> device_id;         // 0x0 sz:0x4
