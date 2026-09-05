@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include "xenia/cpu/processor.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xthread.h"
@@ -40,22 +41,31 @@ enum class XMicState : uint32_t {
 };
 
 struct X_MIC_INFO {
-  xe::be<XMicRequestType> request_type;
-  xe::be<uint16_t> user_index;
-  xe::be<XMicState> state;  // 8
+  xe::be<XMicRequestType> request_type;  // 0
+  xe::be<uint16_t> user_index;           // 2
+  xe::be<XMicState> state;               // 4
 
-  xe::be<uint64_t> unk1;  // 16
-  xe::be<uint64_t> unk2;  // 24
+  // These fields are only for requests that use overlap. Basically anything
+  // other than MicGetStatus. Seems like there is also an event object which
+  // creation isn't reported via kernel call.
+  xe::be<uint32_t> unk1;            // 8
+  xe::be<uint32_t> event_ptr;       // 0xC
+  xe::be<uint32_t> completion_ptr;  // 0x10
+  xe::be<uint32_t> unk4;            // 0x14
 };
 
 struct X_MIC_CAPABILITIES {
+  /* Hardcoded fields for 0x6000 type aka. MicDevice. 0x5000 type (Rmc) does not
+    have any hardcoded fields. features - 0 frame_length - 0x3E8 mic_color -
+    0xFF
+  */
   xe::be<uint32_t> features;
-  xe::be<uint16_t> format_tag;
+  xe::be<uint16_t> format_tag;  // Always 1
   xe::be<uint16_t> channels;
   xe::be<uint32_t> sample_rates;
   xe::be<uint16_t> bits_per_sample;
-  xe::be<uint16_t> frame_length;  // 0xE
-  xe::be<uint8_t> mic_color;      // 0x10
+  xe::be<uint16_t> frame_length;
+  xe::be<uint8_t> mic_color;
   xe::be<uint16_t> vendor_id;
   xe::be<uint16_t> product_id;
   xe::be<uint16_t> revision;
@@ -65,6 +75,7 @@ static_assert_size(X_MIC_CAPABILITIES, 0x1C);
 
 struct X_MIC_DEVICE {
   X_MIC_INFO info;
+  // There seems to be one huge union here that depends on the request type.
   X_MIC_CAPABILITIES capabilities;
 };
 
@@ -128,15 +139,16 @@ dword_result_t MicDeviceRequest_entry(pointer_t<X_MIC_DEVICE> device_ptr) {
     return X_STATUS_INVALID_DEVICE_REQUEST;
   }
 
+  device_ptr->info.state = cvars::allow_mic_initialization
+                               ? XMicState::MicConnected
+                               : XMicState::MicNotConnected;
+
   switch (device_ptr->info.request_type) {
     case XMicRequestType::MicGetStatus:
-      device_ptr->info.state = cvars::allow_mic_initialization
-                                   ? XMicState::MicConnected
-                                   : XMicState::MicNotConnected;
       return X_ERROR_SUCCESS;
     case XMicRequestType::MicStart:
-      break;
     case XMicRequestType::MicGetData:
+    case XMicRequestType::MicGetSampleRates:
       break;
     case XMicRequestType::MicGetCapabilities:
       device_ptr->capabilities.features = 0x100;
@@ -145,6 +157,18 @@ dword_result_t MicDeviceRequest_entry(pointer_t<X_MIC_DEVICE> device_ptr) {
       break;
     default:
       break;
+  }
+
+  // This should be handled by DPC.
+  if (device_ptr->info.completion_ptr) {
+    // Not sure what args should be put there, but seems like negative r4 causes
+    // instant bailout. For now leave it hardcoded to failure.
+    uint64_t args[] = {device_ptr.guest_address(),
+                       static_cast<uint64_t>(X_STATUS_UNSUCCESSFUL)};
+
+    kernel_state()->processor()->Execute(
+        XThread::GetCurrentThread()->thread_state(),
+        device_ptr->info.completion_ptr, args, xe::countof(args));
   }
 
   return X_STATUS_PENDING;
