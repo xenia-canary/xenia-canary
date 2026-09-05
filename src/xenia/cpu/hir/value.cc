@@ -830,17 +830,18 @@ void Value::RotateLeft(Value* other) {
 void Value::Extract(Value* vec, Value* index) {
   assert_true(vec->type == VEC128_TYPE);
   switch (type) {
+    // Guest element numbers need the backends' VEC128_B/W flip.
     case INT8_TYPE:
-      constant.u8 = vec->constant.v128.u8[index->constant.u8 & 0x1F];
+      constant.u8 = vec->constant.v128.u8[(index->constant.u8 & 0xF) ^ 3];
       break;
     case INT16_TYPE:
-      constant.u16 = vec->constant.v128.u16[index->constant.u16 & 0x7];
+      constant.u16 = vec->constant.v128.u16[(index->constant.u8 & 0x7) ^ 1];
       break;
     case INT32_TYPE:
-      constant.u32 = vec->constant.v128.u32[index->constant.u32 & 0x3];
+      constant.u32 = vec->constant.v128.u32[index->constant.u8 & 0x3];
       break;
     case INT64_TYPE:
-      constant.u64 = vec->constant.v128.u64[index->constant.u64 & 0x1];
+      constant.u64 = vec->constant.v128.u64[index->constant.u8 & 0x1];
       break;
     default:
       assert_unhandled_case(type);
@@ -1006,17 +1007,29 @@ void Value::VectorCompareEQ(Value* other, TypeName type) {
       }
       break;
     case INT32_TYPE:
-    case FLOAT32_TYPE:
       for (int i = 0; i < 4; i++) {
         constant.v128.u32[i] =
             constant.v128.u32[i] == other->constant.v128.u32[i] ? -1 : 0;
       }
       break;
     case INT64_TYPE:
-    case FLOAT64_TYPE:
       for (int i = 0; i < 2; i++) {
         constant.v128.u64[i] =
             constant.v128.u64[i] == other->constant.v128.u64[i] ? -1 : 0;
+      }
+      break;
+    // Float compares are unordered and treat the two zeroes as equal, which
+    // a bitwise compare gets wrong both ways.
+    case FLOAT32_TYPE:
+      for (int i = 0; i < 4; i++) {
+        constant.v128.u32[i] =
+            constant.v128.f32[i] == other->constant.v128.f32[i] ? -1 : 0;
+      }
+      break;
+    case FLOAT64_TYPE:
+      for (int i = 0; i < 2; i++) {
+        constant.v128.u64[i] =
+            constant.v128.f64[i] == other->constant.v128.f64[i] ? -1 : 0;
       }
       break;
     default:

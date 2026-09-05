@@ -104,11 +104,11 @@ struct VECTOR_CONVERT_F2I
         Opmask mask = e.k1;
         // Mask non-negative, non-NaN values (ordered, >= 0)
         // _CMP_GE_OQ
-        e.vcmpps(mask, i.src1, e.GetXmmConstPtr(XMMZero), 0x1D);
+        e.vcmpps(mask, src1, e.GetXmmConstPtr(XMMZero), 0x1D);
 
         // vcvttps2udq will saturate overflowing positive values to UINT_MAX.
         // Zero-masking writes zero for negative values and NaN
-        e.vcvttps2udq(i.dest.reg() | mask | e.T_z, i.src1);
+        e.vcvttps2udq(i.dest.reg() | mask | e.T_z, src1);
         return;
       }
 
@@ -458,21 +458,23 @@ struct VECTOR_COMPARE_SGE_V128
                 break;
             }
           } else {
+            // Not xmm0: EmitAssociativeBinaryXmmOp materializes a constant
+            // operand there, and both compares read it.
             switch (i.instr->flags) {
               case INT8_TYPE:
-                e.vpcmpeqb(e.xmm0, src1, src2);
+                e.vpcmpeqb(e.xmm1, src1, src2);
                 e.vpcmpgtb(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case INT16_TYPE:
-                e.vpcmpeqw(e.xmm0, src1, src2);
+                e.vpcmpeqw(e.xmm1, src1, src2);
                 e.vpcmpgtw(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case INT32_TYPE:
-                e.vpcmpeqd(e.xmm0, src1, src2);
+                e.vpcmpeqd(e.xmm1, src1, src2);
                 e.vpcmpgtd(dest, src1, src2);
-                e.vpor(dest, e.xmm0);
+                e.vpor(dest, e.xmm1);
                 break;
               case FLOAT32_TYPE:
                 e.ChangeMxcsrMode(MXCSRMode::Vmx);
@@ -2207,13 +2209,16 @@ struct EXTRACT_I8
     : Sequence<EXTRACT_I8, I<OPCODE_EXTRACT, I8Op, V128Op, I8Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     if (i.src2.is_constant) {
-      e.vpextrb(i.dest.reg().cvt32(), i.src1, VEC128_B(i.src2.constant()));
+      Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+      e.vpextrb(i.dest.reg().cvt32(), src1, VEC128_B(i.src2.constant()));
     } else {
+      // Not xmm0: that holds the shuffle control below.
+      Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm1);
       e.mov(e.eax, 0x00000003);
       e.xor_(e.al, i.src2);
       e.and_(e.al, 0x1F);
       e.vmovd(e.xmm0, e.eax);
-      e.vpshufb(e.xmm0, i.src1, e.xmm0);
+      e.vpshufb(e.xmm0, src1, e.xmm0);
       e.vmovd(i.dest.reg().cvt32(), e.xmm0);
       e.and_(i.dest, uint8_t(0xFF));
     }
@@ -2223,15 +2228,18 @@ struct EXTRACT_I16
     : Sequence<EXTRACT_I16, I<OPCODE_EXTRACT, I16Op, V128Op, I8Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     if (i.src2.is_constant) {
-      e.vpextrw(i.dest.reg().cvt32(), i.src1, VEC128_W(i.src2.constant()));
+      Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+      e.vpextrw(i.dest.reg().cvt32(), src1, VEC128_W(i.src2.constant()));
     } else {
+      // Not xmm0: that holds the shuffle control below.
+      Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm1);
       e.mov(e.al, i.src2);
       e.xor_(e.al, 0x01);
       e.shl(e.al, 1);
       e.mov(e.ah, e.al);
       e.add(e.ah, 1);
       e.vmovd(e.xmm0, e.eax);
-      e.vpshufb(e.xmm0, i.src1, e.xmm0);
+      e.vpshufb(e.xmm0, src1, e.xmm0);
       e.vmovd(i.dest.reg().cvt32(), e.xmm0);
       e.and_(i.dest.reg().cvt32(), 0xFFFFu);
     }
@@ -3026,7 +3034,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
           auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
+          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
 
 #if XE_PLATFORM_WIN32
           // Windows x64 ABI: __m128i is passed by implicit pointer
@@ -3044,7 +3052,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         } else {
           // unsigned -> unsigned
           auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm4);
+          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
 
 #if XE_PLATFORM_WIN32
           // Windows x64 ABI: __m128i is passed by implicit pointer
