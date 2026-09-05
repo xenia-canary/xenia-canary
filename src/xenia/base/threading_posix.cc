@@ -150,8 +150,7 @@ void MaybeYield() {
 
 void SyncMemory() { __sync_synchronize(); }
 
-void Sleep(std::chrono::microseconds duration) {
-  timespec rqtp = DurationToTimeSpec(duration);
+static void SleepFor(timespec rqtp) {
   timespec rmtp = {};
   auto p_rqtp = &rqtp;
   auto p_rmtp = &rmtp;
@@ -164,7 +163,19 @@ void Sleep(std::chrono::microseconds duration) {
   } while (ret == -1 && errno == EINTR);
 }
 
-void NanoSleep(int64_t duration) { Sleep(std::chrono::nanoseconds(duration)); }
+void Sleep(std::chrono::microseconds duration) {
+  SleepFor(DurationToTimeSpec(duration));
+}
+
+void NanoSleep(int64_t duration) {
+  // Not Sleep(nanoseconds(duration)): the conversion to microseconds
+  // truncates, so anything under 1000 ns became nanosleep(0).
+  if (duration <= 0) {
+    return;
+  }
+  SleepFor({static_cast<time_t>(duration / 1000000000LL),
+            static_cast<long>(duration % 1000000000LL)});
+}
 
 void NanoSleepPrecise(int64_t ns) {
 #if XE_PLATFORM_MAC
@@ -749,8 +760,11 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     uint64_t result = 0;
     auto cpu_count = std::min(CPU_SETSIZE, 64);
     for (auto i = 0u; i < cpu_count; i++) {
-      auto set = CPU_ISSET(i, &cpu_set);
-      result |= set << i;
+      // CPU_ISSET returns int, so `set << i` was an int shift: undefined from
+      // bit 31 and wrapping above it.
+      if (CPU_ISSET(i, &cpu_set)) {
+        result |= uint64_t(1) << i;
+      }
     }
     return result;
   }
@@ -760,7 +774,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     cpu_set_t cpu_set;
     CPU_ZERO(&cpu_set);
     for (auto i = 0u; i < 64; i++) {
-      if (mask & (1 << i)) {
+      if (mask & (uint64_t(1) << i)) {
         CPU_SET(i, &cpu_set);
       }
     }
@@ -921,12 +935,13 @@ class PosixCondition<Thread> final : public PosixConditionBase {
       std::unique_lock lock(state_mutex_);
       if (state_ == State::kFinished) {
         if (is_current_thread) {
-          // This is really bad. Some thread must have called Terminate() on us
-          // just before we decided to terminate ourselves
-          assert_always();
-          for (;;) {
-            // Wait for pthread_cancel() to actually happen.
-          }
+          // Another thread's Terminate() raced ours and already marked us
+          // finished. Its pthread_cancel is not guaranteed to arrive, and
+          // this loop burned a core waiting for it. Leave under our own
+          // power instead.
+          XELOGW("PosixThread::Terminate: thread was already finished");
+          lock.unlock();
+          pthread_exit(reinterpret_cast<void*>(exit_code));
         }
         return;
       }
@@ -967,10 +982,20 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   /// without risking deadlock or heap corruption from non-reentrant
   /// mutex/condvar operations.
   void WaitSuspended() {
-    int ret;
-    do {
-      ret = sem_wait(&suspend_sem_);
-    } while (ret == -1 && errno == EINTR);
+    // The suspend signal does not queue, and a Resume() whose sem_post lands
+    // before the signal is delivered leaves a token behind. Re-check the
+    // count rather than trusting one token, or that stale post releases the
+    // next suspend immediately.
+    while (suspend_count_.load(std::memory_order_acquire) > 0) {
+      int ret;
+      do {
+        ret = sem_wait(&suspend_sem_);
+      } while (ret == -1 && errno == EINTR);
+      if (ret == -1) {
+        // The semaphore is gone (the thread has been joined). Do not spin.
+        break;
+      }
+    }
   }
 
   void* native_handle() const override {
@@ -981,19 +1006,26 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   static void* ThreadStartRoutine(void* parameter);
   bool signaled() const override { return signaled_; }
   void post_execution() override {
-    if (thread_) {
+    // Every wait that a thread handle satisfies used to land here, so a
+    // handle waited on twice joined the same thread twice, which is
+    // undefined once the id can be reused, and tore down the suspend
+    // semaphore each time rather than once after the join.
+    bool expected = false;
+    if (thread_ && joined_.compare_exchange_strong(expected, true)) {
       pthread_join(thread_, nullptr);
+      sem_destroy(&suspend_sem_);
     }
-    sem_destroy(&suspend_sem_);
   }
   pthread_t thread_;
   pid_t tid_ = 0;                     // Kernel TID for setpriority() fallback
   mutable bool fifo_failed_ = false;  // True after SCHED_FIFO was rejected
   bool signaled_;
   int exit_code_;
-  State state_;             // Protected by state_mutex_
-  uint32_t suspend_count_;  // Protected by state_mutex_
-  sem_t suspend_sem_;       // Async-signal-safe suspend/resume semaphore
+  State state_;  // Protected by state_mutex_
+  // Written under state_mutex_, but read from the suspend signal handler.
+  std::atomic<uint32_t> suspend_count_;
+  std::atomic<bool> joined_{false};  // Prevents a second pthread_join
+  sem_t suspend_sem_;  // Async-signal-safe suspend/resume semaphore
   mutable std::mutex state_mutex_;
   mutable std::mutex callback_mutex_;
   mutable std::condition_variable state_signal_;
