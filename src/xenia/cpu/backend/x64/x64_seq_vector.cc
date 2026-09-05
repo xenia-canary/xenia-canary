@@ -975,20 +975,19 @@ struct VECTOR_SHL_V128
           return;
         }
 
+        // Mask the shift counts to 3 bits before widening so the scratch
+        // stays inside xmm0-3 (since ymm4 aliases an allocatable register)
+        e.vpand(e.xmm2, i.src2, e.GetXmmConstPtr(XMMXOPByteShiftMask));
+
         // get high 8 bytes
         e.vpunpckhqdq(e.xmm1, i.src1, i.src1);
-        e.vpunpckhqdq(e.xmm3, i.src2, i.src2);
+        e.vpunpckhqdq(e.xmm3, e.xmm2, e.xmm2);
 
         e.vpmovzxbd(e.ymm0, i.src1);
         e.vpmovzxbd(e.ymm1, e.xmm1);
 
-        e.vpmovzxbd(e.ymm2, i.src2);
+        e.vpmovzxbd(e.ymm2, e.xmm2);
         e.vpmovzxbd(e.ymm3, e.xmm3);
-
-        // Mask shift counts to 3 bits (0-7) for byte shifts
-        e.vpbroadcastd(e.ymm4, e.GetXmmConstPtr(XMMXOPByteShiftMask));
-        e.vpand(e.ymm2, e.ymm2, e.ymm4);
-        e.vpand(e.ymm3, e.ymm3, e.ymm4);
 
         e.vpsllvd(e.ymm0, e.ymm0, e.ymm2);
         e.vpsllvd(e.ymm1, e.ymm1, e.ymm3);
