@@ -490,10 +490,6 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   // Frame header split across packet boundary — combine packets to read
   // the full 15-bit header and resolve the real frame size.
-  // Only detected for XMA2 packets where the header provides an authoritative
-  // frame count. XMA1 packets lack a frame count field so split headers
-  // cannot be detected — if XMA1 encoders can produce them, those frames
-  // will still be silently lost.
   if (packet_info.current_frame_size_ == 0) {
     XELOGAPU(
         "XmaContext {}: Split frame header at packet {} boundary, "
@@ -840,6 +836,17 @@ const kPacketInfo XmaContextNew::GetPacketInfo(uint8_t* packet,
 
   while (true) {
     if (stream.BitsRemaining() < kBitsPerFrameHeader) {
+      // This frame's 15-bit header runs into the next packet, so its size
+      // isn't readable yet. Count it anyway, or the caller takes the previous
+      // frame for the packet's last and skips straight past this one. Size 0
+      // sends it to the split-header path.
+      if (stream.BitsRemaining() > 0) {
+        if (stream.offset_bits() == frame_offset) {
+          packet_info.current_frame_ = packet_info.frame_count_;
+          packet_info.current_frame_size_ = 0;
+        }
+        packet_info.frame_count_++;
+      }
       break;
     }
 
