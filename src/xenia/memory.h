@@ -180,10 +180,18 @@ class BaseHeap {
   // Allocates pages at an address within the given address range.
   // This can reserve and commit the pages as well as set protection modes.
   // This will fail if not enough contiguous pages can be found.
+  // alignment_phase shifts the alignment grid the search scans: the returned
+  // address satisfies (address - heap_base_) % alignment == alignment_phase
+  // instead of == 0. Used by PhysicalHeap to compensate for a heap-specific
+  // constant offset between its own addressing and its parent heap's, so
+  // the parent search lands on a page that translates back to a correctly
+  // aligned child address. Must be a multiple of page_size_ and < alignment;
+  // 0 (the default) reproduces the original phase-0 behavior exactly.
   virtual bool AllocRange(uint32_t low_address, uint32_t high_address,
                           uint32_t size, uint32_t alignment,
                           uint32_t allocation_type, uint32_t protect,
-                          bool top_down, uint32_t* out_address);
+                          bool top_down, uint32_t* out_address,
+                          uint32_t alignment_phase = 0);
 
   virtual bool AllocSystemHeap(uint32_t size, uint32_t alignment,
                                uint32_t allocation_type, uint32_t protect,
@@ -290,8 +298,8 @@ class PhysicalHeap : public BaseHeap {
                   uint32_t allocation_type, uint32_t protect) override;
   bool AllocRange(uint32_t low_address, uint32_t high_address, uint32_t size,
                   uint32_t alignment, uint32_t allocation_type,
-                  uint32_t protect, bool top_down,
-                  uint32_t* out_address) override;
+                  uint32_t protect, bool top_down, uint32_t* out_address,
+                  uint32_t alignment_phase = 0) override;
   bool AllocSystemHeap(uint32_t size, uint32_t alignment,
                        uint32_t allocation_type, uint32_t protect,
                        bool top_down, uint32_t* out_address) override;

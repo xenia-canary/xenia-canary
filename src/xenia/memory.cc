@@ -1196,7 +1196,8 @@ static inline T QuickMod(T value, uint32_t modv) {
 bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
                           uint32_t size, uint32_t alignment,
                           uint32_t allocation_type, uint32_t protect,
-                          bool top_down, uint32_t* out_address) {
+                          bool top_down, uint32_t* out_address,
+                          uint32_t alignment_phase) {
   *out_address = 0;
 
   alignment = xe::round_up(alignment, page_size_);
@@ -1219,10 +1220,18 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   auto global_lock = global_critical_region_.Acquire();
 
   // Find a free page range using the free block tracker.
-  // The base page must match the requested alignment.
+  // The base page must match the requested alignment, shifted by
+  // alignment_phase (see the declaration comment in memory.h).
   uint32_t start_page_number = UINT_MAX;
   uint32_t end_page_number = UINT_MAX;
   uint32_t page_scan_stride = alignment >> page_size_shift_;
+  uint32_t phase_pages = alignment_phase >> page_size_shift_;
+  // The phase-shifted stride math below assumes a power-of-two stride (it
+  // relies on QuickMod's mask path to fold the unsigned wraparound). Only
+  // PhysicalHeap passes a non-zero phase, and only ever with power-of-two
+  // alignments, so this holds there. When phase_pages == 0 the alignment
+  // search stays bit-for-bit identical to the unshifted original.
+  assert_true(phase_pages == 0 || xe::is_pow2(page_scan_stride));
 
   if (top_down) {
     // Search free blocks from high addresses downward.
@@ -1245,17 +1254,19 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
       }
 
       // Compute the highest aligned start within this block and range.
-      // high_page_number is exclusive and rounded down to the stride, so
-      // the top stride of pages is never returned.
+      // high_page_number is exclusive and rounded down to a stride boundary
+      // (offset by phase_pages), so the top stride of pages is never
+      // returned. With phase_pages == 0 this is the plain round-down.
       uint32_t high_aligned =
-          high_page_number - QuickMod(high_page_number, page_scan_stride);
+          high_page_number -
+          QuickMod(high_page_number - phase_pages, page_scan_stride);
       uint32_t usable_end = std::min(block_end, high_aligned);
       if (usable_end < page_count) {
         continue;
       }
       uint32_t latest_start = usable_end - page_count;
-      // Align down to stride.
-      latest_start -= QuickMod(latest_start, page_scan_stride);
+      // Align down to stride (phase-shifted).
+      latest_start -= QuickMod(latest_start - phase_pages, page_scan_stride);
       uint32_t usable_start = std::max(block_start, low_page_number);
       if (latest_start >= usable_start &&
           latest_start + page_count <= block_end) {
@@ -1293,7 +1304,17 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
       // high_page_number is treated as exclusive — the page at
       // high_page_number itself is never returned.
       uint32_t earliest = std::max(block_start, low_page_number);
-      uint32_t aligned_start = xe::round_up(earliest, page_scan_stride, false);
+      // Phase-shifted round-up: smallest x >= earliest with
+      // x % page_scan_stride == phase_pages. For the common phase_pages == 0
+      // case this is exactly xe::round_up(earliest, page_scan_stride), kept
+      // verbatim so non-PhysicalHeap callers (which may pass a non-power-of-
+      // two stride) are unaffected. The shifted form relies on QuickMod's
+      // mask path folding the unsigned wraparound in (phase_pages - earliest)
+      // and is only reached with power-of-two strides (see assert above).
+      uint32_t aligned_start =
+          phase_pages == 0
+              ? xe::round_up(earliest, page_scan_stride, false)
+              : earliest + QuickMod(phase_pages - earliest, page_scan_stride);
       if (aligned_start + page_count <= block_end &&
           aligned_start + page_count <= high_page_number) {
         start_page_number = aligned_start;
@@ -1816,9 +1837,16 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment,
   uint32_t parent_heap_start = GetPhysicalAddress(heap_base_);
   uint32_t parent_heap_end = GetPhysicalAddress(heap_base_ + (heap_size_ - 1));
   uint32_t parent_address;
-  if (!parent_heap_->AllocRange(parent_heap_start, parent_heap_end, size,
-                                alignment, allocation_type, protect, top_down,
-                                &parent_address)) {
+  // parent_heap_start (this heap's own physical base offset, e.g. 0x1000 for
+  // 0xE0000000) is the residue a parent-heap address must hit for the
+  // translation below to land back on an alignment-satisfying child address.
+  // Without this, the parent search returns addresses 0-mod-alignment, which
+  // translate to child addresses that are unconditionally
+  // (alignment - parent_heap_start)-mod-alignment instead -- never 0 for any
+  // alignment greater than parent_heap_start.
+  if (!parent_heap_->AllocRange(
+          parent_heap_start, parent_heap_end, size, alignment, allocation_type,
+          protect, top_down, &parent_address, parent_heap_start % alignment)) {
     XELOGE(
         "PhysicalHeap::Alloc unable to alloc physical memory in parent heap "
         "(requested {} bytes, parent free {}/{} pages)",
@@ -1898,7 +1926,11 @@ bool PhysicalHeap::AllocFixed(uint32_t base_address, uint32_t size,
 bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
                               uint32_t size, uint32_t alignment,
                               uint32_t allocation_type, uint32_t protect,
-                              bool top_down, uint32_t* out_address) {
+                              bool top_down, uint32_t* out_address,
+                              uint32_t /* alignment_phase */) {
+  // An incoming alignment_phase is ignored: this override always allocates
+  // through the parent heap and derives the phase the translation requires
+  // itself (below), so a caller-supplied phase would have no coherent meaning.
   *out_address = 0;
 
   // Adjust alignment size our page size differs from the parent.
@@ -1913,9 +1945,14 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   uint32_t parent_low_address = GetPhysicalAddress(low_address);
   uint32_t parent_high_address = GetPhysicalAddress(high_address);
   uint32_t parent_address;
+  // See the matching comment in PhysicalHeap::Alloc: the parent search must
+  // target the phase this heap's physical base offset requires, not 0, or
+  // the translated child address below can never satisfy the alignment
+  // check for any alignment greater than that offset.
   if (!parent_heap_->AllocRange(parent_low_address, parent_high_address, size,
                                 alignment, allocation_type, protect, top_down,
-                                &parent_address)) {
+                                &parent_address,
+                                GetPhysicalAddress(heap_base_) % alignment)) {
     XELOGE(
         "PhysicalHeap::AllocRange unable to alloc physical memory in parent "
         "heap (requested {} bytes, parent free {}/{} pages)",
