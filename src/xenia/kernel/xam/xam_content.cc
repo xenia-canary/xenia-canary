@@ -489,6 +489,16 @@ DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kStub);
 dword_result_t XamContentFlush_entry(lpstring_t root_name,
                                      pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   X_RESULT result = X_ERROR_SUCCESS;
+
+  // We do not buffer any device data, so let's just write header.
+  auto package =
+      kernel_state()->content_manager()->FindPackage(root_name.value());
+  if (!package) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
+  package->Flush();
+
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
     return X_ERROR_IO_PENDING;

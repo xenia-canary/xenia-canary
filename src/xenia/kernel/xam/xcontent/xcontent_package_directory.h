@@ -57,6 +57,7 @@ class ContentPackageDirectory final : public ContentPackage {
     return ContentPackageType::Directory;
   }
   size_t GetPackageSize() const override;
+  X_RESULT Flush() override;
 
  private:
   X_RESULT ReadContentHeaderFile();

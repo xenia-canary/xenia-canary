@@ -58,6 +58,7 @@ class ContentPackageContainer final : public ContentPackage {
 
   bool IsReadOnly() const override { return header_.is_package_readonly(); }
   size_t GetPackageSize() const override;
+  X_RESULT Flush() override { return X_ERROR_SUCCESS; }
 
  private:
   bool LoadPackage(const std::filesystem::path& package_path,

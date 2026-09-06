@@ -140,6 +140,20 @@ ContentPackage* ContentManager::FindPackage(
   return it->second.get();
 }
 
+ContentPackage* ContentManager::FindPackage(const std::string_view root_name) {
+  const auto key = string_key_insensitive::create(root_name);
+  auto global_lock = global_critical_region_.Acquire();
+
+  auto it = std::ranges::find_if(
+      std::as_const(mounted_packages_),
+      [&key](const auto& e) { return e.second->GetRootName() == key; });
+
+  if (it == mounted_packages_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
+}
+
 ContentPackage* ContentManager::MountPackage(
     const std::string_view root_name, std::unique_ptr<ContentPackage> package,
     const std::string_view root_path) {

@@ -80,6 +80,8 @@ class ContentPackage {
     return root_name_;
   }
 
+  virtual X_RESULT Flush() = 0;
+
  protected:
   vfs::VirtualFileSystem* file_system_;
   // NtPath for device. Example: \\DEVICE\\<Something>

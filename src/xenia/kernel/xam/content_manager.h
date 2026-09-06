@@ -67,6 +67,7 @@ class ContentManager {
                                         const std::string_view root_name,
                                         const XCONTENT_DATA_INTERNAL& data);
   ContentPackage* FindPackage(const XCONTENT_DATA_INTERNAL& data);
+  ContentPackage* FindPackage(const std::string_view root_name);
 
   // Used only in case you don't want device to be autoregistered in VFS.
   // Example: Device is initialized externally, not via ContentManager.

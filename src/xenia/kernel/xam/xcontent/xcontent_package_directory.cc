@@ -62,6 +62,7 @@ ContentPackageDirectory::ContentPackageDirectory(
     : ContentPackage(file_system, device_path, package_path, metadata,
                      execution_info, spa_info) {
   header_path_ = ComputeHeaderPath(package_path);
+  WriteContentHeaderFile();
 }
 
 ContentPackageDirectory::~ContentPackageDirectory() {
@@ -74,6 +75,8 @@ ContentPackageDirectory::~ContentPackageDirectory() {
 std::unique_ptr<vfs::Device> ContentPackageDirectory::MountPackage() {
   return std::make_unique<vfs::HostPathDevice>(device_path_, host_path_, false);
 }
+
+X_RESULT ContentPackageDirectory::Flush() { return WriteContentHeaderFile(); }
 
 X_RESULT ContentPackageDirectory::SetThumbnail(
     std::span<const uint8_t> thumbnail) {
