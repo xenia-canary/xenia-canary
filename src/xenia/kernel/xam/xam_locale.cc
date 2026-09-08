@@ -395,6 +395,39 @@ dword_result_t XamGetOnlineLanguageAndCountryString_entry(
 DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountryString, kLocale,
                     kImplemented);
 
+dword_result_t XamProfileGetLiveLegalLocale_entry(qword_t xuid,
+                                                  dword_t buffer_length,
+                                                  lpu16string_t buffer) {
+  const auto user = kernel_state()->xam_state()->GetUserProfileLive(xuid);
+
+  const uint8_t country_id =
+      user ? user->GetCountry()
+           : kernel_state()->xconfig()->ReadSetting<uint8_t>(
+                 XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
+
+  const uint32_t desired_language =
+      user ? user->GetLanguage()
+           : kernel_state()->xconfig()->ReadSetting<uint32_t>(
+                 XCONFIG_USER_CATEGORY,
+                 XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_LANGUAGE);
+
+  return XamGetOnlineLanguageAndCountryString_entry(
+      desired_language, country_id, buffer_length, buffer);
+}
+DECLARE_XAM_EXPORT1(XamProfileGetLiveLegalLocale, kLocale, kImplemented);
+
+dword_result_t XapipGetLocale_entry(dword_t buffer_length,
+                                    lpstring_t buffer_ptr) {
+  char16_t buffer[7];
+  auto result = XamProfileGetLiveLegalLocale_entry(0, 7, buffer);
+  if (result == X_E_SUCCESS) {
+    string_util::copy_truncating(buffer_ptr, to_utf8(buffer), buffer_length);
+  }
+
+  return result;
+}
+DECLARE_XAM_EXPORT1(XapipGetLocale, kLocale, kImplemented);
+
 dword_result_t XamGetLocaleString_entry(dword_t id, dword_t buffer_length,
                                         lpu16string_t buffer) {
   if (buffer_length >= 0x80000000u) {

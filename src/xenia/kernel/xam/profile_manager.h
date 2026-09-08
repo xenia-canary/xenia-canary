@@ -93,7 +93,9 @@ class ProfileManager {
 
   UserProfile* GetProfile(const uint64_t xuid) const;
   UserProfile* GetProfile(const uint8_t user_index) const;
+  UserProfile* GetProfileLive(const uint64_t xuid) const;
   uint8_t GetUserIndexAssignedToProfile(const uint64_t xuid) const;
+  uint8_t GetUserIndexAssignedToLiveProfile(const uint64_t xuid_online) const;
 
   const std::map<uint64_t, X_XAMACCOUNTINFO>* GetAccounts() {
     return &accounts_;

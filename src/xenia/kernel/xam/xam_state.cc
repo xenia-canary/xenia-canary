@@ -130,6 +130,10 @@ UserProfile* XamState::GetUserProfile(uint64_t xuid) const {
   return profile_manager_->GetProfile(xuid);
 }
 
+UserProfile* XamState::GetUserProfileLive(uint64_t xuid) const {
+  return profile_manager_->GetProfileLive(xuid);
+}
+
 bool XamState::IsUserSignedIn(uint32_t user_index) const {
   return profile_manager_->GetProfile(static_cast<uint8_t>(user_index)) !=
          nullptr;

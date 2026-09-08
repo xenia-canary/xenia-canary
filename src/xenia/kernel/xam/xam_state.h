@@ -50,6 +50,7 @@ class XamState {
 
   UserProfile* GetUserProfile(uint32_t user_index) const;
   UserProfile* GetUserProfile(uint64_t xuid) const;
+  UserProfile* GetUserProfileLive(uint64_t xuid) const;
 
   bool IsUserSignedIn(uint32_t user_index) const;
   bool IsUserSignedIn(uint64_t xuid) const;
