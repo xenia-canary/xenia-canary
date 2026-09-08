@@ -10,7 +10,8 @@
 #ifndef XENIA_DISCORD_DISCORD_PRESENCE_H_
 #define XENIA_DISCORD_DISCORD_PRESENCE_H_
 
-#include <string>
+#include <cstdint>
+#include <string_view>
 
 namespace xe {
 namespace discord {
@@ -19,7 +20,8 @@ class DiscordPresence {
  public:
   static void Initialize();
   static void NotPlaying();
-  static void PlayingTitle(const std::string_view game_title);
+  static void PlayingTitle(const std::string_view game_title,
+                           uint32_t title_id);
   static void Shutdown();
 };
 
