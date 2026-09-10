@@ -10,6 +10,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_video.h"
 
 #include "xenia/base/logging.h"
+#include "xenia/base/threading.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/kernel/kernel_state.h"
@@ -286,10 +287,128 @@ DECLARE_XBOXKRNL_EXPORT1(VdSetDisplayMode, kVideo, kStub);
 dword_result_t VdSetDisplayModeOverride_entry(dword_t width, dword_t height,
                                               double_t refresh_rate,
                                               unknown_t unk3, unknown_t unk4) {
-  // refresh_rate = 0, 50, 59.9, etc.
-  return 0;
+  uint32_t index = 1;
+
+  if (width != 0 && height != 0) {
+    const Resolution res = {static_cast<uint16_t>(width.value()),
+                            static_cast<uint16_t>(height.value())};
+
+    const auto itr =
+        std::find_if(XVGAResolution.cbegin(), XVGAResolution.cend(),
+                     [res](const Resolution& resolution) {
+                       return res.height_ == resolution.height_ &&
+                              res.width_ == resolution.width_;
+                     });
+
+    if (itr != XVGAResolution.cend()) {
+      index = std::distance(XVGAResolution.cbegin(), itr);
+    } else {
+      index = 0;
+    }
+  }
+
+  // Basically search for resolution with specified params.
+  // Always returns 1 if 0 is provided for resolution. Aka default to 640x480 or
+  // something. With resolution it iterates over resolutions. If there is a
+  // found it returns index. refresh_rate = 0, 50, 59.9, etc.
+  return index;
 }
 DECLARE_XBOXKRNL_EXPORT1(VdSetDisplayModeOverride, kVideo, kStub);
+
+#pragma pack(push, 1)
+struct DisplayDiscoveryData {
+  xe::be<uint32_t> size;  // 0x0
+  xe::be<uint32_t>
+      flags;        // 0x4 // Some bits are related to HDMI audio capabilities.
+  uint8_t unknown;  // 0x8
+  uint8_t gamma;    // 0x9
+  uint8_t unknown2[0x4];  // 0xA
+  // This (below) seems to be padding of EDID name. No idea why only padding is
+  // stored.
+  uint8_t unknown3[0x7];       // 0xE
+  uint8_t physical_width_cm;   // 0x15
+  uint8_t physical_height_cm;  // 0x16
+  uint8_t unknown4;            // 0x17
+  uint8_t unknown5;            // 0x18
+  uint8_t unknown6;            // 0x19
+  uint8_t unknown7;            // 0x1A
+  uint8_t unknown8;            // 0x1B
+  uint8_t unknown9;            // 0x1C
+  uint8_t video_output;        // 0x1D 1 - VGA, 2 - DVI, 3 - HDMI, Other - TV
+  uint8_t unknown10;           // 0x1E
+  uint8_t unknown11;           // 0x1F
+  uint8_t video_standard;      // 0x20
+  uint16_t manufacturer_id;    // 0x21
+};
+static_assert_size(DisplayDiscoveryData, 0x23);
+#pragma pack(pop)
+
+dword_result_t VdGetDisplayDiscoveryData_entry(
+    pointer_t<DisplayDiscoveryData> buffer) {
+  if (buffer->size != sizeof(DisplayDiscoveryData)) {
+    return 0;
+  }
+
+  buffer.Zero();
+
+  buffer->size = sizeof(DisplayDiscoveryData);
+  buffer->flags = 0x19E;
+  buffer->unknown = 0x30;
+  buffer->gamma = 0x78;  // 2.2
+  buffer->physical_width_cm = 0x50;
+  buffer->physical_height_cm = 0x22;
+  buffer->unknown4 = 1;
+  buffer->unknown5 = 3;
+  buffer->unknown6 = 3;
+  buffer->unknown7 = 2;
+  buffer->video_output = 0;
+  buffer->video_standard =
+      static_cast<uint8_t>(GetVideoStandard(kernel_state()));
+  return 1;
+}
+DECLARE_XBOXKRNL_EXPORT1(VdGetDisplayDiscoveryData, kVideo, kStub);
+#pragma pack(push, 1)
+
+struct VideoModeEnumerator {
+  xe::be<uint16_t> size;
+  xe::be<uint16_t> width;
+  xe::be<uint16_t> height;
+  uint8_t unk3;
+  uint8_t unk4;
+  xe::be<float> refresh_rate;
+  xe::be<uint32_t> flags;  // interlaced mode, widescreen etc
+  xe::be<uint32_t> pixel_rate;
+  uint8_t video_mode;  // or standard. PAL etc.
+  uint8_t pixel_rep;
+};
+static_assert_size(VideoModeEnumerator, 0x16);
+#pragma pack(pop)
+
+void VdEnumerateVideoModes_entry(dword_t enumerator_func, dword_t r4,
+                                 const ppc_context_t& ctx) {
+  // Use current thread stack instead of global allocation
+  const uint32_t stack_ptr =
+      static_cast<uint32_t>(ctx->r[1]) - sizeof(VideoModeEnumerator);
+
+  auto entry =
+      kernel_memory()->TranslateVirtual<VideoModeEnumerator*>(stack_ptr);
+
+  for (const auto& res : XVGAResolution) {
+    entry->size = sizeof(VideoModeEnumerator);
+
+    entry->width = res.width_;
+    entry->height = res.height_;
+    entry->refresh_rate = 60.0f;
+    entry->pixel_rate = 0x8A;
+    entry->flags = !res.is_widescreen() << 1;
+    // Add remaining flags
+
+    uint64_t args[] = {stack_ptr, r4};
+    kernel_state()->processor()->Execute(ctx->thread_state, enumerator_func,
+                                         args, xe::countof(args));
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(VdEnumerateVideoModes, kVideo, kSketchy);
 
 dword_result_t VdInitializeEngines_entry(unknown_t unk0, function_t callback,
                                          lpvoid_t arg, lpdword_t pfp_ptr,
