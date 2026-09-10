@@ -153,6 +153,50 @@ dword_result_t XamContentGetDeviceData_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceData, kContent, kImplemented);
 
+const static std::map<DeviceType, std::u16string> XDeviceTypeMap = {
+    {DeviceType::HDD, u"Hard Drive"},
+    {DeviceType::MU, u"Memory Unit"},
+    {DeviceType::System, u"System"},
+    {DeviceType::ODD, u"Optical Drive"},
+    {DeviceType::TransferCable, u"Transfer Cable"},
+    {DeviceType::Sapphire, u"Sapphire"},
+    {DeviceType::USBMASS, u"USB Storage"},
+};
+
+dword_result_t XamContentGetLocalizedDeviceData_entry(
+    dword_t device_id, pointer_t<X_CONTENT_DEVICE_DATA> device_data) {
+  auto device_info = GetDummyDeviceInfo(device_id);
+  if (device_info == nullptr) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+
+  device_data.Zero();
+  device_data->device_id = static_cast<uint32_t>(device_info->device_id);
+  device_data->device_type = static_cast<uint32_t>(device_info->device_type);
+  device_data->total_bytes =
+      device_info->device_type == DeviceType::HDD
+          ? kernel_state()->content_manager()->GetContentTotalSpace()
+          : device_info->total_bytes;
+  device_data->free_bytes =
+      device_info->device_type == DeviceType::HDD
+          ? kernel_state()->content_manager()->GetContentFreeSpace()
+          : device_info->free_bytes;
+  // enforces name by device type
+  std::u16string device_name;
+  if (XDeviceTypeMap.find(device_info->device_type) != XDeviceTypeMap.cend()) {
+    device_name = XDeviceTypeMap.at(device_info->device_type);
+  } else {
+    device_name = u"Storage Device";
+  }
+
+  xe::string_util::copy_and_swap_truncating(
+      device_data->name_chars, device_name,
+      xe::countof(device_data->name_chars));
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetLocalizedDeviceData, kContent, kStub);
+
 dword_result_t XamContentCreateDeviceEnumerator_entry(dword_t content_type,
                                                       dword_t content_flags,
                                                       dword_t max_count,

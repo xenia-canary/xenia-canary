@@ -958,7 +958,19 @@ DECLARE_XAM_EXPORT1(XamSetDvrStorage, kNone, kStub);
 dword_result_t XamLookupCommonStringByIndex_entry(dword_t string_index) {
   return 0;
 }
-DECLARE_XAM_EXPORT1(XamLookupCommonStringByIndex, kNone, kImplemented);
+DECLARE_XAM_EXPORT1(XamLookupCommonStringByIndex, kNone, kStub);
+
+dword_result_t XamLogLocalizationEtx_entry(dword_t error_code, dword_t unk) {
+  if (error_code == 0x80300034) {
+    // uses second unk for some function
+    return X_ERROR_SUCCESS;
+  } else if (error_code == 0x80300035) {
+    // uses second unk for some function
+    return X_ERROR_SUCCESS;
+  }
+  return X_E_NOT_IMPLEMENTED;
+}
+DECLARE_XAM_EXPORT1(XamLogLocalizationEtx, kNone, kStub);
 
 }  // namespace xam
 }  // namespace kernel
