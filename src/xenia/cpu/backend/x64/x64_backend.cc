@@ -1494,6 +1494,7 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
   mov(r8, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_helper_)));
   jc(already_has_a_reservation);
 
+  L(acquire_new_reservation);
   shr(ecx, RESERVE_BLOCK_SHIFT);
   xor_(r9d, r9d);
   mov(edx, ecx);
@@ -1515,7 +1516,20 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
   or_(GetBackendCtxPtr(offsetof(X64BackendContext, flags)), r9d);
   ret();
   L(already_has_a_reservation);
-  DebugBreak();
+  // This thread still holds a reservation from a prior lwarx that was never
+  // paired with a stwcx -- e.g. a compare_exchange whose comparison fails takes
+  // the no-store path and abandons the reservation. On real PowerPC a subsequent
+  // lwarx simply replaces the outstanding reservation, so release our stale
+  // global-bitmap bit and go acquire the new address. (Previously this
+  // DebugBreak()'d, which crashed any contended lock-free CAS retry loop -- e.g.
+  // std::atomic compare_exchange under thread contention, std::barrier, etc.)
+  // ecx still holds the new guest address for acquire_new_reservation; only rdx
+  // and r9 are touched here, both of which that path re-derives.
+  mov(rdx, GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_offset)));
+  mov(r9d, GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_bit)));
+  lock();
+  btr(qword[rdx], r9);
+  jmp(acquire_new_reservation);
 
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
