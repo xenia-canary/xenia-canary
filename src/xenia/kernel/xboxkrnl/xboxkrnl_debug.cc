@@ -23,6 +23,9 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
+// Defined in xboxkrnl_eh.cc -- the Xbox 360 MSVC C++ EH dispatcher (WIP).
+bool DispatchCppException(uint32_t exception_record_ptr);
+
 void DbgBreakPoint_entry() { xe::debugging::Break(); }
 DECLARE_XBOXKRNL_EXPORT2(DbgBreakPoint, kDebug, kStub, kImportant);
 
@@ -126,6 +129,7 @@ void HandleCppException(pointer_t<X_EXCEPTION_RECORD> record) {
 
   // xe::debugging::Break();
   XELOGE("Guest attempted to throw a C++ exception!");
+  DispatchCppException(record.guest_address());
 }
 
 void RtlRaiseException_entry(pointer_t<X_EXCEPTION_RECORD> record) {
