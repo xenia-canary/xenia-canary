@@ -10,6 +10,8 @@
 #ifndef XENIA_KERNEL_XEVENT_H_
 #define XENIA_KERNEL_XEVENT_H_
 
+#include <mutex>
+
 #include "xenia/base/threading.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/xbox.h"
@@ -45,10 +47,15 @@ class XEvent : public XObject {
 
  protected:
   xe::threading::WaitHandle* GetWaitHandle() override { return event_.get(); }
+  void WaitCallback() override;
+  void SyncFromGuest() override;
 
  private:
   bool manual_reset_ = false;
   std::unique_ptr<xe::threading::Event> event_;
+
+  std::mutex state_lock_;
+  bool host_signaled_ = false;
 };
 
 }  // namespace kernel
