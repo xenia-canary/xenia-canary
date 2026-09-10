@@ -241,6 +241,7 @@ class XObject {
 
   // Called on successful wait.
   virtual void WaitCallback() {}
+  virtual void SyncFromGuest() {}
   virtual xe::threading::WaitHandle* GetWaitHandle() { return nullptr; }
 
   // Creates the kernel object for guest code to use. Typically not needed.
