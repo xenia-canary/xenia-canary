@@ -159,8 +159,7 @@ void UserTracker::AddTitleToPlayedList(uint64_t xuid) {
   }
 
   const uint32_t title_id = spa_data_->title_id();
-  auto title_gpd = user->games_gpd_.find(title_id);
-  if (title_gpd == user->games_gpd_.end()) {
+  if (!user->games_gpd_.contains(title_id)) {
     user->games_gpd_.emplace(title_id, GpdInfoTitle(title_id));
     UpdateTitleGpdFile();
   }
@@ -222,7 +221,7 @@ void UserTracker::RemoveTitleFromPlayedList(uint64_t xuid, uint32_t title_id) {
 
 // Privates
 bool UserTracker::IsUserTracked(uint64_t xuid) const {
-  return tracked_xuids_.find(xuid) != tracked_xuids_.cend();
+  return tracked_xuids_.contains(xuid);
 }
 
 std::optional<TitleInfo> UserTracker::GetUserTitleInfo(

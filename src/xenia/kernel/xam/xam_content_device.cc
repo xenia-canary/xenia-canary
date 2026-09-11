@@ -153,7 +153,7 @@ dword_result_t XamContentGetDeviceData_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceData, kContent, kImplemented);
 
-const static std::map<DeviceType, std::u16string> XDeviceTypeMap = {
+const std::map<DeviceType, std::u16string_view> XDeviceTypeMap = {
     {DeviceType::HDD, u"Hard Drive"},
     {DeviceType::MU, u"Memory Unit"},
     {DeviceType::System, u"System"},
@@ -182,12 +182,10 @@ dword_result_t XamContentGetLocalizedDeviceData_entry(
           ? kernel_state()->content_manager()->GetContentFreeSpace()
           : device_info->free_bytes;
   // enforces name by device type
-  std::u16string device_name;
-  if (XDeviceTypeMap.find(device_info->device_type) != XDeviceTypeMap.cend()) {
-    device_name = XDeviceTypeMap.at(device_info->device_type);
-  } else {
-    device_name = u"Storage Device";
-  }
+  const std::u16string_view device_name =
+      XDeviceTypeMap.contains(device_info->device_type)
+          ? XDeviceTypeMap.at(device_info->device_type)
+          : u"Storage Device";
 
   xe::string_util::copy_and_swap_truncating(
       device_data->name_chars, device_name,
