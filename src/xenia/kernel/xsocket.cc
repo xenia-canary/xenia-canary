@@ -288,8 +288,8 @@ int XSocket::RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags,
                      flags, (sockaddr*)&nfrom, &nfromlen);
   if (from) {
     from->sin_family = nfrom.sin_family;
-    from->sin_addr = ntohl(nfrom.sin_addr.s_addr);  // BE <- BE
-    from->sin_port = nfrom.sin_port;
+    from->sin_addr = ntohl(nfrom.sin_addr.s_addr);  // network -> logical (be<> restores network order)
+    from->sin_port = ntohs(nfrom.sin_port);         // was raw: port is network order, needs ntohs to match sin_addr
     std::memset(from->x_sin_zero, 0, sizeof(from->x_sin_zero));
   }
 
@@ -319,14 +319,20 @@ int XSocket::SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags,
   */
 
   sockaddr_in nto;
+  std::memset(&nto, 0, sizeof(nto));
   if (to) {
-    nto.sin_addr.s_addr = to->sin_addr;
-    nto.sin_family = to->sin_family;
-    nto.sin_port = to->sin_port;
+    // The guest holds sin_port/sin_addr in network order (be<>); reading them
+    // through the be<> operator yields the logical (host-native) value, so we
+    // must re-apply htons/htonl to hand the host a correct network-order
+    // sockaddr. Without this the destination port/address were byte-swapped,
+    // so datagrams to a real external host (or loopback) went nowhere.
+    nto.sin_family = AF_INET;
+    nto.sin_port = htons(to->sin_port);
+    nto.sin_addr.s_addr = htonl(to->sin_addr);
   }
 
   return sendto(native_handle_, reinterpret_cast<char*>(buf), buf_len, flags,
-                to ? (sockaddr*)&nto : nullptr, to_len);
+                to ? (sockaddr*)&nto : nullptr, to ? (int)sizeof(nto) : 0);
 }
 
 bool XSocket::QueuePacket(uint32_t src_ip, uint16_t src_port,
