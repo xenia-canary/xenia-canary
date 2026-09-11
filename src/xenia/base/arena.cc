@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "xenia/base/assert.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 
 namespace xe {
@@ -61,11 +62,28 @@ void* Arena::Alloc(size_t size, size_t align) {
     if (active_chunk_->capacity - active_chunk_->offset <
         size + get_padding() + 4_KiB) {
       Chunk* next = active_chunk_->next;
+      const size_t need = size + get_padding();
       if (!next) {
-        assert_true(size + get_padding() < chunk_size_,
-                    "need to support larger chunks");
-        next = new Chunk(chunk_size_);
+        // Support allocations larger than the default chunk size (e.g. xenia's
+        // JIT compiling a very large guest function): size the new chunk to fit
+        // rather than asserting "need to support larger chunks".
+        size_t csz = chunk_size_;
+        if (need + 4_KiB > csz) {
+          csz = need + 4_KiB;
+          XELOGW("Arena: oversized alloc size={} (chunk_size={}), growing chunk to {}",
+                 size, chunk_size_, csz);
+        }
+        next = new Chunk(csz);
         active_chunk_->next = next;
+      } else if (next->capacity < need) {
+        // A reused chunk further down the chain is too small for this large
+        // alloc; splice a big-enough one in front of it so we never overrun.
+        XELOGW("Arena: reused chunk too small ({} < {}), splicing larger",
+               next->capacity, need);
+        Chunk* big = new Chunk(need + 4_KiB);
+        big->next = next;
+        active_chunk_->next = big;
+        next = big;
       }
       next->offset = 0;
       active_chunk_ = next;
