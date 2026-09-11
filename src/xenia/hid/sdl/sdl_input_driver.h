@@ -52,6 +52,12 @@ class SDLInputDriver final : public InputDriver {
     X_INPUT_CAPABILITIES caps;
     X_INPUT_STATE state;
     bool state_changed;
+    // Reported as a guitar kind.
+    bool guitar;
+    // The whammy bar arrives as the left trigger.
+    bool whammy_on_trigger;
+    // The whammy has moved, so the stick holds the device's value.
+    bool whammy_seen;
   };
 
   enum class RepeatState {
@@ -79,8 +85,13 @@ class SDLInputDriver final : public InputDriver {
       SDL_JoystickID instance_id);
   ControllerState* GetControllerState(uint32_t user_index);
   bool TestSDLVersion() const;
-  void UpdateXCapabilities(ControllerState& state);
+  void UpdateXCapabilities(ControllerState& state, size_t user_index);
   void QueueControllerUpdate();
+  // The kind controller_subtypes asks for in this slot, if it asks for one.
+  static std::optional<uint8_t> ForcedSubtypeForSlot(size_t user_index);
+  static bool IsGuitarSubtype(uint8_t sub_type);
+  // True when guitar_whammy_on_stick routes this slot's trigger to the stick.
+  bool WhammyOnStick(size_t user_index) const;
 
   bool sdl_events_initialized_;
   bool sdl_gamecontroller_initialized_;

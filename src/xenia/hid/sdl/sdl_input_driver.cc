@@ -9,6 +9,10 @@
 
 #include "xenia/hid/sdl/sdl_input_driver.h"
 
+#include <charconv>
+#include <limits>
+#include <unordered_map>
+
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 #endif  // XE_PLATFORM_WIN32
@@ -16,6 +20,7 @@
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
 #include "xenia/helper/sdl/sdl_helper.h"
 #include "xenia/hid/hid_flags.h"
 #include "xenia/ui/virtual_key.h"
@@ -26,6 +31,25 @@
 DEFINE_path(mappings_file, "gamecontrollerdb.txt",
             "Filename of a database with custom game controller mappings.",
             "SDL");
+
+DEFINE_string(
+    controller_subtypes, "",
+    "What kind of controller each slot is reported as, when the kind SDL "
+    "reports is not what the title expects: a comma separated list of "
+    "slot:kind, e.g. \"0:guitar\". Kinds: gamepad, guitar, guitar_bass, "
+    "guitar_alternate, drums, wheel, arcade_stick, flight_stick, dance_pad, "
+    "arcade_pad. Guitar Hero and Rock Band read this to decide whether they "
+    "are being played on an instrument or on a pad. Empty, the default, "
+    "leaves every slot as SDL reports it.",
+    "HID");
+DEFINE_string(
+    guitar_whammy_on_stick, "",
+    "Slots whose guitar sends its whammy bar as the left trigger, e.g. \"0\" "
+    "or \"0,2\". The trigger is sent to the right stick's X instead, where "
+    "titles read the whammy, and that axis's own input (a tilt sensor on some "
+    "guitars) is dropped. Only for a slot reported as a guitar. Empty, the "
+    "default, changes nothing.",
+    "HID");
 
 namespace xe {
 namespace hid {
@@ -205,7 +229,7 @@ X_RESULT SDLInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
 
   // Unfortunately drivers can't present all information immediately (e.g.
   // battery information) so this needs to be refreshed every time.
-  UpdateXCapabilities(*controller);
+  UpdateXCapabilities(*controller, user_index);
 
   std::memcpy(out_caps, &controller->caps, sizeof(*out_caps));
 
@@ -505,7 +529,7 @@ void SDLInputDriver::OnControllerDeviceAdded(const SDL_Event& event) {
     state = {controller, {}};
     // XInput seems to start with packet_number = 1 .
     state.state_changed = true;
-    UpdateXCapabilities(state);
+    UpdateXCapabilities(state, static_cast<size_t>(user_id));
 
     XELOGI("SDL OnControllerDeviceAdded: Added at index {}.", user_id);
     XELOGI("SDL Controller {}: {}", user_id,
@@ -543,12 +567,27 @@ void SDLInputDriver::OnControllerDeviceAxisMotion(const SDL_Event& event) {
       pad.thumb_ly = ~event.caxis.value;
       break;
     case SDL_CONTROLLER_AXIS_RIGHTX:
+      if (WhammyOnStick(*idx)) {
+        // The trigger drives this axis; what arrives here is the tilt sensor.
+        break;
+      }
+      if (controllers_.at(*idx).guitar) {
+        controllers_.at(*idx).whammy_seen = true;
+      }
       pad.thumb_rx = event.caxis.value;
       break;
     case SDL_CONTROLLER_AXIS_RIGHTY:
       pad.thumb_ry = ~event.caxis.value;
       break;
     case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+      if (WhammyOnStick(*idx)) {
+        // A trigger is 0 to 32767; spread it over the whole stick, since a
+        // title reads the middle as the bar held half down.
+        pad.thumb_rx =
+            static_cast<int16_t>(int32_t(event.caxis.value) * 2 - 32768);
+        controllers_.at(*idx).whammy_seen = true;
+        break;
+      }
       pad.left_trigger = static_cast<uint8_t>(event.caxis.value >> 7);
       break;
     case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
@@ -674,7 +713,80 @@ bool SDLInputDriver::TestSDLVersion() const {
   return true;
 }
 
-void SDLInputDriver::UpdateXCapabilities(ControllerState& state) {
+bool SDLInputDriver::IsGuitarSubtype(uint8_t sub_type) {
+  return sub_type == XINPUT_DEVSUBTYPE_GUITAR ||
+         sub_type == XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE ||
+         sub_type == XINPUT_DEVSUBTYPE_GUITAR_BASS;
+}
+
+bool SDLInputDriver::WhammyOnStick(size_t user_index) const {
+  const auto& state = controllers_.at(user_index);
+  if (!state.guitar || !state.whammy_on_trigger ||
+      cvars::guitar_whammy_on_stick.empty()) {
+    return false;
+  }
+  for (const auto& entry :
+       xe::utf8::split(cvars::guitar_whammy_on_stick, ", ")) {
+    size_t slot = 0;
+    const auto parsed =
+        std::from_chars(entry.data(), entry.data() + entry.size(), slot);
+    if (parsed.ec == std::errc() && parsed.ptr == entry.data() + entry.size() &&
+        slot == user_index) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<uint8_t> SDLInputDriver::ForcedSubtypeForSlot(size_t user_index) {
+  if (cvars::controller_subtypes.empty()) {
+    return std::nullopt;
+  }
+  static const std::unordered_map<std::string, uint8_t> kinds = {
+      {"gamepad", XINPUT_DEVSUBTYPE_GAMEPAD},
+      {"guitar", XINPUT_DEVSUBTYPE_GUITAR},
+      {"guitar_alternate", XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE},
+      {"guitar_bass", XINPUT_DEVSUBTYPE_GUITAR_BASS},
+      {"drums", XINPUT_DEVSUBTYPE_DRUM_KIT},
+      {"wheel", XINPUT_DEVSUBTYPE_WHEEL},
+      {"arcade_stick", XINPUT_DEVSUBTYPE_ARCADE_STICK},
+      {"arcade_pad", XINPUT_DEVSUBTYPE_ARCADE_PAD},
+      {"flight_stick", XINPUT_DEVSUBTYPE_FLIGHT_STICK},
+      {"dance_pad", XINPUT_DEVSUBTYPE_DANCE_PAD},
+  };
+  for (const auto& entry : xe::utf8::split(cvars::controller_subtypes, ",")) {
+    const size_t colon = entry.find(':');
+    if (colon == std::string_view::npos) {
+      continue;
+    }
+    const auto trim = [](std::string_view value) {
+      const size_t first = value.find_first_not_of(" \t");
+      if (first == std::string_view::npos) {
+        return std::string_view();
+      }
+      return value.substr(first, value.find_last_not_of(" \t") - first + 1);
+    };
+    const auto slot = trim(entry.substr(0, colon));
+    const auto kind = trim(entry.substr(colon + 1));
+    size_t slot_index = 0;
+    const auto parsed =
+        std::from_chars(slot.data(), slot.data() + slot.size(), slot_index);
+    if (kind.empty() || parsed.ec != std::errc() ||
+        parsed.ptr != slot.data() + slot.size() || slot_index != user_index) {
+      continue;
+    }
+    const auto it = kinds.find(xe::utf8::lower_ascii(kind));
+    if (it == kinds.end()) {
+      XELOGW("SDL controller_subtypes: '{}' is not a known kind.", kind);
+      return std::nullopt;
+    }
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+void SDLInputDriver::UpdateXCapabilities(ControllerState& state,
+                                         size_t user_index) {
   assert(state.sdl);
   uint16_t cap_flags = 0x0;
 
@@ -709,8 +821,53 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state) {
 
   auto& c = state.caps;
   c.type = 0x01;  // XINPUT_DEVTYPE_GAMEPAD
-  c.sub_type = static_cast<uint8_t>(SDL_JoystickGetType(
-      SDL_GameControllerGetJoystick(state.sdl)));  // XINPUT_DEVSUBTYPE_GAMEPAD
+  // SDL's joystick types match the XInput subtypes up to the guitar.
+  switch (SDL_JoystickGetType(SDL_GameControllerGetJoystick(state.sdl))) {
+    case SDL_JOYSTICK_TYPE_GAMECONTROLLER:
+      c.sub_type = XINPUT_DEVSUBTYPE_GAMEPAD;
+      break;
+    case SDL_JOYSTICK_TYPE_WHEEL:
+      c.sub_type = XINPUT_DEVSUBTYPE_WHEEL;
+      break;
+    case SDL_JOYSTICK_TYPE_ARCADE_STICK:
+      c.sub_type = XINPUT_DEVSUBTYPE_ARCADE_STICK;
+      break;
+    case SDL_JOYSTICK_TYPE_FLIGHT_STICK:
+      c.sub_type = XINPUT_DEVSUBTYPE_FLIGHT_STICK;
+      break;
+    case SDL_JOYSTICK_TYPE_DANCE_PAD:
+      c.sub_type = XINPUT_DEVSUBTYPE_DANCE_PAD;
+      break;
+    case SDL_JOYSTICK_TYPE_GUITAR:
+      c.sub_type = XINPUT_DEVSUBTYPE_GUITAR;
+      break;
+    case SDL_JOYSTICK_TYPE_DRUM_KIT:
+      c.sub_type = XINPUT_DEVSUBTYPE_DRUM_KIT;
+      break;
+    case SDL_JOYSTICK_TYPE_ARCADE_PAD:
+      c.sub_type = XINPUT_DEVSUBTYPE_ARCADE_PAD;
+      break;
+    default:
+      c.sub_type = XINPUT_DEVSUBTYPE_USB_KEYBOARD;  // XINPUT_DEVSUBTYPE_UNKNOWN
+      break;
+  }
+  // SDL calls a guitar it does not recognise a game controller.
+  if (const auto forced = ForcedSubtypeForSlot(user_index)) {
+    c.sub_type = *forced;
+  }
+  state.guitar = IsGuitarSubtype(c.sub_type);
+  state.whammy_on_trigger = SDL_GameControllerGetBindForAxis(
+                                state.sdl, SDL_CONTROLLER_AXIS_TRIGGERLEFT)
+                                .bindType != SDL_CONTROLLER_BINDTYPE_NONE;
+  if (state.guitar && !state.whammy_seen) {
+    // An untouched axis reads as the middle, which is the whammy held half
+    // down. Start it where the bar rests.
+    const int16_t resting = std::numeric_limits<int16_t>::min();
+    if (state.state.gamepad.thumb_rx != resting) {
+      state.state.gamepad.thumb_rx = resting;
+      state.state_changed = true;
+    }
+  }
   c.flags = cap_flags;
   c.gamepad.buttons =
       0xF3FF | (cvars::guide_button ? X_INPUT_GAMEPAD_GUIDE : 0x0);
