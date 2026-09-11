@@ -7,6 +7,14 @@
  ******************************************************************************
  */
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -23,8 +31,10 @@
 // NOTE: must be included last as it expects windows.h to already be included.
 #define _WINSOCK_DEPRECATED_NO_WARNINGS  // inet_addr
 #include <winsock2.h>                    // NOLINT(build/include_order)
+#include <ws2tcpip.h>                     // getaddrinfo (RXDK XHTTP)
 #else
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <sys/select.h>
@@ -1106,6 +1116,221 @@ dword_result_t NetDll_XNetUnregisterKey_entry(dword_t caller,
   return 0;
 }
 DECLARE_XAM_EXPORT1(NetDll_XNetUnregisterKey, kNetworking, kStub);
+
+// ---- RXDK: a real (minimal) XHTTP client over host sockets ----------------
+// The guest xhttp.lib forwards its XHttp* calls to these NetDll_XHttp* system
+// exports; xenia previously auto-stubbed them, so titles' HTTP requests never
+// happened (status 0). Implement a small synchronous HTTP/1.1 GET/POST client
+// over the host network and hand back the status code, headers and body, so
+// XHttp* works for any title. Handles (HINTERNET) are opaque ids into a table.
+
+namespace {
+struct XHttpHandle {
+  enum Type { kSession, kConnect, kRequest } type = kSession;
+  std::string server, verb = "GET", object = "/";
+  uint16_t port = 80;
+  std::vector<uint8_t> response;
+  size_t body_off = 0, read_off = 0;
+  uint32_t status = 0;
+};
+std::mutex xhttp_mutex;
+std::unordered_map<uint32_t, XHttpHandle*> xhttp_handles;
+uint32_t xhttp_next = 0xB0000004;
+
+uint32_t XHttpStore(XHttpHandle* h) {
+  std::lock_guard<std::mutex> lk(xhttp_mutex);
+  uint32_t id = xhttp_next;
+  xhttp_next += 4;
+  xhttp_handles[id] = h;
+  return id;
+}
+XHttpHandle* XHttpLookup(uint32_t id) {
+  std::lock_guard<std::mutex> lk(xhttp_mutex);
+  auto it = xhttp_handles.find(id);
+  return it == xhttp_handles.end() ? nullptr : it->second;
+}
+void XHttpErase(uint32_t id) {
+  std::lock_guard<std::mutex> lk(xhttp_mutex);
+  auto it = xhttp_handles.find(id);
+  if (it != xhttp_handles.end()) {
+    delete it->second;
+    xhttp_handles.erase(it);
+  }
+}
+}  // namespace
+
+dword_result_t NetDll_XHttpStartup_entry(dword_t caller, dword_t reserved,
+                                         lpvoid_t reserved2) {
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpStartup, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpShutdown_entry(dword_t caller, dword_t reserved,
+                                          lpvoid_t reserved2) {
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpShutdown, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t agent,
+                                      dword_t access, lpstring_t proxy,
+                                      lpstring_t bypass, dword_t flags) {
+  auto* h = new XHttpHandle();
+  h->type = XHttpHandle::kSession;
+  return XHttpStore(h);
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpOpen, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpConnect_entry(dword_t caller, dword_t session,
+                                         lpstring_t server, dword_t port,
+                                         dword_t flags) {
+  auto* h = new XHttpHandle();
+  h->type = XHttpHandle::kConnect;
+  if (server) h->server = server.value();
+  h->port = port ? static_cast<uint16_t>(port.value()) : 80;
+  return XHttpStore(h);
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpConnect, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpOpenRequest_entry(dword_t caller, dword_t connect,
+                                             lpstring_t verb, lpstring_t object,
+                                             lpstring_t version,
+                                             lpstring_t referrer, dword_t accept,
+                                             dword_t flags) {
+  auto* c = XHttpLookup(connect);
+  auto* h = new XHttpHandle();
+  h->type = XHttpHandle::kRequest;
+  if (c) { h->server = c->server; h->port = c->port; }
+  if (verb) h->verb = verb.value();
+  if (object) h->object = object.value();
+  return XHttpStore(h);
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpOpenRequest, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpSendRequest_entry(dword_t caller, dword_t request,
+                                             lpstring_t headers,
+                                             dword_t headers_len,
+                                             lpvoid_t optional,
+                                             dword_t optional_len,
+                                             dword_t total_len, dword_t context) {
+  auto* h = XHttpLookup(request);
+  if (!h || h->type != XHttpHandle::kRequest || h->server.empty()) {
+    return 0;
+  }
+  struct addrinfo hints = {}, *res = nullptr;
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  char portstr[8];
+  std::snprintf(portstr, sizeof(portstr), "%u", h->port);
+  if (getaddrinfo(h->server.c_str(), portstr, &hints, &res) != 0 || !res) {
+    XELOGE("NetDll_XHttpSendRequest: cannot resolve {}", h->server);
+    return 0;
+  }
+  auto s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+  bool connected = s != INVALID_SOCKET &&
+                   connect(s, res->ai_addr, int(res->ai_addrlen)) == 0;
+  freeaddrinfo(res);
+  if (!connected) {
+    if (s != INVALID_SOCKET) closesocket(s);
+    XELOGE("NetDll_XHttpSendRequest: connect to {}:{} failed", h->server, h->port);
+    return 0;
+  }
+  std::string req = h->verb + " " + h->object + " HTTP/1.1\r\nHost: " +
+                    h->server + "\r\nUser-Agent: xenia\r\nAccept: */*\r\n"
+                    "Connection: close\r\n";
+  if (headers && headers_len) req += headers.value();
+  req += "\r\n";
+  send(s, req.data(), int(req.size()), 0);
+  if (optional && optional_len) {
+    send(s, reinterpret_cast<const char*>(optional.host_address()),
+         int(optional_len.value()), 0);
+  }
+  h->response.clear();
+  char buf[8192];
+  int n;
+  while ((n = recv(s, buf, sizeof(buf), 0)) > 0) {
+    h->response.insert(h->response.end(), buf, buf + n);
+  }
+  closesocket(s);
+  std::string resp(reinterpret_cast<char*>(h->response.data()),
+                   h->response.size());
+  if (resp.compare(0, 5, "HTTP/") == 0) {
+    size_t sp = resp.find(' ');
+    if (sp != std::string::npos) h->status = uint32_t(atoi(resp.c_str() + sp + 1));
+  }
+  size_t bp = resp.find("\r\n\r\n");
+  h->body_off = bp == std::string::npos ? h->response.size() : bp + 4;
+  h->read_off = 0;
+  XELOGD("NetDll_XHttpSendRequest: {} {} {} -> {} ({} bytes)", h->verb,
+         h->server, h->object, h->status, h->response.size());
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpSendRequest, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpReceiveResponse_entry(dword_t caller, dword_t request,
+                                                 lpvoid_t reserved) {
+  // The whole exchange already happened in SendRequest.
+  return XHttpLookup(request) ? 1 : 0;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpReceiveResponse, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
+                                              dword_t info_level, lpstring_t name,
+                                              lpvoid_t buffer, lpdword_t buf_len,
+                                              lpdword_t index) {
+  auto* h = XHttpLookup(request);
+  if (!h) return 0;
+  const uint32_t kStatusCode = 65534;  // XHTTP_QUERY_STATUS_CODE
+  const uint32_t kFlagNumber = 0x20000000;
+  if ((info_level & 0xFFFF) == kStatusCode) {
+    if (info_level & kFlagNumber) {
+      if (buffer) {
+        xe::store_and_swap<uint32_t>(
+            reinterpret_cast<void*>(buffer.host_address()), h->status);
+      }
+      if (buf_len) {
+        xe::store_and_swap<uint32_t>(
+            reinterpret_cast<void*>(buf_len.host_address()), 4);
+      }
+      return 1;
+    }
+    char tmp[16];
+    int len = std::snprintf(tmp, sizeof(tmp), "%u", h->status);
+    if (buffer) std::memcpy(reinterpret_cast<void*>(buffer.host_address()), tmp, len);
+    if (buf_len) {
+      xe::store_and_swap<uint32_t>(
+          reinterpret_cast<void*>(buf_len.host_address()), uint32_t(len));
+    }
+    return 1;
+  }
+  return 0;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpQueryHeaders, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpReadData_entry(dword_t caller, dword_t request,
+                                          lpvoid_t buffer, dword_t to_read,
+                                          lpdword_t read_out) {
+  auto* h = XHttpLookup(request);
+  if (!h) return 0;
+  size_t avail = h->response.size() - h->body_off - h->read_off;
+  size_t n = to_read.value() < avail ? size_t(to_read.value()) : avail;
+  if (n && buffer) {
+    std::memcpy(reinterpret_cast<void*>(buffer.host_address()),
+                h->response.data() + h->body_off + h->read_off, n);
+  }
+  h->read_off += n;
+  if (read_out) {
+    xe::store_and_swap<uint32_t>(
+        reinterpret_cast<void*>(read_out.host_address()), uint32_t(n));
+  }
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpReadData, kNetworking, kImplemented);
+
+dword_result_t NetDll_XHttpCloseHandle_entry(dword_t caller, dword_t handle) {
+  XHttpErase(handle);
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpCloseHandle, kNetworking, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel
