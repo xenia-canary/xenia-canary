@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <cstring>
 #if XE_PLATFORM_MAC
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -259,13 +260,23 @@ std::vector<FileInfo> ListFiles(const std::filesystem::path& path) {
     FileInfo info;
 
     info.name = ent->d_name;
+    const auto child_path = path / info.name;
     struct stat st;
-    stat((path / info.name).c_str(), &st);
+    // A failed stat leaves the struct indeterminate, and it fed the
+    // timestamps and the size: a dangling symlink, an entry deleted between
+    // the readdir and the stat, or EACCES on a path component.
+    if (stat(child_path.c_str(), &st) != 0 &&
+        lstat(child_path.c_str(), &st) != 0) {
+      std::memset(&st, 0, sizeof(st));
+    }
     info.create_timestamp = convertUnixtimeToWinFiletime(st.st_ctime);
     info.access_timestamp = convertUnixtimeToWinFiletime(st.st_atime);
     info.write_timestamp = convertUnixtimeToWinFiletime(st.st_mtime);
     info.path = path;
-    if (ent->d_type == DT_DIR) {
+    // d_type is unreliable: DT_LNK for a symlinked directory, and DT_UNKNOWN
+    // on filesystems that do not fill it in, which includes many FUSE and
+    // network mounts and some XFS configurations. Classify from the stat.
+    if (S_ISDIR(st.st_mode)) {
       info.type = FileInfo::Type::kDirectory;
       info.total_size = 0;
     } else {

@@ -61,6 +61,33 @@ Entry* HostPathDevice::ResolvePath(const std::string_view path) {
 }
 
 void HostPathDevice::PopulateEntry(HostPathEntry* parent_entry) {
+  std::vector<std::filesystem::path> ancestors;
+  PopulateEntry(parent_entry, ancestors);
+}
+
+void HostPathDevice::PopulateEntry(
+    HostPathEntry* parent_entry,
+    std::vector<std::filesystem::path>& ancestors) {
+  // Directory symlinks are walked now that the type comes from the stat, so a
+  // link back into a directory already on this path would recurse until the
+  // stack runs out. A link to a sibling subtree still gets walked: it
+  // duplicates entries but ends, so only genuine self-containment is cut.
+  std::error_code ec;
+  auto canonical_self =
+      std::filesystem::canonical(parent_entry->host_path(), ec);
+  if (!ec) {
+    for (const auto& seen : ancestors) {
+      if (seen == canonical_self) {
+        XELOGW(
+            "HostPathDevice: {} is already on the path being walked; not "
+            "following it again",
+            xe::path_to_utf8(parent_entry->host_path()));
+        return;
+      }
+    }
+    ancestors.push_back(canonical_self);
+  }
+
   auto child_infos = xe::filesystem::ListFiles(parent_entry->host_path());
   for (auto& child_info : child_infos) {
     auto child = HostPathEntry::Create(
@@ -69,8 +96,12 @@ void HostPathDevice::PopulateEntry(HostPathEntry* parent_entry) {
     parent_entry->children_.push_back(std::unique_ptr<Entry>(child));
 
     if (child_info.type == xe::filesystem::FileInfo::Type::kDirectory) {
-      PopulateEntry(child);
+      PopulateEntry(child, ancestors);
     }
+  }
+
+  if (!ec) {
+    ancestors.pop_back();
   }
 }
 
