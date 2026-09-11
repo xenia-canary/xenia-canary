@@ -1274,6 +1274,27 @@ bool Emulator::ExceptionCallback(Exception* ex) {
     return false;
   }
 
+  // RXDK: log the exact guest PC + fault synchronously BEFORE Pause() (which can
+  // deadlock on the global critical region and hide the crash dump).
+  {
+    auto gf = code_cache->LookupFunction(ex->pc());
+    uint32_t guestpc = gf ? gf->MapMachineCodeToGuestAddress(ex->pc()) : 0;
+    XELOGE("RXDK-FAULT guestPC=0x{:08X} hostPC=0x{:X} code=0x{:X} faultVA=0x{:X}",
+           guestpc, ex->pc(), static_cast<uint32_t>(ex->code()),
+           ex->fault_address());
+    // RXDK: dump guest GPRs synchronously here too -- the full crash dump below
+    // runs after Pause() which can deadlock and never flush.
+    auto ct = kernel::XThread::GetCurrentThread();
+    if (ct && ct->thread_state()) {
+      auto ctx = ct->thread_state()->context();
+      for (int i = 0; i < 32; i += 4) {
+        XELOGE("RXDK-FAULT r{:<2}={:016X} r{:<2}={:016X} r{:<2}={:016X} r{:<2}={:016X}",
+               i, ctx->r[i], i + 1, ctx->r[i + 1], i + 2, ctx->r[i + 2],
+               i + 3, ctx->r[i + 3]);
+      }
+    }
+  }
+
   // Within range. Pause the emulator and eat the exception.
   Pause();
 
