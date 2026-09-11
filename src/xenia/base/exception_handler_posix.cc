@@ -223,6 +223,11 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
   }
 }
 
+void ExceptionHandler::ArmWriteWatch(uint64_t host_address) {
+  // RXDK diagnostic watch is Windows/x64-only for now.
+  (void)host_address;
+}
+
 void ExceptionHandler::Install(Handler fn, void* data) {
   if (!signal_handlers_installed_) {
     struct sigaction signal_handler;

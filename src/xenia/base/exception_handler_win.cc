@@ -96,6 +96,15 @@ LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
     case STATUS_ILLEGAL_INSTRUCTION:
       ex.InitializeIllegalInstruction(&thread_context);
       break;
+    case STATUS_SINGLE_STEP: {
+      // RXDK: a hardware write-watch (DR0) trap iff DR6 flags DR0 (B0 = bit 0).
+      // Anything else (a real single-step) we leave to the OS/debugger.
+      if (!(ex_info->ContextRecord->Dr6 & 0x1)) {
+        return EXCEPTION_CONTINUE_SEARCH;
+      }
+      ex_info->ContextRecord->Dr6 = 0;   // ack, so it doesn't re-fire
+      ex.InitializeDataBreakpoint(&thread_context);
+    } break;
     case STATUS_ACCESS_VIOLATION: {
       Exception::AccessViolationOperation access_violation_operation;
       switch (ex_info->ExceptionRecord->ExceptionInformation[0]) {
@@ -129,6 +138,17 @@ LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
     }
   }
   return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void ExceptionHandler::ArmWriteWatch(uint64_t host_address) {
+  CONTEXT ctx = {};
+  ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+  if (host_address) {
+    ctx.Dr0 = host_address;
+    // L0 (bit 0) | R/W0 = 01 write (bit 16) | LEN0 = 11 four bytes (bits 18-19).
+    ctx.Dr7 = 0x1u | (0x1u << 16) | (0x3u << 18);
+  }
+  SetThreadContext(GetCurrentThread(), &ctx);
 }
 
 void ExceptionHandler::Install(Handler fn, void* data) {

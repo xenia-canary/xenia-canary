@@ -14,6 +14,7 @@
 #endif
 
 #include "xenia/base/byte_stream.h"
+#include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
@@ -23,6 +24,12 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
+
+DEFINE_uint64(rxdk_watch_addr, 0,
+              "RXDK diagnostic: guest virtual address to hardware write-watch "
+              "on the main thread; 0 disables. Each write logs RXDK-WATCH with "
+              "the guest PC.",
+              "RXDK");
 
 DEFINE_bool(ignore_thread_priorities, true,
             "Ignores game-specified thread priorities.", "Kernel");
@@ -555,6 +562,17 @@ void XThread::Execute() {
   //
   // On Windows, setjmp/longjmp is used because MSVC's longjmp performs SEH
   // stack unwinding which already calls destructors.
+  // RXDK diagnostic: arm the hardware write-watch on the main guest thread, on
+  // its own host thread, just before it runs guest code.
+  if (cvars::rxdk_watch_addr && main_thread_) {
+    auto* host = kernel_state()->memory()->TranslateVirtual(
+        static_cast<uint32_t>(cvars::rxdk_watch_addr));
+    XELOGE("RXDK-WATCH arming DR0 on guest {:08X} (host {})",
+           static_cast<uint32_t>(cvars::rxdk_watch_addr),
+           static_cast<void*>(host));
+    xe::ExceptionHandler::ArmWriteWatch(reinterpret_cast<uint64_t>(host));
+  }
+
   uint32_t next_address;
 #if !XE_PLATFORM_WIN32
   try {

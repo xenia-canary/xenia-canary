@@ -107,6 +107,7 @@ class Exception {
     kInvalidException = 0,
     kAccessViolation,
     kIllegalInstruction,
+    kDataBreakpoint,   // RXDK: hardware write-watch (DR0) trap
   };
 
   enum class AccessViolationOperation {
@@ -125,6 +126,10 @@ class Exception {
   }
   void InitializeIllegalInstruction(HostThreadContext* thread_context) {
     code_ = Code::kIllegalInstruction;
+    thread_context_ = thread_context;
+  }
+  void InitializeDataBreakpoint(HostThreadContext* thread_context) {
+    code_ = Code::kDataBreakpoint;
     thread_context_ = thread_context;
   }
 
@@ -226,6 +231,12 @@ class ExceptionHandler {
 
   // Uninstalls a previously-installed exception handler.
   static void Uninstall(Handler fn, void* data);
+
+  // RXDK diagnostic: arm a hardware write-watch (x86 DR0, 4-byte, write) on the
+  // CURRENT thread at the given host address. Every write to it then raises a
+  // trap dispatched to installed handlers as Code::kDataBreakpoint. Pass 0 to
+  // disarm. Windows/x64 only; a no-op elsewhere.
+  static void ArmWriteWatch(uint64_t host_address);
 };
 
 }  // namespace xe

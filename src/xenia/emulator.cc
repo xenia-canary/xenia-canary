@@ -94,6 +94,8 @@ DEFINE_int32(priority_class, 0,
              "values: 0 - Normal, 1 - Above normal, 2 - High",
              "General");
 
+DECLARE_uint64(rxdk_watch_addr);   // RXDK diagnostic watch (defined in xthread.cc)
+
 namespace xe {
 using namespace xe::literals;
 
@@ -1258,6 +1260,22 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   auto code_cache = processor()->backend()->code_cache();
   auto code_base = code_cache->execute_base_address();
   auto code_end = code_base + code_cache->total_size();
+
+  // RXDK diagnostic: a hardware write-watch trap. Log the guest PC that wrote
+  // the watched address and continue (the trap fires after the write).
+  if (ex->code() == Exception::Code::kDataBreakpoint) {
+    auto gf = code_cache->LookupFunction(ex->pc());
+    uint32_t guestpc = gf ? gf->MapMachineCodeToGuestAddress(ex->pc()) : 0;
+    uint32_t val = 0;
+    if (cvars::rxdk_watch_addr) {
+      auto* p = memory()->TranslateVirtual(
+          static_cast<uint32_t>(cvars::rxdk_watch_addr));
+      if (p) val = xe::load_and_swap<uint32_t>(p);
+    }
+    XELOGE("RXDK-WATCH wrote watched addr <- {:08X} from guestPC=0x{:08X} (hostPC=0x{:X})",
+           val, guestpc, ex->pc());
+    return true;
+  }
 
   if (!processor()->is_debugger_attached() && debugging::IsDebuggerAttached()) {
     // If Xenia's debugger isn't attached but another one is, pass it to that
