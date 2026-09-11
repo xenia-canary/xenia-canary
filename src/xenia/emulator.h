@@ -307,6 +307,8 @@ class Emulator {
 
   // The game can request another title to be loaded.
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
+  // Builds and runs the picker itself. UI thread only.
+  const std::filesystem::path ShowDiscPicker(std::string window_message);
 
   void WaitUntilExit();
 

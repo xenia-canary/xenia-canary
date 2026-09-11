@@ -1326,6 +1326,24 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
 
 const std::filesystem::path Emulator::GetNewDiscPath(
     std::string window_message) {
+  // GTK only allows widgets to be built on the UI thread, and XamSwapDisc
+  // calls this from a guest thread.
+  ui::Window* window = display_window();
+  if (window && !window->app_context().IsInUIThread()) {
+    std::filesystem::path path;
+    if (!window->app_context().CallInUIThreadSynchronous(
+            [this, &window_message, &path]() {
+              path = ShowDiscPicker(window_message);
+            })) {
+      return std::filesystem::path();
+    }
+    return path;
+  }
+  return ShowDiscPicker(window_message);
+}
+
+const std::filesystem::path Emulator::ShowDiscPicker(
+    std::string window_message) {
   std::filesystem::path path = "";
 
   auto file_picker = xe::ui::FilePicker::Create();
