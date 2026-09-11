@@ -1957,14 +1957,24 @@ bool XexModule::FindSaveRest() {
       address += 2 * 4;
     }
   }
-  if (cvars::enable_early_precompilation) {
-    for (auto&& to_ensure_precompiled : resolve_on_exit) {
-      // we want to make sure an address for these functions is available before
-      // any other functions are compiled for code generation purposes but we do
-      // it outside of our loops, because we also want to make sure we've marked
-      // up the symbol with info about it being save/rest and whatnot
-      processor_->ResolveFunction(to_ensure_precompiled);
-    }
+  // Resolve the save/rest stubs now -- ALWAYS, not just under early
+  // precompilation. They are tiny and few (~90 one-instruction entry points),
+  // and the scanner's IsRestGprLr() looks them up in the resolved entry_table_
+  // (QueryFunction) to recognize `b __restgprlr_*` epilogue tail calls. If they
+  // are left merely declared, a title whose early code does not itself call
+  // them -- e.g. one built with a non-MS CRT/compiler that uses plain `blr`
+  // epilogues (RXDK's clang) rather than the MS __restgprlr helpers -- leaves
+  // them unresolved when the first retail-library function is scanned. Every
+  // retail function that tail-calls a save/rest stub then fails to terminate and
+  // scans to end-of-.text, producing multi-MB merged "functions": ~40x slower
+  // JIT warmup and the arena "oversized alloc" overflows. Resolving them up
+  // front (as the comment below always intended) makes IsRestGprLr work for any
+  // title regardless of which compiler produced its own code.
+  for (auto&& to_ensure_precompiled : resolve_on_exit) {
+    // Make an address for these functions available before any other functions
+    // are compiled; done outside the loops above so the save/rest symbol info
+    // is fully marked up first.
+    processor_->ResolveFunction(to_ensure_precompiled);
   }
   return true;
 }
