@@ -491,7 +491,11 @@ dword_result_t NetDll_XNetGetTitleXnAddr_entry(dword_t caller,
   // https://github.com/facebookarchive/RakNet/blob/master/Source/RakPeer.cpp#L4467
   // "Mac address is a poor solution because you can't have multiple connections
   // from the same system"
-  std::memset(addr_ptr->abEnet, 0xCC, 6);
+  // A non-zero, realistic MAC (Microsoft OUI 00:22:48) rather than 0xCC*6, which
+  // looked like uninitialized memory. Must stay non-zero for the RakNet seeding
+  // noted above.
+  static const uint8_t kTitleMac[6] = {0x00, 0x22, 0x48, 0x58, 0x44, 0x4B};
+  std::memcpy(addr_ptr->abEnet, kTitleMac, 6);
 
   std::memset(addr_ptr->abOnline, 0, 20);
 
@@ -559,9 +563,16 @@ struct XEthernetStatus {
 };
 
 dword_result_t NetDll_XNetGetEthernetLinkStatus_entry(dword_t caller) {
-  return 0;
+  // xenia's socket layer is backed by real host sockets, so networking is
+  // actually available -- report a live 100Mbps full-duplex link rather than
+  // the old hardcoded 0 (down), which misled titles/diagnostics that surface
+  // link state even though sockets work. (Readiness is normally gated on
+  // XNetGetTitleXnAddr, not this, but reporting down here is simply wrong.)
+  return XEthernetStatus::XNET_ETHERNET_LINK_ACTIVE |
+         XEthernetStatus::XNET_ETHERNET_LINK_100MBPS |
+         XEthernetStatus::XNET_ETHERNET_LINK_FULL_DUPLEX;
 }
-DECLARE_XAM_EXPORT1(NetDll_XNetGetEthernetLinkStatus, kNetworking, kStub);
+DECLARE_XAM_EXPORT1(NetDll_XNetGetEthernetLinkStatus, kNetworking, kImplemented);
 
 dword_result_t NetDll_XNetDnsLookup_entry(dword_t caller, lpstring_t host,
                                           dword_t event_handle,
