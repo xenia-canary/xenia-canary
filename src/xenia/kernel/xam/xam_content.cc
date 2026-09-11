@@ -40,6 +40,22 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+static X_RESULT ReadContentData(lpvoid_t content_data_ptr,
+                                uint32_t content_data_size,
+                                XCONTENT_DATA_INTERNAL& result) {
+  if (content_data_size == sizeof(XCONTENT_DATA)) {
+    result = *content_data_ptr.as<XCONTENT_DATA*>();
+  } else if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
+    result = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
+  } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
+    result = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
+  } else {
+    assert_always();
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return X_ERROR_SUCCESS;
+}
+
 dword_result_t XamContentGetLicenseMask_entry(lpdword_t mask_ptr,
                                               lpvoid_t overlapped_ptr) {
   if (!mask_ptr) {
@@ -82,17 +98,13 @@ dword_result_t xeXamContentResolve(
   auto run = [user_index, content_data_ptr, content_data_size, path_ptr,
               path_size, create_directory, root_name_ptr](
                  uint32_t& extended_error, uint32_t& length) -> X_RESULT {
-    XCONTENT_DATA_AGGREGATE content_data;
-    if (content_data_size == sizeof(XCONTENT_DATA)) {
-      content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-    } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
-      // Due to the current implementation of content data we can't use
-      // XCONTENT_DATA_INTERNAL
-      content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
-    } else {
-      assert_always();
-      return X_ERROR_INVALID_PARAMETER;
-    }
+    XCONTENT_DATA_INTERNAL content_data{};
+    X_RESULT result =
+        ReadContentData(content_data_ptr, content_data_size, content_data);
+    if (result != X_ERROR_SUCCESS) {
+      return result;
+    };
+
     uint64_t xuid = 0;
     if (user_index < XUserMaxUserCount) {
       const auto profile =
@@ -311,16 +323,11 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
   }
 
   XCONTENT_DATA_INTERNAL content_data{};
-  if (content_data_size == sizeof(XCONTENT_DATA)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-  } else if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
-  } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
-  } else {
-    assert_always();
-    return X_ERROR_INVALID_PARAMETER;
-  }
+  X_RESULT result =
+      ReadContentData(content_data_ptr, content_data_size, content_data);
+  if (result != X_ERROR_SUCCESS) {
+    return result;
+  };
 
   if (content_data.content_type == XContentType::kMarketplaceContent) {
     xuid = 0;
@@ -645,24 +652,22 @@ dword_result_t xeXamContentSetThumbnail(
     return X_E_INVALIDARG;
   }
 
-  XCONTENT_DATA_INTERNAL content_data;
-  if (content_data_size == sizeof(XCONTENT_DATA)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA*>();
+  XCONTENT_DATA_INTERNAL content_data{};
+  X_RESULT result =
+      ReadContentData(content_data_ptr, content_data_size, content_data);
+  if (result != X_ERROR_SUCCESS) {
+    return result;
+  };
+
+  if (content_data_size == sizeof(XCONTENT_DATA) ||
+      content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
     content_data.title_id = kernel_state()->title_id();
-  } else if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
-    content_data.title_id = kernel_state()->title_id();
-  } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
-  } else {
-    assert_always();
-    return X_ERROR_INVALID_PARAMETER;
   }
 
   // Buffer is PNG data.
   auto buffer = std::vector<uint8_t>((uint8_t*)buffer_ptr,
                                      (uint8_t*)buffer_ptr + buffer_size);
-  auto result = kernel_state()->content_manager()->SetContentThumbnail(
+  result = kernel_state()->content_manager()->SetContentThumbnail(
       user->xuid(), content_data, std::move(buffer));
 
   if (overlapped_ptr) {
@@ -695,12 +700,12 @@ dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
                                   dword_t content_data_size,
                                   pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   uint64_t xuid = 0;
-  XCONTENT_DATA_AGGREGATE content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-  if (content_data_size == sizeof(XCONTENT_DATA_AGGREGATE)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_AGGREGATE*>();
-  } else if (content_data_size == sizeof(XCONTENT_DATA_INTERNAL)) {
-    content_data = *content_data_ptr.as<XCONTENT_DATA_INTERNAL*>();
-  }
+  XCONTENT_DATA_INTERNAL content_data{};
+  X_RESULT result =
+      ReadContentData(content_data_ptr, content_data_size, content_data);
+  if (result != X_ERROR_SUCCESS) {
+    return result;
+  };
 
   if (user_index != XUserIndexNone) {
     const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
@@ -712,8 +717,7 @@ dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
     xuid = user->xuid();
   }
 
-  auto result =
-      kernel_state()->content_manager()->DeleteContent(xuid, content_data);
+  result = kernel_state()->content_manager()->DeleteContent(xuid, content_data);
 
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
@@ -827,8 +831,6 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
   /* Notes:
       - In code this subfunction is used by all XamContentLaunchImage
      functions
-      - Due to the current implementation of content data we can't use
-     XCONTENT_DATA_INTERNAL
       - flags used by XamLoaderLaunchTitleEx
       - user_index used by xeXamContentOpenFile
       - if image_location null use xeXamContentOpenFile else use
@@ -839,15 +841,18 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
   */
   vfs::Entry* entry;
   if (!image_location) {
-    XCONTENT_DATA_AGGREGATE content_data =
-        *content_data_ptr.as<XCONTENT_DATA*>();
-    const uint32_t title_id = xe::string_util::from_string<uint32_t>(
-        content_data.file_name().substr(0, 8), true);
+    XCONTENT_DATA_INTERNAL content_data{};
+    X_RESULT result =
+        ReadContentData(content_data_ptr, content_data_size, content_data);
+    if (result != X_ERROR_SUCCESS) {
+      return result;
+    };
 
     // This should be done via content_manager, however as it isn't capable of
     // such action we need to improvise.
     const std::string package_path =
-        fmt::format("GAME:/Content/0000000000000000/{:08X}/{:08X}/{}", title_id,
+        fmt::format("GAME:/Content/0000000000000000/{:08X}/{:08X}/{}",
+                    content_data.title_id.get(),
                     static_cast<uint32_t>(content_data.content_type.get()),
                     content_data.file_name());
 

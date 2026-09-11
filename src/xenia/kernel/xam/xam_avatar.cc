@@ -349,7 +349,7 @@ dword_result_t XamAvatarLoadAnimation_entry(
 
   std::string summary = "Request to load avatar animation: ";
 
-  if (XAnimationTypeMap.find(*asset_id_ptr) != XAnimationTypeMap.cend()) {
+  if (XAnimationTypeMap.contains(*asset_id_ptr)) {
     summary += XAnimationTypeMap.at(*asset_id_ptr);
   } else {
     summary += fmt::format("Unknown animation 0x{:016x}",
