@@ -277,6 +277,10 @@ class XObject {
   // Guest pointer for kernel object. Remember: X_OBJECT_HEADER precedes this
   // if we allocated it!
   uint32_t guest_object_ptr_ = 0;
+  // The handle this object wrote into guest memory, so its destructor can
+  // take that marker back rather than leave it naming a handle the object
+  // table has since handed to something else.
+  uint32_t stashed_handle_ = 0;
   bool allocated_guest_object_ = false;
 };
 

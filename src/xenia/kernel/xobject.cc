@@ -51,6 +51,20 @@ XObject::~XObject() {
   assert_true(handles_.empty());
   assert_zero(pointer_ref_count_);
 
+  // The signature stamped into guest memory names this object's handle, and
+  // the object table hands that handle out again as soon as this object is
+  // gone. Anything reading that memory afterwards follows the handle to
+  // whatever owns it by then. Take the marker back.
+  if (guest_object_ptr_ && stashed_handle_) {
+    auto* stashed_header =
+        memory()->TranslateVirtual<X_DISPATCH_HEADER*>(guest_object_ptr_);
+    if (stashed_header->wait_list.flink_ptr == kXObjSignature &&
+        stashed_header->wait_list.blink_ptr == stashed_handle_) {
+      stashed_header->wait_list.flink_ptr = 0;
+      stashed_header->wait_list.blink_ptr = 0;
+    }
+  }
+
   if (allocated_guest_object_) {
     uint32_t ptr = guest_object_ptr_ - sizeof(X_OBJECT_HEADER);
     auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(ptr);
@@ -390,6 +404,7 @@ void XObject::SetNativePointer(uint32_t native_ptr, bool uninitialized) {
   // Stash pointer in struct.
   // FIXME: This assumes the object has a dispatch header (some don't!)
   StashHandle(header, handle());
+  stashed_handle_ = handle();
 
   guest_object_ptr_ = native_ptr;
 }
@@ -421,14 +436,39 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
     type = header->type;
   }
 
+  // Set when the memory carries our signature but the handle in it does not
+  // name an object that lives at this address any more.
+  bool stale_signature = false;
+
   if (header->wait_list.flink_ptr == kXObjSignature) {
     // Already initialized.
     // TODO: assert if the type of the object != as_type
     uint32_t handle = header->wait_list.blink_ptr;
-    result = kernel_state->object_table()
-                 ->LookupObject<XObject>(handle, true)
-                 .release();
-  } else {
+    auto found =
+        kernel_state->object_table()->LookupObject<XObject>(handle, true);
+    // The signature can outlive what wrote it: guest memory that once held a
+    // kernel object is freed and handed out again for something else, and the
+    // handle still sitting in it may by then belong to an unrelated object.
+    // Releasing that one closed a file Guitar Hero 5 was reading and the title
+    // put up a disc read error. Take the handle only if the object it names
+    // still points back at this memory.
+    const uint32_t guest_ptr =
+        kernel_state->memory()->HostToGuestVirtual(native_ptr);
+    if (found && found->guest_object() == guest_ptr) {
+      result = found.release();
+    } else {
+      stale_signature = true;
+      XELOGD(
+          "Stale kernel object signature at {:08X}: handle {:08X} {}. Treating "
+          "the memory as uninitialized.",
+          guest_ptr, handle,
+          found ? fmt::format("belongs to the object at {:08X}",
+                              found->guest_object())
+                : "names no object");
+    }
+  }
+
+  if (!result) {
     // First use, create new.
     // https://www.nirsoft.net/kernel_struct/vista/KOBJECTS.html
     switch (type) {
@@ -463,13 +503,24 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
       case X_OBJECT_TYPES::InterruptObject:
       case X_OBJECT_TYPES::ProfileObject:
       default:
-        assert_always();
+        // A stale signature means the type byte is whatever the memory is
+        // being used for now, so it is not worth asserting over.
+        if (!stale_signature) {
+          assert_always();
+        }
         result = nullptr;
     }
     // Stash pointer in struct.
     // FIXME: This assumes the object contains a dispatch header (some don't!)
     if (result) {
       StashHandle(header, result->handle());
+      result->stashed_handle_ = result->handle();
+      // Record where the object lives so a later lookup can tell this
+      // signature apart from one left behind in memory that has since been
+      // handed out for something else. InitializeNative does not set it, and
+      // the memory is not ours to free, so allocated_guest_object_ stays off.
+      result->guest_object_ptr_ =
+          kernel_state->memory()->HostToGuestVirtual(native_ptr);
     }
   }
 
