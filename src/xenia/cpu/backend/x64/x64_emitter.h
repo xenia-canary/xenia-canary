@@ -126,6 +126,7 @@ enum XmmConst {
   XMMPackULONG_4202020_MaskUnpacked,
   XMMPackULONG_4202020_PermuteXZ,
   XMMPackULONG_4202020_PermuteYW,
+  XMMPack8_IN_16_UnsignedByteMax,
   XMMUnpackULONG_4202020_Permute,
   XMMUnpackULONG_4202020_Overflow,
   XMMOneOver255,
