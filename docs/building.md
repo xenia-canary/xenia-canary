@@ -10,6 +10,8 @@ drivers.
 
 * Windows 10 or later
 * [Visual Studio 2022 or later](https://www.visualstudio.com/downloads/)
+  or [CLion](https://www.jetbrains.com/clion/) with the standalone [Build Tools](#build-tools-only-no-visual-studio-ide)
+  (compiler + SDK, no IDE needed)
 * CMake 3.10+ (or C++ CMake tools for Windows)
 * Windows 11 SDK version 10.0.22000.0 (for Visual Studio 2022, this or any newer version)
 * [Python 3.6+ 64-bit](https://www.python.org/downloads/)
@@ -29,8 +31,17 @@ xb build
 # Pull latest changes, rebase, update submodules, and run premake:
 xb pull
 
-# Run premake and open Visual Studio (run the 'xenia-app' project):
+# Run premake and open the detected IDE (Visual Studio if installed,
+# else CLion; run the 'xenia-app' project):
 xb devenv
+
+# Force an IDE (auto is the default; vs fails if only Build Tools exist,
+# clion needs 'clion'/'clion64' on PATH or you open the folder manually):
+xb devenv --ide=clion
+xb devenv --ide=vs
+
+# Use a CLion launcher that is not on PATH:
+xb devenv --ide=clion --clion-path="C:\Program Files\JetBrains\CLion\bin\clion64.exe"
 
 # Run premake to update the sln/vcproj's:
 xb premake
@@ -41,6 +52,56 @@ xb format
 # Build and run the unit tests:
 xb test
 ```
+
+#### Build Tools only (no Visual Studio IDE)
+
+You don't need the Visual Studio IDE — the standalone Build Tools provide
+the MSVC compiler and Windows SDK that `xb` and CLion use:
+
+1. Download **Build Tools for Visual Studio** from the
+   [Visual Studio downloads page](https://visualstudio.microsoft.com/downloads/)
+   (under "Tools for Visual Studio") and run the installer as admin.
+2. Select the **Desktop development with C++** workload.
+3. Install, then verify the C++ workload actually landed: the
+   `VC\Tools\MSVC` folder should exist under the install path (default:
+   `C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools` for 2026 —
+   adjust `18` to your version or use your actual path).
+   If it's missing, the `--add` flags were dropped — re-run the install
+   command. Then open a fresh terminal and run `xb setup` — `xb` locates the
+   Build Tools automatically, so the install location doesn't matter.
+
+Command-line alternatives (admin terminal):
+
+```
+:: VS Build Tools
+winget install --id Microsoft.VisualStudio.BuildTools -e --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+If winget reports the package already installed with no upgrade available,
+it skips the installer and the workload is never added. Modify the existing
+install instead (admin terminal):
+
+```
+& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools" --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart
+```
+(adjust `--installPath` to your version/location — `18` is VS 2026).
+
+CLion picks up a Build Tools install as a "Visual Studio" toolchain on its
+own — nothing extra to configure beyond selecting it.
+
+Switching between the VS IDE and Build Tools (or a VS update changing the
+MSVC version directory) can orphan the compiler path in
+`build/CMakeCache.txt` — if configure fails with a missing compiler error,
+delete `build/CMakeCache.txt` and `build/CMakeFiles` and re-run configure.
+
+If CLion fails to reload with "Cannot locate vcvarsall.bat" after removing
+a VS installation, its cached toolchain is stale: Settings > Build,
+Execution, Deployment > Toolchains > remove the old Visual Studio entry so
+it redetects the current install (`xb devenv --ide=clion` warns about this
+automatically).
+CLion does not always redetect a new installation by itself — if reload then
+reports a toolchain is not found, re-add it with the `+`
+button (type Visual Studio), then reload.
 <!--
 # Remove intermediate files and build outputs (doesn't work on Linux):
 xb clean
@@ -75,6 +136,21 @@ xb gputest
 # Generate SPIR-V binaries and header files:
 xb genspirv
 -->
+
+#### CLion (Windows)
+
+`xb devenv --ide=clion` runs the same configure as `xb build` (Ninja
+Multi-Config in `build/`) and opens the project folder in CLion. If the
+launcher is not on PATH, pass `--clion-path=<launcher>` or open the folder
+manually. With only Build Tools installed (no `devenv.exe`), plain
+`xb devenv` selects CLion automatically.
+
+In CLion, the presets in `CMakePresets.json` are imported automatically.
+Then build/run the `xenia-app` target.
+
+Ensure CLion uses an MSVC (Visual Studio) toolchain: Settings > Build,
+Execution, Deployment > Toolchains. The MinGW toolchain is not supported
+on Windows — this project requires MSVC.
 
 #### Debugging
 
