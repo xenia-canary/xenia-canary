@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <cerrno>
 #include <cstring>
+#include <utility>
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || \
     defined(_M_IX86)
@@ -232,6 +233,32 @@ bool ALSAAudioDriver::SetupAlsaDevice() {
     return false;
   }
 
+  // Xenia produces 5.1 frames in the Xbox 360/XAudio2 channel order:
+  //   FL, FR, FC, LFE, BL, BR
+  // Most ALSA devices (including PipeWire's ALSA compatibility layer) use
+  // the POSIX/ALSA convention instead:
+  //   FL, FR, RL, RR, FC, LFE
+  // Without correcting for this, center and LFE end up swapped with the
+  // rear channels. Query the device's channel map and only skip the
+  // correction if it already matches the Xbox 360/XAudio2 order, mirroring
+  // the equivalent check in Xenia's bundled SDL2 fork
+  // (third_party/SDL2/src/audio/alsa/SDL_alsa_audio.c).
+  swizzle_channels_ = false;
+  if (output_channels_ == 6) {
+    swizzle_channels_ = true;
+    snd_pcm_chmap_t* chmap = snd_pcm_get_chmap(pcm_handle_);
+    if (chmap) {
+      char chmap_str[64];
+      if (snd_pcm_chmap_print(chmap, sizeof(chmap_str), chmap_str) > 0) {
+        if (std::strcmp("FL FR FC LFE RL RR", chmap_str) == 0 ||
+            std::strcmp("FL FR FC LFE SL SR", chmap_str) == 0) {
+          swizzle_channels_ = false;
+        }
+      }
+      free(chmap);
+    }
+  }
+
   // Setup software parameters
   err = snd_pcm_sw_params_current(pcm_handle_, sw_params_);
   if (err < 0) {
@@ -381,6 +408,10 @@ void ALSAAudioDriver::WorkerThread() {
         // in correct format (This matches XAudio2 behavior where memcpy is
         // used)
         output = frame;
+      }
+
+      if (swizzle_channels_) {
+        ApplyChannelSwizzle(output, channel_samples_);
       }
 
       // Apply volume using SIMD-optimized function
@@ -576,6 +607,17 @@ void ALSAAudioDriver::ApplyVolume(float* buffer, size_t sample_count,
     buffer[i] *= volume;
   }
 #endif
+}
+
+void ALSAAudioDriver::ApplyChannelSwizzle(float* buffer,
+                                          size_t channel_samples) {
+  // Swap FC/LFE (indices 2/3) with BL/BR (indices 4/5) in each interleaved
+  // 6-channel frame to go from Xbox 360/XAudio2 order to ALSA order.
+  for (size_t sample = 0; sample < channel_samples; sample++) {
+    float* channel = &buffer[sample * 6];
+    std::swap(channel[2], channel[4]);
+    std::swap(channel[3], channel[5]);
+  }
 }
 
 void ALSAAudioDriver::Pause() {
