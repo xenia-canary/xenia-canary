@@ -24,6 +24,13 @@ class XLiveBaseApp : public App {
 
   X_HRESULT DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                 uint32_t buffer_length) override;
+
+ private:
+  X_HRESULT XUserMuteListQuery(uint32_t buffer_ptr, uint32_t buffer_length);
+  X_HRESULT XLiveBasePresenceCreateEnumerator(uint32_t buffer_ptr,
+                                              uint32_t buffer_length);
+  X_HRESULT XLiveBaseFriendsCreateEnumerator(uint32_t buffer_ptr,
+                                             uint32_t buffer_length);
 };
 
 }  // namespace apps
