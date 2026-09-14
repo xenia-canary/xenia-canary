@@ -74,6 +74,10 @@ class AchievementNotificationWindow final : ImGuiGuestNotification {
                                position_id) {};
 
   void OnDraw(ImGuiIO& io) override;
+
+ private:
+  uint64_t animation_start_ = 0;
+  bool animation_started_ = false;
 };
 
 class XNotifyWindow final : ImGuiGuestNotification {
