@@ -71,21 +71,6 @@ DEFINE_int32(occlusion_query_fake_upper_threshold, 100,
              "Keep this higher than occlusion_query_fake_lower_threshold.\n"
              "Ignored if occlusion_query_fake_lower_threshold is -1.",
              "GPU");
-DEFINE_int32(occlusion_query_querybatch_range, 0,
-             "Range of fake sample count values to walk for titles using the "
-             "D3D QueryBatch standard before wrapping back to "
-             "occlusion_query_fake_lower_threshold.\n"
-             "This shouldn't be changed from the default value of 0 (disabled) "
-             "unless necessary for a specific title.",
-             "GPU");
-DEFINE_double(
-    occlusion_query_saturation, 1.0,
-    "Compress higher occlusion query sample counts before guest writeback.\n"
-    "This can be useful if effects such as lens flares appear too strong.\n"
-    "1.0 = default behavior\n"
-    "0.0 = collapse all nonzero sample counts to 1\n"
-    "Values around 0.90 are a good starting point for subtle tuning.",
-    "GPU");
 
 DEFINE_int32(anisotropic_override, -1,
              "Forces anisotropic filtering (AF) for eligible textures.\n"
