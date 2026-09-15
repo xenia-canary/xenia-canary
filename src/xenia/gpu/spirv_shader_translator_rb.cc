@@ -759,7 +759,7 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       }
     }
 
-    FSI_AddPassedMSAASamplesToZPD();
+    FSI_AddPassedMSAASamplesToCounter();
 
     if (color_write_depth_stencil_condition != spv::NoResult) {
       // Skip all color operations if the pixel has failed the tests entirely.
@@ -2016,11 +2016,11 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
                                sample_offset);
 }
 
-void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
+void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToCounter() {
   assert_true(edram_fragment_shader_interlock_);
   assert_true(buffer_zpd_fsi_counter_ != spv::NoResult);
 
-  // UINT32_MAX means no ZPD segment is currently open for this draw.
+  // UINT32_MAX means no counter slot is open for this draw.
   id_vector_temp_.clear();
   id_vector_temp_.push_back(
       builder_->makeIntConstant(kSystemConstantZpdFsiCounterIndex));
@@ -2061,8 +2061,8 @@ void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
       storage_class, buffer_zpd_fsi_counter_, id_vector_temp_);
 
   // Add the number of samples that survived final depth/stencil for this
-  // fragment to the active query slot, which is copied to the ZPD readback
-  // buffer when the query segment is closed.
+  // fragment to the active slot, which is copied to the readback buffer when
+  // the query segment is closed.
   builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
                          const_scope_device, const_semantics_relaxed,
                          passed_sample_count);

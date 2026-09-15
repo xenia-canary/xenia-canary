@@ -1136,24 +1136,96 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
   reader_.AdvanceRead(count_remaining * sizeof(uint32_t));
 
   if (draw_succeeded) {
-    auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();
-    if (!(viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z)) {
-      // TODO(Triang3l): Don't drop the draw call completely if the vertex
-      // shader has memexport.
-      // TODO(Triang3l || JoelLinn): Handle this properly in the render
-      // backends.
-      draw_succeeded = COMMAND_PROCESSOR::IssueDraw(
-          vgt_draw_initiator.prim_type, vgt_draw_initiator.num_indices,
-          is_indexed ? &index_buffer_info : nullptr,
-          xenos::IsMajorModeExplicit(vgt_draw_initiator.major_mode,
-                                     vgt_draw_initiator.prim_type));
-      if (!draw_succeeded) {
-        XELOGE("{}({}, {}, {}): Failed in backend", opcode_name,
-               vgt_draw_initiator.num_indices,
-               uint32_t(vgt_draw_initiator.prim_type),
-               uint32_t(vgt_draw_initiator.source_select));
+    const auto viz_decision =
+        COMMAND_PROCESSOR::GetVIZDecision(viz_query_condition);
+    // The memexport and copy checks only matter when a cull or a predicate was
+    // actually decided, so most token draws don't pay for them.
+    bool viz_token_has_memexport = false;
+    bool viz_copy_passthrough = false;
+    if (!viz_decision.draw || viz_decision.use_predicate) {
+      // Assume any unanalyzed memexport shader might export.
+      const auto shader_may_memexport = [](const Shader* shader) {
+        return shader &&
+               (!shader->is_ucode_analyzed() || shader->memexport_eM_written());
+      };
+      viz_token_has_memexport = shader_may_memexport(active_vertex_shader_) ||
+                                shader_may_memexport(active_pixel_shader_);
+      viz_copy_passthrough =
+          register_file_->Get<reg::RB_MODECONTROL>().edram_mode ==
+          xenos::EdramMode::kCopy;
+      if (viz_token_has_memexport) {
+        ++viz_stats_.memexport_draws;
+      }
+      if (viz_copy_passthrough) {
+        ++viz_stats_.copy_passthroughs;
       }
     }
+    if (viz_decision.draw || viz_token_has_memexport || viz_copy_passthrough) {
+      IndexBufferInfo* draw_index_buffer_info =
+          is_indexed ? &index_buffer_info : nullptr;
+      const bool major_mode_explicit = xenos::IsMajorModeExplicit(
+          vgt_draw_initiator.major_mode, vgt_draw_initiator.prim_type);
+      const bool use_viz_predicate = viz_decision.use_predicate &&
+                                     !viz_token_has_memexport &&
+                                     !viz_copy_passthrough;
+      if (use_viz_predicate) {
+        viz_predicate_draw_.slot_id = viz_decision.slot_id;
+        viz_predicate_draw_.slot_sequence_id = viz_decision.slot_sequence_id;
+        viz_predicate_draw_.active = true;
+      }
+      if (const auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();
+          viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z) {
+        // This draw is the survey geometry, often a cheap bounding box for a
+        // real draw that follows carrying the token, and it can itself be
+        // predicated by an older ID. With the feature off it's dropped, as it
+        // always was.
+        if (cvars::viz_query) {
+          CommandProcessor::VIZQueryDrawResult query_draw_result =
+              CommandProcessor::VIZQueryDrawResult::kFallback;
+          if (!COMMAND_PROCESSOR::IssueDraw(
+                  vgt_draw_initiator.prim_type, vgt_draw_initiator.num_indices,
+                  draw_index_buffer_info, major_mode_explicit,
+                  &query_draw_result)) {
+            query_draw_result = CommandProcessor::VIZQueryDrawResult::kFailed;
+          }
+          if (query_draw_result ==
+              CommandProcessor::VIZQueryDrawResult::kFailed) {
+            draw_succeeded = false;
+            XELOGE("{}({}, {}, {}): Failed in backend VIZ query draw",
+                   opcode_name, vgt_draw_initiator.num_indices,
+                   uint32_t(vgt_draw_initiator.prim_type),
+                   uint32_t(vgt_draw_initiator.source_select));
+          } else if (query_draw_result ==
+                     CommandProcessor::VIZQueryDrawResult::kDrawn) {
+            COMMAND_PROCESSOR::NoteVIZDraw(true);
+          }
+        }
+      } else {
+        draw_succeeded = COMMAND_PROCESSOR::IssueDraw(
+            vgt_draw_initiator.prim_type, vgt_draw_initiator.num_indices,
+            draw_index_buffer_info, major_mode_explicit);
+        if (cvars::viz_query && draw_succeeded) {
+          COMMAND_PROCESSOR::NoteVIZDraw(true);
+        }
+        if (!draw_succeeded) {
+          XELOGE("{}({}, {}, {}): Failed in backend", opcode_name,
+                 vgt_draw_initiator.num_indices,
+                 uint32_t(vgt_draw_initiator.prim_type),
+                 uint32_t(vgt_draw_initiator.source_select));
+        }
+      }
+      if (use_viz_predicate) {
+        viz_predicate_draw_ = {};
+      }
+    } else {
+      ++viz_stats_.draws_culled;
+    }
+  }
+
+  if (cvars::viz_query && !draw_succeeded) {
+    // A failed VIZ query draw wasn't measured. Hidden would be a made up
+    // answer anyways, so record the generation as conservative.
+    COMMAND_PROCESSOR::NoteVIZDraw(false);
   }
 
   // If read the packed correctly, but merely couldn't execute it (because of,
@@ -1391,23 +1463,15 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_VIZ_QUERY(
   uint32_t id = dword0 & 0x3F;
   uint32_t end = dword0 & 0x100;
   if (!end) {
-    // begin a new viz query @ id
-    // On hardware this clears the internal state of the scan converter (which
-    // is different to the register)
+    // On hardware this clears the internal state of the scan converter.
     COMMAND_PROCESSOR::WriteEventInitiator(VIZQUERY_START);
-    // XELOGGPU("Begin viz query ID {:02X}", id);
+    if (cvars::viz_query) {
+      COMMAND_PROCESSOR::BeginVIZQuery(id);
+    }
   } else {
-    // end the viz query
     COMMAND_PROCESSOR::WriteEventInitiator(VIZQUERY_END);
-    // XELOGGPU("End viz query ID {:02X}", id);
-    // The scan converter writes the internal result back to the register here.
-    // We just fake it and say it was visible in case it is read back.
-    if (id < 32) {
-      register_file_->values[XE_GPU_REG_PA_SC_VIZ_QUERY_STATUS_0] |= uint32_t(1)
-                                                                     << id;
-    } else {
-      register_file_->values[XE_GPU_REG_PA_SC_VIZ_QUERY_STATUS_1] |=
-          uint32_t(1) << (id - 32);
+    if (cvars::viz_query) {
+      COMMAND_PROCESSOR::EndVIZQuery(id);
     }
   }
 
