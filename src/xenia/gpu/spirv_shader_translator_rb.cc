@@ -17,6 +17,7 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/spirv_compatibility.h"
+#include "xenia/gpu/xenos_zpd_report.h"
 
 namespace xe {
 namespace gpu {
@@ -665,6 +666,10 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
     }
   }
 
+  if (GetSpirvShaderModification().pixel.zpd_total) {
+    FBO_AddMSAASamplesToZPDTotal();
+  }
+
   spv::Block* block_fsi_if_after_kill = nullptr;
   spv::Block* block_fsi_if_after_kill_merge = nullptr;
 
@@ -759,7 +764,8 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       }
     }
 
-    FSI_AddPassedMSAASamplesToZPD();
+    FSI_AddMSAASamplesToZPD(true,
+                            zpd_full_counters_ && !FSI_IsDepthStencilEarly());
 
     if (color_write_depth_stencil_condition != spv::NoResult) {
       // Skip all color operations if the pixel has failed the tests entirely.
@@ -1785,6 +1791,8 @@ void SpirvShaderTranslator::FSI_LoadSampleMask(spv::Id msaa_samples) {
   id_vector_temp_.push_back(block_msaa_4x.getId());
   main_fsi_sample_mask_ =
       builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+  main_fsi_z_fail_sample_mask_ = const_uint_0_;
+  main_fsi_stencil_fail_sample_mask_ = const_uint_0_;
 }
 
 void SpirvShaderTranslator::FSI_LoadEdramOffsets(spv::Id msaa_samples) {
@@ -2016,14 +2024,15 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
                                sample_offset);
 }
 
-void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
+void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
+                                                    bool count_failed) {
   assert_true(edram_fragment_shader_interlock_);
-  assert_true(buffer_zpd_fsi_counter_ != spv::NoResult);
+  assert_true(buffer_zpd_counter_ != spv::NoResult);
 
   // UINT32_MAX means no ZPD segment is currently open for this draw.
   id_vector_temp_.clear();
   id_vector_temp_.push_back(
-      builder_->makeIntConstant(kSystemConstantZpdFsiCounterIndex));
+      builder_->makeIntConstant(kSystemConstantZpdCounterIndex));
   spv::Id counter_index = builder_->createLoad(
       builder_->createAccessChain(spv::StorageClassUniform,
                                   uniform_system_constants_, id_vector_temp_),
@@ -2033,19 +2042,6 @@ void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
                             builder_->makeUintConstant(UINT32_MAX)),
       spv::SelectionControlDontFlattenMask, *builder_);
 
-  // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
-  // don't contribute to the counter.
-  spv::Id passed_sample_count = builder_->createUnaryOp(
-      spv::OpBitCount, type_uint_,
-      builder_->createBinOp(
-          spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
-          builder_->makeUintConstant((uint32_t(1) << 4) - 1)));
-
-  SpirvBuilder::IfBuilder if_any_samples(
-      builder_->createBinOp(spv::OpINotEqual, type_bool_, passed_sample_count,
-                            const_uint_0_),
-      spv::SelectionControlDontFlattenMask, *builder_);
-
   spv::StorageClass storage_class = features_.spirv_version >= spv::Spv_1_3
                                         ? spv::StorageClassStorageBuffer
                                         : spv::StorageClassUniform;
@@ -2053,19 +2049,102 @@ void SpirvShaderTranslator::FSI_AddPassedMSAASamplesToZPD() {
       builder_->makeUintConstant(static_cast<unsigned int>(spv::ScopeDevice));
   spv::Id const_semantics_relaxed = const_uint_0_;
 
+  // One slot holds every ZPD counter.
+  spv::Id counter_base =
+      builder_->createBinOp(spv::OpIMul, type_uint_, counter_index,
+                            builder_->makeUintConstant(XenosZPDReport::kCount));
+
+  auto add_lane = [&](spv::Id sample_mask, uint32_t lane) {
+    spv::Id sample_count =
+        builder_->createUnaryOp(spv::OpBitCount, type_uint_, sample_mask);
+    SpirvBuilder::IfBuilder if_any_samples(
+        builder_->createBinOp(spv::OpINotEqual, type_bool_, sample_count,
+                              const_uint_0_),
+        spv::SelectionControlDontFlattenMask, *builder_);
+    id_vector_temp_.clear();
+    id_vector_temp_.push_back(const_int_0_);
+    id_vector_temp_.push_back(builder_->createUnaryOp(
+        spv::OpBitcast, type_int_,
+        builder_->createBinOp(spv::OpIAdd, type_uint_, counter_base,
+                              builder_->makeUintConstant(lane))));
+    spv::Id counter_ptr = builder_->createAccessChain(
+        storage_class, buffer_zpd_counter_, id_vector_temp_);
+    builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
+                           const_scope_device, const_semantics_relaxed,
+                           sample_count);
+    if_any_samples.makeEndIf();
+  };
+
+  if (count_passed) {
+    // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
+    // don't contribute to the counter.
+    add_lane(builder_->createBinOp(
+                 spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
+                 builder_->makeUintConstant((uint32_t(1) << 4) - 1)),
+             XenosZPDReport::kZPass);
+  }
+  if (count_failed) {
+    add_lane(main_fsi_z_fail_sample_mask_, XenosZPDReport::kZFail);
+    add_lane(main_fsi_stencil_fail_sample_mask_, XenosZPDReport::kStencilFail);
+  }
+
+  if_counter_open.makeEndIf();
+}
+
+void SpirvShaderTranslator::FBO_AddMSAASamplesToZPDTotal() {
+  assert_false(edram_fragment_shader_interlock_);
+  assert_true(buffer_zpd_counter_ != spv::NoResult);
+  assert_true(var_main_zpd_coverage_ != spv::NoResult);
+
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(
+      builder_->makeIntConstant(kSystemConstantZpdCounterIndex));
+  spv::Id counter_index = builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_system_constants_, id_vector_temp_),
+      spv::NoPrecision);
+  SpirvBuilder::IfBuilder if_counter_open(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, counter_index,
+                            builder_->makeUintConstant(UINT32_MAX)),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  // Demoted fragments shouldn't be counted here.
+  spv::Id coverage =
+      builder_->createLoad(var_main_zpd_coverage_, spv::NoPrecision);
+  if (features_.demote_to_helper_invocation) {
+    id_vector_temp_.clear();
+    coverage =
+        builder_->createTriOp(spv::OpSelect, type_uint_,
+                              builder_->createOp(spv::OpIsHelperInvocationEXT,
+                                                 type_bool_, id_vector_temp_),
+                              const_uint_0_, coverage);
+  }
+  spv::Id sample_count =
+      builder_->createUnaryOp(spv::OpBitCount, type_uint_, coverage);
+  SpirvBuilder::IfBuilder if_any_samples(
+      builder_->createBinOp(spv::OpINotEqual, type_bool_, sample_count,
+                            const_uint_0_),
+      spv::SelectionControlDontFlattenMask, *builder_);
+
+  // Total is the slot's first counter.
+  spv::Id counter_offset =
+      builder_->createBinOp(spv::OpIMul, type_uint_, counter_index,
+                            builder_->makeUintConstant(XenosZPDReport::kCount));
   id_vector_temp_.clear();
   id_vector_temp_.push_back(const_int_0_);
   id_vector_temp_.push_back(
-      builder_->createUnaryOp(spv::OpBitcast, type_int_, counter_index));
+      builder_->createUnaryOp(spv::OpBitcast, type_int_, counter_offset));
+  spv::StorageClass storage_class = features_.spirv_version >= spv::Spv_1_3
+                                        ? spv::StorageClassStorageBuffer
+                                        : spv::StorageClassUniform;
   spv::Id counter_ptr = builder_->createAccessChain(
-      storage_class, buffer_zpd_fsi_counter_, id_vector_temp_);
-
-  // Add the number of samples that survived final depth/stencil for this
-  // fragment to the active query slot, which is copied to the ZPD readback
-  // buffer when the query segment is closed.
+      storage_class, buffer_zpd_counter_, id_vector_temp_);
+  spv::Id const_scope_device =
+      builder_->makeUintConstant(static_cast<unsigned int>(spv::ScopeDevice));
+  spv::Id const_semantics_relaxed = const_uint_0_;
   builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
                          const_scope_device, const_semantics_relaxed,
-                         passed_sample_count);
+                         sample_count);
 
   if_any_samples.makeEndIf();
   if_counter_open.makeEndIf();
@@ -2319,6 +2398,8 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
 
   // Perform depth and stencil testing for each covered sample.
   spv::Id new_sample_mask = main_fsi_sample_mask_;
+  spv::Id z_fail_sample_mask = const_uint_0_;
+  spv::Id stencil_fail_sample_mask = const_uint_0_;
   std::array<spv::Id, 4> late_write_depth_stencil{};
   for (uint32_t i = 0; i < 4; ++i) {
     spv::Id sample_covered = builder_->createBinOp(
@@ -2646,6 +2727,29 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     // coverage if not.
     spv::Id depth_stencil_passed = builder_->createBinOp(
         spv::OpLogicalAnd, type_bool_, depth_passed, stencil_passed);
+    spv::Id z_fail_sample_mask_after_sample = z_fail_sample_mask;
+    spv::Id stencil_fail_sample_mask_after_sample = stencil_fail_sample_mask;
+    if (zpd_full_counters_) {
+      // Remember the failures for the ZFail and StencilFail counters. Stencil
+      // failure takes precedence over depth failure.
+      spv::Id sample_bit = builder_->makeUintConstant(uint32_t(1) << i);
+      z_fail_sample_mask_after_sample = builder_->createTriOp(
+          spv::OpSelect, type_uint_,
+          builder_->createBinOp(
+              spv::OpLogicalAnd, type_bool_, stencil_passed,
+              builder_->createUnaryOp(spv::OpLogicalNot, type_bool_,
+                                      depth_passed)),
+          builder_->createBinOp(spv::OpBitwiseOr, type_uint_,
+                                z_fail_sample_mask, sample_bit),
+          z_fail_sample_mask);
+      stencil_fail_sample_mask_after_sample = builder_->createTriOp(
+          spv::OpSelect, type_uint_,
+          builder_->createUnaryOp(spv::OpLogicalNot, type_bool_,
+                                  stencil_passed),
+          builder_->createBinOp(spv::OpBitwiseOr, type_uint_,
+                                stencil_fail_sample_mask, sample_bit),
+          stencil_fail_sample_mask);
+    }
     spv::Id new_sample_mask_after_sample = builder_->createTriOp(
         spv::OpSelect, type_uint_, depth_stencil_passed, new_sample_mask,
         builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, new_sample_mask,
@@ -2704,6 +2808,12 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     if_sample_covered.makeEndIf();
     new_sample_mask = if_sample_covered.createMergePhi(
         new_sample_mask_after_sample, new_sample_mask);
+    if (zpd_full_counters_) {
+      z_fail_sample_mask = if_sample_covered.createMergePhi(
+          z_fail_sample_mask_after_sample, z_fail_sample_mask);
+      stencil_fail_sample_mask = if_sample_covered.createMergePhi(
+          stencil_fail_sample_mask_after_sample, stencil_fail_sample_mask);
+    }
     if (is_early) {
       late_write_depth_stencil[i] =
           if_sample_covered.createMergePhi(new_depth_stencil, const_uint_0_);
@@ -2722,6 +2832,22 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     id_vector_temp_.push_back(block_any_sample_covered_head->getId());
     new_sample_mask =
         builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+    if (zpd_full_counters_) {
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(z_fail_sample_mask);
+      id_vector_temp_.push_back(block_any_sample_covered_end.getId());
+      id_vector_temp_.push_back(const_uint_0_);
+      id_vector_temp_.push_back(block_any_sample_covered_head->getId());
+      z_fail_sample_mask =
+          builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(stencil_fail_sample_mask);
+      id_vector_temp_.push_back(block_any_sample_covered_end.getId());
+      id_vector_temp_.push_back(const_uint_0_);
+      id_vector_temp_.push_back(block_any_sample_covered_head->getId());
+      stencil_fail_sample_mask =
+          builder_->createOp(spv::OpPhi, type_uint_, id_vector_temp_);
+    }
     if (is_early) {
       for (uint32_t i = 0; i < 4; ++i) {
         id_vector_temp_.clear();
@@ -2737,6 +2863,13 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
   if_depth_stencil_enabled.makeEndIf();
   main_fsi_sample_mask_ = if_depth_stencil_enabled.createMergePhi(
       new_sample_mask, main_fsi_sample_mask_);
+  if (zpd_full_counters_) {
+    main_fsi_z_fail_sample_mask_ = if_depth_stencil_enabled.createMergePhi(
+        z_fail_sample_mask, const_uint_0_);
+    main_fsi_stencil_fail_sample_mask_ =
+        if_depth_stencil_enabled.createMergePhi(stencil_fail_sample_mask,
+                                                const_uint_0_);
+  }
   if (is_early) {
     for (uint32_t i = 0; i < 4; ++i) {
       main_fsi_late_write_depth_stencil_[i] =
@@ -4541,6 +4674,25 @@ void SpirvShaderTranslator::FSI_AlphaToMask() {
 
   builder_->createBranch(&block_alpha_to_mask_merge);
   builder_->setBuildPoint(&block_alpha_to_mask_merge);
+
+  if (!edram_fragment_shader_interlock_ &&
+      var_main_zpd_coverage_ != spv::NoResult) {
+    // Samples dropped by alpha-to-coverage never reach the depth/stencil test,
+    // so they shouldn't be included in the ZPD Total counter either.
+    id_vector_temp_.clear();
+    id_vector_temp_.push_back(const_int_0_);
+    spv::Id sample_mask_element = builder_->createAccessChain(
+        spv::StorageClassOutput, output_fragment_sample_mask_, id_vector_temp_);
+    spv::Id alpha_to_coverage_mask = builder_->createUnaryOp(
+        spv::OpBitcast, type_uint_,
+        builder_->createLoad(sample_mask_element, spv::NoPrecision));
+    builder_->createStore(
+        builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_,
+            builder_->createLoad(var_main_zpd_coverage_, spv::NoPrecision),
+            alpha_to_coverage_mask),
+        var_main_zpd_coverage_);
+  }
 }
 
 }  // namespace gpu

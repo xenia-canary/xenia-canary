@@ -114,7 +114,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // If anything in this is structure is changed in a way not compatible with
     // the previous layout, invalidate the pipeline storages by increasing this
     // version number (0xYYYYMMDD)!
-    static constexpr uint32_t kVersion = 0x20260819;
+    static constexpr uint32_t kVersion = 0x20260907;
 
     enum class DepthStencilMode : uint32_t {
       kNoModifiers,
@@ -197,6 +197,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
       // from the draw. This is only set when the draw is native because of a
       // set scale threshold (RTV only).
       uint32_t resolution_scale_native : 1;
+      // For draws inside a hybrid occlusion query
+      // (RTV + occlusion_query_full_counters)
+      // Count coverage before the depth/stencil test in the ZPD counter.
+      uint32_t zpd_total : 1;
     } pixel;
 
     explicit Modification(uint64_t modification_value = 0)
@@ -343,7 +347,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     uint32_t edram_depth_base_dwords_scaled;
     // UINT32_MAX when this draw is outside an active ZPD segment. The shader
     // helper should treat that as a skip sentinel.
-    uint32_t zpd_rov_counter_index;
+    uint32_t zpd_counter_index;
 
     float color_exp_bias[4];
 
@@ -454,7 +458,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
       kAlphaToMask,
       kEdram32bppTilePitchDwordsScaled,
       kEdramDepthBaseDwordsScaled,
-      kZpdRovCounterIndex,
+      kZpdCounterIndex,
 
       kColorExpBias,
 
@@ -542,7 +546,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
   enum class UAVRegister {
     kSharedMemory,
     kEdram,
-    kZpdRovCounter,
+    kZpdCounter,
   };
 
   uint64_t GetDefaultVertexShaderModification(
@@ -554,7 +558,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
 
   // Creates a special pixel shader without color outputs - this resets the
   // state of the translator.
-  std::vector<uint8_t> CreateDepthOnlyPixelShader();
+  std::vector<uint8_t> CreateDepthOnlyPixelShader(
+      bool zpd_total = false,
+      Modification::DepthStencilMode depth_stencil_mode =
+          Modification::DepthStencilMode::kNoModifiers);
 
   // Common functions useful not only for the translator, but also for render
   // target reinterpretation.
@@ -711,7 +718,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     return is_pixel_shader() &&
            GetDxbcShaderModification().pixel.depth_stencil_mode ==
                Modification::DepthStencilMode::kEarlyHint &&
-           !edram_rov_used_ &&
+           !GetDxbcShaderModification().pixel.zpd_total && !edram_rov_used_ &&
            current_shader().implicit_early_z_write_allowed();
   }
 
@@ -814,9 +821,12 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // unchanged or known that it's safe not to await kills/alphatest/AtoC),
   // returns from the shader.
   void ROV_DepthStencilTest();
-  // Adds the surviving coverage MSAA counts from ROV params to the active ZPD
-  // counter slot after the final PS depth/stencil decision.
-  void ROV_AddPassedMSAASamplesToZPD();
+  // Adds the selected depth/stencil outcomes from ROV params to the active
+  // ZPD counter slot.
+  void ROV_AddMSAASamplesToZPD(bool count_passed, bool count_failed);
+  // Adds the coverage before the depth/stencil test to the Total counter of the
+  // active ZPD counter slot.
+  void RTV_AddMSAASamplesToZPDTotal(dxbc::Src coverage_src);
   // Converts the float32 components of the register to extended-range float16
   // in their low 16 bits. Exponent 31 holds finite values up to 131008 of
   // either sign on the Xbox 360 instead of Inf or NaN, and NaN maps to 0.
@@ -882,8 +892,9 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Performs alpha to coverage if necessary, for RTV, writing to oMask, and for
   // ROV, updating the low (coverage) bits of system_temp_rov_params_.x. Done
   // manually even for RTV to maintain the guest dithering pattern and because
-  // alpha can be exponent-biased.
-  void CompletePixelShader_AlphaToMask();
+  // alpha can be exponent-biased. Also narrows the ZPD coverage temp by the
+  // alpha to coverage mask.
+  void CompletePixelShader_AlphaToMask(uint32_t zpd_coverage_temp = UINT32_MAX);
   void CompletePixelShader_WriteToRTVs();
   void CompletePixelShader_DSV_DepthTo24Bit();
   void CompletePixelShader_WriteToROV();
@@ -1045,6 +1056,9 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Whether the output merger should be emulated in pixel shaders.
   bool edram_rov_used_;
 
+  // Whether the ROV shaders will also count ZFail and StencilFail.
+  bool zpd_full_counters_;
+
   // Whether with RTV-based output-merger, k_8_8_8_8_GAMMA render targets are
   // represented as host 8-bit unsigned normalized, and require conversion in
   // translated shaders.
@@ -1193,6 +1207,9 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // 8:11 - Whether color buffers have been written to, if not written on the
   //        taken execution path, don't export according to Direct3D 9 register
   //        documentation (some games rely on this behavior).
+  // Bits 12:19 only apply if zpd_full_counters_ is true.
+  // 12:15 - Samples that passed stencil and failed depth.
+  // 16:19 - Samples that failed stencil.
   // Y - Absolute resolution-scaled EDRAM offset for depth / stencil, in dwords,
   //     before and during depth testing. During color writing, when the depth /
   //     stencil address is not needed anymore, current color sample address.
@@ -1290,7 +1307,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
   uint32_t uav_count_;
   uint32_t uav_index_shared_memory_;
   uint32_t uav_index_edram_;
-  uint32_t uav_index_zpd_rov_counter_;
+  uint32_t uav_index_zpd_counter_;
 
   std::vector<SamplerBinding> sampler_bindings_;
 };

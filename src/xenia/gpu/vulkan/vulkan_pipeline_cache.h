@@ -99,7 +99,8 @@ class VulkanPipelineCache {
   VulkanPipelineCache(VulkanCommandProcessor& command_processor,
                       const RegisterFile& register_file,
                       VulkanRenderTargetCache& render_target_cache,
-                      VkShaderStageFlags guest_shader_vertex_stages);
+                      VkShaderStageFlags guest_shader_vertex_stages,
+                      bool zpd_hybrid_supported);
   ~VulkanPipelineCache();
 
   bool Initialize();
@@ -145,7 +146,7 @@ class VulkanPipelineCache {
       const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
       reg::RB_DEPTHCONTROL normalized_depth_control,
       uint32_t normalized_color_mask,
-      VulkanRenderTargetCache::RenderPassKey render_pass_key,
+      VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
       Pipeline** pipeline_out);
 
  private:
@@ -252,6 +253,10 @@ class VulkanPipelineCache {
     xenos::StencilOp stencil_back_pass_op : 3;           // 3
     xenos::StencilOp stencil_back_depth_fail_op : 3;     // 6
     xenos::CompareFunction stencil_back_compare_op : 3;  // 9
+    // Hybrid occlusion query draw (FBO + shader counting for Total).
+    // Selects counting the depth-only fragment shader
+    // when there's no guest PS.
+    uint32_t zpd_total : 1;  // 10
 
     // Filled only for the attachments present in the render pass object.
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
@@ -276,7 +281,7 @@ class VulkanPipelineCache {
       }
     };
 
-    static constexpr uint32_t kVersion = 0x20250118;
+    static constexpr uint32_t kVersion = 0x20260903;
   });
 
   // Pipeline storage constants.
@@ -357,7 +362,7 @@ class VulkanPipelineCache {
       const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
       reg::RB_DEPTHCONTROL normalized_depth_control,
       uint32_t normalized_color_mask,
-      VulkanRenderTargetCache::RenderPassKey render_pass_key,
+      VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
       PipelineDescription& description_out) const;
 
   // Whether the pipeline for the given description is supported by the device.
@@ -399,6 +404,7 @@ class VulkanPipelineCache {
   const RegisterFile& register_file_;
   VulkanRenderTargetCache& render_target_cache_;
   VkShaderStageFlags guest_shader_vertex_stages_;
+  bool zpd_hybrid_supported_;
 
   // Cached device float control features for geometry shader creation, so the
   // built-in geometry shaders run under the same float semantics as the guest
@@ -439,7 +445,8 @@ class VulkanPipelineCache {
       geometry_shaders_;
 
   // Empty depth-only pixel shader for writing to depth buffer using fragment
-  // shader interlock when no Xenos pixel shader provided.
+  // shader interlock when no Xenos pixel shader provided, and for keeping FBO
+  // draws that write nothing rasterized for occlusion queries.
   VkShaderModule depth_only_fragment_shader_ = VK_NULL_HANDLE;
 
   // Substitute depth-only pixel shaders that perform float24 conversion of the
@@ -448,6 +455,10 @@ class VulkanPipelineCache {
   // backend's float24_{truncate,round}_ps.
   VkShaderModule float24_truncate_fragment_shader_ = VK_NULL_HANDLE;
   VkShaderModule float24_round_fragment_shader_ = VK_NULL_HANDLE;
+
+  VkShaderModule zpd_total_depth_only_fragment_shader_ = VK_NULL_HANDLE;
+  VkShaderModule zpd_total_float24_truncate_fragment_shader_ = VK_NULL_HANDLE;
+  VkShaderModule zpd_total_float24_round_fragment_shader_ = VK_NULL_HANDLE;
 
   // Placeholder pixel shader for pipeline hot-swap to reduce stutter.
   // Outputs transparent black while the real shader compiles in background.
