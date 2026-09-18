@@ -56,6 +56,12 @@ bool IsRasterizationPotentiallyDone(const RegisterFile& regs,
       !regs.Get<reg::RB_SURFACE_INFO>().surface_pitch) {
     return false;
   }
+  // Geometry killed after hi-Z only feeds the survey.
+  // Without an ID, nothing consumes it but the faked extents.
+  auto pa_sc_viz_query = regs.Get<reg::PA_SC_VIZ_QUERY>();
+  if (pa_sc_viz_query.kill_pix_post_hi_z && !pa_sc_viz_query.viz_query_ena) {
+    return false;
+  }
   if (primitive_polygonal) {
     auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
     if (pa_su_sc_mode_cntl.cull_front && pa_su_sc_mode_cntl.cull_back) {

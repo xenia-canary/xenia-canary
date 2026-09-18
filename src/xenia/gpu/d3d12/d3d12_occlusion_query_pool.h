@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
-#define XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
+#ifndef XENIA_GPU_D3D12_D3D12_OCCLUSION_QUERY_POOL_H_
+#define XENIA_GPU_D3D12_D3D12_OCCLUSION_QUERY_POOL_H_
 
 #include <cstdint>
 #include <vector>
@@ -28,8 +28,9 @@ namespace d3d12 {
 
 class DeferredCommandList;
 
-// D3D12 occlusion query pool for ZPD reports. Queries live in ID3D12QueryHeap,
-// results are copied to a persistent readback buffer via ResolveQueryData.
+// D3D12 occlusion query pool for ZPD reports and VIZ surveys. Queries live
+// in ID3D12QueryHeap, results are copied to a persistent readback buffer via
+// ResolveQueryData.
 //
 // D3D12 requires BeginQuery and EndQuery to be recorded in the same command
 // list, so segments split at EndSubmission. Discarded queries still need a
@@ -42,12 +43,14 @@ class DeferredCommandList;
 // surviving MSAA coverage into a dedicated buffer, one slot per active query.
 // QueueQueryResolve + ClearROVCounter are used instead of BeginQuery and
 // EndQuery.
-class D3D12ZPDQueryPool {
+class D3D12OcclusionQueryPool {
  public:
-  D3D12ZPDQueryPool() = default;
-  D3D12ZPDQueryPool(const D3D12ZPDQueryPool&) = delete;
-  D3D12ZPDQueryPool& operator=(const D3D12ZPDQueryPool&) = delete;
-  ~D3D12ZPDQueryPool() { Shutdown(); }
+  // OCCLUSION for ZPD sample counts, BINARY_OCCLUSION for VIZ visibility.
+  explicit D3D12OcclusionQueryPool(D3D12_QUERY_TYPE query_type)
+      : query_type_(query_type) {}
+  D3D12OcclusionQueryPool(const D3D12OcclusionQueryPool&) = delete;
+  D3D12OcclusionQueryPool& operator=(const D3D12OcclusionQueryPool&) = delete;
+  ~D3D12OcclusionQueryPool() { Shutdown(); }
 
   bool EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
                          uint32_t requested_capacity, bool can_recreate,
@@ -75,6 +78,11 @@ class D3D12ZPDQueryPool {
     return rov_counter_buffer_.Get();
   }
 
+  // Raw handles for a caller that records ResolveQueryData. VIZ stages a single
+  // query result into its predicate buffer this way.
+  ID3D12QueryHeap* query_heap() const { return query_heap_.Get(); }
+  D3D12_QUERY_TYPE query_type() const { return query_type_; }
+
   bool has_free_indices() const { return !free_indices_.empty(); }
 
   bool AcquireQueryIndex(uint32_t& query_index, uint32_t& query_generation);
@@ -96,6 +104,8 @@ class D3D12ZPDQueryPool {
                                  bool uses_rov_counter) const;
 
  private:
+  const D3D12_QUERY_TYPE query_type_ = D3D12_QUERY_TYPE_OCCLUSION;
+
   Microsoft::WRL::ComPtr<ID3D12QueryHeap> query_heap_;
 
   // Persistently mapped. Results readable once the fence signals.
@@ -126,4 +136,4 @@ class D3D12ZPDQueryPool {
 }  // namespace gpu
 }  // namespace xe
 
-#endif  // XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
+#endif  // XENIA_GPU_D3D12_D3D12_OCCLUSION_QUERY_POOL_H_
