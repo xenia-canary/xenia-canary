@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/apps/xgi_app.h"
+#include "xenia/kernel/xnet.h"
 #include "xenia/kernel/xsession.h"
 
 #include "xenia/base/logging.h"
@@ -271,7 +272,7 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
         xe::be<uint32_t> results_guest_address;
       }* data = reinterpret_cast<XUserReadStats*>(buffer);
 
-      return 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
+      return X_ONLINE_E_LOGON_NOT_LOGGED_ON;
     }
     case 0x000B0036: {
       // Called after opening xbox live arcade and clicking on xbox live v5759
