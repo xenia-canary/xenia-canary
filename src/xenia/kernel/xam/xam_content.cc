@@ -804,13 +804,13 @@ dword_result_t XamLoaderGetDvdTrayState_entry() {
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetDvdTrayState, kNone, kImplemented);
 
-void XamLoaderGetMediaInfoEx_entry(lpdword_t media_type, lpdword_t unk2,
+void XamLoaderGetMediaInfoEx_entry(lpdword_t media_type, lpdword_t title_id,
                                    lpdword_t unk3) {
   if (media_type) {
     *media_type = X_DVD_DISC_STATE::XBOX_360_GAME_DISC;
   }
-  if (unk2) {
-    *unk2 = 0;
+  if (title_id) {
+    *title_id = 0;
   }
   if (unk3) {
     *unk3 = 0;
@@ -818,8 +818,8 @@ void XamLoaderGetMediaInfoEx_entry(lpdword_t media_type, lpdword_t unk2,
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetMediaInfoEx, kNone, kStub);
 
-void XamLoaderGetMediaInfo_entry(lpdword_t media_type, lpdword_t unk2) {
-  XamLoaderGetMediaInfoEx_entry(media_type, unk2, 0);
+void XamLoaderGetMediaInfo_entry(lpdword_t media_type, lpdword_t title_id) {
+  XamLoaderGetMediaInfoEx_entry(media_type, title_id, 0);
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetMediaInfo, kNone, kStub);
 
