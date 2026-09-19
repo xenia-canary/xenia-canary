@@ -410,6 +410,15 @@ dword_result_t XamGetExecutionId_entry(lpdword_t info_ptr) {
 }
 DECLARE_XAM_EXPORT1(XamGetExecutionId, kNone, kImplemented);
 
+void XamLoaderRegisterLaunchRequestCallback_entry(dword_t callback) {
+  auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
+  if (xam) {
+    xam->SetLaunchCallback(callback);
+  }
+}
+DECLARE_XAM_EXPORT1(XamLoaderRegisterLaunchRequestCallback, kNone,
+                    kImplemented);
+
 dword_result_t XamLoaderSetLaunchData_entry(lpvoid_t data, dword_t size) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
   auto& loader_data = xam->loader_data();

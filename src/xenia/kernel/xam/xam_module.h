@@ -42,10 +42,13 @@ class XamModule : public KernelModule {
   void LoadLoaderData();
   void SaveLoaderData();
 
+  void SetLaunchCallback(uint32_t callback) { callback_ = callback; }
+
   const LoaderData& loader_data() const { return loader_data_; }
   LoaderData& loader_data() { return loader_data_; }
 
  private:
+  uint32_t callback_ = 0;
   LoaderData loader_data_;
 };
 
