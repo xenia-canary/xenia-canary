@@ -41,10 +41,14 @@ entry_inputs_end_code_begin_compute_xe
       XeHostDepthStoreRectUnscaledOrigin(rect_constant) * resolution_scale +
       uint2_xe(in_global_thread_id_xe.x << 3u, in_global_thread_id_xe.y >> 1u));
   uint dest_sample_index = in_global_thread_id_xe.y & 1u;
-  uint edram_address = XeEdramOffsetBytes(
-      uint2_xe(pixel_index), 0u, false,
-      XeHostDepthStoreRTPitchTiles(rt_constant), kXenosMsaaSamples_2X, false,
-      0u, dest_sample_index, resolution_scale);
+  // For simplicity, passing samples directly, not pixels, to
+  // XeEdramOffsetBytes. Both backend transfer shader readers expect:
+  // x and 2 * y + sample
+  uint edram_address =
+      XeEdramOffsetBytes((uint2_xe(pixel_index) << uint2_xe(0u, 1u)) |
+                             uint2_xe(0u, dest_sample_index),
+                         0u, false, XeHostDepthStoreRTPitchTiles(rt_constant),
+                         kXenosMsaaSamples_1X, false, 0u, 0u, resolution_scale);
   // Top and bottom to Direct3D 10.1+ and Vulkan top 1 and bottom 0 (for 2x) or
   // top-left 0 and bottom-right 3 (for 4x).
   int source_sample_index =

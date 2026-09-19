@@ -41,11 +41,13 @@ entry_inputs_end_code_begin_compute_xe
       XeHostDepthStoreRectUnscaledOrigin(rect_constant) * resolution_scale +
       uint2_xe(in_global_thread_id_xe.x << 2u, in_global_thread_id_xe.y >> 1u));
   // For simplicity, passing samples directly, not pixels, to
-  // XeEdramOffsetBytes.
-  uint edram_address = XeEdramOffsetBytes(
-      (uint2_xe(pixel_index) << 1u) | (in_global_thread_id_xe.xy & 1u), 0u,
-      false, XeHostDepthStoreRTPitchTiles(rt_constant), kXenosMsaaSamples_1X,
-      false, 0u, 0u, resolution_scale);
+  // XeEdramOffsetBytes. Both backend transfer shader readers expect:
+  // 2 * x + horizontal sample and 2 * y + vertical sample
+  uint edram_address =
+      XeEdramOffsetBytes((uint2_xe(pixel_index) << 1u) |
+                             uint2_xe(0u, in_global_thread_id_xe.y & 1u),
+                         0u, false, XeHostDepthStoreRTPitchTiles(rt_constant),
+                         kXenosMsaaSamples_1X, false, 0u, 0u, resolution_scale);
   // Render target horizontal sample in bit 0, vertical sample in bit 1.
   int source_sample_left = int((in_global_thread_id_xe.y & 1u) << 1u);
   int source_sample_right = source_sample_left + 1;
