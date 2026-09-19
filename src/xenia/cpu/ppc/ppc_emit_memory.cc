@@ -856,6 +856,8 @@ int InstrEmit_stdcx(PPCHIRBuilder& f, const InstrData& i) {
   }
   f.StoreContext(offsetof(PPCContext, cr0.cr0_lt), f.LoadZeroInt8());
   f.StoreContext(offsetof(PPCContext, cr0.cr0_gt), f.LoadZeroInt8());
+  f.StoreContext(offsetof(PPCContext, cr0.cr0_so),
+                 f.LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE));
 
   // Issue memory barrier for when we go out of lock and want others to see our
   // updates.
@@ -898,6 +900,8 @@ int InstrEmit_stwcx(PPCHIRBuilder& f, const InstrData& i) {
 
   f.StoreContext(offsetof(PPCContext, cr0.cr0_lt), f.LoadZeroInt8());
   f.StoreContext(offsetof(PPCContext, cr0.cr0_gt), f.LoadZeroInt8());
+  f.StoreContext(offsetof(PPCContext, cr0.cr0_so),
+                 f.LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE));
 
   // Issue memory barrier for when we go out of lock and want others to see our
   // updates.
