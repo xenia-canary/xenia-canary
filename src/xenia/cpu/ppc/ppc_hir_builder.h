@@ -79,9 +79,8 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);
-  // void UpdateXERWithOverflow();
-  // void UpdateXERWithOverflowAndCarry();
-  // void StoreOV(Value* value);
+  // Call before UpdateCR, which copies XER[SO] into the CR field.
+  void StoreOV(Value* value);
   Value* LoadCA();
   void StoreCA(Value* value);
   Value* LoadSAT();
