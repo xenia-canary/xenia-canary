@@ -394,6 +394,9 @@ typedef struct alignas(64) PPCContext_s {
   // These are split to make it easier to do DCE on unused stores.
   uint64_t cr() const;
   void set_cr(uint64_t value);
+  // Only CA, OV and SO are modelled, the rest read as zero.
+  uint32_t xer() const;
+  void set_xer(uint32_t value);
   // todo: remove, saturation should be represented by a vector
   uint8_t vscr_sat;
 

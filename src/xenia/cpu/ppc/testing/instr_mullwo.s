@@ -1,0 +1,41 @@
+test_mullwo_1:
+  #_ REGISTER_IN r4 0x0000000000001000
+  #_ REGISTER_IN r5 0x0000000000001000
+  mullwo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x0000000001000000
+  #_ REGISTER_OUT xer 0x00000000
+
+# The product no longer fits back into a word.
+test_mullwo_2:
+  #_ REGISTER_IN r4 0x0000000000010000
+  #_ REGISTER_IN r5 0x0000000000010000
+  mullwo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x0000000100000000
+  #_ REGISTER_OUT xer 0xC0000000
+
+test_mullwo_3:
+  #_ REGISTER_IN r4 0xFFFFFFFFFFFFFFFF
+  #_ REGISTER_IN r5 0x0000000000000002
+  mullwo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0xFFFFFFFFFFFFFFFE
+  #_ REGISTER_OUT xer 0x00000000
+
+# The doubleword form overflows only when 64 bits cannot hold the product.
+test_mulldo_1:
+  #_ REGISTER_IN r4 0x0000000000010000
+  #_ REGISTER_IN r5 0x0000000000010000
+  mulldo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x0000000100000000
+  #_ REGISTER_OUT xer 0x00000000
+
+test_mulldo_2:
+  #_ REGISTER_IN r4 0x0000000100000000
+  #_ REGISTER_IN r5 0x0000000100000000
+  mulldo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x0000000000000000
+  #_ REGISTER_OUT xer 0xC0000000
