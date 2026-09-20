@@ -117,6 +117,11 @@ static bool IsPrimitivePolygonal(const RegisterFile& regs) {
 bool IsRasterizationPotentiallyDone(const RegisterFile& regs,
                                     bool primitive_polygonal);
 
+// VIZ_QUERY survey geometry, killed after hi-Z on hardware. Drawn only to
+// count coverage for its ID: no pixel shader, no color, depth or stencil
+// writes. The normalization functions below apply that.
+bool IsVIZSurveyDraw(const RegisterFile& regs);
+
 // Direct3D 10.1+ standard sample positions, also used in Vulkan, for
 // calculations related to host MSAA, in 1/16th of a pixel.
 extern const int8_t kD3D10StandardSamplePositions2x[2][2];

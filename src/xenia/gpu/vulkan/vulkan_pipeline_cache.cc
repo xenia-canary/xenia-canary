@@ -118,6 +118,24 @@ bool VulkanPipelineCache::Initialize() {
     }
   }
 
+  if (edram_fragment_shader_interlock) {
+    using DepthStencilMode =
+        SpirvShaderTranslator::Modification::DepthStencilMode;
+    std::vector<uint8_t> code =
+        shader_translator_->CreateDepthOnlyFragmentShader(
+            DepthStencilMode::kNoModifiers, false, true);
+    viz_survey_depth_only_fragment_shader_ =
+        ui::vulkan::util::CreateShaderModule(
+            vulkan_device, reinterpret_cast<const uint32_t*>(code.data()),
+            code.size());
+    if (viz_survey_depth_only_fragment_shader_ == VK_NULL_HANDLE) {
+      XELOGE(
+          "VulkanPipelineCache: Failed to create the VIZ survey depth-only "
+          "fragment shader");
+      return false;
+    }
+  }
+
   if (zpd_hybrid_supported_) {
     using DepthStencilMode =
         SpirvShaderTranslator::Modification::DepthStencilMode;
@@ -357,6 +375,9 @@ void VulkanPipelineCache::Shutdown() {
                                          depth_only_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyShaderModule, device,
                                          zpd_total_depth_only_fragment_shader_);
+  ui::vulkan::util::DestroyAndNullHandle(
+      dfn.vkDestroyShaderModule, device,
+      viz_survey_depth_only_fragment_shader_);
   ui::vulkan::util::DestroyAndNullHandle(
       dfn.vkDestroyShaderModule, device,
       zpd_total_float24_truncate_fragment_shader_);
@@ -633,7 +654,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
     reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
     VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
-    VulkanPipelineCache::Pipeline** pipeline_out) {
+    bool viz_survey, VulkanPipelineCache::Pipeline** pipeline_out) {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -642,7 +663,7 @@ bool VulkanPipelineCache::ConfigurePipeline(
   if (!GetCurrentStateDescription(
           vertex_shader, pixel_shader, primitive_processing_result,
           normalized_depth_control, normalized_color_mask, render_pass_key,
-          zpd_total, description)) {
+          zpd_total, viz_survey, description)) {
     return false;
   }
   if (last_pipeline_ && last_pipeline_->first == description) {
@@ -1235,7 +1256,7 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
     reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
     VulkanRenderTargetCache::RenderPassKey render_pass_key, bool zpd_total,
-    PipelineDescription& description_out) const {
+    bool viz_survey, PipelineDescription& description_out) const {
   description_out.Reset();
 
   const ui::vulkan::VulkanDevice::Properties& device_properties =
@@ -1254,6 +1275,9 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
   }
   description_out.render_pass_key = render_pass_key;
   description_out.zpd_total = uint32_t(zpd_total);
+  description_out.viz_survey = uint32_t(
+      viz_survey && render_target_cache_.GetPath() ==
+                        RenderTargetCache::Path::kPixelShaderInterlock);
 
   // TODO(Triang3l): Implement primitive types currently using geometry shaders
   // without them.
@@ -1477,6 +1501,10 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
 bool VulkanPipelineCache::ArePipelineRequirementsMet(
     const PipelineDescription& description) const {
   if (description.zpd_total && !zpd_hybrid_supported_) {
+    return false;
+  }
+  if (description.viz_survey &&
+      viz_survey_depth_only_fragment_shader_ == VK_NULL_HANDLE) {
     return false;
   }
 
@@ -2819,7 +2847,10 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
                 : zpd_total_float24_truncate_fragment_shader_;
       }
     } else if (edram_fragment_shader_interlock) {
-      shader_stage_fragment.module = depth_only_fragment_shader_;
+      // VIZ surveys only use the ZPass counter.
+      shader_stage_fragment.module =
+          description.viz_survey ? viz_survey_depth_only_fragment_shader_
+                                 : depth_only_fragment_shader_;
     } else if (render_target_cache_.depth_float24_convert_in_pixel_shader() &&
                (description.depth_write_enable ||
                 description.depth_compare_op !=

@@ -2054,7 +2054,9 @@ void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
       builder_->createBinOp(spv::OpIMul, type_uint_, counter_index,
                             builder_->makeUintConstant(XenosZPDReport::kCount));
 
-  auto add_lane = [&](spv::Id sample_mask, uint32_t lane) {
+  // For VIZ, a plain store of 1 replaces the atomic add since the survey's
+  // ID consumer only cares about zero vs non-zero.
+  auto add_lane = [&](spv::Id sample_mask, uint32_t lane, bool flag) {
     spv::Id sample_count =
         builder_->createUnaryOp(spv::OpBitCount, type_uint_, sample_mask);
     SpirvBuilder::IfBuilder if_any_samples(
@@ -2069,9 +2071,13 @@ void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
                               builder_->makeUintConstant(lane))));
     spv::Id counter_ptr = builder_->createAccessChain(
         storage_class, buffer_zpd_counter_, id_vector_temp_);
-    builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
-                           const_scope_device, const_semantics_relaxed,
-                           sample_count);
+    if (flag) {
+      builder_->createStore(builder_->makeUintConstant(1), counter_ptr);
+    } else {
+      builder_->createQuadOp(spv::OpAtomicIAdd, type_uint_, counter_ptr,
+                             const_scope_device, const_semantics_relaxed,
+                             sample_count);
+    }
     if_any_samples.makeEndIf();
   };
 
@@ -2081,11 +2087,12 @@ void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
     add_lane(builder_->createBinOp(
                  spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
                  builder_->makeUintConstant((uint32_t(1) << 4) - 1)),
-             XenosZPDReport::kZPass);
+             XenosZPDReport::kZPass, is_viz_survey_fragment_shader_);
   }
-  if (count_failed) {
-    add_lane(main_fsi_z_fail_sample_mask_, XenosZPDReport::kZFail);
-    add_lane(main_fsi_stencil_fail_sample_mask_, XenosZPDReport::kStencilFail);
+  if (count_failed && !is_viz_survey_fragment_shader_) {
+    add_lane(main_fsi_z_fail_sample_mask_, XenosZPDReport::kZFail, false);
+    add_lane(main_fsi_stencil_fail_sample_mask_, XenosZPDReport::kStencilFail,
+             false);
   }
 
   if_counter_open.makeEndIf();

@@ -561,7 +561,8 @@ class DxbcShaderTranslator : public ShaderTranslator {
   std::vector<uint8_t> CreateDepthOnlyPixelShader(
       bool zpd_total = false,
       Modification::DepthStencilMode depth_stencil_mode =
-          Modification::DepthStencilMode::kNoModifiers);
+          Modification::DepthStencilMode::kNoModifiers,
+      bool viz_survey = false);
 
   // Common functions useful not only for the translator, but also for render
   // target reinterpretation.
@@ -1090,6 +1091,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Is currently writing the empty depth-only pixel shader, for
   // CompleteTranslation.
   bool is_depth_only_pixel_shader_ = false;
+  bool is_viz_survey_pixel_shader_ = false;
 
   // Data types used in constants buffers. Listed in dependency order.
   enum class ShaderRdefTypeIndex {

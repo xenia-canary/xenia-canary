@@ -34,6 +34,8 @@ DECLARE_int32(occlusion_query_fake_upper_threshold);
 
 DECLARE_bool(occlusion_query_full_counters);
 
+DECLARE_bool(occlusion_query_viz);
+
 DECLARE_int32(anisotropic_override);
 
 DECLARE_bool(disassemble_pm4);

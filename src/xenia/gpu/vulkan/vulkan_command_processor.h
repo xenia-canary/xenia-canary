@@ -31,11 +31,11 @@
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_primitive_processor.h"
+#include "xenia/gpu/vulkan/vulkan_query_pool.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/gpu/vulkan/vulkan_texture_cache.h"
-#include "xenia/gpu/vulkan/vulkan_zpd_query_pool.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/ui/vulkan/linked_type_descriptor_set_allocator.h"
@@ -43,6 +43,7 @@
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 #include "xenia/ui/vulkan/vulkan_provider.h"
 #include "xenia/ui/vulkan/vulkan_upload_buffer_pool.h"
+#include "xenia/ui/vulkan/vulkan_util.h"
 
 namespace xe {
 namespace gpu {
@@ -445,34 +446,54 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void DestroyScratchBuffer();
 
-  // ZPD occlusion queries backend.
+  // Query segments backend for both ZPD occlusion query reports and
+  // VIZ visibility surveys & conditional rendering.
+  //
   // vkCmdBeginQuery is only valid inside a render pass, so segments split at
-  // pass end and resume at the next pass begin. If a report starts outside a
-  // pass, segment_pending_begin waits for the next. FSI queries clear a
+  // pass end and resume at the next pass begin. If a report or survey starts
+  // outside a pass, the segment waits for the next. FSI queries clear a
   // dedicated counter with vkCmdFillBuffer, so they may need to open before a
   // pass begins or split an active pass around the clear.
-  void EnsureZPDQueryResources() override;
-  void ShutdownZPDQueryResources() override {
-    zpd_resolves_in_flight_.clear();
-    zpd_active_query_index_ = UINT32_MAX;
-    zpd_active_query_generation_ = 0;
-    zpd_active_query_is_fsi_ = false;
+  void EnsureQueryResources() override;
+  void ShutdownQueryResources() override {
+    query_resolves_in_flight_.clear();
+    active_query_index_ = UINT32_MAX;
+    active_query_generation_ = 0;
+    active_query_is_fsi_ = false;
     zpd_fsi_path_ = false;
     zpd_counter_index_force_update_ = true;
-    if (zpd_host_query_pool_) {
-      zpd_host_query_pool_->Shutdown();
+    if (host_query_pool_) {
+      host_query_pool_->Shutdown();
     }
   }
 
-  bool IsZPDQueryPoolReady() const override;
-  bool CanOpenZPDQuery() const override;
+  bool IsQueryPoolReady() const override;
+  bool CanOpenQuery() const override;
 
-  QueryOpenResult OpenZPDQuery(bool can_close_submission) override;
-  bool CloseZPDQuery(ReportHandle report_handle,
-                     uint64_t& out_submission) override;
+  QueryOpenResult OpenQuery(bool can_close_submission) override;
+  bool CloseQuery(ReportHandle report_handle, const VIZQueryHandle& viz,
+                  uint64_t& out_submission) override;
   void PumpQueryResolves() override;
   bool AwaitQueryResolve(ReportHandle report_handle,
                          uint64_t wait_for_submission) override;
+
+  bool EnsureVIZPredicateBuffer();
+  // Drains the queued predicate copies.
+  void RecordVIZPredicateCopies();
+  // Drains the queued copies if the draw's predicate is among them.
+  VkBuffer BindVIZPredicate(VkDeviceSize& offset_out);
+  void AwaitVIZQueryResolve(uint64_t wait_for_submission) override;
+  void ShutdownVIZQueryResources() {
+    viz_pending_copies_.clear();
+    const ui::vulkan::VulkanDevice* vulkan_device = GetVulkanDevice();
+    const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+    const VkDevice device = vulkan_device->device();
+    ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyBuffer, device,
+                                           viz_predicate_buffer_);
+    ui::vulkan::util::DestroyAndNullHandle(dfn.vkFreeMemory, device,
+                                           viz_predicate_buffer_memory_);
+    viz_predicate_buffer_failed_ = false;
+  }
 
   void UpdateDynamicState(const draw_util::ViewportInfo& viewport_info,
                           bool primitive_polygonal,
@@ -524,14 +545,15 @@ class VulkanCommandProcessor final : public CommandProcessor {
     bool fsi = false;
     bool hybrid = false;
     ReportHandle report_handle = kInvalidReportHandle;
+    VIZQueryHandle viz;
   };
-  uint32_t zpd_active_query_index_ = UINT32_MAX;
-  uint32_t zpd_active_query_generation_ = 0;
-  bool zpd_active_query_is_fsi_ = false;
+  uint32_t active_query_index_ = UINT32_MAX;
+  uint32_t active_query_generation_ = 0;
+  bool active_query_is_fsi_ = false;
   bool zpd_fsi_path_ = false;
   bool zpd_hybrid_supported_ = false;
   bool zpd_counter_index_force_update_ = true;
-  std::deque<PendingQueryResolve> zpd_resolves_in_flight_;
+  std::deque<PendingQueryResolve> query_resolves_in_flight_;
   // Fallback buffer for ZPD counter descriptor binding 1.
   VkBuffer zpd_counter_sink_buffer_ = VK_NULL_HANDLE;
   VkDeviceMemory zpd_counter_sink_buffer_memory_ = VK_NULL_HANDLE;
@@ -634,7 +656,17 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   std::unique_ptr<VulkanRenderTargetCache> render_target_cache_;
 
-  std::unique_ptr<VulkanZPDQueryPool> zpd_host_query_pool_;
+  std::unique_ptr<VulkanQueryPool> host_query_pool_;
+
+  VkBuffer viz_predicate_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory viz_predicate_buffer_memory_ = VK_NULL_HANDLE;
+  bool viz_predicate_buffer_failed_ = false;
+  struct PendingVIZCopy {
+    uint32_t id;
+    uint32_t query_index;
+    bool fsi;
+  };
+  std::vector<PendingVIZCopy> viz_pending_copies_;
 
   std::unique_ptr<VulkanPipelineCache> pipeline_cache_;
 

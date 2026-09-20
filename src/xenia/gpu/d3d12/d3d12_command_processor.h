@@ -24,10 +24,10 @@
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/d3d12/d3d12_graphics_system.h"
 #include "xenia/gpu/d3d12/d3d12_primitive_processor.h"
+#include "xenia/gpu/d3d12/d3d12_query_pool.h"
 #include "xenia/gpu/d3d12/d3d12_render_target_cache.h"
 #include "xenia/gpu/d3d12/d3d12_shared_memory.h"
 #include "xenia/gpu/d3d12/d3d12_texture_cache.h"
-#include "xenia/gpu/d3d12/d3d12_zpd_query_pool.h"
 #include "xenia/gpu/d3d12/deferred_command_list.h"
 #include "xenia/gpu/d3d12/pipeline_cache.h"
 #include "xenia/gpu/draw_util.h"
@@ -499,16 +499,18 @@ class D3D12CommandProcessor final : public CommandProcessor {
   void WriteZPDCounterRawUAVDescriptor(
       D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
 
-  // ZPD occlusion queries backend.
+  // Query segments backend for both ZPD occlusion query reports and
+  // VIZ visibility surveys & conditional rendering.
+  //
   // BeginQuery/EndQuery must be in the same command list, segments split at
-  // EndSubmission, resume at BeginSubmission. RecordZPDResolveBatch emits
-  // coalesced ResolveQueryData and counter copies at submit.
-  void EnsureZPDQueryResources() override;
-  void ShutdownZPDQueryResources() override {
-    zpd_resolves_in_flight_.clear();
-    zpd_active_query_index_ = UINT32_MAX;
-    zpd_active_query_generation_ = 0;
-    zpd_active_query_is_rov_ = false;
+  // EndSubmission, resume at BeginSubmission. Coalesced ResolveQueryData and
+  // counter copies are emitted at submit.
+  void EnsureQueryResources() override;
+  void ShutdownQueryResources() override {
+    query_resolves_in_flight_.clear();
+    active_query_index_ = UINT32_MAX;
+    active_query_generation_ = 0;
+    active_query_is_rov_ = false;
     zpd_rov_path_ = false;
     bindful_zpd_counter_buffer_ = nullptr;
     bindful_zpd_counter_capacity_ = 0;
@@ -516,22 +518,33 @@ class D3D12CommandProcessor final : public CommandProcessor {
       draw_view_bindful_heap_index_ =
           ui::d3d12::D3D12DescriptorHeapPool::kHeapIndexInvalid;
     }
-    if (zpd_host_query_pool_) {
-      zpd_host_query_pool_->Shutdown();
+    if (host_query_pool_) {
+      host_query_pool_->Shutdown();
     }
   }
 
-  bool IsZPDQueryPoolReady() const override;
-  bool CanOpenZPDQuery() const override;
+  bool IsQueryPoolReady() const override;
+  bool CanOpenQuery() const override;
 
-  QueryOpenResult OpenZPDQuery(bool can_close_submission) override;
-  bool CloseZPDQuery(ReportHandle report_handle,
-                     uint64_t& out_submission) override;
+  QueryOpenResult OpenQuery(bool can_close_submission) override;
+  bool CloseQuery(ReportHandle report_handle, const VIZQueryHandle& viz,
+                  uint64_t& out_submission) override;
   void PumpQueryResolves() override;
   bool AwaitQueryResolve(ReportHandle report_handle,
                          uint64_t wait_for_submission) override;
 
-  void RecordZPDResolveBatch();
+  bool EnsureVIZPredicateBuffer();
+  // The tracked transition without recording it, so it can batch with other
+  // barriers. False when none is needed.
+  bool GetVIZPredicateBufferBarrier(D3D12_RESOURCE_STATES new_state,
+                                    D3D12_RESOURCE_BARRIER& barrier_out);
+  void AwaitVIZQueryResolve(uint64_t wait_for_submission) override;
+  void ShutdownVIZQueryResources() {
+    viz_predicate_buffer_.Reset();
+    viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
+    viz_predicate_buffer_state_submission_ = UINT64_MAX;
+    viz_predicate_buffer_failed_ = false;
+  }
 
   bool device_removed_ = false;
 
@@ -545,13 +558,14 @@ class D3D12CommandProcessor final : public CommandProcessor {
     bool rov = false;
     bool hybrid = false;
     ReportHandle report_handle = kInvalidReportHandle;
+    VIZQueryHandle viz;
   };
-  uint32_t zpd_active_query_index_ = UINT32_MAX;
-  uint32_t zpd_active_query_generation_ = 0;
-  bool zpd_active_query_is_rov_ = false;
+  uint32_t active_query_index_ = UINT32_MAX;
+  uint32_t active_query_generation_ = 0;
+  bool active_query_is_rov_ = false;
   bool zpd_rov_path_ = false;
   bool zpd_hybrid_supported_ = false;
-  std::deque<PendingQueryResolve> zpd_resolves_in_flight_;
+  std::deque<PendingQueryResolve> query_resolves_in_flight_;
 
   std::unique_ptr<ui::d3d12::D3D12GPUCompletionTimeline> completion_timeline_;
   bool submission_open_ = false;
@@ -596,9 +610,17 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   std::unique_ptr<D3D12RenderTargetCache> render_target_cache_;
 
-  std::unique_ptr<D3D12ZPDQueryPool> zpd_host_query_pool_;
+  std::unique_ptr<D3D12QueryPool> host_query_pool_;
   ID3D12Resource* bindful_zpd_counter_buffer_ = nullptr;
   uint32_t bindful_zpd_counter_capacity_ = 0;
+
+  // The tracked state is only valid within the recorded submission. Buffers
+  // decay to COMMON when the previous submission's command list finishes.
+  Microsoft::WRL::ComPtr<ID3D12Resource> viz_predicate_buffer_;
+  D3D12_RESOURCE_STATES viz_predicate_buffer_state_ =
+      D3D12_RESOURCE_STATE_COMMON;
+  uint64_t viz_predicate_buffer_state_submission_ = UINT64_MAX;
+  bool viz_predicate_buffer_failed_ = false;
 
   std::unique_ptr<ui::d3d12::D3D12UploadBufferPool> constant_buffer_pool_;
 
