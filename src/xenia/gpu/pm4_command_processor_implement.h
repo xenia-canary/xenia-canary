@@ -1002,11 +1002,9 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
 bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
     uint32_t packet, const char* opcode_name, uint32_t viz_query_condition,
     uint32_t count_remaining) XE_RESTRICT {
-  // if viz_query_condition != 0, this is a conditional draw based on viz query.
-  // This ID matches the one issued in PM4_VIZ_QUERY
-  // uint32_t viz_id = viz_query_condition & 0x3F;
-  // when true, render conditionally based on query result
-  // uint32_t viz_use = viz_query_condition & 0x100;
+  // viz_query_condition is the VIZ token.
+  // Bit 8 makes the draw conditional on the ID's visibility in bits 0:5,
+  // from an earlier PM4_VIZ_QUERY.
 
   assert_not_zero(count_remaining);
   if (!count_remaining) {
@@ -1089,17 +1087,16 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
   reader_.AdvanceRead(count_remaining * sizeof(uint32_t));
 
   if (draw_succeeded) {
-    auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();
-    if (!(viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z)) {
-      // TODO(Triang3l): Don't drop the draw call completely if the vertex
-      // shader has memexport.
-      // TODO(Triang3l || JoelLinn): Handle this properly in the render
-      // backends.
+    // A consumer draw whose survey is still outstanding runs under the
+    // backend's predicate instead of blocking. Surveys themselves are
+    // ordinary draws here.
+    if (COMMAND_PROCESSOR::PrepareVIZDraw(viz_query_condition)) {
       draw_succeeded = COMMAND_PROCESSOR::IssueDraw(
           vgt_draw_initiator.prim_type, vgt_draw_initiator.num_indices,
           is_indexed ? &index_buffer_info : nullptr,
           xenos::IsMajorModeExplicit(vgt_draw_initiator.major_mode,
                                      vgt_draw_initiator.prim_type));
+      viz_draw_predicate_ = {};
       if (!draw_succeeded) {
         XELOGE("{}({}, {}, {}): Failed in backend", opcode_name,
                vgt_draw_initiator.num_indices,
@@ -1107,6 +1104,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
                uint32_t(vgt_draw_initiator.source_select));
       }
     }
+  }
+
+  if (!draw_succeeded) {
+    COMMAND_PROCESSOR::OnVIZSurveyDraw(false);
   }
 
   // If read the packed correctly, but merely couldn't execute it (because of,
@@ -1335,8 +1336,22 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INVALIDATE_STATE(
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_VIZ_QUERY(
     uint32_t packet, uint32_t count) XE_RESTRICT {
-  // begin/end initiator for viz query extent processing
   // https://www.google.com/patents/US20050195186
+  // VIZ_QUERY (VIZ) is Xenos' GPU-side conditional rendering / predication
+  // query mechanism. It's not actually an occlusion query like EVENT_WRITE_ZPD.
+  // There's no sample counts to return to the guest and no buffer that the CPU
+  // needs to read. Mercifully, VIZ has distinct BEGIN and END event types which
+  // clear the internal state of the scan converter.
+  //
+  // The scan converter tracks a state of 64 IDs, and geometry submissions
+  // between BEGIN/END events update one of those IDs, and later draw packets
+  // can use the results so the command processor can discard them. It's
+  // actually pretty similar to modern D3D12 predication or Vulkan conditional
+  // rendering, except geometry can be killed by hi-Z before any later tests.
+  //
+  // As a close-enough approximation, native occlusion queries are used for host
+  // RT and ZPass-like counting in-shader for interlock, and any passing sample
+  // is treated like a visible result.
   assert_true(count == 1);
 
   uint32_t dword0 = reader_.ReadAndSwap<uint32_t>();
@@ -1344,23 +1359,14 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_VIZ_QUERY(
   uint32_t id = dword0 & 0x3F;
   uint32_t end = dword0 & 0x100;
   if (!end) {
-    // begin a new viz query @ id
-    // On hardware this clears the internal state of the scan converter (which
-    // is different to the register)
     COMMAND_PROCESSOR::WriteEventInitiator(VIZQUERY_START);
-    // XELOGGPU("Begin viz query ID {:02X}", id);
+    if (cvars::occlusion_query_viz) {
+      COMMAND_PROCESSOR::BeginVIZQuery(id);
+    }
   } else {
-    // end the viz query
     COMMAND_PROCESSOR::WriteEventInitiator(VIZQUERY_END);
-    // XELOGGPU("End viz query ID {:02X}", id);
-    // The scan converter writes the internal result back to the register here.
-    // We just fake it and say it was visible in case it is read back.
-    if (id < 32) {
-      register_file_->values[XE_GPU_REG_PA_SC_VIZ_QUERY_STATUS_0] |= uint32_t(1)
-                                                                     << id;
-    } else {
-      register_file_->values[XE_GPU_REG_PA_SC_VIZ_QUERY_STATUS_1] |=
-          uint32_t(1) << (id - 32);
+    if (cvars::occlusion_query_viz) {
+      COMMAND_PROCESSOR::EndVIZQuery(id);
     }
   }
 

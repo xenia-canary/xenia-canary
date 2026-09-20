@@ -167,6 +167,10 @@ class VulkanDevice {
 
     bool customBorderColors = false;
     bool customBorderColorWithoutFormat = false;
+
+    // VK_EXT_conditional_rendering (#82)
+
+    bool conditionalRendering = false;
   };
 
   // Properties of the core API and enabled extensions, and enabled features.
@@ -192,7 +196,8 @@ class VulkanDevice {
     bool ext_EXT_memory_budget = false;                 // #238
     bool ext_1_2_EXT_host_query_reset = false;          // promoted to 1.2
     // Has optional features not implied by this being true.
-    bool ext_1_3_KHR_maintenance4 = false;  // #414
+    bool ext_1_3_KHR_maintenance4 = false;       // #414
+    bool ext_EXT_conditional_rendering = false;  // #82
 #if XE_PLATFORM_WIN32
     // VK_EXT_full_screen_exclusive (#256, Windows only)
     bool ext_EXT_full_screen_exclusive = false;
@@ -218,6 +223,8 @@ class VulkanDevice {
 #include "xenia/ui/vulkan/functions/device_1_2_ext_host_query_reset.inc"
     // VK_KHR_maintenance4 (#414, promoted to 1.3)
 #include "xenia/ui/vulkan/functions/device_1_3_khr_maintenance4.inc"
+    // VK_EXT_conditional_rendering (#82)
+#include "xenia/ui/vulkan/functions/device_ext_conditional_rendering.inc"
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 #undef XE_UI_VULKAN_FUNCTION
   };
