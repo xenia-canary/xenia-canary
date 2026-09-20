@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_GPU_VULKAN_VULKAN_ZPD_QUERY_POOL_H_
-#define XENIA_GPU_VULKAN_VULKAN_ZPD_QUERY_POOL_H_
+#ifndef XENIA_GPU_VULKAN_VULKAN_QUERY_POOL_H_
+#define XENIA_GPU_VULKAN_VULKAN_QUERY_POOL_H_
 
 #include <cstdint>
 #include <vector>
@@ -28,8 +28,9 @@ namespace vulkan {
 
 class DeferredCommandBuffer;
 
-// Vulkan occlusion query pool for ZPD reports. Queries live in VkQueryPool,
-// results are copied to a persistent buffer via vkCmdCopyQueryPoolResults.
+// Vulkan occlusion query pool for ZPD reports and VIZ surveys. Queries live in
+// VkQueryPool, results are copied to a persistent buffer via
+// vkCmdCopyQueryPoolResults.
 // vkCmdBeginQuery is only valid inside a render pass, queries get deferred
 // when no pass is open and segments split at pass boundaries.
 //
@@ -39,12 +40,12 @@ class DeferredCommandBuffer;
 // VK_QUERY_RESULT_WAIT_BIT in the copy removes the need for a separate
 // availability check. Transfer barrier before InvalidateReadback covers non-
 // coherent memory.
-class VulkanZPDQueryPool {
+class VulkanQueryPool {
  public:
-  VulkanZPDQueryPool() = default;
-  VulkanZPDQueryPool(const VulkanZPDQueryPool&) = delete;
-  VulkanZPDQueryPool& operator=(const VulkanZPDQueryPool&) = delete;
-  ~VulkanZPDQueryPool() { Shutdown(); }
+  VulkanQueryPool() = default;
+  VulkanQueryPool(const VulkanQueryPool&) = delete;
+  VulkanQueryPool& operator=(const VulkanQueryPool&) = delete;
+  ~VulkanQueryPool() { Shutdown(); }
 
   bool EnsureInitialized(const ui::vulkan::VulkanDevice* vulkan_device,
                          uint32_t requested_capacity, bool can_recreate,
@@ -66,6 +67,8 @@ class VulkanZPDQueryPool {
 
   uint32_t capacity() const { return capacity_; }
 
+  VkQueryPool query_pool() const { return query_pool_; }
+
   bool has_pending_resolve_batch() const {
     return !resolve_batch_indices_.empty() ||
            !counter_resolve_batch_indices_.empty();
@@ -81,8 +84,9 @@ class VulkanZPDQueryPool {
   void ReleaseQueryIndex(uint32_t query_index, uint32_t query_generation);
   bool GenerationMatches(uint32_t query_index, uint32_t query_generation) const;
 
+  // ZPD needs precise sample counts, VIZ just needs a binary result.
   void BeginQuery(DeferredCommandBuffer& deferred_command_buffer,
-                  uint32_t query_index) const;
+                  uint32_t query_index, bool precise) const;
   void EndQuery(DeferredCommandBuffer& deferred_command_buffer,
                 uint32_t query_index) const;
   void QueueQueryResolve(uint32_t query_index, bool counter = false);
@@ -146,4 +150,4 @@ class VulkanZPDQueryPool {
 }  // namespace gpu
 }  // namespace xe
 
-#endif  // XENIA_GPU_VULKAN_VULKAN_ZPD_QUERY_POOL_H_
+#endif  // XENIA_GPU_VULKAN_VULKAN_QUERY_POOL_H_

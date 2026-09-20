@@ -1,0 +1,3 @@
+// VK_EXT_conditional_rendering used for VIZ_QUERY
+XE_UI_VULKAN_FUNCTION(vkCmdBeginConditionalRenderingEXT)
+XE_UI_VULKAN_FUNCTION(vkCmdEndConditionalRenderingEXT)

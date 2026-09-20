@@ -819,6 +819,17 @@ union alignas(uint32_t) RB_DEPTHCONTROL {
 };
 static_assert_size(RB_DEPTHCONTROL, sizeof(uint32_t));
 
+union alignas(uint32_t) RB_HIZCONTROL {
+  uint32_t value;
+  struct {
+    uint32_t hiz_write_enable : 1;  // +0
+    uint32_t hiz_enable : 1;        // +1
+    uint32_t _pad_2 : 30;           // +2
+  };
+  static constexpr Register register_index = XE_GPU_REG_RB_HIZCONTROL;
+};
+static_assert_size(RB_HIZCONTROL, sizeof(uint32_t));
+
 union alignas(uint32_t) RB_STENCILREFMASK {
   uint32_t value;
   struct {

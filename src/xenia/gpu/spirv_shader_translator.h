@@ -480,7 +480,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
   std::vector<uint8_t> CreateDepthOnlyFragmentShader(
       Modification::DepthStencilMode depth_stencil_mode =
           Modification::DepthStencilMode::kNoModifiers,
-      bool zpd_total = false);
+      bool zpd_total = false, bool viz_survey = false);
 
   // Common functions useful not only for the translator, but also for EDRAM
   // emulation via conventional render targets.
@@ -917,6 +917,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // Is currently writing the empty depth-only pixel shader, such as for depth
   // and stencil testing with fragment shader interlock.
   bool is_depth_only_fragment_shader_ = false;
+  bool is_viz_survey_fragment_shader_ = false;
 
   std::unique_ptr<SpirvBuilder> builder_;
 
