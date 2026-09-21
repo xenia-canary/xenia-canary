@@ -661,7 +661,7 @@ dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
   // filter for content list, usually just -1
   // content_category:
   // filter on item types for games (e.g. cars, maps, weapons, etc)
-  if (user_index >= XUserMaxUserCount) {
+  if (user_index >= XUserMaxUserCount || ui_type >= MaxEntrypoint) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -744,7 +744,7 @@ dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
       // Used by XamShowForcedNameChangeUI NXE and up
       desc = fmt::format("Changing gamertag currently not implemented.");
       break;
-    case X_MARKETPLACE_ENTRYPOINT::ProfileNameChange:
+    case X_MARKETPLACE_ENTRYPOINT::GamerTagPurchase:
       // Used by dashboard when selecting change gamertag in profile menu
       desc = fmt::format("Changing gamertag currently not implemented.");
       break;
