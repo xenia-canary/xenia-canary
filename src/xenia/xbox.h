@@ -533,9 +533,20 @@ enum X_MARKETPLACE_ENTRYPOINT : uint32_t {
   ContentList_Background = 4,
   ContentItem_Background = 5,
   ForcedNameChangeV1 = 6,
+  PrepaidCode = 7,
   ForcedNameChangeV2 = 8,
-  ProfileNameChange = 9,
-  ActiveDownloads = 12
+  GamerTagPurchase = 9,
+  SignUpCreditCard = 10,
+  SignUpParentCreditCard = 11,
+  ActiveDownloads = 12,
+  ViewDownloadDetails = 13,
+  GoldUpsell = 15,
+  TermsOfUse = 16,
+  PaymentOptions = 19,
+  PurchaseOrder = 21,
+  AccountSecurity = 23,
+  ViewTermsOfUse = 24,
+  MaxEntrypoint = 25
 };
 
 enum X_MARKETPLACE_DOWNLOAD_ITEMS_ENTRYPOINTS : uint32_t {
