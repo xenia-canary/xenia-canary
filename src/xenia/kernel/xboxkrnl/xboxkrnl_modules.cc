@@ -89,12 +89,37 @@ dword_result_t XexGetModuleSection_entry(lpvoid_t hmodule, lpstring_t name,
 }
 DECLARE_XBOXKRNL_EXPORT1(XexGetModuleSection, kModules, kImplemented);
 
+inline const std::map<X_MODULE_FLAGS, std::string> ex_thread_flag_map = {
+    {TITLE_PROCESS, "Title Process"},
+    {TITLE_IMPORT, "Title Import"},
+    {DEBUGGER, "Debugger Loaded"},
+    {LOAD_DLL, "Load DLL"},
+    {LOAD_PATCH, "Load Patch"},
+    {LOAD_FULL_PATCH, "Load Full Patch"},
+    {LOAD_DELTA_PATCH, "Load Delta Patch"},
+    {BOUND_PATH, "Load By Bound Path"},
+    {SILENT_LOAD, "Load Silently"}};
+
 dword_result_t xeXexLoadImage(
     lpstring_t module_name, dword_t module_flags, dword_t min_version,
     lpdword_t hmodule_ptr,
     const std::function<object_ref<UserModule>()>& load_callback,
     bool isFromMemory) {
   X_STATUS result = X_STATUS_NO_SUCH_FILE;
+
+  std::string summary = "Loading Xex Image:";
+  uint32_t unused_flag = module_flags;
+
+  for (const auto& entry : ex_thread_flag_map) {
+    if (module_flags & entry.first) {
+      summary += fmt::format(" {},", entry.second);
+      unused_flag &= ~entry.first;
+    }
+  }
+  if (unused_flag) {
+    summary += fmt::format(" Unk flag: {:08X}", unused_flag);
+  }
+  XELOGD("{}", summary);
 
   if (!hmodule_ptr) {
     return X_ERROR_INVALID_PARAMETER;
