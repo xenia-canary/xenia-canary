@@ -1079,8 +1079,8 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
   // rectangle internally to 8. While all the alignment should have already been
   // done by Direct3D 9, just for safety of host implementation of resolve,
   // force-align the rectangle by expanding (D3D9 expands to the right/bottom
-  // for some reason, haven't found how left/top is rounded, but logically it
-  // would make sense to expand to the left/top too).
+  // for some reason and takes the left/top as given, only requiring them to be
+  // aligned, but logically it would make sense to expand to the left/top too).
   x0 &= ~int32_t(xenos::kResolveAlignmentPixels - 1);
   y0 &= ~int32_t(xenos::kResolveAlignmentPixels - 1);
   x1 = xe::align(x1, int32_t(xenos::kResolveAlignmentPixels));
@@ -1214,14 +1214,36 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
         (UINT32_C(1) << xenos::GetTextureTiledYBaseGranularityLog2(
              bool(rb_copy_dest_info.copy_dest_array), bpp_log2)) -
         1;
+    // D3D advances RB_COPY_DEST_BASE in 32x32 macro tiles based on the
+    // destination point. 8bpp/16bpp macro tiles are smaller than 4KB,
+    // so part of the x offset can be left in the base's low bits.
+    // So this moves that part back into dest_addr_x0 before doing the usual
+    // tiled calculation. 534307D5's water refraction texture's middle 5_6_5
+    // strip hits this at x=480.
+    uint32_t dest_addr_base = rb_copy_dest_base;
+    uint32_t dest_addr_x0 = uint32_t(x0);
+    uint32_t dest_addr_y0 = uint32_t(y0);
+    if (!rb_copy_dest_info.copy_dest_array) {
+      uint32_t dest_macro_tile_bytes_log2 =
+          2 * xenos::kTextureTileWidthHeightLog2 + bpp_log2;
+      uint32_t dest_macro_phase =
+          (rb_copy_dest_base &
+           (xenos::kTextureSubresourceAlignmentBytes - 1)) >>
+          dest_macro_tile_bytes_log2;
+      dest_addr_base -= dest_macro_phase << dest_macro_tile_bytes_log2;
+      dest_addr_x0 += dest_macro_phase << xenos::kTextureTileWidthHeightLog2;
+    }
+    uint32_t dest_addr_x1 = dest_addr_x0 + uint32_t(x1 - x0);
+    uint32_t dest_addr_y1 = dest_addr_y0 + uint32_t(y1 - y0);
+    copy_dest_base_adjusted = dest_addr_base;
     info_out.copy_dest_coordinate_info.offset_x_div_8 =
-        (uint32_t(x0) & dest_base_relative_x_mask) >>
+        (dest_addr_x0 & dest_base_relative_x_mask) >>
         xenos::kResolveAlignmentPixelsLog2;
     info_out.copy_dest_coordinate_info.offset_y_div_8 =
-        (uint32_t(y0) & dest_base_relative_y_mask) >>
+        (dest_addr_y0 & dest_base_relative_y_mask) >>
         xenos::kResolveAlignmentPixelsLog2;
-    uint32_t dest_base_x = uint32_t(x0) & ~dest_base_relative_x_mask;
-    uint32_t dest_base_y = uint32_t(y0) & ~dest_base_relative_y_mask;
+    uint32_t dest_base_x = dest_addr_x0 & ~dest_base_relative_x_mask;
+    uint32_t dest_base_y = dest_addr_y0 & ~dest_base_relative_y_mask;
     if (rb_copy_dest_info.copy_dest_array) {
       // The base pointer is already adjusted to the Z / 8 (copy_dest_slice is
       // 3-bit).
@@ -1229,27 +1251,27 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
           int32_t(dest_base_x), int32_t(dest_base_y), 0,
           copy_dest_pitch_aligned, copy_dest_height_aligned, bpp_log2));
       copy_dest_extent_start =
-          rb_copy_dest_base +
+          dest_addr_base +
           uint32_t(texture_util::GetTiledAddressLowerBound3D(
-              uint32_t(x0), uint32_t(y0), rb_copy_dest_info.copy_dest_slice,
+              dest_addr_x0, dest_addr_y0, rb_copy_dest_info.copy_dest_slice,
               copy_dest_pitch_aligned, copy_dest_height_aligned, bpp_log2));
       copy_dest_extent_end =
-          rb_copy_dest_base +
+          dest_addr_base +
           uint32_t(texture_util::GetTiledAddressUpperBound3D(
-              uint32_t(x1), uint32_t(y1), rb_copy_dest_info.copy_dest_slice + 1,
+              dest_addr_x1, dest_addr_y1, rb_copy_dest_info.copy_dest_slice + 1,
               copy_dest_pitch_aligned, copy_dest_height_aligned, bpp_log2));
     } else {
       copy_dest_base_adjusted +=
           texture_address::Tiled2D(int32_t(dest_base_x), int32_t(dest_base_y),
                                    copy_dest_pitch_aligned, bpp_log2);
       copy_dest_extent_start =
-          rb_copy_dest_base +
+          dest_addr_base +
           texture_util::GetTiledAddressLowerBound2D(
-              uint32_t(x0), uint32_t(y0), copy_dest_pitch_aligned, bpp_log2);
+              dest_addr_x0, dest_addr_y0, copy_dest_pitch_aligned, bpp_log2);
       copy_dest_extent_end =
-          rb_copy_dest_base +
+          dest_addr_base +
           texture_util::GetTiledAddressUpperBound2D(
-              uint32_t(x1), uint32_t(y1), copy_dest_pitch_aligned, bpp_log2);
+              dest_addr_x1, dest_addr_y1, copy_dest_pitch_aligned, bpp_log2);
     }
   } else {
     XELOGE("Tried to resolve to format {}, which is not a ColorFormat",
