@@ -938,40 +938,34 @@ void CommandProcessor::EndVIZQuery(uint32_t id) {
 
   if (!query.surveyed) {
     // No survey draw ever reached the backend, a real not-visible.
-    RetireVIZQuery(id, false);
-    return;
+    query.resolved = true;
+    query.visible = false;
+  } else if (!query.pending_segments && query.measured &&
+             (query.accumulated_visible || !query.fallback)) {
+    // Any part of the query failing to measure means it's a fallback,
+    // and fallbacks always block not-visible.
+    query.resolved = true;
+    query.visible = query.accumulated_visible;
   }
-
-  TryRetireVIZQuery(id);
-}
-
-bool CommandProcessor::GetActiveVIZQuery(uint32_t& id,
-                                         uint64_t& generation) const {
-  const reg::PA_SC_VIZ_QUERY viz_query =
-      register_file_->Get<reg::PA_SC_VIZ_QUERY>();
-  if (!viz_query.viz_query_ena) {
-    return false;
-  }
-
-  id = viz_query.viz_query_id;
-  const VIZQuery& query = viz_queries_[id];
-  generation = query.generation;
-  return query.active;
 }
 
 void CommandProcessor::OnVIZSurveyDraw(bool measured) {
-  uint32_t id = 0;
-  uint64_t generation = 0;
-  if (!GetActiveVIZQuery(id, generation)) {
+  const reg::PA_SC_VIZ_QUERY viz_query =
+      register_file_->Get<reg::PA_SC_VIZ_QUERY>();
+  if (!viz_query.viz_query_ena) {
     return;
   }
-  viz_queries_[id].surveyed = true;
-  const ActiveQuerySegment& segment = active_segment_;
-  if (measured && segment.segment_active && segment.viz.id == id &&
-      segment.viz.generation == generation) {
+  VIZQuery& query = viz_queries_[viz_query.viz_query_id];
+  if (!query.active) {
     return;
   }
-  viz_queries_[id].fallback = true;
+  query.surveyed = true;
+  if (measured && active_segment_.segment_active &&
+      active_segment_.viz.id == viz_query.viz_query_id &&
+      active_segment_.viz.generation == query.generation) {
+    return;
+  }
+  query.fallback = true;
 }
 
 void CommandProcessor::OnVIZQueryResolved(uint32_t id, uint64_t generation,
@@ -990,20 +984,14 @@ void CommandProcessor::OnVIZQueryResolved(uint32_t id, uint64_t generation,
   }
 
   query.accumulated_visible |= visible;
-  TryRetireVIZQuery(id);
-}
-
-void CommandProcessor::TryRetireVIZQuery(uint32_t id) {
-  const VIZQuery& query = viz_queries_[id];
-  // Neither answer resolves while the query is open or segments are still
+  // Neither answer retires while the query is open or segments are still
   // pending. A fallback also blocks not-visible, since part of the query was
   // never measured.
-  if (query.resolved || query.active || query.pending_segments != 0 ||
-      !query.measured || (!query.accumulated_visible && query.fallback)) {
-    return;
+  if (!query.resolved && !query.active && !query.pending_segments &&
+      query.measured && (query.accumulated_visible || !query.fallback)) {
+    query.resolved = true;
+    query.visible = query.accumulated_visible;
   }
-
-  RetireVIZQuery(id, query.accumulated_visible);
 }
 
 bool CommandProcessor::PrepareVIZDraw(uint32_t token) {
@@ -1212,10 +1200,11 @@ void CommandProcessor::CloseQuerySegment() {
 void CommandProcessor::UpdateQuerySegment(uint32_t scale_area, bool count_total,
                                           bool survey) {
   ActiveQuerySegment& segment = active_segment_;
-  uint32_t viz_id = 0;
-  uint64_t viz_generation = 0;
-  const bool viz =
-      cvars::occlusion_query_viz && GetActiveVIZQuery(viz_id, viz_generation);
+  const reg::PA_SC_VIZ_QUERY viz_query =
+      register_file_->Get<reg::PA_SC_VIZ_QUERY>();
+  const VIZQuery& viz_active = viz_queries_[viz_query.viz_query_id];
+  const bool viz = cvars::occlusion_query_viz && viz_query.viz_query_ena &&
+                   viz_active.active;
   // Surveys are killed after hi-Z on hardware, so no report counts them.
   const bool report = !survey && segment.report_measuring();
   if (!segment.report && !report && !viz) {
@@ -1232,8 +1221,8 @@ void CommandProcessor::UpdateQuerySegment(uint32_t scale_area, bool count_total,
         ((segment.scale_area && segment.scale_area != scale_area) ||
          segment.count_total != count_total)) ||
        segment.report != report ||
-       (viz && !(segment.viz.id == viz_id &&
-                 segment.viz.generation == viz_generation)))) {
+       (viz && !(segment.viz.id == viz_query.viz_query_id &&
+                 segment.viz.generation == viz_active.generation)))) {
     CloseQuerySegment();
   }
 
@@ -1246,8 +1235,8 @@ void CommandProcessor::UpdateQuerySegment(uint32_t scale_area, bool count_total,
   segment.survey = survey;
   segment.viz = {};
   if (viz) {
-    segment.viz.id = viz_id;
-    segment.viz.generation = viz_generation;
+    segment.viz.id = viz_query.viz_query_id;
+    segment.viz.generation = viz_active.generation;
   }
   OpenQuerySegment(false);
 }

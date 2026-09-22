@@ -465,18 +465,11 @@ class CommandProcessor {
   // Surveys ride the query segments as a consumer, see ActiveQuerySegment.
   void BeginVIZQuery(uint32_t id);
   void EndVIZQuery(uint32_t id);
-  bool GetActiveVIZQuery(uint32_t& id, uint64_t& generation) const;
   // Backend calls this for every draw under an active ID. Measured only if it
   // ran inside a segment carrying the ID.
   void OnVIZSurveyDraw(bool measured);
   // Backend reports a resolved segment here.
   void OnVIZQueryResolved(uint32_t id, uint64_t generation, bool visible);
-  void TryRetireVIZQuery(uint32_t id);
-  void RetireVIZQuery(uint32_t id, bool visible) {
-    VIZQuery& query = viz_queries_[id];
-    query.resolved = true;
-    query.visible = visible;
-  }
   // Whether a draw with a VIZ token runs. If it does, viz_draw_predicate_
   // is set when the backend has to predicate it. Memexport and copy draws
   // pass through untouched, since a cull or a predicate would lose their side
