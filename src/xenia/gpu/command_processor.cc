@@ -908,7 +908,7 @@ void CommandProcessor::InitializeTrace() {
 }
 
 void CommandProcessor::BeginVIZQuery(uint32_t id) {
-  if (active_segment_.viz.generation != 0) {
+  if (active_segment_.viz.generation != kInvalidVIZGeneration) {
     CloseQuerySegment();
     active_segment_.viz = {};
   }
@@ -1011,9 +1011,8 @@ bool CommandProcessor::PrepareVIZDraw(uint32_t token) {
   if (!query.resolved && query.pending_segments) {
     // The predicate stands in for the answer only while it covers the whole
     // query, so not after a fallback or with a segment still open on the ID.
-    if (query.predicate_state == VIZQuery::PredicateState::kArmed &&
-        !query.fallback &&
-        !(active_segment_.viz.generation != 0 &&
+    if (query.predicate_armed && !query.fallback &&
+        !(active_segment_.viz.generation != kInvalidVIZGeneration &&
           active_segment_.viz.id == id)) {
       viz_draw_predicate_.id = id;
       viz_draw_predicate_.generation = query.generation;
@@ -1023,20 +1022,21 @@ bool CommandProcessor::PrepareVIZDraw(uint32_t token) {
     }
   }
 
-  const bool draw =
-      viz_draw_predicate_.generation != 0 || !query.resolved || query.visible;
-  if (draw && viz_draw_predicate_.generation == 0) {
+  const bool draw = viz_draw_predicate_.generation != kInvalidVIZGeneration ||
+                    !query.resolved || query.visible;
+  if (draw && viz_draw_predicate_.generation == kInvalidVIZGeneration) {
     return true;
   }
 
   // Only culled or predicated draws pay for the memexport and copy checks.
   // Any unanalyzed memexport shader might export.
-  const auto shader_may_memexport = [](const Shader* shader) {
-    return shader &&
-           (!shader->is_ucode_analyzed() || shader->memexport_eM_written());
-  };
-  if (!shader_may_memexport(active_vertex_shader_) &&
-      !shader_may_memexport(active_pixel_shader_) &&
+  const bool memexport_used_vertex =
+      active_vertex_shader_ && (!active_vertex_shader_->is_ucode_analyzed() ||
+                                active_vertex_shader_->memexport_eM_written());
+  const bool memexport_used_pixel =
+      active_pixel_shader_ && (!active_pixel_shader_->is_ucode_analyzed() ||
+                               active_pixel_shader_->memexport_eM_written());
+  if (!memexport_used_vertex && !memexport_used_pixel &&
       register_file_->Get<reg::RB_MODECONTROL>().edram_mode !=
           xenos::EdramMode::kCopy) {
     return draw;
@@ -1100,7 +1100,7 @@ void CommandProcessor::OpenQuerySegment(bool can_close_submission) {
   }
   const bool report = zpd_current_report_.handle != kInvalidReportHandle &&
                       segment.segment_pending_begin && !segment.survey;
-  const bool viz = segment.viz.generation != 0;
+  const bool viz = segment.viz.generation != kInvalidVIZGeneration;
   if (!report && !viz) {
     return;
   }
@@ -1179,7 +1179,7 @@ void CommandProcessor::CloseQuerySegment() {
     zpd_current_report_.pending_segments++;
     zpd_current_report_.last_segment_end_submission = submission;
   }
-  if (segment.viz.generation != 0) {
+  if (segment.viz.generation != kInvalidVIZGeneration) {
     VIZQuery& query = viz_queries_[segment.viz.id];
     if (closed) {
       ++query.pending_segments;

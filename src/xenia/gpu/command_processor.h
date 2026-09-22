@@ -331,10 +331,10 @@ class CommandProcessor {
     bool awaited = false;
   };
 
-  // Generation 0 is no query.
+  static constexpr uint64_t kInvalidVIZGeneration = 0;
   struct VIZQueryHandle {
     uint32_t id = 0;
-    uint64_t generation = 0;
+    uint64_t generation = kInvalidVIZGeneration;
   };
 
   // Host query segment open for the ZPD report and/or VIZ ID currently being
@@ -439,27 +439,24 @@ class CommandProcessor {
   // Draws carrying a VIZ token then get predicated on the GPU. Anything
   // unmeasured, for whatever reason, stays visible.
   struct VIZQuery {
-    uint64_t generation = 0;
+    uint64_t generation = kInvalidVIZGeneration;
     uint32_t pending_segments = 0;
     bool resolved = true;
     bool visible = true;
     bool active = false;
     // Survey reached the backend during this generation.
     bool surveyed = false;
-    // OR of resolved segment visibility for this generation.
+    // OR of the resolved segments for this generation.
     bool accumulated_visible = false;
     bool measured = false;
-    // Not zero samples, just means something went wrong.
+    // Something went wrong while measuring; this doesn't mean not-visible.
     bool fallback = false;
     uint64_t last_segment_end_submission = 0;
-    // Once the predicate stops covering the whole unresolved query, later
-    // segments can't make it exact again. kBlocked never goes back to kNone.
-    enum class PredicateState : uint8_t {
-      kNone,
-      kArmed,
-      kBlocked,
-    };
-    PredicateState predicate_state = PredicateState::kNone;
+    // The backend has a survey result ready to use for predication.
+    bool predicate_armed = false;
+    // Once the predicate no longer covers the full unresolved query,
+    // later segments can't make it exact again.
+    bool predicate_blocked = false;
   };
 
   // Surveys ride the query segments as a consumer, see ActiveQuerySegment.
@@ -482,25 +479,26 @@ class CommandProcessor {
   // generation can still use it, and arms or blocks the ID accordingly.
   bool CanArmVIZPredicate(uint32_t id, uint64_t generation) const {
     const VIZQuery& query = viz_queries_[id];
-    return query.generation == generation &&
-           query.predicate_state == VIZQuery::PredicateState::kNone;
+    return query.generation == generation && !query.predicate_armed &&
+           !query.predicate_blocked;
   }
   void ArmVIZPredicate(uint32_t id, uint64_t generation) {
     VIZQuery& query = viz_queries_[id];
-    assert_true(query.predicate_state == VIZQuery::PredicateState::kNone);
     assert_true(query.generation == generation);
-    query.predicate_state = VIZQuery::PredicateState::kArmed;
+    assert_false(query.predicate_armed);
+    assert_false(query.predicate_blocked);
+    query.predicate_armed = true;
   }
   void BlockVIZPredicate(uint32_t id, uint64_t generation) {
     VIZQuery& query = viz_queries_[id];
     assert_true(query.generation == generation);
-    query.predicate_state = VIZQuery::PredicateState::kBlocked;
+    query.predicate_armed = false;
+    query.predicate_blocked = true;
   }
   // Whether the draw being issued runs under an armed predicate.
   bool IsVIZPredicateArmed() const {
-    return viz_draw_predicate_.generation != 0 &&
-           viz_queries_[viz_draw_predicate_.id].predicate_state ==
-               VIZQuery::PredicateState::kArmed;
+    return viz_draw_predicate_.generation != kInvalidVIZGeneration &&
+           viz_queries_[viz_draw_predicate_.id].predicate_armed;
   }
   void ResetVIZState() {
     active_segment_.viz = {};

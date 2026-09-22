@@ -2992,27 +2992,20 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
   }
 
-  const auto begin_viz_draw = [&]() {
-    if (predicate_buffer != VK_NULL_HANDLE) {
-      deferred_command_buffer_.CmdVkBeginConditionalRenderingEXT(
-          predicate_buffer, predicate_offset, 0);
-    }
-  };
-  const auto end_viz_draw = [&]() {
-    if (predicate_buffer != VK_NULL_HANDLE) {
-      deferred_command_buffer_.CmdVkEndConditionalRenderingEXT();
-    }
-  };
-
   // Draw.
   OnVIZSurveyDraw(true);
   if (primitive_processing_result.index_buffer_type ==
           PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
       shader_32bit_index_dma) {
-    begin_viz_draw();
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      deferred_command_buffer_.CmdVkBeginConditionalRenderingEXT(
+          predicate_buffer, predicate_offset, 0);
+    }
     deferred_command_buffer_.CmdVkDraw(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
-    end_viz_draw();
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      deferred_command_buffer_.CmdVkEndConditionalRenderingEXT();
+    }
   } else {
     std::pair<VkBuffer, VkDeviceSize> index_buffer;
     switch (primitive_processing_result.index_buffer_type) {
@@ -3039,10 +3032,15 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                 xenos::IndexFormat::kInt16
             ? VK_INDEX_TYPE_UINT16
             : VK_INDEX_TYPE_UINT32);
-    begin_viz_draw();
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      deferred_command_buffer_.CmdVkBeginConditionalRenderingEXT(
+          predicate_buffer, predicate_offset, 0);
+    }
     deferred_command_buffer_.CmdVkDrawIndexed(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
-    end_viz_draw();
+    if (predicate_buffer != VK_NULL_HANDLE) {
+      deferred_command_buffer_.CmdVkEndConditionalRenderingEXT();
+    }
   }
 
   // Invalidate textures in memexported memory and watch for changes.
@@ -3912,7 +3910,7 @@ bool VulkanCommandProcessor::CloseQuery(ReportHandle report_handle,
     }
   }
 
-  if (viz.generation != 0) {
+  if (viz.generation != kInvalidVIZGeneration) {
     if (CanArmVIZPredicate(viz.id, viz.generation) &&
         EnsureVIZPredicateBuffer()) {
       // The copy into the ID's predicate waits for a pass boundary, or for a
@@ -3988,7 +3986,7 @@ void VulkanCommandProcessor::PumpQueryResolves() {
     if (resolve.report_handle != kInvalidReportHandle) {
       OnZPDQueryResolved(resolve.report_handle, raw_counts, resolve.scale_area);
     }
-    if (resolve.viz.generation != 0) {
+    if (resolve.viz.generation != kInvalidVIZGeneration) {
       OnVIZQueryResolved(resolve.viz.id, resolve.viz.generation,
                          raw_counts.z_pass != 0);
     }

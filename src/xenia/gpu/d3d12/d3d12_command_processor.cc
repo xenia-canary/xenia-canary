@@ -3077,23 +3077,11 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     predicate_buffer = viz_predicate_buffer_.Get();
     predicate_offset = uint64_t(viz_draw_predicate_.id) * sizeof(uint64_t);
   }
-  const auto begin_viz_draw = [&]() {
-    if (predicate_buffer) {
-      D3D12_RESOURCE_BARRIER barrier;
-      if (GetVIZPredicateBufferBarrier(D3D12_RESOURCE_STATE_PREDICATION,
-                                       barrier)) {
-        deferred_command_list_.D3DResourceBarrier(1, &barrier);
-      }
-      deferred_command_list_.D3DSetPredication(
-          predicate_buffer, predicate_offset, D3D12_PREDICATION_OP_EQUAL_ZERO);
-    }
-  };
-  const auto end_viz_draw = [&]() {
-    if (predicate_buffer) {
-      deferred_command_list_.D3DSetPredication(nullptr, 0,
-                                               D3D12_PREDICATION_OP_EQUAL_ZERO);
-    }
-  };
+  if (predicate_buffer) {
+    PushTransitionBarrier(predicate_buffer, viz_predicate_buffer_state_,
+                          D3D12_RESOURCE_STATE_PREDICATION);
+    viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_PREDICATION;
+  }
 
   // Draw.
   OnVIZSurveyDraw(true);
@@ -3106,10 +3094,16 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       shared_memory_->UseForWriting();
     }
     SubmitBarriers();
-    begin_viz_draw();
+    if (predicate_buffer) {
+      deferred_command_list_.D3DSetPredication(
+          predicate_buffer, predicate_offset, D3D12_PREDICATION_OP_EQUAL_ZERO);
+    }
     deferred_command_list_.D3DDrawInstanced(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
-    end_viz_draw();
+    if (predicate_buffer) {
+      deferred_command_list_.D3DSetPredication(nullptr, 0,
+                                               D3D12_PREDICATION_OP_EQUAL_ZERO);
+    }
   } else {
     D3D12_INDEX_BUFFER_VIEW index_buffer_view;
     index_buffer_view.SizeInBytes =
@@ -3173,10 +3167,16 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       shared_memory_->UseForReading();
     }
     SubmitBarriers();
-    begin_viz_draw();
+    if (predicate_buffer) {
+      deferred_command_list_.D3DSetPredication(
+          predicate_buffer, predicate_offset, D3D12_PREDICATION_OP_EQUAL_ZERO);
+    }
     deferred_command_list_.D3DDrawIndexedInstanced(
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
-    end_viz_draw();
+    if (predicate_buffer) {
+      deferred_command_list_.D3DSetPredication(nullptr, 0,
+                                               D3D12_PREDICATION_OP_EQUAL_ZERO);
+    }
     if (scratch_index_buffer != nullptr) {
       ReleaseScratchGPUBuffer(scratch_index_buffer,
                               D3D12_RESOURCE_STATE_INDEX_BUFFER);
@@ -5853,7 +5853,7 @@ bool D3D12CommandProcessor::CloseQuery(ReportHandle report_handle,
 
   // SetPredication can't read the query heap or the counter, so also stage
   // the count into the ID's predicate for draws still waiting on an answer.
-  if (viz.generation != 0) {
+  if (viz.generation != kInvalidVIZGeneration) {
     if (CanArmVIZPredicate(viz.id, viz.generation) &&
         EnsureVIZPredicateBuffer()) {
       const uint64_t predicate_offset = uint64_t(viz.id) * sizeof(uint64_t);
@@ -5863,38 +5863,28 @@ bool D3D12CommandProcessor::CloseQuery(ReportHandle report_handle,
         // them. Only the low dword is written. The high one reads zero from
         // the buffer's zeroed creation, or from an earlier full resolve.
         ID3D12Resource* counter_buffer = host_query_pool_->counter_buffer();
-        D3D12_RESOURCE_BARRIER barriers[2];
-        barriers[0] = {};
-        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[0].Transition.pResource = counter_buffer;
-        barriers[0].Transition.Subresource =
-            D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        barriers[0].Transition.StateBefore =
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        UINT barrier_count = 1;
-        if (GetVIZPredicateBufferBarrier(D3D12_RESOURCE_STATE_COPY_DEST,
-                                         barriers[1])) {
-          ++barrier_count;
-        }
-        deferred_command_list_.D3DResourceBarrier(barrier_count, barriers);
+        PushTransitionBarrier(counter_buffer,
+                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                              D3D12_RESOURCE_STATE_COPY_SOURCE);
+        PushTransitionBarrier(viz_predicate_buffer_.Get(),
+                              viz_predicate_buffer_state_,
+                              D3D12_RESOURCE_STATE_COPY_DEST);
+        viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_COPY_DEST;
+        SubmitBarriers();
         deferred_command_list_.D3DCopyBufferRegion(
             viz_predicate_buffer_.Get(), predicate_offset, counter_buffer,
             uint64_t(active_query_index_) * XenosZPDReport::kCounterSizeBytes +
                 XenosZPDReport::kZPass * sizeof(uint32_t),
             sizeof(uint32_t));
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        barriers[0].Transition.StateAfter =
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        deferred_command_list_.D3DResourceBarrier(1, barriers);
+        PushTransitionBarrier(counter_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        SubmitBarriers();
       } else {
-        // The buffer stays COPY_DEST; the consuming draw transitions to
-        // PREDICATION right before SetPredication.
-        D3D12_RESOURCE_BARRIER barrier;
-        if (GetVIZPredicateBufferBarrier(D3D12_RESOURCE_STATE_COPY_DEST,
-                                         barrier)) {
-          deferred_command_list_.D3DResourceBarrier(1, &barrier);
-        }
+        PushTransitionBarrier(viz_predicate_buffer_.Get(),
+                              viz_predicate_buffer_state_,
+                              D3D12_RESOURCE_STATE_COPY_DEST);
+        viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_COPY_DEST;
+        SubmitBarriers();
         deferred_command_list_.D3DResolveQueryData(
             host_query_pool_->query_heap(), D3D12_QUERY_TYPE_OCCLUSION,
             active_query_index_, 1, viz_predicate_buffer_.Get(),
@@ -5947,7 +5937,7 @@ void D3D12CommandProcessor::PumpQueryResolves() {
     if (resolve.report_handle != kInvalidReportHandle) {
       OnZPDQueryResolved(resolve.report_handle, raw_counts, resolve.scale_area);
     }
-    if (resolve.viz.generation != 0) {
+    if (resolve.viz.generation != kInvalidVIZGeneration) {
       OnVIZQueryResolved(resolve.viz.id, resolve.viz.generation,
                          raw_counts.z_pass != 0);
     }
@@ -6008,34 +5998,6 @@ bool D3D12CommandProcessor::EnsureVIZPredicateBuffer() {
   }
 
   viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
-  viz_predicate_buffer_state_submission_ = UINT64_MAX;
-  return true;
-}
-
-bool D3D12CommandProcessor::GetVIZPredicateBufferBarrier(
-    D3D12_RESOURCE_STATES new_state, D3D12_RESOURCE_BARRIER& barrier_out) {
-  if (!viz_predicate_buffer_) {
-    return false;
-  }
-
-  // The buffer decayed to COMMON when the previous submission finished, so
-  // start each submission from COMMON regardless of the last tracked state.
-  const uint64_t submission = GetCurrentSubmission();
-  if (submission != viz_predicate_buffer_state_submission_) {
-    viz_predicate_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
-    viz_predicate_buffer_state_submission_ = submission;
-  }
-  if (viz_predicate_buffer_state_ == new_state) {
-    return false;
-  }
-
-  barrier_out = {};
-  barrier_out.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  barrier_out.Transition.pResource = viz_predicate_buffer_.Get();
-  barrier_out.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  barrier_out.Transition.StateBefore = viz_predicate_buffer_state_;
-  barrier_out.Transition.StateAfter = new_state;
-  viz_predicate_buffer_state_ = new_state;
   return true;
 }
 
