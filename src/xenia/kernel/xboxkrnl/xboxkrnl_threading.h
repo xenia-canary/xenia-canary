@@ -73,6 +73,24 @@ X_STATUS xeProcessUserApcs(PPCContext* ctx);
 void xeRundownApcs(PPCContext* ctx);
 uint32_t xeKeGetCurrentProcessType(PPCContext* context);
 void xeKeSetCurrentProcessType(uint32_t type, PPCContext* context);
+
+enum CreateThreadFlags : uint32_t {
+  ThreadInitiallySuspended = 0x00000001,
+  SystemThread = 0x00000002,
+  TLSStatic = 0x00000008,
+  PriorityClass1 = 0x00000020,
+  PriorityClass2 = 0x00000040,
+  ReturnKThreadPtr = 0x00000080,
+  TitleExecutionThread = 0x00000100,
+  Hidden = 0x00000400,
+  AffinityCpu0 = 0x01000000,
+  AffinityCpu1 = 0x02000000,
+  AffinityCpu2 = 0x04000000,
+  AffinityCpu3 = 0x08000000,
+  AffinityCpu4 = 0x10000000,
+  AffinityCpu5 = 0x20000000,
+};
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe
