@@ -4582,6 +4582,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
 
     // Can't cross command buffer boundaries. Close the active segment first.
     CloseQuerySegment();
+    RecordVIZPredicateCopies();
 
     SubmitBarriers(true);
 
