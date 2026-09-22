@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
-#define XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
+#ifndef XENIA_GPU_D3D12_D3D12_QUERY_POOL_H_
+#define XENIA_GPU_D3D12_D3D12_QUERY_POOL_H_
 
 #include <cstdint>
 #include <vector>
@@ -28,8 +28,9 @@ namespace d3d12 {
 
 class DeferredCommandList;
 
-// D3D12 occlusion query pool for ZPD reports. Queries live in ID3D12QueryHeap,
-// results are copied to a persistent readback buffer via ResolveQueryData.
+// D3D12 occlusion query pool for ZPD reports and VIZ surveys. Queries live in
+// ID3D12QueryHeap, results are copied to a persistent readback buffer via
+// ResolveQueryData.
 //
 // D3D12 requires BeginQuery and EndQuery to be recorded in the same command
 // list, so segments split at EndSubmission.
@@ -41,12 +42,12 @@ class DeferredCommandList;
 // depth/stencil outcomes into a dedicated buffer, one slot per active query.
 // QueueQueryResolve + ClearCounter are used instead of BeginQuery and EndQuery.
 // Hybrid RTV queries use both, adding pre-test coverage to the slot's Total.
-class D3D12ZPDQueryPool {
+class D3D12QueryPool {
  public:
-  D3D12ZPDQueryPool() = default;
-  D3D12ZPDQueryPool(const D3D12ZPDQueryPool&) = delete;
-  D3D12ZPDQueryPool& operator=(const D3D12ZPDQueryPool&) = delete;
-  ~D3D12ZPDQueryPool() { Shutdown(); }
+  D3D12QueryPool() = default;
+  D3D12QueryPool(const D3D12QueryPool&) = delete;
+  D3D12QueryPool& operator=(const D3D12QueryPool&) = delete;
+  ~D3D12QueryPool() { Shutdown(); }
 
   bool EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
                          uint32_t requested_capacity, bool can_recreate,
@@ -59,6 +60,8 @@ class D3D12ZPDQueryPool {
   }
 
   uint32_t capacity() const { return capacity_; }
+
+  ID3D12QueryHeap* query_heap() const { return query_heap_.Get(); }
 
   bool has_pending_resolve_batch() const {
     return !resolve_batch_indices_.empty() ||
@@ -119,4 +122,4 @@ class D3D12ZPDQueryPool {
 }  // namespace gpu
 }  // namespace xe
 
-#endif  // XENIA_GPU_D3D12_D3D12_ZPD_QUERY_POOL_H_
+#endif  // XENIA_GPU_D3D12_D3D12_QUERY_POOL_H_
