@@ -1016,7 +1016,8 @@ bool CommandProcessor::PrepareVIZDraw(uint32_t token) {
           active_segment_.viz.id == id)) {
       viz_draw_predicate_.id = id;
       viz_draw_predicate_.generation = query.generation;
-    } else {
+      // Don't wait on an open query.
+    } else if (!query.active) {
       // Segments resolve in submission order, so the newest is the answer.
       AwaitVIZQueryResolve(query.last_segment_end_submission);
     }
