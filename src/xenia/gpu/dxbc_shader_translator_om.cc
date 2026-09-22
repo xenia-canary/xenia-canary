@@ -2365,18 +2365,21 @@ void DxbcShaderTranslator::ROV_AddMSAASamplesToZPD(bool count_passed,
     if (is_viz_survey_pixel_shader_) {
       // For VIZ, a plain store of 1 replaces the atomic add since the survey's
       // ID consumer only cares about zero vs non-zero.
-      a_.OpAnd(temp_x_dest,
-               dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-               dxbc::Src::LU(0b1111));
-      a_.OpIf(true, temp_x_src);
-      {
-        a_.OpIAdd(temp_z_dest, temp_y_src,
-                  dxbc::Src::LU(XenosZPDReport::kZPass * sizeof(uint32_t)));
-        a_.OpStoreRaw(dxbc::Dest::U(uav_index_zpd_counter_,
-                                    uint32_t(UAVRegister::kZpdCounter), 0b0001),
-                      temp_z_src, dxbc::Src::LU(1));
+      if (count_passed) {
+        a_.OpAnd(temp_x_dest,
+                 dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
+                 dxbc::Src::LU(0b1111));
+        a_.OpIf(true, temp_x_src);
+        {
+          a_.OpIAdd(temp_z_dest, temp_y_src,
+                    dxbc::Src::LU(XenosZPDReport::kZPass * sizeof(uint32_t)));
+          a_.OpStoreRaw(
+              dxbc::Dest::U(uav_index_zpd_counter_,
+                            uint32_t(UAVRegister::kZpdCounter), 0b0001),
+              temp_z_src, dxbc::Src::LU(1));
+        }
+        a_.OpEndIf();
       }
-      a_.OpEndIf();
     } else {
       if (count_passed) {
         // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil
