@@ -505,37 +505,39 @@ uint64_t GetTiledAddressUpperBound3D(uint32_t right, uint32_t bottom,
   if (!right || !bottom || !back) {
     return 0;
   }
-  // Get the origin of the 32x32x4 tile containing the last texel.
-  uint64_t upper_bound = uint64_t(texture_address::Tiled3D(
-      int32_t((right - 1) & ~(xenos::kTextureTileWidthHeight - 1)),
-      int32_t((bottom - 1) & ~(xenos::kTextureTileWidthHeight - 1)),
-      int32_t((back - 1) & ~(xenos::kTextureTileDepth - 1)), pitch_aligned,
-      height_aligned, bytes_per_block_log2));
-  switch (bytes_per_block_log2) {
-    case 0:
-      // 64x32x8 portions have independent addressing.
-      // Extent relative to the 32x32x4 tile origin:
-      // - Pitch = 32, 96, 160...: (Pitch / 64) * 0x1000 + 0x1000
-      // - Pitch = 64, 128, 192...: (Pitch / 64) * 0x1000 + 0xC00
-      upper_bound += ((pitch_aligned >> 6) << 12) + 0xC00 +
-                     ((pitch_aligned & (1 << 5)) << (10 - 5));
-      // There's one extra case where the last bank sits 0x800 past the base
-      // extent: if pitch and X are both in the second, 32 wide half of their
-      // 64 block wide period, while Z is still in the first 4 slices.
-      if ((pitch_aligned & (1 << 5)) && ((right - 1) & (1 << 5)) &&
-          !((back - 1) & (1 << 2))) {
-        upper_bound += 0x800;
+  // Find the highest block address within the last 32 row x 4 slice portion.
+  // Addresses increase within aligned runs of 8 blocks walking x, where only
+  // x[2:0] changes. Bank/pipe selection can place earlier runs at a higher
+  // address, so check every run's last block.
+  //
+  // For 1 byte per block, two 32x16x4 macro tiles share a page. The bank bit
+  // can place blocks from the earlier macro tile after later ones, so include
+  // both 32 row portion halves in the search.
+  //
+  // When width exceeds the pitch, a block's (x, y) becomes
+  // (x % pitch, y + 16 * (x / pitch)) so blocks from earlier rows can land in
+  // the last portion. Check all rows in this case.
+  uint32_t y_first = right > pitch_aligned
+                         ? 0
+                         : (bottom - 1) & ~(xenos::kTextureTileWidthHeight - 1);
+  uint32_t z_first = (back - 1) & ~(xenos::kTextureTileDepth - 1);
+  int64_t upper_bound = 0;
+  for (uint32_t z = z_first; z < back; ++z) {
+    for (uint32_t y = y_first; y < bottom; ++y) {
+      for (uint32_t x = 7;; x += 8) {
+        uint32_t x_last = std::min(x, right - 1);
+        upper_bound =
+            std::max(upper_bound,
+                     texture_address::Tiled3D(
+                         int32_t(x_last), int32_t(y), int32_t(z), pitch_aligned,
+                         height_aligned, bytes_per_block_log2));
+        if (x_last == right - 1) {
+          break;
+        }
       }
-      break;
-    default:
-      // 32x32x8 portions have independent addressing.
-      // Extent: ((Pitch / 32) * 0x1000 + 0x1000) * (BPB / 2)
-      // Or: ((Pitch / 32) * 0x1000 / 2 + 0x1000 / 2) * BPB
-      upper_bound += ((pitch_aligned << (12 - 5 - 1)) + (0x1000 >> 1))
-                     << bytes_per_block_log2;
-      break;
+    }
   }
-  return upper_bound;
+  return uint64_t(upper_bound) + (uint64_t(1) << bytes_per_block_log2);
 }
 
 uint8_t SwizzleSigns(const xenos::xe_gpu_texture_fetch_t& fetch) {
