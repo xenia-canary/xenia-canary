@@ -76,6 +76,14 @@ void GetSubresourcesFromFetchConstant(
   uint32_t base_page = fetch.base_address & 0x1FFFF;
   uint32_t mip_page = fetch.mip_address & 0x1FFFF;
 
+  // If level 0 is already the packed tail, D3D leaves mip_address at 0.
+  // The rest of the tail is stored at the base address too.
+  if (mip_page == 0 && base_page != 0 && fetch.packed_mips &&
+      fetch.dimension != xenos::DataDimension::k1D &&
+      GetPackedMipLevel(width_minus_1 + 1, height_minus_1 + 1) == 0) {
+    mip_page = base_page;
+  }
+
   uint32_t mip_min_level, mip_max_level;
   // Not taking mip_filter == kBaseMap into account for mip_max_level because
   // the mip filter may be overridden by shader fetch instructions.
