@@ -999,16 +999,22 @@ enum class EdramMode : uint32_t {
 // XGAddress2D/3DTiledOffset called for left/top & ~31.
 //
 // RB_COPY_DEST_PITCH's purpose appears to be not clamping or something like
-// that, but just specifying pitch for going between rows, and height for going
-// between 3D texture slices. copy_dest_pitch is rounded to 32 by Direct3D 9,
+// that, but just specifying pitch for going between rows, and height used by
+// 3D texture copies. copy_dest_pitch is rounded to 32 by Direct3D 9,
 // copy_dest_height is not. In the 4D5307E6 sniper rifle scope example,
 // copy_dest_pitch is 320, and copy_dest_height is 192 - the same as the resolve
 // rectangle size (resolving from a 320x192 portion of the surface at 128,64 to
-// the whole texture, at 0,0). Relative to RB_COPY_DEST_BASE, the height should
-// have been 256, but it's not. Adreno doesn't have copy_dest_height at all (as
-// well as RB_COPY_DEST_INFO::copy_dest_slice), suggesting (alongside the name
-// of the register) that it exists purely to be able to go between 3D texture
-// slices.
+// the whole texture, at 0,0). The bottom of the destination level is at 256
+// relative to RB_COPY_DEST_BASE, but this runtime writes level_height - dest_y,
+// giving 192 without including the source rectangle's top. Adreno doesn't have
+// copy_dest_height at all (as well as RB_COPY_DEST_INFO::copy_dest_slice),
+// suggesting that these fields are only needed for 3D texture copies.
+//
+// copy_dest_height can also adjusted for source_top, so it shouldn't be used to
+// determine volume slice spacing. Volume resolves separately write destination
+// pitch * level height to RB_COPY_SURFACE_SLICE without either adjustment.
+// Later D3D runtimes (4D530A26, 555308B6) add source_top, which would make the
+// same sniper scope example 256.
 //
 // Window scissor must also be applied - in the jigsaw puzzle in 58410955, there
 // are 1280x720 resolve rectangles, but only the scissored 1280x256 needs to be

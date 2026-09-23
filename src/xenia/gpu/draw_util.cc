@@ -1198,9 +1198,20 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                 texture_address::kStoragePitchHeightAlignmentBlocks);
   info_out.copy_dest_coordinate_info.pitch_aligned_div_32 =
       copy_dest_pitch_aligned >> 5;
-  const uint32_t copy_dest_height_aligned =
-      xe::align(rb_copy_dest_pitch.copy_dest_height,
-                texture_address::kStoragePitchHeightAlignmentBlocks);
+  // For volume resolves.
+  // D3D writes pitch * level height in blocks to RB_COPY_SURFACE_SLICE.
+  // Only use copy_dest_height, which instead includes the top of a source
+  // rectangle, as a fallback.
+  uint32_t copy_dest_height = rb_copy_dest_pitch.copy_dest_height;
+  if (rb_copy_dest_info.copy_dest_array) {
+    uint32_t rb_copy_surface_slice = regs[XE_GPU_REG_RB_COPY_SURFACE_SLICE];
+    if (rb_copy_surface_slice && rb_copy_dest_pitch.copy_dest_pitch) {
+      copy_dest_height =
+          rb_copy_surface_slice / rb_copy_dest_pitch.copy_dest_pitch;
+    }
+  }
+  const uint32_t copy_dest_height_aligned = xe::align(
+      copy_dest_height, texture_address::kStoragePitchHeightAlignmentBlocks);
   info_out.copy_dest_coordinate_info.height_aligned_div_32 =
       copy_dest_height_aligned >> 5;
   const FormatInfo& dest_format_info = *FormatInfo::Get(dest_format);
