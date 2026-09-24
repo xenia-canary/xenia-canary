@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2021 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -24,12 +24,6 @@ namespace apps {
  * https://github.com/NicolasDe/AlienSwarm/blob/master/src/common/xbox/xboxstubs.h
  */
 
-struct X_USER_ACHIEVEMENT {
-  xe::be<uint32_t> user_index;
-  xe::be<uint32_t> achievement_id;
-};
-static_assert_size(X_USER_ACHIEVEMENT, 0x8);
-
 struct XGI_WRITEACHIEVEMENT {
   xe::be<uint32_t> num_achievements;
   xe::be<uint32_t> achievements_ptr;  // X_USER_ACHIEVEMENT*
@@ -48,7 +42,19 @@ struct XGI_AWARD_AVATAR_ASSETS {
 };
 static_assert_size(XGI_AWARD_AVATAR_ASSETS, 0x8);
 
-struct XGI_XUSER_GET_PROPERTY {
+struct XGI_USER_ACHIEVEMENT {
+  xe::be<uint32_t> user_index;
+  xe::be<uint32_t> achievement_id;
+};
+static_assert_size(XGI_USER_ACHIEVEMENT, 0x8);
+
+struct XGI_USER_GET_ACHIEVEMENT {
+  xe::be<uint32_t> achievement_count;
+  xe::be<uint32_t> achievements_ptr;  // XGI_USER_ACHIEVEMENT*
+};
+static_assert_size(XGI_USER_GET_ACHIEVEMENT, 0x8);
+
+struct XGI_USER_GET_PROPERTY {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> unused;
   xe::be<uint64_t> xuid;  // If xuid is 0 then user_index is used.
@@ -58,17 +64,17 @@ struct XGI_XUSER_GET_PROPERTY {
   xe::be<uint32_t> context_address;
   xe::be<uint32_t> property_address;
 };
-static_assert_size(XGI_XUSER_GET_PROPERTY, 0x20);
+static_assert_size(XGI_USER_GET_PROPERTY, 0x20);
 
-struct XGI_XUSER_SET_CONTEXT {
+struct XGI_USER_SET_CONTEXT {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> unused;
   xe::be<uint64_t> xuid;
   XUSER_CONTEXT context;
 };
-static_assert_size(XGI_XUSER_SET_CONTEXT, 0x18);
+static_assert_size(XGI_USER_SET_CONTEXT, 0x18);
 
-struct XGI_XUSER_SET_PROPERTY {
+struct XGI_USER_SET_PROPERTY {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> unused;
   xe::be<uint64_t> xuid;
@@ -76,31 +82,44 @@ struct XGI_XUSER_SET_PROPERTY {
   xe::be<uint32_t> data_size;
   xe::be<uint32_t> data_address;
 };
-static_assert_size(XGI_XUSER_SET_PROPERTY, 0x20);
+static_assert_size(XGI_USER_SET_PROPERTY, 0x20);
 
-struct XUSER_STATS_VIEW {
+struct XGI_USER_STATS_VIEW {
   xe::be<uint32_t> ViewId;
   xe::be<uint32_t> TotalViewRows;
   xe::be<uint32_t> NumRows;
   xe::be<uint32_t> pRows;
 };
 
-struct XUSER_STATS_COLUMN {
+struct XGI_USER_STATS_COLUMN {
   xe::be<uint16_t> ColumnId;
   X_USER_DATA Value;
 };
 
-struct XUSER_STATS_RESET {
+struct XGI_USER_STATS_RESET {
   xe::be<uint32_t> user_index;
   xe::be<uint32_t> view_id;
 };
 
-struct XUSER_ANID {
+// ANID = Anonymous user id
+struct XGI_USER_ANID {
   xe::be<uint32_t> user_index;
-  xe::be<uint32_t> cchAnIdBuffer;
-  xe::be<uint32_t> pszAnIdBuffer;
-  xe::be<uint32_t> value_const;  // 1
+  xe::be<uint32_t> AnId_buffer_size;
+  xe::be<uint32_t> AnId_buffer_ptr;  // char*
+  xe::be<uint32_t> block;            // 1
 };
+static_assert_size(XGI_USER_ANID, 0x10);
+
+struct XGI_USER_READ_STATS {
+  xe::be<uint32_t> title_id;
+  xe::be<uint32_t> xuids_count;
+  xe::be<uint32_t> xuids_ptr;
+  xe::be<uint32_t> specs_count;
+  xe::be<uint32_t> specs_ptr;
+  xe::be<uint32_t> results_size;
+  xe::be<uint32_t> results_ptr;
+};
+static_assert_size(XGI_USER_READ_STATS, 0x1C);
 
 XgiApp::XgiApp(KernelState* kernel_state) : App(kernel_state, 0xFB) {}
 
@@ -113,9 +132,9 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
   switch (message) {
     case 0x000B0006: {
       assert_true(!buffer_length ||
-                  buffer_length == sizeof(XGI_XUSER_SET_CONTEXT));
-      const XGI_XUSER_SET_CONTEXT* xgi_context =
-          reinterpret_cast<const XGI_XUSER_SET_CONTEXT*>(buffer);
+                  buffer_length == sizeof(XGI_USER_SET_CONTEXT));
+      const XGI_USER_SET_CONTEXT* xgi_context =
+          reinterpret_cast<const XGI_USER_SET_CONTEXT*>(buffer);
 
       XELOGD("XGIUserSetContext({:08X}, ID: {:08X}, Value: {:08X})",
              xgi_context->user_index.get(),
@@ -139,9 +158,9 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     }
     case 0x000B0007: {
       assert_true(!buffer_length ||
-                  buffer_length == sizeof(XGI_XUSER_SET_PROPERTY));
-      const XGI_XUSER_SET_PROPERTY* xgi_property =
-          reinterpret_cast<const XGI_XUSER_SET_PROPERTY*>(buffer);
+                  buffer_length == sizeof(XGI_USER_SET_PROPERTY));
+      const XGI_USER_SET_PROPERTY* xgi_property =
+          reinterpret_cast<const XGI_USER_SET_PROPERTY*>(buffer);
 
       XELOGD("XGIUserSetPropertyEx({:08X}, {:08X}, {}, {:08X})",
              xgi_property->user_index.get(), xgi_property->property_id.get(),
@@ -169,21 +188,25 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     }
     case 0x000B0008: {
       assert_true(!buffer_length ||
-                  buffer_length == sizeof(X_USER_ACHIEVEMENT));
+                  buffer_length == sizeof(XGI_USER_ACHIEVEMENT));
 
       const XGI_WRITEACHIEVEMENT* write_achievements =
           reinterpret_cast<const XGI_WRITEACHIEVEMENT*>(buffer);
 
-      const X_USER_ACHIEVEMENT* achievements =
-          memory_->TranslateVirtual<X_USER_ACHIEVEMENT*>(
+      const XGI_USER_ACHIEVEMENT* achievements =
+          memory_->TranslateVirtual<XGI_USER_ACHIEVEMENT*>(
               write_achievements->achievements_ptr);
 
       XELOGD("XGIUserWriteAchievements({:08X}, {:08X})",
              write_achievements->num_achievements.get(),
              write_achievements->achievements_ptr.get());
 
+      if (achievements->user_index >= XUserMaxUserCount) {
+        return X_E_NOTFOUND;
+      }
+
       for (uint32_t i = 0; i < write_achievements->num_achievements; i++) {
-        const X_USER_ACHIEVEMENT& achievement = achievements[i];
+        const XGI_USER_ACHIEVEMENT& achievement = achievements[i];
 
         kernel_state_->achievement_manager()->EarnAchievement(
             achievement.user_index, kernel_state_->title_id(),
@@ -193,27 +216,22 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       return X_E_SUCCESS;
     }
     case 0x000B0010: {
-      XELOGD("XSessionCreate({:08X}, {:08X}), implemented in netplay",
-             buffer_ptr, buffer_length);
-      assert_true(!buffer_length || buffer_length == 28);
       // Sequence:
       // - XamSessionCreateHandle
       // - XamSessionRefObjByHandle
       // - [this]
       // - CloseHandle
-      uint32_t session_ptr = xe::load_and_swap<uint32_t>(buffer + 0x0);
-      uint32_t flags = xe::load_and_swap<uint32_t>(buffer + 0x4);
-      uint32_t num_slots_public = xe::load_and_swap<uint32_t>(buffer + 0x8);
-      uint32_t num_slots_private = xe::load_and_swap<uint32_t>(buffer + 0xC);
-      uint32_t user_xuid = xe::load_and_swap<uint32_t>(buffer + 0x10);
-      uint32_t session_info_ptr = xe::load_and_swap<uint32_t>(buffer + 0x14);
-      uint32_t nonce_ptr = xe::load_and_swap<uint32_t>(buffer + 0x18);
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XGI_SESSION_CREATE));
+      XGI_SESSION_CREATE* data = reinterpret_cast<XGI_SESSION_CREATE*>(buffer);
 
       XELOGD(
-          "XGISessionCreateImpl({:08X}, {:08X}, {}, {}, {:08X}, {:08X}, "
-          "{:08X})",
-          session_ptr, flags, num_slots_public, num_slots_private, user_xuid,
-          session_info_ptr, nonce_ptr);
+          "XGISessionCreate({:08X}, {:08X}, {:08X}, {:08X}, {:08X}, {:08X}, "
+          "{:08X}), implemented in netplay",
+          data->obj_ptr.get(), static_cast<uint32_t>(data->flags),
+          data->num_slots_public.get(), data->num_slots_private.get(),
+          data->user_index.get(), data->session_info_ptr.get(),
+          data->nonce_ptr.get());
 
       // 584107FB expects offline session creation using flags 0 to succeed
       // while offline.
@@ -222,54 +240,70 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // Allow offline session creation, but do not allow Xbox Live featured
       // session creation.
 
-      if (IsXboxLiveSession(static_cast<SessionFlags>(flags))) {
+      if (IsXboxLiveSession(static_cast<SessionFlags>(data->flags))) {
         return 0x80155209;  // X_ONLINE_E_SESSION_NOT_LOGGED_ON
       }
 
       return X_E_SUCCESS;
     }
     case 0x000B0011: {
-      XELOGD("XGISessionDelete({:08X}, {:08X}), implemented in netplay",
-             buffer_ptr, buffer_length);
+      assert_true(!buffer_length || buffer_length == sizeof(XGI_SESSION_STATE));
+      XGI_SESSION_STATE* data = reinterpret_cast<XGI_SESSION_STATE*>(buffer);
+
+      XELOGD(
+          "XGISessionDelete({:08X}, {:08X}, {:016X}), implemented in netplay",
+          static_cast<uint32_t>(data->obj_ptr),
+          static_cast<uint32_t>(data->flags),
+          static_cast<uint32_t>(data->session_nonce));
       return X_STATUS_SUCCESS;
     }
     case 0x000B0012: {
-      assert_true(buffer_length == 0x14);
-      uint32_t session_ptr = xe::load_and_swap<uint32_t>(buffer + 0x0);
-      uint32_t user_count = xe::load_and_swap<uint32_t>(buffer + 0x4);
-      uint32_t unk_0 = xe::load_and_swap<uint32_t>(buffer + 0x8);
-      uint32_t user_index_array = xe::load_and_swap<uint32_t>(buffer + 0xC);
-      uint32_t private_slots_array = xe::load_and_swap<uint32_t>(buffer + 0x10);
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XGI_SESSION_MANAGE));
+      XGI_SESSION_MANAGE* data = reinterpret_cast<XGI_SESSION_MANAGE*>(buffer);
 
-      assert_zero(unk_0);
-      XELOGD("XGISessionJoinLocal({:08X}, {}, {}, {:08X}, {:08X})", session_ptr,
-             user_count, unk_0, user_index_array, private_slots_array);
+      XELOGI(
+          "XGISessionJoin({:08X}, {:08X}, {:08X}, {:08X}, {:08X}), implemented "
+          "in netplay",
+          data->obj_ptr.get(), data->array_count.get(),
+          data->xuid_array_ptr.get(), data->indices_array_ptr.get(),
+          data->private_slots_array_ptr.get());
       return X_E_SUCCESS;
     }
     case 0x000B0014: {
       // Gets 584107FB in game.
       // get high score table?
-      XELOGD("XSessionStart({:08X}), implemented in netplay", buffer_ptr);
+      assert_true(!buffer_length || buffer_length == sizeof(XGI_SESSION_STATE));
+      XGI_SESSION_STATE* data = reinterpret_cast<XGI_SESSION_STATE*>(buffer);
+
+      XELOGD("XGISessionStart({:08X}, {:08X}, {:016X}), implemented in netplay",
+             data->obj_ptr.get(), data->flags.get(), data->session_nonce.get());
       return X_STATUS_SUCCESS;
     }
     case 0x000B0015: {
       // send high scores?
-      XELOGD("XSessionEnd({:08X}, {:08X}), implemented in netplay", buffer_ptr,
-             buffer_length);
+      assert_true(!buffer_length || buffer_length == sizeof(XGI_SESSION_STATE));
+      XGI_SESSION_STATE* data = reinterpret_cast<XGI_SESSION_STATE*>(buffer);
+
+      XELOGD("XGISessionEnd({:08X}, {:08X}, {:016X}), implemented in netplay",
+             data->obj_ptr.get(), data->flags.get(), data->session_nonce.get());
       return X_STATUS_SUCCESS;
     }
     case 0x000B0021: {
-      XELOGD("XUserReadStats");
+      /* XGIUserReadStats:
+          - Games Used In (offfline): 5841083A, 534507F4
+      */
+      assert_true(!buffer_length ||
+                  buffer_length == sizeof(XGI_USER_READ_STATS));
+      XGI_USER_READ_STATS* data =
+          reinterpret_cast<XGI_USER_READ_STATS*>(buffer);
 
-      struct XUserReadStats {
-        xe::be<uint32_t> titleId;
-        xe::be<uint32_t> xuids_count;
-        xe::be<uint32_t> xuids_guest_address;
-        xe::be<uint32_t> specs_count;
-        xe::be<uint32_t> specs_guest_address;
-        xe::be<uint32_t> results_size;
-        xe::be<uint32_t> results_guest_address;
-      }* data = reinterpret_cast<XUserReadStats*>(buffer);
+      XELOGD(
+          "XGIUserReadStats({:08X}, {:08X}, {:08X}, {:08X}, {:08X}, {:08X}, "
+          "{:08X})",
+          data->title_id.get(), data->xuids_count.get(), data->xuids_ptr.get(),
+          data->specs_count.get(), data->specs_ptr.get(),
+          data->results_size.get(), data->results_ptr.get());
 
       return 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
     }
@@ -278,21 +312,44 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // to 5787 and called after clicking xbox live in the game library from
       // v6683 to v6717
       // Does not get sent a buffer
-      XELOGD("XInvalidateGamerTileCache, unimplemented");
+      XELOGD("XGIInvalidateGamerTileCache, unimplemented");
       return X_E_FAIL;
     }
     case 0x000B003D: {
+      // XGIUserGetCachedANID
       // Used in 5451082A, 5553081E
-      // XUserGetCachedANID
-      XELOGI("XUserGetANID({:08X}, {:08X}), implemented in netplay", buffer_ptr,
-             buffer_length);
-      return X_E_FAIL;
+      assert_true(!buffer_length || buffer_length == sizeof(XGI_USER_ANID));
+      XGI_USER_ANID* data = reinterpret_cast<XGI_USER_ANID*>(buffer);
+
+      XELOGI("XGIUserGetANID({:08X}, {:08X}, {:08X}, {:08X})",
+             data->user_index.get(), data->AnId_buffer_size.get(),
+             data->AnId_buffer_ptr.get(), data->block.get());
+
+      if (!kernel_state_->xam_state()->IsUserSignedIn(data->user_index)) {
+        return X_E_NOTFOUND;
+      }
+
+      uint8_t* AnIdBuffer =
+          memory_->TranslateVirtual<uint8_t*>(data->AnId_buffer_ptr);
+
+      // Game calls HexDecodeDigit on AnIdBuffer
+      for (uint32_t i = 0; i < data->AnId_buffer_size - 1; i++) {
+        AnIdBuffer[i] = i % 16;
+      }
+
+      return X_E_SUCCESS;
     }
     case 0x000B0041: {
       assert_true(!buffer_length ||
-                  buffer_length == sizeof(XGI_XUSER_GET_PROPERTY));
-      const XGI_XUSER_GET_PROPERTY* xgi_property =
-          reinterpret_cast<const XGI_XUSER_GET_PROPERTY*>(buffer);
+                  buffer_length == sizeof(XGI_USER_GET_PROPERTY));
+      const XGI_USER_GET_PROPERTY* xgi_property =
+          reinterpret_cast<const XGI_USER_GET_PROPERTY*>(buffer);
+
+      XELOGI("XGIUserGetProperty({:08X}, {:016X}, {:08X}, {:08X}, {:08X})",
+             xgi_property->user_index.get(), xgi_property->xuid.get(),
+             xgi_property->property_size_ptr.get(),
+             xgi_property->context_address.get(),
+             xgi_property->property_address.get());
 
       UserProfile* user = nullptr;
       if (xgi_property->xuid != 0) {
