@@ -46,6 +46,8 @@ DECLARE_bool(gpu_3d_to_2d_texture);
 
 DECLARE_bool(force_depth_clamp);
 
+DECLARE_bool(mulsc_round_toward_zero);
+
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1
 
 #endif  // XENIA_GPU_GPU_FLAGS_H_
