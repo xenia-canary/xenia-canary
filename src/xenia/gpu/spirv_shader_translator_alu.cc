@@ -16,6 +16,7 @@
 #include "third_party/glslang/SPIRV/GLSL.std.450.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
 
 namespace xe {
@@ -1382,6 +1383,33 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
           operand_storage[1], instr.scalar_operands[1], 0b0001);
       spv::Id result = builder_->createNoContractionBinOp(
           spv::OpFMul, type_float_, operand_0, operand_1);
+      if (cvars::mulsc_round_toward_zero) {
+        // Keep the Fma as one operation so it can recover the product error.
+        spv::Id error = builder_->createTriBuiltinCall(
+            type_float_, ext_inst_glsl_std_450_, GLSLstd450Fma, operand_0,
+            operand_1,
+            builder_->createUnaryOp(spv::OpFNegate, type_float_, result));
+        builder_->addDecoration(error, spv::DecorationNoContraction);
+        spv::Id rounded_away = builder_->createBinOp(
+            spv::OpLogicalNotEqual, type_bool_,
+            builder_->createBinOp(spv::OpFOrdLessThan, type_bool_, error,
+                                  const_float_0_),
+            builder_->createBinOp(spv::OpFOrdLessThan, type_bool_, result,
+                                  const_float_0_));
+        rounded_away = builder_->createBinOp(
+            spv::OpLogicalAnd, type_bool_, rounded_away,
+            builder_->createBinOp(spv::OpFOrdNotEqual, type_bool_, error,
+                                  const_float_0_));
+        // Opposite signs mean the product rounded away from zero.
+        spv::Id result_toward_zero = builder_->createUnaryOp(
+            spv::OpBitcast, type_float_,
+            builder_->createBinOp(
+                spv::OpISub, type_uint_,
+                builder_->createUnaryOp(spv::OpBitcast, type_uint_, result),
+                builder_->makeUintConstant(1)));
+        result = builder_->createTriOp(spv::OpSelect, type_float_, rounded_away,
+                                       result_toward_zero, result);
+      }
       if (!(instr.scalar_operands[0].GetIdenticalComponents(
                 instr.scalar_operands[1]) &
             0b0001)) {

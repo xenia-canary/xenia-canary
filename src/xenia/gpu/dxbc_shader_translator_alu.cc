@@ -14,6 +14,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/gpu_flags.h"
 
 namespace xe {
 namespace gpu {
@@ -1052,6 +1053,66 @@ void DxbcShaderTranslator::ProcessScalarAluOperation(
     case AluScalarOpcode::kMulsc0:
     case AluScalarOpcode::kMulsc1:
       a_.OpMul(ps_dest, operand_0_a, operand_1);
+      if (cvars::mulsc_round_toward_zero) {
+        // DXBC mad isn't guaranteed to stay fused, so recover the product
+        // error with a Veltkamp split and Dekker error sum instead.
+        uint32_t split_temp = PushSystemTemp();
+        uint32_t error_temp = PushSystemTemp();
+        // x/y: high/low part of a, z/w: high/low part of b.
+        a_.OpMul(dxbc::Dest::R(split_temp, 0b0001), operand_0_a,
+                 dxbc::Src::LF(4097.0f));
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b0010),
+                 dxbc::Src::R(split_temp, dxbc::Src::kXXXX), -operand_0_a);
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b0001),
+                 dxbc::Src::R(split_temp, dxbc::Src::kXXXX),
+                 -dxbc::Src::R(split_temp, dxbc::Src::kYYYY));
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b0010), operand_0_a,
+                 -dxbc::Src::R(split_temp, dxbc::Src::kXXXX));
+        a_.OpMul(dxbc::Dest::R(split_temp, 0b0100), operand_1,
+                 dxbc::Src::LF(4097.0f));
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b1000),
+                 dxbc::Src::R(split_temp, dxbc::Src::kZZZZ), -operand_1);
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b0100),
+                 dxbc::Src::R(split_temp, dxbc::Src::kZZZZ),
+                 -dxbc::Src::R(split_temp, dxbc::Src::kWWWW));
+        a_.OpAdd(dxbc::Dest::R(split_temp, 0b1000), operand_1,
+                 -dxbc::Src::R(split_temp, dxbc::Src::kZZZZ));
+        // x = error accumulator, y = scratch.
+        a_.OpMul(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(split_temp, dxbc::Src::kXXXX),
+                 dxbc::Src::R(split_temp, dxbc::Src::kZZZZ));
+        a_.OpAdd(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(error_temp, dxbc::Src::kXXXX), -ps_src);
+        a_.OpMul(dxbc::Dest::R(error_temp, 0b0010),
+                 dxbc::Src::R(split_temp, dxbc::Src::kXXXX),
+                 dxbc::Src::R(split_temp, dxbc::Src::kWWWW));
+        a_.OpAdd(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(error_temp, dxbc::Src::kXXXX),
+                 dxbc::Src::R(error_temp, dxbc::Src::kYYYY));
+        a_.OpMul(dxbc::Dest::R(error_temp, 0b0010),
+                 dxbc::Src::R(split_temp, dxbc::Src::kYYYY),
+                 dxbc::Src::R(split_temp, dxbc::Src::kZZZZ));
+        a_.OpAdd(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(error_temp, dxbc::Src::kXXXX),
+                 dxbc::Src::R(error_temp, dxbc::Src::kYYYY));
+        a_.OpMul(dxbc::Dest::R(error_temp, 0b0010),
+                 dxbc::Src::R(split_temp, dxbc::Src::kYYYY),
+                 dxbc::Src::R(split_temp, dxbc::Src::kWWWW));
+        a_.OpAdd(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(error_temp, dxbc::Src::kXXXX),
+                 dxbc::Src::R(error_temp, dxbc::Src::kYYYY));
+        // Opposite signs mean the product rounded away from zero.
+        // Move it one representable float back toward zero.
+        a_.OpMul(dxbc::Dest::R(error_temp, 0b0001),
+                 dxbc::Src::R(error_temp, dxbc::Src::kXXXX), ps_src);
+        a_.OpLT(dxbc::Dest::R(error_temp, 0b0001),
+                dxbc::Src::R(error_temp, dxbc::Src::kXXXX),
+                dxbc::Src::LF(0.0f));
+        a_.OpIAdd(dxbc::Dest::R(error_temp, 0b0010), ps_src, dxbc::Src::LI(-1));
+        a_.OpMovC(ps_dest, dxbc::Src::R(error_temp, dxbc::Src::kXXXX),
+                  dxbc::Src::R(error_temp, dxbc::Src::kYYYY), ps_src);
+        PopSystemTemp(2);
+      }
       if (!(instr.scalar_operands[0].GetIdenticalComponents(
                 instr.scalar_operands[1]) &
             0b0001)) {

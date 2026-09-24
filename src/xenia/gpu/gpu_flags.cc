@@ -111,3 +111,11 @@ DEFINE_bool(
     "guest clipping is enabled. X/Y/W clipping is unaffected. On Vulkan, "
     "this requires depthClamp support.",
     "GPU");
+
+DEFINE_bool(
+    mulsc_round_toward_zero, false,
+    "Round mulsc products toward zero instead of to nearest even. This fixes "
+    "bad geometry in several Volition Engine titles and possibly others. "
+    "This rounding behavior hasn't been confirmed on real hardware, so it's "
+    "disabled by default.",
+    "GPU");
