@@ -108,8 +108,8 @@
 #define XEPACKEDUNION(name, value) _XEPACKEDSCOPE(union name value)
 
 #if XE_COMPILER_HAS_MSVC_EXTENSIONS == 1
-#define XE_FORCEINLINE __forceinline
-#define XE_NOINLINE __declspec(noinline)
+#define XE_FORCEINLINE
+#define XE_NOINLINE
 // can't properly emulate "cold" in msvc, but can still segregate the function
 // into its own seg
 #define XE_COLD __declspec(code_seg(".cold"))
