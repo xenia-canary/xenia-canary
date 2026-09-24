@@ -13,6 +13,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "xenia/gpu/gpu_flags.h"
+
 namespace xe {
 namespace gpu {
 
@@ -718,13 +720,28 @@ void ShaderInterpreter::ExecuteAluInstruction(ucode::AluInstruction instr) {
     case ucode::AluScalarOpcode::kAddsPrev: {
       state_.previous_scalar = scalar_operands[0] + state_.previous_scalar;
     } break;
-    case ucode::AluScalarOpcode::kMuls:
-    case ucode::AluScalarOpcode::kMulsc0:
-    case ucode::AluScalarOpcode::kMulsc1: {
+    case ucode::AluScalarOpcode::kMuls: {
       // Direct3D 9 behavior (0 or denormal * anything = +0).
       state_.previous_scalar = (scalar_operands[0] && scalar_operands[1])
                                    ? scalar_operands[0] * scalar_operands[1]
                                    : 0.0f;
+    } break;
+    case ucode::AluScalarOpcode::kMulsc0:
+    case ucode::AluScalarOpcode::kMulsc1: {
+      // Direct3D 9 behavior (0 or denormal * anything = +0).
+      float product = 0.0f;
+      if (scalar_operands[0] && scalar_operands[1]) {
+        product = scalar_operands[0] * scalar_operands[1];
+        if (cvars::mulsc_round_toward_zero && std::isfinite(product)) {
+          const double exact_product =
+              double(scalar_operands[0]) * double(scalar_operands[1]);
+          // Step back if the float multiply rounded away from zero.
+          if (std::abs(double(product)) > std::abs(exact_product)) {
+            product = std::nextafter(product, 0.0f);
+          }
+        }
+      }
+      state_.previous_scalar = product;
     } break;
     case ucode::AluScalarOpcode::kMulsPrev: {
       // Direct3D 9 behavior (0 or denormal * anything = +0).
