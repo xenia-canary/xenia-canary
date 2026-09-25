@@ -454,6 +454,13 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   FcCharSet* charset = FcCharSetCreate();
   FcCharSetAddChar(charset, 0x4E00);  // Add a CJK character to the charset
   FcPatternAddCharSet(pattern, FC_CHARSET, charset);
+  // Dear ImGui rasterises with stb_truetype, which cannot parse CFF-outline
+  // OpenType fonts or variable-font collections. Fedora's default CJK match
+  // is NotoSansCJK-VF.ttc, exactly that, and one unloadable font fails the
+  // whole atlas build rather than just its own glyphs. Ask fontconfig for
+  // TrueType outlines only.
+  FcPatternAddString(pattern, FC_FONTFORMAT,
+                     reinterpret_cast<const FcChar8*>("TrueType"));
 
   // Configure the search
   FcConfigSubstitute(config, pattern, FcMatchPattern);
@@ -470,14 +477,27 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
       const char* font_path = reinterpret_cast<const char*>(file);
 
       if (std::filesystem::exists(font_path)) {
-        ImFontConfig jp_font_config;
-        jp_font_config.MergeMode = true;
-        jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
-        jp_font_config.PixelSnapH = true;
+        // Prove stb_truetype can build this file before merging it into the
+        // real atlas, where a failure would take the base font down with it.
+        ImFontAtlas trial_atlas;
+        static const ImWchar trial_range[] = {0x4E00, 0x4E01, 0};
+        const bool loadable = trial_atlas.AddFontFromFileTTF(
+                                  font_path, font_size, nullptr, trial_range) &&
+                              trial_atlas.Build();
+        if (loadable) {
+          ImFontConfig jp_font_config;
+          jp_font_config.MergeMode = true;
+          jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
+          jp_font_config.PixelSnapH = true;
 
-        io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config,
-                                     io.Fonts->GetGlyphRangesJapanese());
-        success = true;
+          io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config,
+                                       io.Fonts->GetGlyphRangesJapanese());
+          XELOGI("Using CJK font {}", font_path);
+          success = true;
+        } else {
+          XELOGW("CJK font {} cannot be loaded by stb_truetype; skipping",
+                 font_path);
+        }
       }
     }
     FcPatternDestroy(font);
