@@ -153,6 +153,37 @@ def import_subprocess_environment(args):
                     break
 
 VSVERSION_MINIMUM = 2022
+VS_GENERATOR_MAP = {
+    2022: "Visual Studio 17 2022",
+    2026: "Visual Studio 18 2026",
+}
+vs_install_path = None
+
+
+def get_vs_generator(vs_path, product_line_version):
+    """Returns the CMake Visual Studio generator for an installation and an
+    optional platform toolset to use with it.
+
+    If the installation is newer than any generator CMake is known to support,
+    the latest known generator is used with the newest toolset found in the
+    installation.
+    """
+    vs_generator = VS_GENERATOR_MAP.get(product_line_version)
+    if vs_generator:
+        return vs_generator, None
+    latest_known = max(VS_GENERATOR_MAP.keys())
+    vs_generator = VS_GENERATOR_MAP[latest_known]
+    print(f"  Note: VS {product_line_version} detected.")
+    print(f"  Using \"{vs_generator}\" generator with that instance.")
+    toolset = None
+    vc_dir = os.path.join(vs_path or "", "MSBuild", "Microsoft", "VC")
+    if os.path.isdir(vc_dir):
+        toolsets = sorted(d for d in os.listdir(vc_dir) if d.startswith("v"))
+        if toolsets:
+            toolset = toolsets[-1]
+    return vs_generator, toolset
+
+
 def import_vs_environment():
     """Finds the installed Visual Studio version and imports
     interesting environment variables into os.environ.
@@ -191,6 +222,9 @@ def import_vs_environment():
 
     if not version:
         return None
+
+    global vs_install_path
+    vs_install_path = install_path
 
     import_subprocess_environment(env_tool_args)
     os.environ["VSVERSION"] = f"{version}"
@@ -2081,10 +2115,6 @@ class DevenvCommand(Command):
                 # Use vswhere to find a VS installation with ARM64 C++ tools
                 # and force the correct generator/instance since CMake might
                 # otherwise pick a VS without ARM64 support.
-                vs_generator_map = {
-                    2022: "Visual Studio 17 2022",
-                    2026: "Visual Studio 18 2026",
-                }
                 try:
                     vswhere_out = subprocess.check_output(
                         "tools/vswhere/vswhere.exe"
@@ -2114,18 +2144,10 @@ class DevenvCommand(Command):
                 arm64_vs_plv = int(arm64_vs.get("catalog", {}).get(
                     "productLineVersion", VSVERSION_MINIMUM))
 
-                vs_generator = vs_generator_map.get(arm64_vs_plv)
+                vs_generator, toolset = get_vs_generator(arm64_vs_path, arm64_vs_plv)
                 toolset_parts = ["host=x64"]
-                if not vs_generator:
-                    latest_known = max(vs_generator_map.keys())
-                    vs_generator = vs_generator_map[latest_known]
-                    print(f"  Note: VS {arm64_vs_plv} detected with ARM64 tools.")
-                    print(f"  Using \"{vs_generator}\" generator with that instance.")
-                    vc_dir = os.path.join(arm64_vs_path, "MSBuild", "Microsoft", "VC")
-                    if os.path.isdir(vc_dir):
-                        toolsets = sorted(d for d in os.listdir(vc_dir) if d.startswith("v"))
-                        if toolsets:
-                            toolset_parts.insert(0, toolsets[-1])
+                if toolset:
+                    toolset_parts.insert(0, toolset)
 
                 cmake_args += [
                     "-G", vs_generator,
@@ -2133,6 +2155,18 @@ class DevenvCommand(Command):
                     "-DCMAKE_SYSTEM_PROCESSOR=ARM64",
                     f"-DCMAKE_GENERATOR_INSTANCE={arm64_vs_path}",
                 ]
+            else:
+                # Always pass the Visual Studio generator explicitly. Without
+                # -G, CMake falls back to the CMAKE_GENERATOR environment
+                # variable (commonly set to Ninja), which rejects -A and fails
+                # with "Generator Ninja does not support platform
+                # specification".
+                vs_generator, toolset = get_vs_generator(vs_install_path, vs_version)
+                cmake_args += ["-G", vs_generator]
+                if toolset:
+                    cmake_args += ["-T", toolset]
+                if vs_install_path:
+                    cmake_args.append(f"-DCMAKE_GENERATOR_INSTANCE={vs_install_path}")
 
             ret = subprocess.call(cmake_args)
             if ret == 0:
