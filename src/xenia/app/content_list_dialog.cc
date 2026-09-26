@@ -255,7 +255,7 @@ void ContentListDialog::ExecutePendingStart() {
     const auto path = pending_boot_.value()->path;
     pending_boot_.reset();
 
-    std::jthread(
+    std::thread(
         [path](EmulatorWindow* emulator_window) {
           emulator_window->RunTitle(path);
         },

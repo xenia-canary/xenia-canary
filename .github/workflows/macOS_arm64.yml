@@ -1,0 +1,71 @@
+name: macOS Build
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build
+    # Apple silicon runner.
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup build environment
+        run: |-
+          brew update
+          # glslang and spirv-tools provide the shader compilers. MoltenVK is
+          # bundled into the app, SDL2 is linked dynamically and bundled too.
+          brew install ninja pkgconf sdl2 molten-vk glslang spirv-tools
+
+      - name: Download submodules
+        run: |- # Exclude unneeded submodules
+          SUBMODULES=$(grep -oE 'path = .+' .gitmodules | sed 's/path = //' | grep -vE '^third_party/DirectX(-Headers|ShaderCompiler)$')
+          git submodule update --init --depth=1 -j$(sysctl -n hw.ncpu) $SUBMODULES
+
+      - name: Build Xenia
+        run: ./xenia-build.py build --config=Release
+
+      - name: Prepare app bundle
+        id: prepare_artifacts
+        run: |-
+          app=build/bin/macOS/Release/xenia_canary.app
+          binary=$app/Contents/MacOS/xenia_canary
+          if [ $(stat -f%z $binary) -le 100000 ]; then
+            echo "::error::Binary is too small."
+            exit 1
+          fi
+
+          # Bundle MoltenVK, which Xenia looks for in Contents/Frameworks.
+          mkdir -p $app/Contents/Frameworks
+          cp "$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" $app/Contents/Frameworks/
+
+          # Bundle SDL2 and point the executable to the bundled copy.
+          sdl_dylib=$(otool -L $binary | awk '/libSDL2/ { print $1 }')
+          if [ -n "$sdl_dylib" ]; then
+            sdl_name=$(basename "$sdl_dylib")
+            cp "$(brew --prefix sdl2)/lib/$sdl_name" $app/Contents/Frameworks/
+            chmod u+w $app/Contents/Frameworks/$sdl_name
+            install_name_tool -id "@rpath/$sdl_name" $app/Contents/Frameworks/$sdl_name
+            install_name_tool -change "$sdl_dylib" "@executable_path/../Frameworks/$sdl_name" $binary
+          fi
+
+          # Ad-hoc signing, required for running on Apple silicon.
+          codesign --force --deep --sign - $app
+
+          artifact=xenia_canary_macos_arm64.zip
+          ditto -c -k --keepParent $app $artifact
+          echo "path=$artifact" >> $GITHUB_OUTPUT
+
+      - name: Upload Xenia Canary artifact
+        if: ${{ steps.prepare_artifacts.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.prepare_artifacts.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+          archive: false

@@ -77,6 +77,10 @@ class VulkanInstance {
 #include "xenia/ui/vulkan/functions/instance_1_1_khr_get_physical_device_properties2.inc"
     // VK_EXT_debug_utils (#129)
 #include "xenia/ui/vulkan/functions/instance_ext_debug_utils.inc"
+    // VK_EXT_metal_surface (#218)
+#ifdef VK_USE_PLATFORM_METAL_EXT
+#include "xenia/ui/vulkan/functions/instance_ext_metal_surface.inc"
+#endif
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 #undef XE_UI_VULKAN_FUNCTION
   };
@@ -100,7 +104,10 @@ class VulkanInstance {
 #endif
     bool ext_1_1_KHR_get_physical_device_properties2 = false;  // #60
     bool ext_EXT_debug_utils = false;                          // #129
-    bool ext_KHR_portability_enumeration = false;              // #395
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    bool ext_EXT_metal_surface = false;  // #218
+#endif
+    bool ext_KHR_portability_enumeration = false;  // #395
   };
 
   const Extensions& extensions() const { return extensions_; }
@@ -115,7 +122,7 @@ class VulkanInstance {
 
   std::unique_ptr<RenderDocAPI> renderdoc_api_;
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   void* loader_ = nullptr;
 #elif XE_PLATFORM_WIN32
   HMODULE loader_ = nullptr;

@@ -596,7 +596,7 @@ def get_pr_number():
 def git_submodule_update():
     """Runs a git submodule sync, init, and update.
     """
-    if sys.platform == "linux":
+    if sys.platform in ("linux", "darwin"):
         submodules_ignore = ["DirectX-Headers", "DirectXShaderCompiler"]
     else:
         submodules_ignore = []
@@ -630,7 +630,7 @@ def git_submodule_update():
 
 
 def get_cc(cc=None):
-    if sys.platform == "linux":
+    if sys.platform in ("linux", "darwin"):
         if os.environ.get("CC"):
             if "gcc" in os.environ.get("CC"):
                 return "gcc"
@@ -831,7 +831,12 @@ def get_build_bin_path(args):
       A full path for the bin folder.
     """
     config = args["config"].title()
-    platform = "Windows" if sys.platform == "win32" else "Linux"
+    if sys.platform == "win32":
+        platform = "Windows"
+    elif sys.platform == "darwin":
+        platform = "macOS"
+    else:
+        platform = "Linux"
     build_dir = get_build_dir(args.get("target_arch"))
     # Multi-config: <build_dir>/bin/<Platform>/<Config>
     return os.path.join(self_path, build_dir, "bin", platform, config)
@@ -1483,7 +1488,7 @@ class GenTestsCommand(Command):
             # Save current directory
             original_dir = os.getcwd()
 
-            if sys.platform == "linux":
+            if sys.platform in ("linux", "darwin"):
                 # Set executable bit for build script before running it
                 os.chdir(binutils_dir)
                 os.chmod(shell_script, stat.S_IRUSR | stat.S_IWUSR |

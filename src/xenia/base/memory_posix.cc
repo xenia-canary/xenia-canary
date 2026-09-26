@@ -36,6 +36,13 @@
 #include "xenia/base/main_android.h"
 #endif
 
+#if XE_PLATFORM_MAC
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <pthread.h>
+#include <atomic>
+#endif
+
 #if XE_PLATFORM_GNU_LINUX
 #ifndef MFD_EXEC
 #define MFD_EXEC 0x0010U
@@ -119,6 +126,40 @@ PageAccess ToXeniaProtectFlags(const char* protection) {
 
 bool IsWritableExecutableMemorySupported() { return true; }
 
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+static thread_local uint32_t jit_write_access_depth_ = 0;
+
+void BeginJitWriteAccess() {
+  if (!jit_write_access_depth_++) {
+    pthread_jit_write_protect_np(0);
+  }
+}
+
+void EndJitWriteAccess() {
+  assert_not_zero(jit_write_access_depth_);
+  if (!--jit_write_access_depth_) {
+    pthread_jit_write_protect_np(1);
+  }
+}
+#endif  // XE_PLATFORM_MAC && XE_ARCH_ARM64
+
+#if !defined(MAP_FIXED_NOREPLACE)
+// Without MAP_FIXED_NOREPLACE (macOS, older Linux), the address is only a hint,
+// and the kernel may place the mapping elsewhere if the range is occupied.
+// Callers expect the exact address or failure, like with VirtualAlloc.
+static void* CheckMappedAtHint(void* result, void* base_address,
+                               size_t length) {
+  if (result == MAP_FAILED) {
+    return MAP_FAILED;
+  }
+  if (base_address && result != base_address) {
+    munmap(result, length);
+    return MAP_FAILED;
+  }
+  return result;
+}
+#endif  // !MAP_FIXED_NOREPLACE
+
 struct MappedFileRange {
   uintptr_t region_begin;
   uintptr_t region_end;
@@ -130,9 +171,11 @@ std::mutex g_mapped_file_ranges_mutex;
 // Track shm file names for cleanup on exit
 std::vector<std::string> g_shm_file_names;
 std::mutex g_shm_file_names_mutex;
+
+// macOS unlinks shared memory objects right after creating them instead.
+#if !XE_PLATFORM_ANDROID && !XE_PLATFORM_MAC
 static bool g_cleanup_handlers_installed = false;
 
-#if !XE_PLATFORM_ANDROID
 static void CleanupAtExit() {
   for (const auto& name : g_shm_file_names) {
     shm_unlink(name.c_str());
@@ -148,13 +191,20 @@ static void InstallCleanupHandlers() {
   std::atexit(CleanupAtExit);
   std::at_quick_exit(CleanupAtExit);
 }
-#endif  // !XE_PLATFORM_ANDROID
+#endif  // !XE_PLATFORM_ANDROID && !XE_PLATFORM_MAC
 
 void* AllocFixed(void* base_address, size_t length,
                  AllocationType allocation_type, PageAccess access) {
   // mmap does not support reserve / commit, so ignore allocation_type.
   uint32_t prot = ToPosixProtectFlags(access);
   int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  // Apple silicon only allows memory to become executable when it's allocated
+  // as MAP_JIT (see ScopedJitWriteAccess).
+  if (prot & PROT_EXEC) {
+    flags |= MAP_JIT;
+  }
+#endif
 
   if (base_address != nullptr) {
     if (allocation_type == AllocationType::kCommit) {
@@ -169,6 +219,9 @@ void* AllocFixed(void* base_address, size_t length,
   }
 
   void* result = mmap(base_address, length, prot, flags, -1, 0);
+#if !defined(MAP_FIXED_NOREPLACE)
+  result = CheckMappedAtHint(result, base_address, length);
+#endif
 
   if (result != MAP_FAILED) {
     return result;
@@ -218,6 +271,56 @@ bool Protect(void* base_address, size_t length, PageAccess access,
   return mprotect(base_address, length, prot) == 0;
 }
 
+#if XE_PLATFORM_MAC
+static PageAccess ToXeniaProtectFlags(vm_prot_t protection) {
+  if (!(protection & VM_PROT_READ)) {
+    return PageAccess::kNoAccess;
+  }
+  if (protection & VM_PROT_EXECUTE) {
+    return (protection & VM_PROT_WRITE) ? PageAccess::kExecuteReadWrite
+                                        : PageAccess::kExecuteReadOnly;
+  }
+  return (protection & VM_PROT_WRITE) ? PageAccess::kReadWrite
+                                      : PageAccess::kReadOnly;
+}
+
+bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
+  mach_vm_address_t region_address = reinterpret_cast<uintptr_t>(base_address);
+  mach_vm_size_t region_size = 0;
+  vm_region_basic_info_data_64_t info;
+  mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
+  mach_port_t object_name;
+  if (mach_vm_region(mach_task_self(), &region_address, &region_size,
+                     VM_REGION_BASIC_INFO_64,
+                     reinterpret_cast<vm_region_info_t>(&info), &info_count,
+                     &object_name) != KERN_SUCCESS) {
+    return false;
+  }
+  // mach_vm_region returns the next region if the address is not mapped.
+  if (region_address > reinterpret_cast<uintptr_t>(base_address)) {
+    return false;
+  }
+  access_out = ToXeniaProtectFlags(info.protection);
+  mach_vm_address_t region_end = region_address + region_size;
+  // Merge the following consecutive regions with the same access.
+  while (true) {
+    mach_vm_address_t next_address = region_end;
+    mach_vm_size_t next_size = 0;
+    info_count = VM_REGION_BASIC_INFO_COUNT_64;
+    if (mach_vm_region(mach_task_self(), &next_address, &next_size,
+                       VM_REGION_BASIC_INFO_64,
+                       reinterpret_cast<vm_region_info_t>(&info), &info_count,
+                       &object_name) != KERN_SUCCESS ||
+        next_address != region_end ||
+        ToXeniaProtectFlags(info.protection) != access_out) {
+      break;
+    }
+    region_end = next_address + next_size;
+  }
+  length = size_t(region_end - reinterpret_cast<uintptr_t>(base_address));
+  return true;
+}
+#else
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
   // No generic POSIX solution exists. The Linux solution should work on all
   // Linux kernel based OS, including Android.
@@ -265,6 +368,7 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
   memory_maps.close();
   return false;
 }
+#endif  // XE_PLATFORM_MAC
 
 FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
                                           size_t length, PageAccess access,
@@ -334,6 +438,28 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
            path.string(), strerror(errno), errno);
   }
 #endif  // XE_PLATFORM_GNU_LINUX
+#if XE_PLATFORM_MAC
+  // macOS limits shared memory object names to PSHMNAMLEN (31) characters, and
+  // the name is only needed to create the object, so use a short unique name
+  // and unlink it right away - it then goes away with the last reference.
+  static std::atomic<uint32_t> mac_shm_counter{0};
+  std::string mac_shm_name =
+      fmt::format("/xe{}_{}", getpid(), mac_shm_counter.fetch_add(1));
+  int ret = shm_open(mac_shm_name.c_str(), oflag | O_EXCL, 0600);
+  if (ret < 0) {
+    XELOGE("shm_open({}) for {} failed: {} ({})", mac_shm_name,
+           full_path.string(), strerror(errno), errno);
+    return kFileMappingHandleInvalid;
+  }
+  shm_unlink(mac_shm_name.c_str());
+  if (ftruncate(ret, length) < 0) {
+    XELOGE("ftruncate({}, 0x{:X}) failed: {} ({})", full_path.string(), length,
+           strerror(errno), errno);
+    close(ret);
+    return kFileMappingHandleInvalid;
+  }
+  return ret;
+#else
   int ret = shm_open(full_path.c_str(), oflag, 0777);
   if (ret < 0) {
     XELOGE("shm_open({}) failed: {} ({})", full_path.string(), strerror(errno),
@@ -354,7 +480,8 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
   }
   InstallCleanupHandlers();
   return ret;
-#endif
+#endif  // XE_PLATFORM_MAC
+#endif  // XE_PLATFORM_ANDROID
 }
 
 void CloseFileMappingHandle(FileMappingHandle handle,
@@ -390,6 +517,9 @@ void* MapFileView(FileMappingHandle handle, void* base_address, size_t length,
   }
 
   void* result = mmap(base_address, length, prot, flags, handle, file_offset);
+#if !defined(MAP_FIXED_NOREPLACE)
+  result = CheckMappedAtHint(result, base_address, length);
+#endif
 
   if (result != MAP_FAILED) {
     std::lock_guard guard(g_mapped_file_ranges_mutex);

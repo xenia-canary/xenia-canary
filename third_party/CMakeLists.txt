@@ -112,7 +112,7 @@ add_library(discord-rpc STATIC
 )
 if(XE_TARGET_X86_64)
   target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_SSE42)
-elseif(XE_TARGET_ARM64)
+elseif(XE_TARGET_AARCH64)
   target_compile_definitions(discord-rpc PRIVATE RAPIDJSON_NEON)
 endif()
 target_include_directories(discord-rpc PUBLIC discord-rpc/include PRIVATE rapidjson/include)
@@ -144,21 +144,19 @@ add_library(fmt STATIC
 target_include_directories(fmt PUBLIC fmt/include)
 
 # ==============================================================================
-# glslang-spirv (not needed on macOS — no Vulkan/SPIR-V backend)
+# glslang-spirv
 # ==============================================================================
-if(NOT APPLE)
-  file(GLOB _glslang_spirv_cpp "glslang/SPIRV/*.cpp")
-  file(GLOB _glslang_spirv_h "glslang/SPIRV/*.h")
-  file(GLOB _glslang_spirv_hpp "glslang/SPIRV/*.hpp11")
-  list(FILTER _glslang_spirv_cpp EXCLUDE REGEX "GlslangToSpv\\.cpp$")
-  add_library(glslang-spirv STATIC
-    ${_glslang_spirv_cpp}
-    ${_glslang_spirv_h}
-    ${_glslang_spirv_hpp}
-    glslang/glslang/Include/visibility.h
-  )
-  target_include_directories(glslang-spirv PUBLIC glslang)
-endif()
+file(GLOB _glslang_spirv_cpp "glslang/SPIRV/*.cpp")
+file(GLOB _glslang_spirv_h "glslang/SPIRV/*.h")
+file(GLOB _glslang_spirv_hpp "glslang/SPIRV/*.hpp11")
+list(FILTER _glslang_spirv_cpp EXCLUDE REGEX "GlslangToSpv\\.cpp$")
+add_library(glslang-spirv STATIC
+  ${_glslang_spirv_cpp}
+  ${_glslang_spirv_h}
+  ${_glslang_spirv_hpp}
+  glslang/glslang/Include/visibility.h
+)
+target_include_directories(glslang-spirv PUBLIC glslang)
 
 # ==============================================================================
 # imgui
@@ -171,6 +169,12 @@ add_library(imgui STATIC
   imgui/imgui_widgets.cpp
 )
 target_include_directories(imgui PUBLIC imgui PRIVATE stb)
+if(APPLE)
+  # Use the system pasteboard for the clipboard.
+  target_compile_definitions(imgui PRIVATE
+    IMGUI_ENABLE_OSX_DEFAULT_CLIPBOARD_FUNCTIONS)
+  target_link_libraries(imgui PUBLIC "-framework ApplicationServices")
+endif()
 
 # ==============================================================================
 # mspack
@@ -449,14 +453,8 @@ if(WIN32)
   )
   target_include_directories(SDL2 PUBLIC SDL2/include)
   target_link_libraries(SDL2 PRIVATE setupapi winmm imm32 version)
-elseif(APPLE)
-  # Use system SDL2 framework on macOS
-  add_library(SDL2 INTERFACE)
-  find_library(SDL2_LIBRARY SDL2 REQUIRED)
-  target_include_directories(SDL2 INTERFACE "${SDL2_LIBRARY}/Headers")
-  target_link_libraries(SDL2 INTERFACE "${SDL2_LIBRARY}")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # Use system SDL2 on Linux
+else()
+  # Use system SDL2 on Linux and macOS (e.g. `brew install sdl2`)
   add_library(SDL2 INTERFACE)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(SDL2_PKG REQUIRED sdl2)

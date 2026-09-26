@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "xenia/base/byte_order.h"
+#include "xenia/base/platform.h"
 
 namespace xe {
 namespace memory {
@@ -111,6 +112,27 @@ bool Protect(void* base_address, size_t length, PageAccess access,
 // rights. The length will start from the first byte of the first page of
 // the region.
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out);
+
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+// On macOS on Apple silicon, writable executable memory (which AllocFixed
+// allocates with MAP_JIT there) is either writable or executable for each
+// thread at any given time. It's executable by default, and while any
+// ScopedJitWriteAccess exists on the thread it's writable instead - so no
+// generated code may be run by the thread in the meantime.
+void BeginJitWriteAccess();
+void EndJitWriteAccess();
+#else
+inline void BeginJitWriteAccess() {}
+inline void EndJitWriteAccess() {}
+#endif
+
+class ScopedJitWriteAccess {
+ public:
+  ScopedJitWriteAccess() { BeginJitWriteAccess(); }
+  ~ScopedJitWriteAccess() { EndJitWriteAccess(); }
+  ScopedJitWriteAccess(const ScopedJitWriteAccess&) = delete;
+  ScopedJitWriteAccess& operator=(const ScopedJitWriteAccess&) = delete;
+};
 
 // Allocates a block of memory for a type with the given alignment.
 // The memory must be freed with AlignedFree.

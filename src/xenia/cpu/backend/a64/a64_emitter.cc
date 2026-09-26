@@ -362,7 +362,7 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   if (code_cache_->has_indirection_table()) {
     // Load host code address from indirection table.
     mov(w16, function->address());
-    ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
+    LoadIndirectionTableEntry();
   } else {
     // Fallback: resolve at runtime.
     mov(x0, x20);  // context
@@ -390,6 +390,23 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   }
 }
 
+void A64Emitter::LoadIndirectionTableEntry() {
+  uintptr_t region_base = code_cache_->host_region_base();
+  if (!region_base) {
+    // The indirection table is at the guest addresses, and the entries are
+    // absolute host code addresses.
+    ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
+    return;
+  }
+  // The indirection table and the code are relocated to a 4 GB-aligned region
+  // (see CodeCacheBase::host_region_base). Because of the alignment, w16 still
+  // contains the guest address for the resolve thunk after adding the base.
+  mov(x17, static_cast<uint64_t>(region_base));
+  add(x16, x16, x17);
+  ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
+  add(x9, x9, x17);
+}
+
 void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
   ForgetFpcrMode();
   auto target_w = WReg(reg_index);
@@ -405,8 +422,7 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
   // Load host code address from indirection table.
   if (code_cache_->has_indirection_table()) {
     mov(w16, target_w);  // w16 = guest address (also used by resolve thunk)
-    ldr(w9, ptr(x16, static_cast<uint32_t>(
-                         0)));  // w9 = host code from indirection table
+    LoadIndirectionTableEntry();  // x9 = host code from indirection table
   } else {
     // Fallback: resolve at runtime.
     mov(w16, target_w);

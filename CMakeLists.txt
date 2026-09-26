@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
+# Must be set before project() to take effect. Ignored on non-Apple platforms.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
 if(APPLE)
   project(xenia LANGUAGES C CXX OBJCXX)
   set(CMAKE_OBJCXX_STANDARD 20)
@@ -233,18 +235,39 @@ else()
 
   if(APPLE)
     # macOS-specific settings
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS version")
     add_compile_options(
-      $<$<COMPILE_LANGUAGE:CXX>:-Wno-shorten-64-to-32>
+      $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+      $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wno-shorten-64-to-32>
       -Wno-deprecated-declarations
-      -Wno-character-conversion
     )
-    add_link_options(-Wl,-no_warn_duplicate_libraries)
+    # AppleClang versions don't line up with upstream LLVM versions, so probe
+    # for the newer warnings silenced above for upstream Clang.
+    include(CheckCXXCompilerFlag)
+    foreach(_xe_warning
+        deprecated-literal-operator nontrivial-memcall character-conversion)
+      string(MAKE_C_IDENTIFIER "XE_CXX_HAS_W_${_xe_warning}" _xe_warning_var)
+      check_cxx_compiler_flag("-W${_xe_warning}" ${_xe_warning_var})
+      if(${_xe_warning_var})
+        add_compile_options(
+          $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wno-${_xe_warning}>)
+      endif()
+    endforeach()
+    # Only understood by the linker in Xcode 15 and newer.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-Wl,-no_warn_duplicate_libraries"
+                      XE_LINKER_HAS_NO_WARN_DUPLICATE_LIBRARIES)
+    if(XE_LINKER_HAS_NO_WARN_DUPLICATE_LIBRARIES)
+      add_link_options(-Wl,-no_warn_duplicate_libraries)
+    endif()
     link_libraries(
+      "-framework AppKit"
       "-framework CoreFoundation"
       "-framework Foundation"
       "-framework IOKit"
+      "-framework QuartzCore"
+      "-framework UniformTypeIdentifiers"
       dl
+      iconv
       pthread
     )
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -294,14 +317,18 @@ else()
   # linker/archiver LTO plugin version mismatch with clang's bitcode)
   add_compile_options($<$<CONFIG:Release>:-flto=thin>)
   add_link_options($<$<CONFIG:Release>:-flto=thin>)
-  add_link_options($<$<CONFIG:Release>:-fuse-ld=lld>)
-  find_program(LLVM_AR NAMES llvm-ar)
-  find_program(LLVM_RANLIB NAMES llvm-ranlib)
-  if(LLVM_AR)
-    set(CMAKE_AR "${LLVM_AR}" CACHE FILEPATH "" FORCE)
-  endif()
-  if(LLVM_RANLIB)
-    set(CMAKE_RANLIB "${LLVM_RANLIB}" CACHE FILEPATH "" FORCE)
+  if(NOT APPLE)
+    # Apple's linker and archiver understand the LTO bitcode produced by Apple
+    # clang, and lld is not part of the Xcode toolchain.
+    add_link_options($<$<CONFIG:Release>:-fuse-ld=lld>)
+    find_program(LLVM_AR NAMES llvm-ar)
+    find_program(LLVM_RANLIB NAMES llvm-ranlib)
+    if(LLVM_AR)
+      set(CMAKE_AR "${LLVM_AR}" CACHE FILEPATH "" FORCE)
+    endif()
+    if(LLVM_RANLIB)
+      set(CMAKE_RANLIB "${LLVM_RANLIB}" CACHE FILEPATH "" FORCE)
+    endif()
   endif()
   # No symbols in release on non-Windows
   string(REPLACE "-g" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")

@@ -28,6 +28,7 @@
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/mutex.h"
+#include "xenia/base/platform.h"
 #include "xenia/cpu/backend/code_cache.h"
 #include "xenia/cpu/function.h"
 
@@ -100,16 +101,30 @@ class CodeCacheBase : public CodeCache {
       }
       xe::memory::CloseFileMappingHandle(mapping_, file_name_);
       mapping_ = xe::memory::kFileMappingHandleInvalid;
+    } else if (generated_code_execute_base_) {
+      // Anonymous memory rather than a file mapping (see Initialize).
+      xe::memory::DeallocFixed(generated_code_execute_base_, kGeneratedCodeSize,
+                               xe::memory::DeallocationType::kRelease);
     }
   }
 
   const std::filesystem::path& file_name() const override { return file_name_; }
   uintptr_t execute_base_address() const override {
-    return kGeneratedCodeExecuteBase;
+    return host_region_base_ + kGeneratedCodeExecuteBase;
   }
   size_t total_size() const override { return kGeneratedCodeSize; }
 
   bool has_indirection_table() { return indirection_table_base_ != nullptr; }
+
+  // The indirection table and the generated code are normally placed at their
+  // guest-address-like locations in the low 4 GB of the host address space,
+  // with the 32-bit entries of the indirection table being host code
+  // addresses. Where the low 4 GB can't be used, they're placed at the same
+  // offsets relatively to this 4 GB-aligned base instead, which then needs to
+  // be added to the guest address to get the indirection table entry address,
+  // and to the entry to get the host code address. The guest trampolines must
+  // then also be within 4 GB after this base. 0 if not relocated.
+  uintptr_t host_region_base() const { return host_region_base_; }
 
   void set_indirection_default(uint32_t default_value) {
     indirection_default_value_ = default_value;
@@ -155,6 +170,7 @@ class CodeCacheBase : public CodeCache {
     uint8_t* code_execute_address;
     {
       auto global_lock = global_critical_region_.Acquire();
+      xe::memory::ScopedJitWriteAccess jit_write_access;
 
       code_execute_address =
           generated_code_execute_base_ + generated_code_offset_;
@@ -229,7 +245,10 @@ class CodeCacheBase : public CodeCache {
       high_mark = generated_code_offset_;
     }
     EnsureCommitted(high_mark);
-    std::memcpy(data_address, data, length);
+    {
+      xe::memory::ScopedJitWriteAccess jit_write_access;
+      std::memcpy(data_address, data, length);
+    }
     return uint32_t(uintptr_t(data_address));
   }
 
@@ -286,6 +305,62 @@ class CodeCacheBase : public CodeCache {
   CodeCacheBase() = default;
 
   bool Initialize() {
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+    return InitializeRelocated();
+#else
+    return InitializeInLow4GB();
+#endif
+  }
+
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  // On Apple silicon, macOS reserves the entire low 4 GB (__PAGEZERO can't be
+  // made smaller there), and memory can only be made executable if it's
+  // anonymous MAP_JIT memory (not a file mapping). Find a 4 GB-aligned region
+  // where the indirection table and the code can be placed at their usual
+  // offsets, and allocate the code as a single writable and executable view
+  // (with per-thread write access toggling - see ScopedJitWriteAccess).
+  bool InitializeRelocated() {
+    using namespace xe::literals;
+    // Chosen not to overlap the guest memory mapping candidates (powers of two
+    // from 4 GB, see Memory::Initialize) within the part of the region used.
+    constexpr uintptr_t kRegionSearchFirst = 0x600000000;
+    constexpr uintptr_t kRegionSearchEnd = 0x8000000000;
+    constexpr uintptr_t kRegionSearchStep = 0x100000000;
+    for (uintptr_t region_base = kRegionSearchFirst;
+         region_base < kRegionSearchEnd; region_base += kRegionSearchStep) {
+      auto indirection_table_base =
+          reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+              reinterpret_cast<void*>(region_base + kIndirectionTableBase),
+              kIndirectionTableSize, xe::memory::AllocationType::kReserve,
+              xe::memory::PageAccess::kReadWrite));
+      if (!indirection_table_base) {
+        continue;
+      }
+      auto generated_code_base =
+          reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
+              reinterpret_cast<void*>(region_base + kGeneratedCodeExecuteBase),
+              kGeneratedCodeSize, xe::memory::AllocationType::kReserve,
+              xe::memory::PageAccess::kExecuteReadWrite));
+      if (!generated_code_base) {
+        xe::memory::DeallocFixed(indirection_table_base, kIndirectionTableSize,
+                                 xe::memory::DeallocationType::kRelease);
+        continue;
+      }
+      host_region_base_ = region_base;
+      indirection_table_base_ = indirection_table_base;
+      generated_code_execute_base_ = generated_code_base;
+      generated_code_write_base_ = generated_code_base;
+      XELOGI("Code cache placed in the 4 GB region at 0x{:X}",
+             uint64_t(region_base));
+      generated_code_map_.reserve(kMaximumFunctionCount);
+      return true;
+    }
+    XELOGE("Unable to find a free 4 GB region for the code cache");
+    return false;
+  }
+#endif  // XE_PLATFORM_MAC && XE_ARCH_ARM64
+
+  bool InitializeInLow4GB() {
     indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
         reinterpret_cast<void*>(kIndirectionTableBase), kIndirectionTableSize,
         xe::memory::AllocationType::kReserve,
@@ -356,6 +431,7 @@ class CodeCacheBase : public CodeCache {
                     void* code_execute_address, size_t code_size) {}
 
   std::filesystem::path file_name_;
+  uintptr_t host_region_base_ = 0;
   xe::memory::FileMappingHandle mapping_ =
       xe::memory::kFileMappingHandleInvalid;
   xe::global_critical_region global_critical_region_;

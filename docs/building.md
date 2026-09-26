@@ -138,6 +138,35 @@ export PATH="$VULKAN_SDK/bin:$PATH"
 
 Add the `export` lines to your shell profile to persist them across sessions.
 
+### macOS
+
+macOS support is experimental. Only Apple silicon (ARM64) Macs are supported,
+running macOS 13.3 or newer. Graphics use Vulkan through
+[MoltenVK](https://github.com/KhronosGroup/MoltenVK).
+
+Install the Xcode command line tools (`xcode-select --install`), and the
+dependencies with [Homebrew](https://brew.sh):
+
+```sh
+brew install cmake ninja pkgconf sdl2 molten-vk glslang spirv-tools
+```
+
+Then build with `xb build` like on the other platforms. The result is an app
+bundle, `build/bin/macOS/<Config>/xenia_canary.app`.
+
+At runtime, Xenia loads the Vulkan implementation from, in order:
+`Contents/Frameworks` inside the app bundle (`libvulkan.1.dylib` or
+`libMoltenVK.dylib`), then the system library paths and the Homebrew prefix.
+Installing the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) instead also
+works, and provides the validation layers and newer shader compilation tools
+(see the Linux section regarding `spirv-opt` versions).
+
+To run the executable inside the bundle directly with arguments:
+
+```sh
+build/bin/macOS/Debug/xenia_canary.app/Contents/MacOS/xenia_canary --log_file=stdout /path/to/Default.xex
+```
+
 ## Running
 
 To make life easier you can set the program startup arguments in your IDE to something like `--log_file=stdout /path/to/Default.xex` to log to console rather than a file and start up the emulator right away.

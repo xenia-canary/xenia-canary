@@ -23,6 +23,11 @@ namespace xe {
 bool signal_handlers_installed_ = false;
 struct sigaction original_sigill_handler_;
 struct sigaction original_sigsegv_handler_;
+#if XE_PLATFORM_MAC
+// macOS raises SIGBUS rather than SIGSEGV for accesses to mapped pages that
+// the protection doesn't allow, which is how write watches and MMIO trap.
+struct sigaction original_sigbus_handler_;
+#endif
 
 // This can be as large as needed, but isn't often needed.
 // As we will be sometimes firing many exceptions we want to avoid having to
@@ -35,12 +40,28 @@ std::pair<ExceptionHandler::Handler, void*> handlers_[kMaxHandlerCount];
 
 static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
                                      void* signal_context) {
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  // On Darwin, uc_mcontext is a pointer to the saved state.
+  auto& mcontext = *reinterpret_cast<ucontext_t*>(signal_context)->uc_mcontext;
+#else
   mcontext_t& mcontext =
       reinterpret_cast<ucontext_t*>(signal_context)->uc_mcontext;
+#endif
 
   HostThreadContext thread_context;
 
-#if XE_ARCH_AMD64
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  std::memcpy(thread_context.x, mcontext.__ss.__x, sizeof(mcontext.__ss.__x));
+  thread_context.x[29] = mcontext.__ss.__fp;
+  thread_context.x[30] = mcontext.__ss.__lr;
+  thread_context.sp = mcontext.__ss.__sp;
+  thread_context.pc = mcontext.__ss.__pc;
+  thread_context.pstate = mcontext.__ss.__cpsr;
+  thread_context.fpsr = mcontext.__ns.__fpsr;
+  thread_context.fpcr = mcontext.__ns.__fpcr;
+  static_assert(sizeof(thread_context.v) == sizeof(mcontext.__ns.__v));
+  std::memcpy(thread_context.v, mcontext.__ns.__v, sizeof(thread_context.v));
+#elif XE_ARCH_AMD64
   thread_context.rip = uint64_t(mcontext.gregs[REG_RIP]);
   thread_context.eflags = uint32_t(mcontext.gregs[REG_EFL]);
   // The REG_ order may be different than the register indices in the
@@ -103,9 +124,23 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
     case SIGILL:
       ex.InitializeIllegalInstruction(&thread_context);
       break;
+#if XE_PLATFORM_MAC
+    case SIGBUS:
+#endif
     case SIGSEGV: {
       Exception::AccessViolationOperation access_violation_operation;
-#if XE_ARCH_AMD64
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+      // Same ESR_EL1 decoding as below, but Darwin always provides it.
+      if (((mcontext.__es.__esr >> 26) & 0b111110) == 0b100100) {
+        access_violation_operation =
+            (mcontext.__es.__esr & (UINT32_C(1) << 6))
+                ? Exception::AccessViolationOperation::kWrite
+                : Exception::AccessViolationOperation::kRead;
+      } else {
+        access_violation_operation =
+            Exception::AccessViolationOperation::kUnknown;
+      }
+#elif XE_ARCH_AMD64
       // x86_pf_error_code::X86_PF_WRITE
       constexpr uint64_t kX86PageFaultErrorCodeWrite = UINT64_C(1) << 1;
       access_violation_operation =
@@ -162,7 +197,37 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
   for (size_t i = 0; i < xe::countof(handlers_) && handlers_[i].first; ++i) {
     if (handlers_[i].first(&ex, handlers_[i].second)) {
       // Exception handled.
-#if XE_ARCH_AMD64
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+      uint32_t modified_register_index;
+      uint32_t modified_x_registers_remaining = ex.modified_x_registers();
+      while (xe::bit_scan_forward(modified_x_registers_remaining,
+                                  &modified_register_index)) {
+        modified_x_registers_remaining &=
+            ~(UINT32_C(1) << modified_register_index);
+        uint64_t value = thread_context.x[modified_register_index];
+        if (modified_register_index < 29) {
+          mcontext.__ss.__x[modified_register_index] = value;
+        } else if (modified_register_index == 29) {
+          mcontext.__ss.__fp = value;
+        } else {
+          mcontext.__ss.__lr = value;
+        }
+      }
+      mcontext.__ss.__sp = thread_context.sp;
+      mcontext.__ss.__pc = thread_context.pc;
+      mcontext.__ss.__cpsr = uint32_t(thread_context.pstate);
+      mcontext.__ns.__fpsr = thread_context.fpsr;
+      mcontext.__ns.__fpcr = thread_context.fpcr;
+      uint32_t modified_v_registers_remaining = ex.modified_v_registers();
+      while (xe::bit_scan_forward(modified_v_registers_remaining,
+                                  &modified_register_index)) {
+        modified_v_registers_remaining &=
+            ~(UINT32_C(1) << modified_register_index);
+        std::memcpy(&mcontext.__ns.__v[modified_register_index],
+                    &thread_context.v[modified_register_index],
+                    sizeof(vec128_t));
+      }
+#elif XE_ARCH_AMD64
       mcontext.gregs[REG_RIP] = greg_t(thread_context.rip);
       mcontext.gregs[REG_EFL] = greg_t(thread_context.eflags);
       uint32_t modified_register_index;
@@ -237,6 +302,11 @@ void ExceptionHandler::Install(Handler fn, void* data) {
     if (sigaction(SIGSEGV, &signal_handler, &original_sigsegv_handler_) != 0) {
       assert_always("Failed to install new SIGSEGV handler");
     }
+#if XE_PLATFORM_MAC
+    if (sigaction(SIGBUS, &signal_handler, &original_sigbus_handler_) != 0) {
+      assert_always("Failed to install new SIGBUS handler");
+    }
+#endif
     signal_handlers_installed_ = true;
   }
 
@@ -277,6 +347,11 @@ void ExceptionHandler::Uninstall(Handler fn, void* data) {
       if (sigaction(SIGSEGV, &original_sigsegv_handler_, NULL) != 0) {
         assert_always("Failed to restore original SIGSEGV handler");
       }
+#if XE_PLATFORM_MAC
+      if (sigaction(SIGBUS, &original_sigbus_handler_, NULL) != 0) {
+        assert_always("Failed to restore original SIGBUS handler");
+      }
+#endif
       signal_handlers_installed_ = false;
     }
   }

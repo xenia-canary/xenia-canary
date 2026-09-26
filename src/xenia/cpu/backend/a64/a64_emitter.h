@@ -116,6 +116,9 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   void UnimplementedInstr(const hir::Instr* i);
 
   void Call(const hir::Instr* instr, GuestFunction* function);
+  // Loads the host code address for the guest address in w16 (with the upper
+  // 32 bits of x16 zero) into x9. Clobbers x16 and x17.
+  void LoadIndirectionTableEntry();
   void CallIndirect(const hir::Instr* instr, int reg_index);
   void CallExtern(const hir::Instr* instr, const Function* function);
   void CallNative(void* fn);

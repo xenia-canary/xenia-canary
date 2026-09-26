@@ -553,27 +553,34 @@ static void BuildGuestTrampoline(uint8_t* buf, void* proc, void* userdata1,
   code[16] = 0xD61F0120;  // br x9
 }
 
-A64Backend::A64Backend() {
-  code_cache_ = A64CodeCache::Create();
+A64Backend::A64Backend() { code_cache_ = A64CodeCache::Create(); }
 
-  // Allocate executable memory for guest trampolines.
+bool A64Backend::AllocateGuestTrampolineMemory() {
+  // Guest trampolines are called through the indirection table, which stores
+  // the low 32 bits of host code addresses, so they must be within the same 4
+  // GB region as the rest of the code (which may be relocated from the low
+  // 4 GB - see CodeCacheBase::host_region_base).
+  uintptr_t region_base = code_cache_->host_region_base();
   uint32_t base_address = 0x10000;
   void* buf = nullptr;
   while (base_address < 0x80000000) {
-    buf = memory::AllocFixed(
-        reinterpret_cast<void*>(static_cast<uintptr_t>(base_address)),
-        kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
-        xe::memory::AllocationType::kReserveCommit,
-        xe::memory::PageAccess::kExecuteReadWrite);
+    buf =
+        memory::AllocFixed(reinterpret_cast<void*>(region_base + base_address),
+                           kGuestTrampolineSize * MAX_GUEST_TRAMPOLINES,
+                           xe::memory::AllocationType::kReserveCommit,
+                           xe::memory::PageAccess::kExecuteReadWrite);
     if (!buf) {
       base_address += 65536;
     } else {
       break;
     }
   }
-  xenia_assert(buf);
+  if (!buf) {
+    return false;
+  }
   guest_trampoline_memory_ = reinterpret_cast<uint8_t*>(buf);
   guest_trampoline_address_bitmap_.Resize(MAX_GUEST_TRAMPOLINES);
+  return true;
 }
 
 A64Backend::~A64Backend() {
@@ -599,6 +606,11 @@ bool A64Backend::Initialize(Processor* processor) {
 
   // Expose the code cache to the base Backend class.
   Backend::code_cache_ = code_cache_.get();
+
+  if (!AllocateGuestTrampolineMemory()) {
+    XELOGE("A64Backend: Failed to allocate guest trampoline memory");
+    return false;
+  }
 
   // Set up machine info for the register allocator.
   machine_info_.supports_extended_load_store = true;
@@ -677,6 +689,7 @@ uint64_t A64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
 static constexpr uint32_t kArm64Brk0 = 0xD4200000;
 
 void A64Backend::InstallBreakpoint(Breakpoint* breakpoint) {
+  xe::memory::ScopedJitWriteAccess jit_write_access;
   breakpoint->ForEachHostAddress([breakpoint](uint64_t host_address) {
     auto ptr = reinterpret_cast<void*>(host_address);
     auto original_bytes = xe::load<uint32_t>(ptr);
@@ -697,6 +710,7 @@ void A64Backend::InstallBreakpoint(Breakpoint* breakpoint, Function* fn) {
     return;
   }
 
+  xe::memory::ScopedJitWriteAccess jit_write_access;
   auto ptr = reinterpret_cast<void*>(host_address);
   auto original_bytes = xe::load<uint32_t>(ptr);
   assert_true(original_bytes != kArm64Brk0);
@@ -705,6 +719,7 @@ void A64Backend::InstallBreakpoint(Breakpoint* breakpoint, Function* fn) {
 }
 
 void A64Backend::UninstallBreakpoint(Breakpoint* breakpoint) {
+  xe::memory::ScopedJitWriteAccess jit_write_access;
   for (auto& pair : breakpoint->backend_data()) {
     auto ptr = reinterpret_cast<uint8_t*>(pair.first);
     auto instruction_bytes = xe::load<uint32_t>(ptr);
@@ -764,9 +779,12 @@ uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
   uint8_t* write_pos =
       &guest_trampoline_memory_[kGuestTrampolineSize * new_index];
 
-  BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
-                       userdata2,
-                       reinterpret_cast<void*>(guest_to_host_thunk_));
+  {
+    xe::memory::ScopedJitWriteAccess jit_write_access;
+    BuildGuestTrampoline(write_pos, reinterpret_cast<void*>(proc), userdata1,
+                         userdata2,
+                         reinterpret_cast<void*>(guest_to_host_thunk_));
+  }
 
   // Flush instruction cache for the new trampoline code.
 #if XE_PLATFORM_WIN32

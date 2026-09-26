@@ -75,6 +75,13 @@ function(xe_platform_sources target base_path)
       "${base_path}/*_gtk.h"
       "${base_path}/*_gtk.cc"
     )
+  elseif(APPLE)
+    file(${glob_mode} _plat_sources      "${base_path}/*_posix.h"
+      "${base_path}/*_posix.cc"
+      "${base_path}/*_mac.h"
+      "${base_path}/*_mac.cc"
+      "${base_path}/*_mac.mm"
+    )
   endif()
 
   list(APPEND _sources ${_plat_sources})

@@ -20,7 +20,7 @@
 #include "xenia/base/platform.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
 #include <dlfcn.h>
 #elif XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
@@ -59,6 +59,41 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
   vulkan_instance->loader_ = dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
   if (!vulkan_instance->loader_) {
     XELOGE("Failed to load {}", loader_library_name);
+    return nullptr;
+  }
+#define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
+  functions_loaded &=                                                    \
+      (ifn.name = PFN_##name(dlsym(vulkan_instance->loader_, #name))) != \
+      nullptr;
+#elif XE_PLATFORM_MAC
+  // Prefer the Vulkan loader (from the Vulkan SDK or Homebrew's vulkan-loader,
+  // or bundled with the app), which enables layers, but MoltenVK can be used
+  // directly too as it exports vkGetInstanceProcAddr. dlopen doesn't search
+  // Homebrew's prefix by default.
+  static const char* const kLoaderLibraryNames[] = {
+      "@executable_path/../Frameworks/libvulkan.1.dylib",
+      "@executable_path/libvulkan.1.dylib",
+      "libvulkan.1.dylib",
+      "/opt/homebrew/lib/libvulkan.1.dylib",
+      "/usr/local/lib/libvulkan.1.dylib",
+      "@executable_path/../Frameworks/libMoltenVK.dylib",
+      "@executable_path/libMoltenVK.dylib",
+      "libMoltenVK.dylib",
+      "/opt/homebrew/lib/libMoltenVK.dylib",
+      "/usr/local/lib/libMoltenVK.dylib",
+  };
+  for (const char* loader_library_name : kLoaderLibraryNames) {
+    vulkan_instance->loader_ =
+        dlopen(loader_library_name, RTLD_NOW | RTLD_LOCAL);
+    if (vulkan_instance->loader_) {
+      XELOGI("Loaded the Vulkan implementation from {}", loader_library_name);
+      break;
+    }
+  }
+  if (!vulkan_instance->loader_) {
+    XELOGE(
+        "Failed to load the Vulkan loader or MoltenVK - install the Vulkan SDK "
+        "or run `brew install molten-vk vulkan-loader`");
     return nullptr;
   }
 #define XE_VULKAN_LOAD_LOADER_FUNCTION(name)                             \
@@ -157,6 +192,12 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     requested_extensions.emplace(
         "VK_KHR_win32_surface",
         &vulkan_instance->extensions_.ext_KHR_win32_surface);
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    // #218.
+    requested_extensions.emplace(
+        "VK_EXT_metal_surface",
+        &vulkan_instance->extensions_.ext_EXT_metal_surface);
 #endif
   }
 
@@ -441,6 +482,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
 #include "xenia/ui/vulkan/functions/instance_khr_win32_surface.inc"
   }
 #endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+  if (vulkan_instance->extensions_.ext_EXT_metal_surface) {
+#include "xenia/ui/vulkan/functions/instance_ext_metal_surface.inc"
+  }
+#endif
   if (vulkan_instance->extensions_.ext_KHR_surface) {
 #include "xenia/ui/vulkan/functions/instance_khr_surface.inc"
   }
@@ -540,7 +586,7 @@ VulkanInstance::~VulkanInstance() {
     functions_.vkDestroyInstance(instance_, nullptr);
   }
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   if (loader_) {
     dlclose(loader_);
   }

@@ -34,6 +34,13 @@
 #include "xenia/base/string_util.h"
 #endif
 
+#if XE_PLATFORM_MAC
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/semaphore.h>
+#include <mach/task.h>
+#endif
+
 #if XE_PLATFORM_LINUX
 // SIGEV_THREAD_ID in timer_create(...) is a Linux extension
 #define XE_HAS_SIGEV_THREAD_ID 1
@@ -49,6 +56,73 @@
 
 namespace xe {
 namespace threading {
+
+#if XE_PLATFORM_MAC
+// macOS has no robust mutexes, so the owner-died recovery paths below are
+// never taken.
+static int pthread_mutex_consistent(pthread_mutex_t*) { return 0; }
+
+// Unnamed POSIX semaphores are not implemented on macOS (sem_init fails with
+// ENOSYS). Mach semaphores are, and signaling and waiting on them are plain
+// Mach traps, so like sem_post / sem_wait they can be used from the suspend
+// signal handler.
+class SuspendSemaphore {
+ public:
+  SuspendSemaphore() {
+    if (semaphore_create(mach_task_self(), &semaphore_, SYNC_POLICY_FIFO, 0) !=
+        KERN_SUCCESS) {
+      semaphore_ = SEMAPHORE_NULL;
+    }
+  }
+  void Post() { semaphore_signal(semaphore_); }
+  // Returns false if the semaphore has been destroyed.
+  bool Wait() {
+    kern_return_t result;
+    do {
+      result = semaphore_wait(semaphore_);
+    } while (result == KERN_ABORTED);
+    return result == KERN_SUCCESS;
+  }
+  void Destroy() {
+    semaphore_t semaphore = semaphore_;
+    semaphore_ = SEMAPHORE_NULL;
+    if (semaphore != SEMAPHORE_NULL) {
+      semaphore_destroy(mach_task_self(), semaphore);
+    }
+  }
+
+ private:
+  semaphore_t semaphore_;
+};
+#else
+class SuspendSemaphore {
+ public:
+  SuspendSemaphore() { sem_init(&semaphore_, 0, 0); }
+  void Post() { sem_post(&semaphore_); }
+  // Returns false if the semaphore has been destroyed.
+  bool Wait() {
+    int result;
+    do {
+      result = sem_wait(&semaphore_);
+    } while (result == -1 && errno == EINTR);
+    return result == 0;
+  }
+  void Destroy() { sem_destroy(&semaphore_); }
+
+ private:
+  sem_t semaphore_;
+};
+#endif  // XE_PLATFORM_MAC
+
+// Kernel thread ID, used for the setpriority() fallback on Linux.
+static pid_t GetCurrentKernelThreadId() {
+#if XE_PLATFORM_MAC
+  // setpriority() can't target individual threads on macOS.
+  return 0;
+#else
+  return static_cast<pid_t>(syscall(SYS_gettid));
+#endif
+}
 
 #if XE_PLATFORM_ANDROID
 // May be null if no dynamically loaded functions are required.
@@ -103,6 +177,19 @@ enum class SignalType {
   k_Count
 };
 
+#if XE_PLATFORM_MAC
+// macOS has no real-time signals, but only two are needed there.
+static_assert(static_cast<size_t>(SignalType::k_Count) == 2);
+
+int GetSystemSignal(SignalType num) {
+  return num == SignalType::kThreadSuspend ? SIGUSR1 : SIGUSR2;
+}
+
+SignalType GetSystemSignalType(int num) {
+  return num == SIGUSR1 ? SignalType::kThreadSuspend
+                        : SignalType::kThreadUserCallback;
+}
+#else
 int GetSystemSignal(SignalType num) {
   auto result = SIGRTMIN + static_cast<int>(num);
   assert_true(result < SIGRTMAX);
@@ -112,6 +199,7 @@ int GetSystemSignal(SignalType num) {
 SignalType GetSystemSignalType(int num) {
   return static_cast<SignalType>(num - SIGRTMIN);
 }
+#endif  // XE_PLATFORM_MAC
 
 std::array<std::atomic<bool>, static_cast<size_t>(SignalType::k_Count)>
     signal_handler_installed = {};
@@ -140,7 +228,11 @@ void EnableAffinityConfiguration() {}
 // uint64_t ticks() { return mach_absolute_time(); }
 
 uint32_t current_thread_system_id() {
+#if XE_PLATFORM_MAC
+  return static_cast<uint32_t>(pthread_mach_thread_np(pthread_self()));
+#else
   return static_cast<uint32_t>(syscall(SYS_gettid));
+#endif
 }
 
 void MaybeYield() {
@@ -240,7 +332,9 @@ class PosixConditionBase {
     // Initialize as robust mutex to handle thread termination gracefully
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
+#if !XE_PLATFORM_MAC
     pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST);
+#endif
 
     // Get the native handle and set it as robust
     auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
@@ -617,7 +711,6 @@ class PosixCondition<Thread> final : public PosixConditionBase {
         exit_code_(0),
         state_(State::kUninitialized),
         suspend_count_(0) {
-    sem_init(&suspend_sem_, 0, 0);
 #if XE_PLATFORM_ANDROID
     android_pre_api_26_name_[0] = '\0';
 #endif
@@ -657,12 +750,11 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   /// Thread::GetCurrentThread() on the main thread
   explicit PosixCondition(pthread_t thread)
       : thread_(thread),
-        tid_(static_cast<pid_t>(syscall(SYS_gettid))),
+        tid_(GetCurrentKernelThreadId()),
         signaled_(false),
         exit_code_(0),
         state_(State::kRunning),
         suspend_count_(0) {
-    sem_init(&suspend_sem_, 0, 0);
 #if XE_PLATFORM_ANDROID
     android_pre_api_26_name_[0] = '\0';
 #endif
@@ -724,7 +816,14 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     WaitStarted();
     std::unique_lock<std::mutex> lock(state_mutex_);
     if (state_ != State::kUninitialized && state_ != State::kFinished) {
+#if XE_PLATFORM_MAC
+      // macOS can only name the calling thread.
+      if (pthread_equal(thread_, pthread_self())) {
+        pthread_setname_np(name.c_str());
+      }
+#else
       pthread_setname_np(thread_, std::string(name).c_str());
+#endif
 #if XE_PLATFORM_ANDROID
       SetAndroidPreApi26Name(name);
 #endif
@@ -742,6 +841,23 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   }
 #endif
 
+#if XE_PLATFORM_MAC
+  uint32_t system_id() const {
+    return static_cast<uint32_t>(pthread_mach_thread_np(thread_));
+  }
+
+  // macOS has no way to pin threads to cores (affinity tags are only hints,
+  // and are ignored on Apple silicon), so only remember the requested mask.
+  uint64_t affinity_mask() const {
+    WaitStarted();
+    return affinity_mask_;
+  }
+
+  void set_affinity_mask(uint64_t mask) const {
+    WaitStarted();
+    affinity_mask_ = mask;
+  }
+#else
   uint32_t system_id() const { return static_cast<uint32_t>(thread_); }
 
   uint64_t affinity_mask() const {
@@ -789,6 +905,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     }
 #endif
   }
+#endif  // XE_PLATFORM_MAC
 
   int priority() const {
     WaitStarted();
@@ -801,11 +918,16 @@ class PosixCondition<Thread> final : public PosixConditionBase {
       }
       return param.sched_priority;
     }
+#if XE_PLATFORM_MAC
+    // No per-thread nice values on macOS - report the normal priority.
+    return 16;
+#else
     // When using nice values, map back to the SCHED_FIFO range (1-32)
     // so callers see a consistent priority space.
     int nice_val = getpriority(PRIO_PROCESS, tid_);
     // nice -19..19 → fifo 32..1
     return 16 - nice_val;
+#endif  // XE_PLATFORM_MAC
   }
 
   void set_priority(int new_priority) const {
@@ -845,12 +967,18 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     WaitStarted();
     std::unique_lock lock(callback_mutex_);
     user_callback_ = std::move(callback);
+#if XE_PLATFORM_MAC
+    // No sigqueue on macOS - the handler finds the callback through the
+    // target thread's current_thread_ instead.
+    pthread_kill(thread_, GetSystemSignal(SignalType::kThreadUserCallback));
+#else
     sigval value{};
     value.sival_ptr = this;
+#endif
 #if XE_PLATFORM_ANDROID
     sigqueue(pthread_gettid_np(thread_),
              GetSystemSignal(SignalType::kThreadUserCallback), value);
-#else
+#elif !XE_PLATFORM_MAC
     pthread_sigqueue(thread_, GetSystemSignal(SignalType::kThreadUserCallback),
                      value);
 #endif
@@ -882,7 +1010,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
       // Post to the semaphore to wake the thread from WaitSuspended.
       // sem_post is async-signal-safe, so this is safe even if called
       // from unusual contexts.
-      sem_post(&suspend_sem_);
+      suspend_sem_.Post();
     }
     state_signal_.notify_all();
     return true;
@@ -987,11 +1115,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     // count rather than trusting one token, or that stale post releases the
     // next suspend immediately.
     while (suspend_count_.load(std::memory_order_acquire) > 0) {
-      int ret;
-      do {
-        ret = sem_wait(&suspend_sem_);
-      } while (ret == -1 && errno == EINTR);
-      if (ret == -1) {
+      if (!suspend_sem_.Wait()) {
         // The semaphore is gone (the thread has been joined). Do not spin.
         break;
       }
@@ -1013,7 +1137,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     bool expected = false;
     if (thread_ && joined_.compare_exchange_strong(expected, true)) {
       pthread_join(thread_, nullptr);
-      sem_destroy(&suspend_sem_);
+      suspend_sem_.Destroy();
     }
   }
   pthread_t thread_;
@@ -1025,7 +1149,11 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   // Written under state_mutex_, but read from the suspend signal handler.
   std::atomic<uint32_t> suspend_count_;
   std::atomic<bool> joined_{false};  // Prevents a second pthread_join
-  sem_t suspend_sem_;  // Async-signal-safe suspend/resume semaphore
+  // Async-signal-safe suspend/resume semaphore.
+  SuspendSemaphore suspend_sem_;
+#if XE_PLATFORM_MAC
+  mutable uint64_t affinity_mask_ = ~uint64_t(0);
+#endif
   mutable std::mutex state_mutex_;
   mutable std::mutex callback_mutex_;
   mutable std::condition_variable state_signal_;
@@ -1346,7 +1474,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
   delete start_data;
 
   current_thread_ = thread;
-  thread->handle_.tid_ = static_cast<pid_t>(syscall(SYS_gettid));
+  thread->handle_.tid_ = GetCurrentKernelThreadId();
   {
     std::unique_lock lock(thread->handle_.state_mutex_);
     thread->handle_.state_ =
@@ -1424,7 +1552,11 @@ void Thread::Exit(int exit_code) {
 }
 
 void set_name(const std::string_view name) {
+#if XE_PLATFORM_MAC
+  pthread_setname_np(std::string(name).c_str());
+#else
   pthread_setname_np(pthread_self(), std::string(name).c_str());
+#endif
 #if XE_PLATFORM_ANDROID
   if (!android_pthread_getname_np_ && current_thread_) {
     current_thread_->condition().SetAndroidPreApi26Name(name);
@@ -1443,9 +1575,16 @@ static void signal_handler(int signal, siginfo_t* info, void* context) {
       current_thread_->WaitSuspended();
     } break;
     case SignalType::kThreadUserCallback: {
+#if XE_PLATFORM_MAC
+      if (!current_thread_) {
+        return;
+      }
+      auto p_thread = &current_thread_->condition();
+#else
       assert_not_null(info->si_value.sival_ptr);
       auto p_thread =
           static_cast<PosixCondition<Thread>*>(info->si_value.sival_ptr);
+#endif
       if (alertable_state_) {
         p_thread->CallUserCallback();
       }

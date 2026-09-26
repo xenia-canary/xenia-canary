@@ -33,6 +33,12 @@
 #endif
 #endif
 
+#if XE_PLATFORM_MAC
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+#endif
+
 #if XE_PLATFORM_WIN32
 // Must be included before including vulkan.h with VK_USE_PLATFORM_WIN32_KHR
 // because it includes Windows.h too.

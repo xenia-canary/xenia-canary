@@ -163,6 +163,8 @@ class A64Backend : public Backend {
 
  private:
   alignas(64) ReserveHelper reserve_helper_;
+  bool AllocateGuestTrampolineMemory();
+
   BitMap guest_trampoline_address_bitmap_;
   uint8_t* guest_trampoline_memory_ = nullptr;
 };

@@ -15,6 +15,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
 
 // libgcc/libunwind APIs for registering DWARF .eh_frame unwind info.
@@ -160,11 +161,21 @@ void PosixA64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,
   InitializeUnwindEntry(unwind_reservation.entry_address, code_execute_address,
                         func_info);
 
-  void* unwind_execute_address = unwind_reservation.entry_address -
-                                 generated_code_write_base_ +
-                                 generated_code_execute_base_;
-  __register_frame(unwind_execute_address);
-  registered_frames_.push_back(unwind_execute_address);
+  uint8_t* unwind_execute_address = unwind_reservation.entry_address -
+                                    generated_code_write_base_ +
+                                    generated_code_execute_base_;
+#if XE_PLATFORM_MAC
+  // Apple's libunwind registers a single FDE rather than an .eh_frame section
+  // starting with the CIE. The FDE follows the CIE and its length field.
+  uint32_t cie_length;
+  std::memcpy(&cie_length, unwind_reservation.entry_address,
+              sizeof(cie_length));
+  void* frame = unwind_execute_address + sizeof(cie_length) + cie_length;
+#else
+  void* frame = unwind_execute_address;
+#endif
+  __register_frame(frame);
+  registered_frames_.push_back(frame);
 }
 
 void PosixA64CodeCache::InitializeUnwindEntry(
