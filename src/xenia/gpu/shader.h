@@ -536,9 +536,36 @@ struct ParsedTextureFetchInstruction {
   // is not always zero.
   uint32_t GetNonZeroResultComponents() const;
 
+  // Whether the fetch can return a single texel with no instruction override to
+  // linear/anisotropic filtering.
+  bool AllowsPointSampling(bool use_computed_lod) const {
+    return attributes.mag_filter != xenos::TextureFilter::kLinear &&
+           attributes.min_filter != xenos::TextureFilter::kLinear &&
+           attributes.mip_filter != xenos::TextureFilter::kLinear &&
+           (!use_computed_lod ||
+            attributes.aniso_filter == xenos::AnisoFilter::kDisabled ||
+            attributes.aniso_filter == xenos::AnisoFilter::kUseFetchConst);
+  }
+
+  // Whether a tfetch snaps its coordinates to the texel center instead of
+  // adding kTextureCoordEpsilon. Only point sampled 2D fetches with normalized
+  // coordinates snap. The fetch constant side is bit 26 in GetIntegerScaleBits.
+  // The epsilon is there so host rounding picks the texel guest trunc would,
+  // but near an edge it can push the sample into the next texel. That shows up
+  // as texture seams in 425307EC's virtual texture tables.
+  bool CanSnapToTexelCenter(bool use_computed_lod) const {
+    return opcode == ucode::FetchOpcode::kTextureFetch &&
+           dimension == xenos::FetchOpDimension::k2D &&
+           !attributes.unnormalized_coordinates &&
+           AllowsPointSampling(use_computed_lod);
+  }
+
   // Disassembles the instruction into ucode assembly text.
   void Disassemble(StringBuffer* out) const;
 };
+
+// Fixed point texture coordinate ULP (see ProcessTextureFetchInstruction).
+constexpr float kTextureCoordEpsilon = 1.5f / 1024.0f;
 
 struct ParsedAluInstruction {
   // Opcode for the vector part of the instruction.
