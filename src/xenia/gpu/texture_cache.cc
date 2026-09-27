@@ -364,8 +364,8 @@ void TextureCache::RequestTextures(uint32_t used_texture_mask) {
     uint32_t old_host_swizzle = binding.host_swizzle;
     binding.host_swizzle =
         GuestToHostSwizzle(fetch.swizzle, GetHostFormatSwizzle(binding.key));
-    binding.integer_scale_bits = GetIntegerScaleBits(
-        fetch.format, fetch.num_format, fetch.swizzle, binding.swizzled_signs);
+    binding.integer_scale_bits =
+        GetIntegerScaleBits(fetch, binding.swizzled_signs);
 
     // Check if need to load the unsigned and the signed versions of the texture
     // (if the format is emulated with different host bit representations for
@@ -685,29 +685,22 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
   return texture;
 }
 
-// Packs the integer scale the fetch shader reads from the system constant to
-// undo the host sampler's normalization - the guest wants e.g. [0, 255], not
-// [0, 1]. 6 bits per output component: bits 0:3 = width - 1, bit 4 = signed,
-// bit 5 = unsigned-biased. The scale lands after swizzling, so each output lane
-// walks the guest swizzle back to its source component's width. component_bits
-// only describes the stored width, so the source component is clamped to the
-// last stored channel the same way the host swizzle expands the formats.
-// (k_16 has a 16 bit width in all four components, k_5_6_5 gives blue in W.)
-// Constant (0/1) lanes, gamma, and non-fixed formats have nothing to rescale
-// and stay 0. Bit 24 for normalized fixed fetches.
-uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
-                                           uint32_t num_format,
-                                           uint32_t guest_swizzle,
-                                           uint8_t swizzled_signs) {
-  const FormatInfo& format_info = *FormatInfo::Get(guest_format);
-  uint32_t scale_bits = 0;
+uint32_t TextureCache::GetIntegerScaleBits(
+    const xenos::xe_gpu_texture_fetch_t& fetch, uint8_t swizzled_signs) {
+  const FormatInfo& format_info = *FormatInfo::Get(fetch.format);
+  bool point_sampled = fetch.mag_filter == xenos::TextureFilter::kPoint &&
+                       fetch.min_filter == xenos::TextureFilter::kPoint &&
+                       (fetch.mip_filter == xenos::TextureFilter::kPoint ||
+                        fetch.mip_filter == xenos::TextureFilter::kBaseMap) &&
+                       fetch.aniso_filter == xenos::AnisoFilter::kDisabled;
+  uint32_t scale_bits = point_sampled ? UINT32_C(1) << 26 : 0;
 
   if (!format_info.fixed) {
-    return 0;
+    return scale_bits;
   }
 
-  if (!num_format) {
-    return swizzled_signs == kSwizzledSignsUnsigned ? UINT32_C(1) << 24 : 0;
+  if (!fetch.num_format) {
+    scale_bits |= UINT32_C(1) << 24;
   }
 
   uint32_t last_stored_component = 0;
@@ -718,7 +711,7 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
   }
 
   for (uint32_t i = 0; i < 4; ++i) {
-    uint32_t source_component = (guest_swizzle >> (i * 3)) & 0b111;
+    uint32_t source_component = (fetch.swizzle >> (i * 3)) & 0b111;
     if (source_component >= xenos::XE_GPU_TEXTURE_SWIZZLE_0) {
       continue;
     }
@@ -728,16 +721,23 @@ uint32_t TextureCache::GetIntegerScaleBits(xenos::TextureFormat guest_format,
         xenos::TextureSign((swizzled_signs >> (i * 2)) & 0b11);
 
     uint8_t width = format_info.component_bits[source_component];
-    if (!width || width > 16 || sign == xenos::TextureSign::kGamma) {
+    if (!width || width > 16) {
       continue;
     }
 
-    uint32_t component_scale = uint32_t(width - 1);
-    if (sign == xenos::TextureSign::kSigned) {
-      component_scale |= UINT32_C(1) << 4;
-      // Unsigned-biased: halve the scaled value and apply an extra offset.
-    } else if (sign == xenos::TextureSign::kUnsignedBiased) {
-      component_scale |= UINT32_C(1) << 5;
+    bool carries_width = true;
+    if (sign == xenos::TextureSign::kGamma) {
+      if (fetch.num_format) {
+        continue;
+      }
+      carries_width = false;
+    } else if (!fetch.num_format && sign == xenos::TextureSign::kUnsigned) {
+      carries_width = point_sampled && width >= 4 && width <= 7;
+    }
+
+    uint32_t component_scale = uint32_t(sign) << 4;
+    if (carries_width) {
+      component_scale |= uint32_t(width - 1);
     }
 
     scale_bits |= component_scale << (i * 6);
