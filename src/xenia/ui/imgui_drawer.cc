@@ -29,6 +29,8 @@
 
 #if XE_PLATFORM_WIN32
 #include <ShlObj_core.h>
+#elif XE_PLATFORM_LINUX
+#include <fontconfig/fontconfig.h>
 #endif
 
 #if XE_PLATFORM_LINUX
@@ -374,9 +376,9 @@ bool ImGuiDrawer::LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config,
   if (!font->IsLoaded()) {
     XELOGE("Failed to load custom font: {}", font_path);
     io.Fonts->Clear();
-    return false;
   }
-  return true;
+
+  return font->IsLoaded();
 }
 
 bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
@@ -401,13 +403,62 @@ bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
                                    font_size, &font_config, font_glyph_ranges);
 
   io.Fonts->Build();
-  // Something went wrong while loading custom font. Probably corrupted.
+
   if (!font->IsLoaded()) {
-    XELOGE("Failed to load custom font: {}", font_path);
+    XELOGE("Failed to load font: {}", font_path);
     io.Fonts->Clear();
   }
+
   CoTaskMemFree(static_cast<void*>(fonts_dir));
-  return true;
+  return font->IsLoaded();
+#endif
+  return false;
+}
+
+bool ImGuiDrawer::LoadLinuxFont(ImGuiIO& io, ImFontConfig& font_config,
+                                float font_size) {
+#if XE_PLATFORM_LINUX
+  if (!FcInit()) {
+    return false;
+  }
+
+  FcConfig* config = FcInitLoadConfigAndFonts();
+  FcPattern* mono_font = FcNameParse(
+      reinterpret_cast<const FcChar8*>("DejaVu Sans Mono:style=Book"));
+
+  FcResult res;
+  FcPattern* font_match = FcFontMatch(config, mono_font, &res);
+
+  std::string font_path;
+
+  if (font_match) {
+    FcChar8* file = nullptr;
+
+    if (FcPatternGetString(font_match, FC_FILE, 0, &file) == FcResultMatch) {
+      font_path = reinterpret_cast<char*>(file);
+    }
+
+    FcPatternDestroy(font_match);
+  }
+
+  FcPatternDestroy(mono_font);
+  FcFini();
+
+  if (!std::filesystem::exists(font_path)) {
+    return false;
+  }
+
+  ImFont* font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
+                                              &font_config, font_glyph_ranges);
+
+  io.Fonts->Build();
+
+  if (!font->IsLoaded()) {
+    XELOGE("Failed to load font: {}", font_path);
+    io.Fonts->Clear();
+  }
+
+  return font->IsLoaded();
 #endif
   return false;
 }
@@ -511,8 +562,13 @@ void ImGuiDrawer::InitializeFonts(const float font_size) {
   font_config.PixelSnapH = true;
 
   bool is_font_loaded = LoadCustomFont(io, font_config, font_size);
+
   if (!is_font_loaded) {
+#ifdef XE_PLATFORM_WIN32
     is_font_loaded = LoadWindowsFont(io, font_config, font_size);
+#elif XE_PLATFORM_LINUX
+    is_font_loaded = LoadLinuxFont(io, font_config, font_size);
+#endif
   }
 
   if (!is_font_loaded) {
