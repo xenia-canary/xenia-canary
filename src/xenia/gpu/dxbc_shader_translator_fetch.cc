@@ -1145,6 +1145,10 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
         ~normalized_components_with_scaled_offsets;
     uint32_t normalized_components_without_offsets =
         normalized_components & ~normalized_components_with_offsets;
+    // Some titles might provide non-finite stacked coordinates, like 584107FB's
+    // backdrop which doesn't render unless the offset path is clamped. For
+    // safety, no-offset is clamped as well, with both preserving stacked
+    // layer-center rules.
     if (instr.attributes.unnormalized_coordinates) {
       // Unnormalized coordinates - normalize XY, and if 3D, normalize Z.
       assert_not_zero(normalized_components);
@@ -1192,24 +1196,51 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
                  dxbc::Src::R(coord_and_sampler_temp),
                  dxbc::Src::R(size_and_is_3d_temp));
         if (instr.dimension == xenos::FetchOpDimension::k3DOrStacked) {
-          // Normalize if 3D.
+          // Normalize if 3D or clamp to layer centers if stacked.
           assert_true((size_needed_components & 0b1100) == 0b1100);
           a_.OpIf(true, dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW));
           a_.OpDiv(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
                    dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ));
+          a_.OpElse();
+          {
+            uint32_t layer_clamp_temp = PushSystemTemp();
+            a_.OpMax(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(0.5f));
+            a_.OpAdd(dxbc::Dest::R(layer_clamp_temp, 0b0001),
+                     dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(-0.5f));
+            a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::R(layer_clamp_temp, dxbc::Src::kXXXX));
+            PopSystemTemp();
+          }
           a_.OpEndIf();
         }
       } else {
         a_.OpDiv(dxbc::Dest::R(coord_and_sampler_temp, normalized_components),
                  coord_operand, dxbc::Src::R(size_and_is_3d_temp));
         if (instr.dimension == xenos::FetchOpDimension::k3DOrStacked) {
-          // Don't normalize if stacked.
-          assert_true((size_needed_components & 0b1000) == 0b1000);
-          a_.OpMovC(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
-                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW),
-                    dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
-                    coord_operand.SelectFromSwizzled(2));
+          // Don't normalize if stacked and clamp to layer centers.
+          assert_true((size_needed_components & 0b1100) == 0b1100);
+          a_.OpIf(false, dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW));
+          a_.OpMov(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                   coord_operand.SelectFromSwizzled(2));
+          {
+            uint32_t layer_clamp_temp = PushSystemTemp();
+            a_.OpMax(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(0.5f));
+            a_.OpAdd(dxbc::Dest::R(layer_clamp_temp, 0b0001),
+                     dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(-0.5f));
+            a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::R(layer_clamp_temp, dxbc::Src::kXXXX));
+            PopSystemTemp();
+          }
+          a_.OpEndIf();
         }
       }
     } else {
@@ -1267,16 +1298,43 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
                    coord_operand.SelectFromSwizzled(2),
                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
                    dxbc::Src::LF(offsets[2]));
+          {
+            uint32_t layer_clamp_temp = PushSystemTemp();
+            a_.OpMax(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(0.5f));
+            a_.OpAdd(dxbc::Dest::R(layer_clamp_temp, 0b0001),
+                     dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(-0.5f));
+            a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::R(layer_clamp_temp, dxbc::Src::kXXXX));
+            PopSystemTemp();
+          }
           a_.OpEndIf();
         } else {
           // Denormalize Z if stacked, and revert to normalized if 3D.
           a_.OpMul(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
                    coord_operand.SelectFromSwizzled(2),
                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ));
-          a_.OpMovC(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
-                    dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW),
-                    coord_operand.SelectFromSwizzled(2),
-                    dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ));
+          a_.OpIf(true, dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kWWWW));
+          a_.OpMov(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                   coord_operand.SelectFromSwizzled(2));
+          a_.OpElse();
+          {
+            uint32_t layer_clamp_temp = PushSystemTemp();
+            a_.OpMax(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(0.5f));
+            a_.OpAdd(dxbc::Dest::R(layer_clamp_temp, 0b0001),
+                     dxbc::Src::R(size_and_is_3d_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::LF(-0.5f));
+            a_.OpMin(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kZZZZ),
+                     dxbc::Src::R(layer_clamp_temp, dxbc::Src::kXXXX));
+            PopSystemTemp();
+          }
+          a_.OpEndIf();
         }
       }
     }
