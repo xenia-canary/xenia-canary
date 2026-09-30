@@ -1,0 +1,170 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+// Resolve k_8_8_8_8 to k_DXT3A_AS_1_1_1_1 with copy command 2. Compare each
+// masked component with the masked reference, storing the result in bits 0
+// through 3 for red, green, blue and alpha.
+//
+// RB_COPY_FUNC holds 3 bit CompareFunction fields at bits 0, 4, 8 and 12.
+// RB_COPY_REF and RB_COPY_MASK hold one byte per component in the same order.
+//
+// Compare the reference against the source. 5345084D builds masks with
+// RB_COPY_FUNC = 0x1111, RB_COPY_REF = 0x80808080 and
+// RB_COPY_MASK = 0xFFFFFFFF. Putting the source on the left inverted those
+// masks.
+
+#include "endian.xesli"
+#define XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT 4
+#define XE_RESOLVE_COPY_DXT3A_AS_1111
+#include "resolve.xesli"
+
+byte_buffer_align16_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0, space0)
+#define LOCAL_SIZE_X_XE 32
+#define LOCAL_SIZE_Y_XE 2
+#define LOCAL_SIZE_Z_XE 1
+
+uint XeResolve1111Component(uint pixel, uint component, uint func, uint ref,
+                            uint mask) {
+  uint shift = component << 3u;
+  uint component_mask = (mask >> shift) & 0xFFu;
+  uint value = (pixel >> shift) & component_mask;
+  uint ref_value = (ref >> shift) & component_mask;
+  // CompareFunction bits select ref < value (1), ref == value (2),
+  // and ref > value (4).
+  uint relation =
+      value < ref_value ? 4u : (value == ref_value ? 2u : 1u);
+  return ((func >> (component << 2u)) & relation) != 0u ? 1u : 0u;
+}
+
+// Returns the 4-bit value for one pixel.
+uint XeResolve1111Pixel(uint pixel, uint func, uint ref, uint mask) {
+  return XeResolve1111Component(pixel, 0u, func, ref, mask) |
+         (XeResolve1111Component(pixel, 1u, func, ref, mask) << 1u) |
+         (XeResolve1111Component(pixel, 2u, func, ref, mask) << 2u) |
+         (XeResolve1111Component(pixel, 3u, func, ref, mask) << 3u);
+}
+
+// Returns 16 bits for 4 pixels of a block row, pixel i in bits 4i...4i+3.
+uint XeResolve1111FourPixels(uint4_xe pixels, uint func, uint ref, uint mask) {
+  return XeResolve1111Pixel(pixels.x, func, ref, mask) |
+         (XeResolve1111Pixel(pixels.y, func, ref, mask) << 4u) |
+         (XeResolve1111Pixel(pixels.z, func, ref, mask) << 8u) |
+         (XeResolve1111Pixel(pixels.w, func, ref, mask) << 12u);
+}
+
+// Returns the rows of two horizontally adjacent blocks for 8 pixels of a row.
+uint2_xe XeResolve1111EightPixels(
+    param_byte_buffer_xe(xe_resolve_edram) param_next_after_byte_buffer_xe
+    const XeResolveInfo resolve_info, uint2_xe pixel_index, uint func,
+    uint ref, uint mask) {
+  uint4_xe pixels_0123, pixels_4567;
+  dont_flatten_xe
+  if (resolve_info.edram_msaa_samples == kXenosMsaaSamples_1X) {
+    // With 1x MSAA the pixels are the canonical samples, thus the scanline is
+    // contiguous, two 16 byte loads cover the 8 pixels.
+    uint source_address =
+        XeResolveCopySourceFirstSampleAddressBytes(resolve_info, pixel_index);
+    pixels_0123 = byte_buffer_align4_load16u_xe(xe_resolve_edram,
+                                                source_address);
+    pixels_4567 = byte_buffer_align4_load16u_xe(xe_resolve_edram,
+                                                source_address + 16u);
+  } else {
+    // With MSAA there's no fixed stride between horizontally adjacent pixels,
+    // load each pixel from its respective address.
+    pixels_0123.x = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(resolve_info, pixel_index));
+    pixels_0123.y = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(1u, 0u)));
+    pixels_0123.z = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(2u, 0u)));
+    pixels_0123.w = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(3u, 0u)));
+    pixels_4567.x = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(4u, 0u)));
+    pixels_4567.y = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(5u, 0u)));
+    pixels_4567.z = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(6u, 0u)));
+    pixels_4567.w = byte_buffer_align4_load4_xe(
+        xe_resolve_edram,
+        XeResolveCopySourceFirstSampleAddressBytes(
+            resolve_info, pixel_index + uint2_xe(7u, 0u)));
+  }
+  return uint2_xe(
+      XeResolve1111FourPixels(pixels_0123, func, ref, mask),
+      XeResolve1111FourPixels(pixels_4567, func, ref, mask));
+}
+
+entry_bindings_begin_compute_xe
+  XE_RESOLVE_PUSH_CONST_BINDING
+  entry_binding_next_xe
+  byte_buffer_wo_binding_xe(xe_resolve_dest, buffer(1))
+  entry_binding_next_xe
+  XE_RESOLVE_COPY_EDRAM_BINDING
+entry_bindings_end_inputs_begin_compute_xe
+  entry_in_global_thread_id_xe
+entry_inputs_end_code_begin_compute_xe
+{
+  // 1 thread = 8x4 pixels = 2 horizontally adjacent 4x4 blocks.
+  XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  // Each group covers 8 rows, matching the resolve alignment.
+  dont_flatten_xe
+  if (in_global_thread_id_xe.x >= resolve_info.width_div_8_scaled) {
+    return;
+  }
+  uint func = push_const_xe(xe_resolve_copy_func);
+  uint ref = push_const_xe(xe_resolve_copy_ref);
+  uint mask = push_const_xe(xe_resolve_copy_mask);
+  uint2_xe pixel_index = in_global_thread_id_xe.xy << uint2_xe(3u, 2u);
+  // Each block is two 32-bit words, rows 0 and 1 in the low and the high 16
+  // bits of the first word, rows 2 and 3 in the second.
+  uint2_xe row_0 = XeResolve1111EightPixels(
+      pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
+      resolve_info, pixel_index, func, ref, mask);
+  uint2_xe row_1 = XeResolve1111EightPixels(
+      pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
+      resolve_info, pixel_index + uint2_xe(0u, 1u), func, ref, mask);
+  uint2_xe row_2 = XeResolve1111EightPixels(
+      pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
+      resolve_info, pixel_index + uint2_xe(0u, 2u), func, ref, mask);
+  uint2_xe row_3 = XeResolve1111EightPixels(
+      pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
+      resolve_info, pixel_index + uint2_xe(0u, 3u), func, ref, mask);
+  uint4_xe blocks = uint4_xe(row_0.x | (row_1.x << 16u),
+                             row_2.x | (row_3.x << 16u),
+                             row_0.y | (row_1.y << 16u),
+                             row_2.y | (row_3.y << 16u));
+  // The destination offset is in pixels, convert it to blocks. The block X is
+  // even, so the two blocks are adjacent in memory.
+  uint2_xe block_index =
+      uint2_xe(in_global_thread_id_xe.x << 1u, in_global_thread_id_xe.y) +
+      (resolve_info.dest_xy_offset_scaled >> 2u);
+  uint dest_address =
+      uint(XenosTextureTiledAddress2D(int2_xe(block_index),
+                                      resolve_info.dest_row_pitch_macro_tiles,
+                                      3u)) +
+      resolve_info.dest_base;
+  byte_buffer_align16_store16_xe(
+      xe_resolve_dest, dest_address,
+      XeEndianSwap64(blocks, resolve_info.dest_endian_128));
+}
+entry_code_end_compute_xe
