@@ -7,7 +7,14 @@
  ******************************************************************************
  */
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <string>
+
+#include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
+#include "xenia/vfs/entry.h"
 
 #include "third_party/catch/include/catch.hpp"
 
@@ -23,6 +30,33 @@ TEST_CASE("STFS Decode date and time", "[stfs_decode]") {
 
     REQUIRE(timestamp == result);
   }
+}
+
+TEST_CASE("Host path entry found by its new name after a rename",
+          "[vfs_rename]") {
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() /
+      ("xenia-vfs-rename-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  std::filesystem::create_directories(dir);
+  std::ofstream(dir / "item.tmp") << "data";
+
+  {
+    HostPathDevice device("\\Device\\Test", dir, false);
+    REQUIRE(device.Initialize());
+    Entry* entry = device.ResolvePath("item.tmp");
+    REQUIRE(entry != nullptr);
+
+    entry->Rename("cache:\\item.ipk");
+
+    REQUIRE(entry->name() == "item.ipk");
+    REQUIRE(device.ResolvePath("item.ipk") == entry);
+    REQUIRE(device.ResolvePath("item.tmp") == nullptr);
+    REQUIRE(std::filesystem::exists(dir / "item.ipk"));
+  }
+
+  std::filesystem::remove_all(dir);
 }
 
 }  // namespace xe::vfs::test
