@@ -79,8 +79,13 @@ class SDLInputDriver final : public InputDriver {
       SDL_JoystickID instance_id);
   ControllerState* GetControllerState(uint32_t user_index);
   bool TestSDLVersion() const;
-  void UpdateXCapabilities(ControllerState& state);
+  void UpdateXCapabilities(ControllerState& state, size_t user_index);
   void QueueControllerUpdate();
+  // The kind controller_subtypes asks for in this slot, if it asks for one.
+  static std::optional<uint8_t> ForcedSubtypeForSlot(size_t user_index);
+  static bool IsGuitarSubtype(uint8_t sub_type);
+  // True when this slot's whammy bar is routed to the right stick.
+  bool WhammyOnStick(size_t user_index) const;
 
   bool sdl_events_initialized_;
   bool sdl_gamecontroller_initialized_;
@@ -88,6 +93,12 @@ class SDLInputDriver final : public InputDriver {
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
+  // Slots a guitar kind was asked for, so the state handling can match.
+  std::array<bool, HID_SDL_USER_COUNT> guitar_slot_ = {};
+  // Slots whose whammy bar arrives as a trigger rather than on the stick.
+  std::array<bool, HID_SDL_USER_COUNT> whammy_on_trigger_ = {};
+  // Slots whose whammy has moved at least once, so its value is the device's.
+  std::array<bool, HID_SDL_USER_COUNT> whammy_seen_ = {};
 };
 
 }  // namespace sdl
