@@ -81,6 +81,7 @@ namespace shaders {
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_clear_32bpp_scaled_cs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_clear_64bpp_cs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_clear_64bpp_scaled_cs.h"
+#include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_dxt3aas1111_cs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_fast_32bpp_1x2xmsaa_cs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_fast_32bpp_1x2xmsaa_scaled_cs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/resolve_fast_32bpp_4xmsaa_cs.h"
@@ -136,6 +137,8 @@ constexpr D3D12RenderTargetCache::ResolveCopyShaderCode
          sizeof(shaders::resolve_full_128bpp_cs),
          shaders::resolve_full_128bpp_scaled_cs,
          sizeof(shaders::resolve_full_128bpp_scaled_cs)},
+        {shaders::resolve_dxt3aas1111_cs,
+         sizeof(shaders::resolve_dxt3aas1111_cs), nullptr, 0},
 };
 
 constexpr uint32_t D3D12RenderTargetCache::kTransferUsedRootParameters[size_t(
@@ -418,29 +421,9 @@ bool D3D12RenderTargetCache::Initialize() {
         kResolveCopyShaders[i];
     // Somewhat verification whether resolve_copy_shaders_ is up to date.
     assert_true(resolve_copy_shader_code.unscaled &&
-                resolve_copy_shader_code.unscaled_size &&
-                resolve_copy_shader_code.scaled &&
-                resolve_copy_shader_code.scaled_size);
-    ID3D12PipelineState* resolve_copy_pipeline =
-        ui::d3d12::util::CreateComputePipeline(
-            device,
-            draw_resolution_scaled ? resolve_copy_shader_code.scaled
-                                   : resolve_copy_shader_code.unscaled,
-            draw_resolution_scaled ? resolve_copy_shader_code.scaled_size
-                                   : resolve_copy_shader_code.unscaled_size,
-            resolve_copy_root_signature_);
-    if (resolve_copy_pipeline == nullptr) {
-      XELOGE(
-          "D3D12RenderTargetCache: Failed to create {} resolve copy pipeline",
-          resolve_copy_shader_info.debug_name);
-      Shutdown();
-      return false;
-    }
+                resolve_copy_shader_code.unscaled_size);
     std::u16string resolve_copy_pipeline_name =
         xe::to_utf16(resolve_copy_shader_info.debug_name);
-    resolve_copy_pipeline->SetName(
-        reinterpret_cast<LPCWSTR>(resolve_copy_pipeline_name.c_str()));
-    resolve_copy_pipelines_[i] = resolve_copy_pipeline;
     if (draw_resolution_scaled) {
       // Unscaled variant for fully native resolves.
       ID3D12PipelineState* resolve_copy_native_pipeline =
@@ -460,6 +443,27 @@ bool D3D12RenderTargetCache::Initialize() {
           reinterpret_cast<LPCWSTR>(resolve_copy_pipeline_name.c_str()));
       resolve_copy_native_pipelines_[i] = resolve_copy_native_pipeline;
     }
+    if (draw_resolution_scaled && !resolve_copy_shader_code.scaled) {
+      continue;
+    }
+    ID3D12PipelineState* resolve_copy_pipeline =
+        ui::d3d12::util::CreateComputePipeline(
+            device,
+            draw_resolution_scaled ? resolve_copy_shader_code.scaled
+                                   : resolve_copy_shader_code.unscaled,
+            draw_resolution_scaled ? resolve_copy_shader_code.scaled_size
+                                   : resolve_copy_shader_code.unscaled_size,
+            resolve_copy_root_signature_);
+    if (resolve_copy_pipeline == nullptr) {
+      XELOGE(
+          "D3D12RenderTargetCache: Failed to create {} resolve copy pipeline",
+          resolve_copy_shader_info.debug_name);
+      Shutdown();
+      return false;
+    }
+    resolve_copy_pipeline->SetName(
+        reinterpret_cast<LPCWSTR>(resolve_copy_pipeline_name.c_str()));
+    resolve_copy_pipelines_[i] = resolve_copy_pipeline;
   }
 
   // Using the cvar on emulator initialization so used pipelines are consistent
@@ -1373,31 +1377,41 @@ bool D3D12RenderTargetCache::Resolve(const Memory& memory,
   DeferredCommandList& command_list =
       command_processor_.GetDeferredCommandList();
 
+  // Copy at 1x1 if all render targets owning the source are native.
+  bool copy_native = false;
+  uint32_t dump_base = 0;
+  uint32_t dump_row_length_used = 0;
+  uint32_t dump_rows = 0;
+  uint32_t dump_pitch = 0;
+  if (resolve_info.copy_dest_extent_length &&
+      GetPath() == Path::kHostRenderTargets) {
+    resolve_info.GetCopyEdramTileSpan(dump_base, dump_row_length_used,
+                                      dump_rows, dump_pitch);
+    copy_native = IsResolveSourceNativeOnly(dump_base, dump_row_length_used,
+                                            dump_rows, dump_pitch);
+    if (copy_native) {
+      // Redo the resolve info at 1x1 for the unscaled copy shader.
+      if (!draw_util::GetResolveInfo(register_file(), memory, trace_writer_, 1,
+                                     1, fixed_16_truncated_to_minus_1_to_1,
+                                     fixed_16_truncated_to_minus_1_to_1,
+                                     resolve_info)) {
+        return false;
+      }
+    }
+  }
+  if (resolve_info.copy_dest_extent_length && draw_resolution_scaled &&
+      !copy_native &&
+      resolve_info.rb_copy_control.copy_command ==
+          xenos::CopyCommand::kConvertTo1111) {
+    XELOGW("Resolve copy command 2 is not supported with resolution scaling");
+    // Skip the copy, but still perform the clears.
+    resolve_info.copy_dest_extent_length = 0;
+  }
+
   // Copying.
   bool copied = false;
   if (resolve_info.copy_dest_extent_length) {
-    // If everything owning the source is native, copy at 1x1 into shared
-    // memory.
-    bool copy_native = false;
     if (GetPath() == Path::kHostRenderTargets) {
-      uint32_t dump_base;
-      uint32_t dump_row_length_used;
-      uint32_t dump_rows;
-      uint32_t dump_pitch;
-      resolve_info.GetCopyEdramTileSpan(dump_base, dump_row_length_used,
-                                        dump_rows, dump_pitch);
-      copy_native = IsResolveSourceNativeOnly(dump_base, dump_row_length_used,
-                                              dump_rows, dump_pitch);
-      if (copy_native) {
-        // Redo the resolve info at 1x1 so the scale-dependent fields match
-        // what the unscaled copy shaders expect.
-        if (!draw_util::GetResolveInfo(register_file(), memory, trace_writer_,
-                                       1, 1, fixed_16_truncated_to_minus_1_to_1,
-                                       fixed_16_truncated_to_minus_1_to_1,
-                                       resolve_info)) {
-          return false;
-        }
-      }
       // Dump the current contents of the render targets owning the affected
       // range to edram_buffer_.
       // TODO(Triang3l): Direct host render target -> shared memory resolve

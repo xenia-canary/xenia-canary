@@ -37,6 +37,15 @@ push_const_begin_xe(b0, space0)
     uint xe_resolve_dest_coordinate_info;
     #ifndef XE_RESOLVE_RESOLUTION_SCALED
       uint xe_resolve_dest_base;
+      #ifdef XE_RESOLVE_COPY_DXT3A_AS_1111
+        // RB_COPY_FUNC, a 3 bit CompareFunction per component in bits 0, 4,
+        // 8, 12.
+        uint xe_resolve_copy_func;
+        // RB_COPY_REF.
+        uint xe_resolve_copy_ref;
+        // RB_COPY_MASK.
+        uint xe_resolve_copy_mask;
+      #endif
     #endif
   #endif
 push_const_end_xe

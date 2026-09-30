@@ -1167,6 +1167,7 @@ constexpr ResolveCopyShaderInfo
         {"Resolve Copy Full 32bpp", 5, 3},
         {"Resolve Copy Full 64bpp", 5, 3},
         {"Resolve Copy Full 128bpp", 4, 3},
+        {"Resolve Copy DXT3A as 1_1_1_1", 8, 3},
 };
 XE_MSVC_OPTIMIZE_SMALL()
 bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
@@ -1183,8 +1184,11 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
   auto rb_copy_control = regs.Get<reg::RB_COPY_CONTROL>();
   info_out.rb_copy_control = rb_copy_control;
 
+  bool is_convert_to_1111 =
+      rb_copy_control.copy_command == xenos::CopyCommand::kConvertTo1111;
   if (rb_copy_control.copy_command != xenos::CopyCommand::kRaw &&
-      rb_copy_control.copy_command != xenos::CopyCommand::kConvert) {
+      rb_copy_control.copy_command != xenos::CopyCommand::kConvert &&
+      !is_convert_to_1111) {
     XELOGE(
         "Unsupported resolve copy command {}. Report the game to Xenia "
         "developers",
@@ -1374,6 +1378,39 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
     }
   }
 
+  // Copy command 2 compares each color component with a reference, writing
+  // one bit per component (see resolve_dxt3aas1111.xesli).
+  bool convert_to_1111_supported = false;
+  if (is_convert_to_1111) {
+    if (is_depth || dest_format != xenos::TextureFormat::k_DXT3A_AS_1_1_1_1 ||
+        rb_copy_dest_info.copy_dest_array) {
+      XELOGE(
+          "Unsupported resolve copy command 2: source {}, destination {}, "
+          "array {}",
+          is_depth ? "depth" : "color", FormatInfo::GetName(dest_format),
+          bool(rb_copy_dest_info.copy_dest_array));
+    } else {
+      auto source_format =
+          regs.Get<reg::RB_COLOR_INFO>(
+                  reg::RB_COLOR_INFO::rt_register_indices[rb_copy_control
+                                                              .copy_src_select])
+              .color_format;
+      if (source_format != xenos::ColorRenderTargetFormat::k_8_8_8_8 &&
+          source_format != xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA) {
+        XELOGE("Unsupported resolve copy command 2 source format {}",
+               static_cast<uint32_t>(source_format));
+      } else if (!xenos::IsSingleCopySampleSelected(sample_select)) {
+        XELOGW("Resolve copy command 2 doesn't support sample averaging ({})",
+               static_cast<uint32_t>(sample_select));
+      } else {
+        convert_to_1111_supported = true;
+      }
+    }
+  }
+  info_out.rb_copy_func = regs[XE_GPU_REG_RB_COPY_FUNC];
+  info_out.rb_copy_ref = regs[XE_GPU_REG_RB_COPY_REF];
+  info_out.rb_copy_mask = regs[XE_GPU_REG_RB_COPY_MASK];
+
   // Calculate the destination memory extent.
   uint32_t rb_copy_dest_base = regs[XE_GPU_REG_RB_COPY_DEST_BASE];
   uint32_t copy_dest_base_adjusted = rb_copy_dest_base;
@@ -1401,8 +1438,13 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
   info_out.copy_dest_coordinate_info.height_aligned_div_32 =
       copy_dest_height_aligned >> 5;
   const FormatInfo& dest_format_info = *FormatInfo::Get(dest_format);
-  if (is_depth || dest_format_info.type == FormatType::kResolvable) {
-    uint32_t bpp_log2 = xe::log2_floor(dest_format_info.bits_per_pixel >> 3);
+  if (is_convert_to_1111
+          ? convert_to_1111_supported
+          : (is_depth || dest_format_info.type == FormatType::kResolvable)) {
+    uint32_t bpp_log2 = xe::log2_floor(dest_format_info.bytes_per_block());
+    // The destination coordinates are in blocks, which are 4x4 pixels for
+    // k_DXT3A_AS_1_1_1_1 and 1x1 for other resolvable formats.
+    uint32_t dest_block_size_log2 = is_convert_to_1111 ? 2 : 0;
     uint32_t dest_base_relative_x_mask =
         (UINT32_C(1) << xenos::GetTextureTiledXBaseGranularityLog2(
              bool(rb_copy_dest_info.copy_dest_array), bpp_log2)) -
@@ -1418,8 +1460,8 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
     // tiled calculation. 534307D5's water refraction texture's middle 5_6_5
     // strip hits this at x=480.
     uint32_t dest_addr_base = rb_copy_dest_base;
-    uint32_t dest_addr_x0 = uint32_t(x0);
-    uint32_t dest_addr_y0 = uint32_t(y0);
+    uint32_t dest_addr_x0 = uint32_t(x0) >> dest_block_size_log2;
+    uint32_t dest_addr_y0 = uint32_t(y0) >> dest_block_size_log2;
     if (!rb_copy_dest_info.copy_dest_array) {
       uint32_t dest_macro_tile_bytes_log2 =
           2 * xenos::kTextureTileWidthHeightLog2 + bpp_log2;
@@ -1430,14 +1472,17 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
       dest_addr_base -= dest_macro_phase << dest_macro_tile_bytes_log2;
       dest_addr_x0 += dest_macro_phase << xenos::kTextureTileWidthHeightLog2;
     }
-    uint32_t dest_addr_x1 = dest_addr_x0 + uint32_t(x1 - x0);
-    uint32_t dest_addr_y1 = dest_addr_y0 + uint32_t(y1 - y0);
+    uint32_t dest_addr_x1 =
+        dest_addr_x0 + (uint32_t(x1 - x0) >> dest_block_size_log2);
+    uint32_t dest_addr_y1 =
+        dest_addr_y0 + (uint32_t(y1 - y0) >> dest_block_size_log2);
     copy_dest_base_adjusted = dest_addr_base;
+    // Keep the shader offsets in pixels / 8, not blocks / 8.
     info_out.copy_dest_coordinate_info.offset_x_div_8 =
-        (dest_addr_x0 & dest_base_relative_x_mask) >>
+        ((dest_addr_x0 & dest_base_relative_x_mask) << dest_block_size_log2) >>
         xenos::kResolveAlignmentPixelsLog2;
     info_out.copy_dest_coordinate_info.offset_y_div_8 =
-        (dest_addr_y0 & dest_base_relative_y_mask) >>
+        ((dest_addr_y0 & dest_base_relative_y_mask) << dest_block_size_log2) >>
         xenos::kResolveAlignmentPixelsLog2;
     uint32_t dest_base_x = dest_addr_x0 & ~dest_base_relative_x_mask;
     uint32_t dest_base_y = dest_addr_y0 & ~dest_base_relative_y_mask;
@@ -1471,8 +1516,10 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
               dest_addr_x1, dest_addr_y1, copy_dest_pitch_aligned, bpp_log2);
     }
   } else {
-    XELOGE("Tried to resolve to format {}, which is not a ColorFormat",
-           FormatInfo::GetName(dest_format));
+    if (!is_convert_to_1111) {
+      XELOGE("Tried to resolve to format {}, which is not a ColorFormat",
+             FormatInfo::GetName(dest_format));
+    }
     copy_dest_extent_start = copy_dest_base_adjusted;
     copy_dest_extent_end = copy_dest_base_adjusted;
   }
@@ -1633,16 +1680,21 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
   bool gamma_decoded_source =
       !is_depth && xenos::ColorRenderTargetFormat(color_edram_info.format) ==
                        xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA;
-  if (is_depth ||
-      (!gamma_decoded_source && !copy_dest_info.copy_dest_exp_bias &&
-       xenos::IsSingleCopySampleSelected(
-           copy_dest_coordinate_info.copy_sample_select) &&
-       xenos::IsColorResolveFormatBitwiseEquivalent(
-           xenos::ColorRenderTargetFormat(color_edram_info.format),
-           xenos::ColorFormat(copy_dest_info.copy_dest_format)) &&
-       ColorResolveNumberFormatMatches(
-           xenos::ColorFormat(copy_dest_info.copy_dest_format),
-           copy_dest_info.copy_dest_number))) {
+  if (rb_copy_control.copy_command == xenos::CopyCommand::kConvertTo1111) {
+    assert_true(draw_resolution_scale_x == 1 && draw_resolution_scale_y == 1);
+    assert_true(xenos::IsSingleCopySampleSelected(
+        copy_dest_coordinate_info.copy_sample_select));
+    shader = ResolveCopyShaderIndex::kDXT3AAs1111;
+  } else if (is_depth ||
+             (!gamma_decoded_source && !copy_dest_info.copy_dest_exp_bias &&
+              xenos::IsSingleCopySampleSelected(
+                  copy_dest_coordinate_info.copy_sample_select) &&
+              xenos::IsColorResolveFormatBitwiseEquivalent(
+                  xenos::ColorRenderTargetFormat(color_edram_info.format),
+                  xenos::ColorFormat(copy_dest_info.copy_dest_format)) &&
+              ColorResolveNumberFormatMatches(
+                  xenos::ColorFormat(copy_dest_info.copy_dest_format),
+                  copy_dest_info.copy_dest_number))) {
     if (edram_info.msaa_samples >= xenos::MsaaSamples::k4X) {
       shader = source_is_64bpp ? ResolveCopyShaderIndex::kFast64bpp4xMSAA
                                : ResolveCopyShaderIndex::kFast32bpp4xMSAA;
@@ -1679,6 +1731,9 @@ ResolveCopyShaderIndex ResolveInfo::GetCopyShader(
   constants_out.dest_relative.dest_info = copy_dest_info;
   constants_out.dest_relative.dest_coordinate_info = copy_dest_coordinate_info;
   constants_out.dest_base = copy_dest_base;
+  constants_out.copy_func = rb_copy_func;
+  constants_out.copy_ref = rb_copy_ref;
+  constants_out.copy_mask = rb_copy_mask;
 
   if (shader != ResolveCopyShaderIndex::kUnknown) {
     uint32_t width =
