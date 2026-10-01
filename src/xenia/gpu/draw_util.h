@@ -290,14 +290,12 @@ struct ViewportInfo {
   // and Nvidia hardware (not WARP); as well as to hide the differences between
   // 0 and 8+ viewportSubPixelBits on Vulkan, and to prevent any numerical error
   // in bound checking in host APIs, viewport bounds are returned as integers.
-  // Also they're returned as non-negative, also to make it easier to crop (so
-  // Vulkan maxViewportDimensions and viewportBoundsRange don't have to be
-  // handled separately - maxViewportDimensions is greater than or equal to the
-  // largest framebuffer image size, so it's safe, and viewportBoundsRange is
-  // always bigger than maxViewportDimensions. All fractional offsetting,
-  // including the half-pixel offset, and cropping are handled via ndc_scale and
+  // The offset may be negative, down to -maxViewportDimensions (Vulkan's
+  // viewportBoundsRange always covers twice that), and the extent is at most
+  // maxViewportDimensions. All fractional offsetting, including the half-pixel
+  // offset, and cropping beyond those limits are handled via ndc_scale and
   // ndc_offset.
-  uint32_t xy_offset[2];
+  int32_t xy_offset[2];
   // Extent can be zero for an empty viewport - host APIs not supporting empty
   // viewports need to use an empty scissor rectangle.
   uint32_t xy_extent[2];

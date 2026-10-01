@@ -473,21 +473,31 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       // With resolution scaling, do all viewport XY scissoring in guest pixels
       // if fractional and for the half-pixel offset - we treat guest pixels as
       // a whole, and also the half-pixel offset would be irreversible in guest
-      // vertices if we did flooring in host pixels. Instead of flooring, also
-      // doing truncation for simplicity - since maxing with 0 is done anyway
-      // (we only return viewports in the positive quarter-plane).
+      // vertices if we did flooring in host pixels.
+      //
+      // The start may be negative, down to -max, instead of being cropped at
+      // 0. With a window offset (predicated tiling in 4D5307DF draws its
+      // right-hand tile at x -608) cropping gave the tiles different NDC
+      // scales and offsets, and in some frames the same geometry came out as
+      // a flat wedge or rectangle in one tile only. Vulkan guarantees that
+      // viewportBoundsRange covers -2 * maxViewportDimensions, and Direct3D 12
+      // allows -32768. The extent still stays within max.
       uint32_t axis_resolution_scale =
           i ? args->draw_resolution_scale_y : args->draw_resolution_scale_x;
       float offset_axis = offset_base_xy[i] + offset_add_xy[i];
       float scale_axis = scale_xy[i];
       float scale_axis_abs = std::abs(scale_xy[i]);
       float axis_max_unscaled_float = float(xy_max_unscaled[i]);
-      uint32_t axis_0_int = uint32_t(xe::clamp_float(
-          offset_axis - scale_axis_abs, 0.0f, axis_max_unscaled_float));
-      uint32_t axis_1_int = uint32_t(xe::clamp_float(
-          offset_axis + scale_axis_abs, 0.0f, axis_max_unscaled_float));
-      uint32_t axis_extent_int = axis_1_int - axis_0_int;
-      viewport_info_out.xy_offset[i] = axis_0_int * axis_resolution_scale;
+      int32_t axis_1_int = int32_t(std::floor(xe::clamp_float(
+          offset_axis + scale_axis_abs, 0.0f, axis_max_unscaled_float)));
+      int32_t axis_0_int = int32_t(std::floor(
+          xe::clamp_float(offset_axis - scale_axis_abs,
+                          float(axis_1_int) - axis_max_unscaled_float,
+                          axis_max_unscaled_float)));
+      uint32_t axis_extent_int =
+          axis_1_int > 0 ? uint32_t(axis_1_int - axis_0_int) : 0;
+      viewport_info_out.xy_offset[i] =
+          axis_0_int * int32_t(axis_resolution_scale);
       viewport_info_out.xy_extent[i] = axis_extent_int * axis_resolution_scale;
       float ndc_scale_axis;
       float ndc_offset_axis;
