@@ -1366,10 +1366,20 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
                     dxbc::Src::LI(1));
           a_.OpUToF(dxbc::Dest::R(coord_and_sampler_temp, 0b1000),
                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kWWWW));
-          // linear_x = coord.x * original_width (stored in coord.y temporarily)
-          a_.OpMul(dxbc::Dest::R(coord_and_sampler_temp, 0b0010),
-                   dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kXXXX),
-                   dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kWWWW));
+          // linear_x = original coordinate in texels + offset (stored in
+          // coord.y). Use the original coordinate, avoiding the normalization
+          // round trip that can round a coordinate at a texel boundary into the
+          // previous texel.
+          if (instr.attributes.unnormalized_coordinates) {
+            a_.OpAdd(dxbc::Dest::R(coord_and_sampler_temp, 0b0010),
+                     coord_operand.SelectFromSwizzled(0),
+                     dxbc::Src::LF(offsets[0]));
+          } else {
+            a_.OpMAd(dxbc::Dest::R(coord_and_sampler_temp, 0b0010),
+                     coord_operand.SelectFromSwizzled(0),
+                     dxbc::Src::R(coord_and_sampler_temp, dxbc::Src::kWWWW),
+                     dxbc::Src::LF(offsets[0]));
+          }
           // row_width = 8192.0f (constant)
           // scaled = linear_x / row_width (stored in coord.z temporarily)
           a_.OpDiv(dxbc::Dest::R(coord_and_sampler_temp, 0b0100),
