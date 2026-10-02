@@ -105,6 +105,14 @@ class XmaContextNew : public XmaContext {
   static uint32_t GetCurrentInputBufferSize(XMA_CONTEXT_DATA* data);
 
   void Decode(XMA_CONTEXT_DATA* data);
+  void DecodeFrame(XMA_CONTEXT_DATA* data, uint32_t frame_size,
+                   uint32_t padding_start, bool is_loop_end_frame);
+  void SaveSplitFrame(XMA_CONTEXT_DATA* data, const uint8_t* packet,
+                      uint32_t relative_offset, uint32_t frame_size,
+                      uint32_t next_packet_index, uint32_t packet_count,
+                      bool is_loop_end_frame);
+  void ResumeSplitFrame(XMA_CONTEXT_DATA* data);
+  void ResetStreamStateLocked();
   void Consume(RingBuffer* XE_RESTRICT output_rb,
                const XMA_CONTEXT_DATA* const XE_RESTRICT data);
 
@@ -138,6 +146,12 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+  // input_buffer_'s first half retains the packet containing a pending frame.
+  bool split_frame_pending_ = false;
+  uint32_t split_frame_offset_ = 0;
+  uint32_t split_frame_size_ = 0;
+  uint32_t split_next_packet_index_ = 0;
+  bool split_frame_loop_end_ = false;
 };
 
 }  // namespace apu

@@ -6,3 +6,7 @@ target_include_directories(xenia-apu PRIVATE
 )
 target_link_libraries(xenia-apu PUBLIC libavcodec libavutil libavformat xenia-base)
 xe_target_defaults(xenia-apu)
+
+if(XENIA_BUILD_TESTS)
+  add_subdirectory(testing)
+endif()
