@@ -1282,6 +1282,10 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
     } else {
       // kTextureFetch or kGetTextureComputedLod.
 
+      // The original X coordinate, for wide 1D textures that need it in texels
+      // without the loss of precision caused by normalization.
+      spv::Id coordinate_x_original = coordinates[0];
+
       // Normalize the XY coordinates, and apply the offset. When the texture
       // is resolution-scaled, size has already been scaled up to host texels
       // above so dividing the offset by it yields a 1-host-texel step.
@@ -1388,9 +1392,17 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                                                      row_width_float)),
               builder_->makeFloatConstant(float(xenos::kTexture1DWideMaxRows)));
 
-          // linear_x = coord * original_width (denormalize to texel space)
-          spv::Id linear_x = builder_->createNoContractionBinOp(
-              spv::OpFMul, type_float_, coordinates[0], original_width_float);
+          // linear_x = original coordinate in texels + offset.
+          spv::Id linear_x = coordinate_x_original;
+          if (!instr.attributes.unnormalized_coordinates) {
+            linear_x = builder_->createNoContractionBinOp(
+                spv::OpFMul, type_float_, linear_x, original_width_float);
+          }
+          if (offset_values[0]) {
+            linear_x = builder_->createNoContractionBinOp(
+                spv::OpFAdd, type_float_, linear_x,
+                builder_->makeFloatConstant(offset_values[0]));
+          }
 
           // row_index = floor(linear_x / row_width)
           spv::Id row_index = builder_->createUnaryBuiltinCall(

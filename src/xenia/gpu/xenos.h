@@ -1194,7 +1194,9 @@ constexpr uint32_t kTexture1DMaxWidthLog2 = 24;
 constexpr uint32_t kTexture1DMaxWidth = 1 << kTexture1DMaxWidthLog2;
 // Limit the number of rows materialized when wide 1D textures are mapped to
 // 2D. Some games use very large widths with much less data behind them.
-constexpr uint32_t kTexture1DWideMaxRows = 32;
+// 5345084D uses a 786432-texel k_8_8_8_8 texture (96 rows) for decision trees,
+// with data in all of it.
+constexpr uint32_t kTexture1DWideMaxRows = 128;
 constexpr uint32_t kTexture2DCubeMaxWidthHeightLog2 = 13;
 constexpr uint32_t kTexture2DCubeMaxWidthHeight =
     1 << kTexture2DCubeMaxWidthHeightLog2;
