@@ -806,7 +806,7 @@ void UserModule::Dump() {
         sb.AppendFormat("       Title ID: {:08X}\n",
                         static_cast<uint32_t>(opt_exec_info->title_id));
         sb.AppendFormat("    Savegame ID: {:08X}\n",
-                        static_cast<uint32_t>(opt_exec_info->title_id));
+                        static_cast<uint32_t>(opt_exec_info->savegame_id));
         sb.AppendFormat("    Disc Number / Total: {} / {}\n",
                         opt_exec_info->disc_number, opt_exec_info->disc_count);
       } break;
