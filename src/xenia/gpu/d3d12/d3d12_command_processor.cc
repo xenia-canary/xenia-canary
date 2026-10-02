@@ -2957,6 +2957,15 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                 vfetch_index, vfetch_constant.dword_0, vfetch_constant.dword_1);
             return false;
           default:
+            if (cvars::gpu_allow_invalid_fetch_constants) {
+              XELOGW(
+                  "Vertex fetch constant {} ({:08X} {:08X}) has a texture "
+                  "type - allowing due to "
+                  "--gpu_allow_invalid_fetch_constants=true.",
+                  vfetch_index, vfetch_constant.dword_0,
+                  vfetch_constant.dword_1);
+              break;
+            }
             XELOGW(
                 "Vertex fetch constant {} ({:08X} {:08X}) is completely "
                 "invalid!",
