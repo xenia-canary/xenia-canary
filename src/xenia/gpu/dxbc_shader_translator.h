@@ -426,6 +426,12 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // Zero means no conversion.
     uint32_t texture_integer_scale_bits[32];
 
+    // PA_SC_WINDOW_OFFSET the PsParamGen position needs added when the offset
+    // is carried in the EDRAM bases rather than the viewport.
+    // 0 when it's in the viewport.
+    float param_gen_window_offset[2];
+    uint32_t param_gen_window_offset_padding[2];
+
    private:
     friend class DxbcShaderTranslator;
 
@@ -480,6 +486,8 @@ class DxbcShaderTranslator : public ShaderTranslator {
       kEdramBlendConstant,
 
       kTextureIntegerScaleBits,
+
+      kParamGenWindowOffset,
 
       kCount,
     };

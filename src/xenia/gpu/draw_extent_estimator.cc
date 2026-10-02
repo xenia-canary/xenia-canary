@@ -71,7 +71,8 @@ void DrawExtentEstimator::PositionYExportSink::Export(
   }
 }
 
-uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
+uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader,
+                                                 bool window_offset_in_edram) {
   SCOPE_profile_cpu_f("gpu");
 
   const RegisterFile& regs = register_file_;
@@ -255,7 +256,7 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
       xenos::PixelCenter::kD3DZero) {
     max_y_24p8 += 128;
   }
-  if (pa_su_sc_mode_cntl.vtx_window_offset_enable) {
+  if (pa_su_sc_mode_cntl.vtx_window_offset_enable && !window_offset_in_edram) {
     max_y_24p8 += regs.Get<reg::PA_SC_WINDOW_OFFSET>().window_y_offset * 256;
   }
   // Top-left rule - .5 exclusive without MSAA, 1. exclusive with MSAA.
@@ -267,7 +268,8 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
 }
 
 uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
-                                           const Shader& vertex_shader) {
+                                           const Shader& vertex_shader,
+                                           bool window_offset_in_edram) {
   SCOPE_profile_cpu_f("gpu");
 
   const RegisterFile& regs = register_file_;
@@ -279,13 +281,16 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
   auto pa_sc_window_scissor_br = regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>();
   int32_t scissor_bottom = int32_t(pa_sc_window_scissor_br.br_y);
   bool scissor_window_offset =
-      !regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>().window_offset_disable;
+      !regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>().window_offset_disable &&
+      !window_offset_in_edram;
+  auto pa_sc_screen_scissor_br = regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>();
+  int32_t screen_scissor_bottom = int32_t(pa_sc_screen_scissor_br.br_y);
   if (scissor_window_offset) {
     scissor_bottom += window_y_offset;
+  } else if (window_offset_in_edram) {
+    screen_scissor_bottom -= window_y_offset;
   }
-  auto pa_sc_screen_scissor_br = regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>();
-  scissor_bottom =
-      std::min(scissor_bottom, int32_t(pa_sc_screen_scissor_br.br_y));
+  scissor_bottom = std::min(scissor_bottom, screen_scissor_bottom);
   uint32_t max_y = uint32_t(std::max(scissor_bottom, int32_t(0)));
 
   if (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable) {
@@ -303,18 +308,21 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
           // EDRAM size, for instance), no need to process the vertices on the
           // CPU in this case.
           int32_t scissor_right = int32_t(pa_sc_window_scissor_br.br_x);
+          int32_t screen_scissor_right = int32_t(pa_sc_screen_scissor_br.br_x);
           if (scissor_window_offset) {
             scissor_right += pa_sc_window_offset.window_x_offset;
+          } else if (window_offset_in_edram) {
+            screen_scissor_right -= pa_sc_window_offset.window_x_offset;
           }
-          scissor_right =
-              std::min(scissor_right, int32_t(pa_sc_screen_scissor_br.br_x));
+          scissor_right = std::min(scissor_right, screen_scissor_right);
           if (scissor_right >= xenos::kTexture2DCubeMaxWidthHeight) {
             estimate_vertex_max_y = true;
           }
         }
       }
       if (estimate_vertex_max_y) {
-        max_y = std::min(max_y, EstimateVertexMaxY(vertex_shader));
+        max_y = std::min(
+            max_y, EstimateVertexMaxY(vertex_shader, window_offset_in_edram));
       }
     }
   } else {
@@ -325,7 +333,8 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
     float viewport_bottom = 0.0f;
     // First calculate all the integer.0 or integer.5 offsetting exactly at full
     // precision.
-    if (regs.Get<reg::PA_SU_SC_MODE_CNTL>().vtx_window_offset_enable) {
+    if (regs.Get<reg::PA_SU_SC_MODE_CNTL>().vtx_window_offset_enable &&
+        !window_offset_in_edram) {
       viewport_bottom += float(window_y_offset);
     }
     if (regs.Get<reg::PA_SU_VTX_CNTL>().pix_center ==

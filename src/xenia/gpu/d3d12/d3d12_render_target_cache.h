@@ -65,8 +65,8 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
 
   bool Update(bool is_rasterization_done,
               reg::RB_DEPTHCONTROL normalized_depth_control,
-              uint32_t normalized_color_mask,
-              const Shader& vertex_shader) override;
+              uint32_t normalized_color_mask, const Shader& vertex_shader,
+              int32_t window_offset_tiles) override;
 
   void InvalidateCommandListRenderTargets() {
     are_current_command_list_render_targets_valid_ = false;
@@ -483,11 +483,12 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
       uint32_t source_pitch : xenos::kEdramPitchTilesBits;
       // Destination base in tiles minus source base in tiles (not vice versa
       // because this is a transform of the coordinate system, not addresses
-      // themselves).
-      // + 1 bit because this is a signed difference between two EDRAM bases.
+      // themselves), wrapped, the shader wraps the sum anyway.
       // 0 for host_depth_source_is_copy (ignored in this case anyway as
       // destination == source anyway).
-      int32_t source_to_dest : xenos::kEdramBaseTilesBits + 1;
+      uint32_t source_to_dest : xenos::kEdramBaseTilesBits;
+      // The source render target is in the next period (64bpp color only).
+      uint32_t source_next_period : 1;
     };
     TransferAddressConstant() : constant(0) {
       static_assert_size(*this, sizeof(constant));
@@ -592,8 +593,9 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
     uint32_t offsets;
     struct {
       // May be beyond the EDRAM tile count in case of EDRAM addressing
-      // wrapping, thus + 1 bit.
-      uint32_t dispatch_first_tile : xenos::kEdramBaseTilesBits + 1;
+      // wrapping, and another tile count beyond for a render target in the next
+      // period, thus + 2 bits.
+      uint32_t dispatch_first_tile : xenos::kEdramBaseTilesBits + 2;
       uint32_t source_base_tiles : xenos::kEdramBaseTilesBits;
     };
     DumpOffsets() : offsets(0) { static_assert_size(*this, sizeof(offsets)); }

@@ -465,7 +465,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
       xenos::Endian index_endian, const draw_util::ViewportInfo& viewport_info,
       uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
       uint32_t normalized_color_mask,
-      const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset);
+      const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset,
+      int32_t window_offset_tiles);
 
   void UpdateSystemConstantValues(
       bool shared_memory_is_uav, bool primitive_polygonal,
@@ -473,7 +474,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
       const draw_util::ViewportInfo& viewport_info, uint32_t used_texture_mask,
       reg::RB_DEPTHCONTROL normalized_depth_control,
       uint32_t normalized_color_mask,
-      const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset);
+      const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset,
+      int32_t window_offset_tiles);
   bool UpdateBindings(const D3D12Shader* vertex_shader,
                       const D3D12Shader* pixel_shader,
                       ID3D12RootSignature* root_signature,

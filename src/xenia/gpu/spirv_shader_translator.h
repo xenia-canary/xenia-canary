@@ -320,6 +320,12 @@ class SpirvShaderTranslator : public ShaderTranslator {
     // bit 26 = point sampled fetch constant
     // Zero means no conversion.
     uint32_t texture_integer_scale_bits[32];
+
+    // PA_SC_WINDOW_OFFSET the PsParamGen position needs added when the offset
+    // is carried in the EDRAM bases rather than the viewport.
+    // 0 when it's in the viewport.
+    float param_gen_window_offset[2];
+    uint32_t param_gen_window_offset_padding[2];
   };
 
   // Separate constant buffer for user clip planes
@@ -1031,6 +1037,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     kSystemConstantEdramRTClamp,
     kSystemConstantEdramBlendConstant,
     kSystemConstantTextureIntegerScaleBits,
+    kSystemConstantParamGenWindowOffset,
   };
   spv::Id uniform_system_constants_;
   spv::Id uniform_clip_plane_constants_;

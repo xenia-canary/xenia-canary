@@ -388,7 +388,8 @@ struct GetViewportInfoArgs {
     pixel_shader_writes_depth = _pixel_shader_writes_depth;
   }
 
-  void SetupRegisterValues(const RegisterFile& regs) {
+  void SetupRegisterValues(const RegisterFile& regs,
+                           bool window_offset_in_edram) {
     pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
     pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
     pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
@@ -400,6 +401,9 @@ struct GetViewportInfoArgs {
     PA_CL_VPORT_YOFFSET = regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET);
     PA_CL_VPORT_ZOFFSET = regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_ZOFFSET);
     pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
+    if (window_offset_in_edram) {
+      pa_sc_window_offset.value = 0;
+    }
     depth_format = regs.Get<reg::RB_DEPTH_INFO>().depth_format;
   }
   XE_FORCEINLINE
@@ -463,7 +467,35 @@ struct alignas(16) Scissor {
 
 void GetScissor(const RegisterFile& XE_RESTRICT regs,
                 Scissor& XE_RESTRICT scissor_out,
-                bool clamp_to_surface_pitch = true);
+                bool clamp_to_surface_pitch = true,
+                bool window_offset_in_edram = false);
+
+// Returns the window offset in 32bpp tiles, doubled for 64bpp color, when it
+// can be moved into the render target bases. The vertices and scissor can then
+// use window offset 0, with PsParamGen getting the original offset back in the
+// shader.
+//
+// Only whole tile negative offsets can be moved. For host render targets,
+// x offsets stay in the viewport because the target is only pitch-wide.
+// Negative EDRAM bases wrap normally.
+//
+// kept_in_viewport_out is set when the offset could be moved, but has to stay
+// in the viewport. RenderTargetCache uses this to keep the tile's subsequent
+// draws on the same path.
+int32_t GetWindowOffsetTiles(const RegisterFile& XE_RESTRICT regs,
+                             reg::RB_DEPTHCONTROL normalized_depth_control,
+                             uint32_t normalized_color_mask,
+                             bool host_render_targets_used,
+                             bool& kept_in_viewport_out);
+
+// The base with the GetWindowOffsetTiles offset added and wrapped.
+inline uint32_t AddWindowOffsetToEdramBase(uint32_t base_tiles,
+                                           int32_t window_offset_tiles,
+                                           bool is_64bpp) {
+  return uint32_t(int32_t(base_tiles) +
+                  window_offset_tiles * (is_64bpp ? 2 : 1)) &
+         (xenos::kEdramTileCount - 1);
+}
 
 // Returns the color component write mask for the draw command taking into
 // account which color targets are written to by the pixel shader, as well as

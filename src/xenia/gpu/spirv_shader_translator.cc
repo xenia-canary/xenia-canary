@@ -342,6 +342,8 @@ void SpirvShaderTranslator::StartTranslation() {
       {"texture_integer_scale_bits",
        offsetof(SystemConstants, texture_integer_scale_bits),
        type_uint4_array_8},
+      {"param_gen_window_offset",
+       offsetof(SystemConstants, param_gen_window_offset), type_float2_},
   };
   id_vector_temp_.clear();
   id_vector_temp_.reserve(xe::countof(system_constants));
@@ -2755,6 +2757,15 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
     // see the actual hardware instructions in both OpBitwiseXor and OpFNegate
     // cases.
     spv::Id const_sign_bit = builder_->makeUintConstant(UINT32_C(1) << 31);
+    // Add the window offset back when it's carried in the EDRAM bases.
+    // PsParamGen includes it.
+    id_vector_temp_.clear();
+    id_vector_temp_.push_back(
+        builder_->makeIntConstant(kSystemConstantParamGenWindowOffset));
+    spv::Id param_gen_window_offset = builder_->createLoad(
+        builder_->createAccessChain(spv::StorageClassUniform,
+                                    uniform_system_constants_, id_vector_temp_),
+        spv::NoPrecision);
     // X - pixel X .0 in the magnitude, is back-facing in the sign bit.
     assert_true(input_fragment_coordinates_ != spv::NoResult);
     id_vector_temp_.clear();
@@ -2775,6 +2786,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
           builder_->makeFloatConstant(1.0f /
                                       float(GetCurrentDrawResolutionScaleX())));
     }
+    param_gen_x =
+        builder_->createBinOp(spv::OpFAdd, type_float_, param_gen_x,
+                              builder_->createCompositeExtract(
+                                  param_gen_window_offset, type_float_, 0));
     if (!modification.pixel.param_gen_point) {
       assert_true(input_front_facing_ != spv::NoResult);
       param_gen_x = builder_->createTriOp(
@@ -2817,6 +2832,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
           builder_->makeFloatConstant(1.0f /
                                       float(GetCurrentDrawResolutionScaleY())));
     }
+    param_gen_y =
+        builder_->createBinOp(spv::OpFAdd, type_float_, param_gen_y,
+                              builder_->createCompositeExtract(
+                                  param_gen_window_offset, type_float_, 1));
     if (modification.pixel.param_gen_point) {
       param_gen_y = builder_->createUnaryOp(
           spv::OpBitcast, type_float_,
