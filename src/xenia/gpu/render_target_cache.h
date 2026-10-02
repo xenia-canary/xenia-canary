@@ -215,10 +215,19 @@ class RenderTargetCache {
 
   virtual void BeginFrame();
 
+  // Keeps each tile on one window offset path. If a draw has to leave its
+  // offset in the viewport, later draws with the same offset, surface pitch,
+  // and MSAA do the same until a frame passes without one. This keeps a tiled
+  // depth prepass, and the passes using it, on the same transform instead of
+  // moving the tile between host render targets.
+  int32_t GetWindowOffsetTiles(const RegisterFile& regs,
+                               reg::RB_DEPTHCONTROL normalized_depth_control,
+                               uint32_t normalized_color_mask, uint64_t frame);
+
   virtual bool Update(bool is_rasterization_done,
                       reg::RB_DEPTHCONTROL normalized_depth_control,
                       uint32_t normalized_color_mask,
-                      const Shader& vertex_shader);
+                      const Shader& vertex_shader, int32_t window_offset_tiles);
 
   // Returns bits where 0 is whether a depth render target is currently bound on
   // the host and 1... are whether the same applies to color render targets, and
@@ -287,6 +296,10 @@ class RenderTargetCache {
       // enough. The only classes are the global scale and 1x1. Keys never
       // carry arbitrary scales.
       uint32_t scale_native : 1;  // 27
+      // The render target's rows are in the next EDRAM addressing period past
+      // its base, 64bpp color rows span two. The rows in the first period at
+      // the same base are another render target.
+      uint32_t next_period : 1;  // 28
     };
 
     RenderTargetKey() : key(0) { static_assert_size(*this, sizeof(key)); }
@@ -331,6 +344,14 @@ class RenderTargetCache {
     uint32_t GetPitchTiles() const {
       return pitch_tiles_at_32bpp << uint32_t(Is64bpp());
     }
+    // The tile index, past the tile count for the tail wrapped around the end
+    // of EDRAM and again for the next period, minus the base it's the offset
+    // into the render target's rows.
+    uint32_t GetNonWrappedTileIndex(uint32_t tile_index) const {
+      return tile_index +
+             (tile_index < base_tiles ? xenos::kEdramTileCount : 0) +
+             (uint32_t(next_period) << xenos::kEdramBaseTilesBits);
+    }
     static constexpr uint32_t GetWidth(uint32_t pitch_tiles_at_32bpp,
                                        xenos::MsaaSamples msaa_samples) {
       return pitch_tiles_at_32bpp *
@@ -342,9 +363,10 @@ class RenderTargetCache {
     }
 
     std::string GetDebugName() const {
-      return fmt::format("RT @ {}t, <{}t>, {}xMSAA, {}{}", base_tiles,
+      return fmt::format("RT @ {}t, <{}t>, {}xMSAA, {}{}{}", base_tiles,
                          GetPitchTiles(), uint32_t(1) << uint32_t(msaa_samples),
-                         GetFormatName(), scale_native ? ", native" : "");
+                         GetFormatName(), scale_native ? ", native" : "",
+                         next_period ? ", next period" : "");
     }
   };
 
@@ -399,17 +421,13 @@ class RenderTargetCache {
     // Cutout can be specified for resolve clears - not to transfer areas that
     // will be cleared to a single value anyway.
     static uint32_t GetRangeRectangles(uint32_t start_tiles, uint32_t end_tiles,
-                                       uint32_t base_tiles,
-                                       uint32_t pitch_tiles,
-                                       xenos::MsaaSamples msaa_samples,
-                                       bool is_64bpp, Rectangle* rectangles_out,
+                                       RenderTargetKey key,
+                                       Rectangle* rectangles_out,
                                        const Rectangle* cutout = nullptr);
-    uint32_t GetRectangles(uint32_t base_tiles, uint32_t pitch_tiles,
-                           xenos::MsaaSamples msaa_samples, bool is_64bpp,
-                           Rectangle* rectangles_out,
+    uint32_t GetRectangles(RenderTargetKey key, Rectangle* rectangles_out,
                            const Rectangle* cutout = nullptr) const {
-      return GetRangeRectangles(start_tiles, end_tiles, base_tiles, pitch_tiles,
-                                msaa_samples, is_64bpp, rectangles_out, cutout);
+      return GetRangeRectangles(start_tiles, end_tiles, key, rectangles_out,
+                                cutout);
     }
     bool AreSourcesSame(const Transfer& other_transfer) const {
       return source == other_transfer.source &&
@@ -769,6 +787,19 @@ class RenderTargetCache {
   // since standard containers use dynamic allocation for elements, though
   // changes to this throughout a frame are pretty rare.
   std::map<uint32_t, OwnershipRange> ownership_ranges_;
+  // PA_SC_WINDOW_OFFSET of the last interlock draw with the offset in the
+  // EDRAM bases, 0 for one with it in the viewport, UINT32_MAX after a full
+  // barrier. Bits 15 and 31 aren't used.
+  uint32_t interlock_last_window_offset_ = UINT32_MAX;
+  // Tiles with the window offset kept in the viewport, the offset with the
+  // surface pitch and MSAA, with the last frame a draw was at them.
+  struct WindowOffsetKeptInViewport {
+    uint32_t window_offset;
+    uint32_t surface_pitch;
+    xenos::MsaaSamples msaa_samples;
+    uint64_t frame;
+  };
+  std::vector<WindowOffsetKeptInViewport> window_offsets_kept_in_viewport_;
 
   // Render targets actually used by the draw call with the last successful
   // update. 0 is depth, color starting from 1, nullptr if not bound.

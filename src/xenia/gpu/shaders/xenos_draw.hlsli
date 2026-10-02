@@ -51,6 +51,8 @@ cbuffer xe_system_cbuffer : register(b0) {
   float4 xe_edram_blend_constant;
 
   uint4 xe_texture_integer_scale_bits[8];
+
+  float2 xe_param_gen_window_offset;
 };
 
 struct XeHSControlPointInputIndexed {

@@ -2759,10 +2759,14 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     }
   }
 
+  // Put the window offset into the EDRAM bases when possible.
+  int32_t window_offset_tiles = render_target_cache_->GetWindowOffsetTiles(
+      regs, normalized_depth_control, normalized_color_mask, frame_current_);
+
   // Set up the render targets - this may perform dispatches and draws.
-  if (!render_target_cache_->Update(is_rasterization_done,
-                                    normalized_depth_control,
-                                    normalized_color_mask, *vertex_shader)) {
+  if (!render_target_cache_->Update(
+          is_rasterization_done, normalized_depth_control,
+          normalized_color_mask, *vertex_shader, window_offset_tiles)) {
     return false;
   }
 
@@ -2878,7 +2882,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       host_render_targets_used &&
           render_target_cache_->depth_float24_convert_in_pixel_shader(),
       host_render_targets_used, pixel_shader && pixel_shader->writes_depth());
-  gviargs.SetupRegisterValues(regs);
+  gviargs.SetupRegisterValues(regs, window_offset_tiles != 0);
 
   if (gviargs == previous_viewport_info_args_) {
     viewport_info = previous_viewport_info_;
@@ -2889,7 +2893,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   }
   // todo: use SIMD for getscissor + scaling here, should reduce code size more
   draw_util::Scissor scissor;
-  draw_util::GetScissor(regs, scissor);
+  draw_util::GetScissor(regs, scissor, true, window_offset_tiles != 0);
 #if XE_ARCH_AMD64 == 1
   __m128i* scisp = (__m128i*)&scissor;
   *scisp = _mm_mullo_epi32(
@@ -2913,7 +2917,8 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       primitive_processing_result.line_loop_closing_index,
       primitive_processing_result.host_shader_index_endian, viewport_info,
       used_texture_mask, normalized_depth_control, normalized_color_mask,
-      apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr);
+      apply_host_depth_polygon_offset ? &host_depth_polygon_offset : nullptr,
+      window_offset_tiles);
 
   // Update constant buffers, descriptors and root parameters.
   if (!UpdateBindings(vertex_shader, pixel_shader, root_signature,
@@ -4131,7 +4136,8 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     xenos::Endian index_endian, const draw_util::ViewportInfo& viewport_info,
     uint32_t used_texture_mask, reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
-    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset,
+    int32_t window_offset_tiles) {
   const RegisterFile& regs = *register_file_;
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
   auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
@@ -4368,6 +4374,19 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     system_constants_.ndc_offset[i] = viewport_info.ndc_offset[i];
   }
 
+  // Window offset carried in the EDRAM bases.
+  float param_gen_window_offset[2] = {0.0f, 0.0f};
+  if (window_offset_tiles) {
+    auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
+    param_gen_window_offset[0] = float(pa_sc_window_offset.window_x_offset);
+    param_gen_window_offset[1] = float(pa_sc_window_offset.window_y_offset);
+  }
+  for (uint32_t i = 0; i < 2; ++i) {
+    update_dirty_floatmask(system_constants_.param_gen_window_offset[i],
+                           param_gen_window_offset[i]);
+    system_constants_.param_gen_window_offset[i] = param_gen_window_offset[i];
+  }
+
   // Point size.
   if (vgt_draw_initiator.prim_type == xenos::PrimitiveType::kPointList) {
     auto pa_su_point_minmax = regs.Get<reg::PA_SU_POINT_MINMAX>();
@@ -4539,7 +4558,11 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
       if (rt_keep_masks[i][0] != UINT32_MAX ||
           rt_keep_masks[i][1] != UINT32_MAX) {
         uint32_t rt_base_dwords_scaled =
-            color_info.color_base * edram_tile_dwords_scaled;
+            draw_util::AddWindowOffsetToEdramBase(
+                color_info.color_base, window_offset_tiles,
+                xenos::IsColorRenderTargetFormat64bpp(
+                    color_info.color_format)) *
+            edram_tile_dwords_scaled;
         update_dirty_uint32_cmp(
             system_constants_.edram_rt_base_dwords_scaled[i],
             rt_base_dwords_scaled);
@@ -4626,7 +4649,9 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
 
   if constexpr (edram_rov_used) {
     uint32_t depth_base_dwords_scaled =
-        rb_depth_info.depth_base * edram_tile_dwords_scaled;
+        draw_util::AddWindowOffsetToEdramBase(rb_depth_info.depth_base,
+                                              window_offset_tiles, false) *
+        edram_tile_dwords_scaled;
     update_dirty_uint32_cmp(system_constants_.edram_depth_base_dwords_scaled,
                             depth_base_dwords_scaled);
 
@@ -4765,7 +4790,8 @@ void D3D12CommandProcessor::UpdateSystemConstantValues(
     const draw_util::ViewportInfo& viewport_info, uint32_t used_texture_mask,
     reg::RB_DEPTHCONTROL normalized_depth_control,
     uint32_t normalized_color_mask,
-    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset) {
+    const draw_util::HostDepthPolygonOffset* host_depth_polygon_offset,
+    int32_t window_offset_tiles) {
   bool edram_rov_used = render_target_cache_->GetPath() ==
                         RenderTargetCache::Path::kPixelShaderInterlock;
 
@@ -4774,24 +4800,26 @@ void D3D12CommandProcessor::UpdateSystemConstantValues(
       UpdateSystemConstantValues_Impl<true, false>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask, host_depth_polygon_offset);
+          normalized_color_mask, host_depth_polygon_offset,
+          window_offset_tiles);
     } else {
       UpdateSystemConstantValues_Impl<false, false>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask, host_depth_polygon_offset);
+          normalized_color_mask, host_depth_polygon_offset,
+          window_offset_tiles);
     }
   } else {
     if (primitive_polygonal) {
       UpdateSystemConstantValues_Impl<true, true>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask, nullptr);
+          normalized_color_mask, nullptr, window_offset_tiles);
     } else {
       UpdateSystemConstantValues_Impl<false, true>(
           shared_memory_is_uav, line_loop_closing_index, index_endian,
           viewport_info, used_texture_mask, normalized_depth_control,
-          normalized_color_mask, nullptr);
+          normalized_color_mask, nullptr, window_offset_tiles);
     }
   }
 }

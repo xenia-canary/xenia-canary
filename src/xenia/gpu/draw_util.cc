@@ -37,6 +37,19 @@ DEFINE_bool(
     "be minimal if only a small portion of the scene is affected.",
     "GPU");
 
+DEFINE_bool(
+    window_offset_in_edram, true,
+    "Renders every tile of a predicated tiling frame at the same position as "
+    "the depth prepass by applying the window offset in EDRAM rather than "
+    "the viewport.\n"
+    "Fixes depth artifacts in the bottom tile of the screen. Disable this if "
+    "tiles start shifting or banding.\n"
+    "Works on every render target path. ROV and FSI apply it to every tile "
+    "since their pixel shaders directly address EDRAM and can offset sideways "
+    "or past the end of EDRAM, RTV and FBO keep sideways offsets, and tiles "
+    "that would run past the target, in the viewport.",
+    "GPU");
+
 namespace xe {
 namespace gpu {
 namespace draw_util {
@@ -649,7 +662,8 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
 }
 template <bool clamp_to_surface_pitch>
 static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
-                                  Scissor& XE_RESTRICT scissor_out) {
+                                  Scissor& XE_RESTRICT scissor_out,
+                                  bool window_offset_in_edram) {
 #if XE_ARCH_AMD64 == 1
   auto pa_sc_window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
   auto pa_sc_window_scissor_br = regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>();
@@ -730,6 +744,11 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
 
   tmp1 = _mm_max_epi32(tmp1, _mm_setzero_si128());
 
+  if (window_offset_in_edram) {
+    // Move the region back over the vertices at window offset 0.
+    tmp1 = _mm_sub_epi32(tmp1, addend);
+  }
+
   __m128i tl_in_high = _mm_unpacklo_epi64(tmp1, tmp1);
 
   __m128i final_br = _mm_max_epi32(tmp1, tl_in_high);
@@ -773,11 +792,15 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
   int32_t window_offset_disable_mask =
       ~(static_cast<int32_t>(pa_sc_window_scissor_tl.value) >> 31);
   // if (!pa_sc_window_scissor_tl.window_offset_disable) {
+  int32_t window_x_offset_applied =
+      int32_t(pa_sc_window_offset_window_x_offset & window_offset_disable_mask);
+  int32_t window_y_offset_applied =
+      int32_t(pa_sc_window_offset_window_y_offset & window_offset_disable_mask);
 
-  tl_x += pa_sc_window_offset_window_x_offset & window_offset_disable_mask;
-  tl_y += pa_sc_window_offset_window_y_offset & window_offset_disable_mask;
-  br_x += pa_sc_window_offset_window_x_offset & window_offset_disable_mask;
-  br_y += pa_sc_window_offset_window_y_offset & window_offset_disable_mask;
+  tl_x += window_x_offset_applied;
+  tl_y += window_y_offset_applied;
+  br_x += window_x_offset_applied;
+  br_y += window_y_offset_applied;
   //}
   // Screen scissor is not used by Direct3D 9 (always 0, 0 to 8192, 8192), but
   // still handled here for completeness.
@@ -808,6 +831,13 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
   tl_y = std::max(tl_y, int32_t(0));
   br_x = std::max(br_x, tl_x);
   br_y = std::max(br_y, tl_y);
+  if (window_offset_in_edram) {
+    // Move the region back over the vertices at window offset 0.
+    tl_x -= window_x_offset_applied;
+    tl_y -= window_y_offset_applied;
+    br_x -= window_x_offset_applied;
+    br_y -= window_y_offset_applied;
+  }
   scissor_out.offset[0] = uint32_t(tl_x);
   scissor_out.offset[1] = uint32_t(tl_y);
   scissor_out.extent[0] = uint32_t(br_x - tl_x);
@@ -816,12 +846,127 @@ static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
 }
 
 void GetScissor(const RegisterFile& XE_RESTRICT regs,
-                Scissor& XE_RESTRICT scissor_out, bool clamp_to_surface_pitch) {
+                Scissor& XE_RESTRICT scissor_out, bool clamp_to_surface_pitch,
+                bool window_offset_in_edram) {
   if (clamp_to_surface_pitch) {
-    return GetScissorTmpl<true>(regs, scissor_out);
+    return GetScissorTmpl<true>(regs, scissor_out, window_offset_in_edram);
   } else {
-    return GetScissorTmpl<false>(regs, scissor_out);
+    return GetScissorTmpl<false>(regs, scissor_out, window_offset_in_edram);
   }
+}
+
+int32_t GetWindowOffsetTiles(const RegisterFile& XE_RESTRICT regs,
+                             reg::RB_DEPTHCONTROL normalized_depth_control,
+                             uint32_t normalized_color_mask,
+                             bool host_render_targets_used,
+                             bool& kept_in_viewport_out) {
+  kept_in_viewport_out = false;
+  if (!cvars::window_offset_in_edram) {
+    return 0;
+  }
+
+  auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
+  int32_t window_x_offset = pa_sc_window_offset.window_x_offset;
+  int32_t window_y_offset = pa_sc_window_offset.window_y_offset;
+  // Only negative offsets go into the bases, tiling moves a tile's region up
+  // to the base with them.
+  if (!regs.Get<reg::PA_SU_SC_MODE_CNTL>().vtx_window_offset_enable ||
+      window_x_offset > 0 || window_y_offset > 0 ||
+      !(window_x_offset | window_y_offset)) {
+    return 0;
+  }
+
+  bool depth_used = normalized_depth_control.z_enable ||
+                    normalized_depth_control.stencil_enable;
+  if (!depth_used && !normalized_color_mask) {
+    return 0;
+  }
+
+  // From here on a 0 keeps the window offset in the viewport.
+  kept_in_viewport_out = true;
+
+  // Keep x offsets in the viewport on the host render target path since the
+  // render target is only the pitch wide.
+  if (window_x_offset && host_render_targets_used) {
+    return 0;
+  }
+
+  // A window scissor with window_offset_disable set can't follow the vertices
+  // to offset 0.
+  if (regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>().window_offset_disable) {
+    return 0;
+  }
+
+  auto rb_surface_info = regs.Get<reg::RB_SURFACE_INFO>();
+  uint32_t pitch_pixels = rb_surface_info.surface_pitch;
+  if (!pitch_pixels) {
+    return 0;
+  }
+
+  uint32_t msaa_samples_x_log2 =
+      uint32_t(rb_surface_info.msaa_samples >= xenos::MsaaSamples::k4X);
+  uint32_t msaa_samples_y_log2 =
+      uint32_t(rb_surface_info.msaa_samples >= xenos::MsaaSamples::k2X);
+  int32_t tile_width_pixels =
+      int32_t(xenos::kEdramTileWidthSamples >> msaa_samples_x_log2);
+  int32_t tile_height_pixels =
+      int32_t(xenos::kEdramTileHeightSamples >> msaa_samples_y_log2);
+  if (window_x_offset % tile_width_pixels ||
+      window_y_offset % tile_height_pixels) {
+    return 0;
+  }
+
+  uint32_t pitch_tiles_at_32bpp = ((pitch_pixels << msaa_samples_x_log2) +
+                                   (xenos::kEdramTileWidthSamples - 1)) /
+                                  xenos::kEdramTileWidthSamples;
+  int32_t window_offset_tiles =
+      (window_y_offset / tile_height_pixels) * int32_t(pitch_tiles_at_32bpp) +
+      window_x_offset / tile_width_pixels;
+  if (host_render_targets_used) {
+    // Keep the offset in the viewport when the rows at offset 0 reach past the
+    // host render target, it holds one EDRAM addressing period of rows past
+    // its base and a wrapped base can put them there.
+    int32_t scissor_bottom =
+        std::min(int32_t(regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>().br_y),
+                 int32_t(regs.Get<reg::PA_SC_SCREEN_SCISSOR_BR>().br_y) -
+                     window_y_offset);
+    uint32_t rows_end_tiles_at_32bpp =
+        uint32_t((scissor_bottom + tile_height_pixels - 1) /
+                 tile_height_pixels) *
+        pitch_tiles_at_32bpp;
+    if (rows_end_tiles_at_32bpp > xenos::kEdramTileCount) {
+      return 0;
+    }
+
+    // Keep the offset in the viewport when 64bpp rows cross into the next
+    // period, the draw is bound to the period its scissor top is in.
+    uint32_t rows_end_tiles_at_64bpp = rows_end_tiles_at_32bpp * 2;
+    if (rows_end_tiles_at_64bpp > xenos::kEdramTileCount) {
+      int32_t scissor_top =
+          std::max(int32_t(regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>().tl_y),
+                   int32_t(regs.Get<reg::PA_SC_SCREEN_SCISSOR_TL>().tl_y) -
+                       window_y_offset);
+      uint32_t rows_start_tiles_at_64bpp =
+          uint32_t(scissor_top / tile_height_pixels) * pitch_tiles_at_32bpp * 2;
+      if (rows_end_tiles_at_64bpp > xenos::kEdramTileCount * 2 ||
+          rows_start_tiles_at_64bpp < xenos::kEdramTileCount) {
+        for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+          if (!(normalized_color_mask & (uint32_t(0b1111) << (4 * i)))) {
+            continue;
+          }
+          if (xenos::IsColorRenderTargetFormat64bpp(
+                  regs.Get<reg::RB_COLOR_INFO>(
+                          reg::RB_COLOR_INFO::rt_register_indices[i])
+                      .color_format)) {
+            return 0;
+          }
+        }
+      }
+    }
+  }
+
+  kept_in_viewport_out = false;
+  return window_offset_tiles;
 }
 
 uint32_t GetNormalizedColorMask(const RegisterFile& regs,
