@@ -7,7 +7,10 @@
  ******************************************************************************
  */
 
+#include <cstring>
+
 #include "xenia/base/logging.h"
+#include "xenia/base/memory.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_flags.h"
 #include "xenia/kernel/kernel_state.h"
@@ -115,7 +118,19 @@ DECLARE_XAM_EXPORT1(XamNuiSkeletonGetBestSkeletonIndex, kNone, kStub);
    - most require message calls to xam in 0x0002Bxxx area
 */
 
-dword_result_t XamNuiCameraTiltGetStatus_entry(lpvoid_t unk) {
+struct X_NUI_TILT_STATUS {
+  xe::be<uint32_t> size;
+  xe::be<uint32_t> signature;  // 'XtSs'
+  xe::be<uint32_t> unknown_08[6];
+  // Gravity direction.
+  xe::be<int32_t> accelerometer[3];
+  // 0x1 and 0x2 moving, 0x4 stalled, 0x8 error.
+  xe::be<uint32_t> flags;
+  xe::be<uint32_t> unknown_30[8];
+};
+static_assert_size(X_NUI_TILT_STATUS, 0x50);
+
+dword_result_t XamNuiCameraTiltGetStatus_entry(lpvoid_t status_ptr) {
   /* Notes:
      - Used by XamNuiCameraElevationGetAngle, and XamNuiCameraSetFlags
      - if it returns anything greater than -1 then both above functions continue
@@ -123,7 +138,21 @@ dword_result_t XamNuiCameraTiltGetStatus_entry(lpvoid_t unk) {
      - unk2
      - Ghidra decompile fails
   */
-  return X_E_FAIL;
+  // TODO(knuckleslee): Report the Kinect accelerometer and motor status.
+  constexpr int32_t kAccelerometerOneG = 819;
+  auto status = status_ptr.as<X_NUI_TILT_STATUS*>();
+  if (!status || status->size < sizeof(X_NUI_TILT_STATUS) ||
+      status->signature != make_fourcc("XtSs")) {
+    return X_E_FAIL;
+  }
+  std::memset(status->unknown_08, 0, sizeof(status->unknown_08));
+  // Level and not moving.
+  status->accelerometer[0] = 0;
+  status->accelerometer[1] = kAccelerometerOneG;
+  status->accelerometer[2] = 0;
+  status->flags = 0;
+  std::memset(status->unknown_30, 0, sizeof(status->unknown_30));
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamNuiCameraTiltGetStatus, kNone, kStub);
 
@@ -132,12 +161,13 @@ dword_result_t XamNuiCameraElevationGetAngle_entry(lpqword_t unk1,
   /* Notes:
      - Xam 12611 does not show what unk1 is used for (Ghidra)
   */
-  uint32_t tilt_status[] = {0x58745373, 0x50};  // (XtSs)? & bytes to copy
-  X_STATUS result = XamNuiCameraTiltGetStatus_entry(tilt_status);
+  X_NUI_TILT_STATUS tilt_status = {};
+  tilt_status.size = sizeof(tilt_status);
+  tilt_status.signature = make_fourcc("XtSs");
+  X_STATUS result = XamNuiCameraTiltGetStatus_entry(&tilt_status);
   if (XSUCCEEDED(result)) {
-    // operation here
-    // *unk1 = output1
-    // *unk2 = output2
+    // TODO(knuckleslee): Output the angle once its format is known.
+    result = X_E_FAIL;
   }
   return result;
 }
@@ -170,11 +200,13 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
   int Controller_Type = XamNuiCameraGetTiltControllerType_entry();
 
   if (Controller_Type == 1) {
-    uint32_t tilt_status[] = {0x58745373, 0x50};  // (XtSs)? & bytes to copy
-    result = XamNuiCameraTiltGetStatus_entry(tilt_status);
+    X_NUI_TILT_STATUS tilt_status = {};
+    tilt_status.size = sizeof(tilt_status);
+    tilt_status.signature = make_fourcc("XtSs");
+    result = XamNuiCameraTiltGetStatus_entry(&tilt_status);
     if (XSUCCEEDED(result)) {
-      // op here
-      // result =
+      // TODO(knuckleslee): Apply the flags once their meaning is known.
+      result = X_E_FAIL;
     }
   }
   return result;
