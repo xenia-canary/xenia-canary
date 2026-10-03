@@ -47,11 +47,36 @@ class SDLInputDriver final : public InputDriver {
   virtual InputType GetInputType() const override;
 
  private:
+  // Gyro aiming state. Angular velocities are in degrees per second, using the
+  // SDL sensor axes: [0] pitch, [1] yaw, [2] roll.
+  struct GyroState {
+    bool enabled;
+    // Samples accumulated since the last GetState call.
+    float sum[3];
+    uint32_t count;
+    float last_avg[3];
+    uint32_t last_sample_ticks;
+    // Bias (drift) calibration, updated whenever the controller is held still.
+    bool calibrated;
+    float bias[3];
+    float window_sum[3];
+    float window_min[3];
+    float window_max[3];
+    uint32_t window_count;
+    uint64_t window_start_us;
+    // Output smoothing for small movements.
+    float smoothed[2];
+    // Last stick offset applied, to bump packet_number when it changes.
+    int16_t last_rx;
+    int16_t last_ry;
+  };
+
   struct ControllerState {
     SDL_GameController* sdl;
     X_INPUT_CAPABILITIES caps;
     X_INPUT_STATE state;
     bool state_changed;
+    GyroState gyro;
   };
 
   enum class RepeatState {
@@ -73,6 +98,8 @@ class SDLInputDriver final : public InputDriver {
   void OnControllerDeviceRemoved(const SDL_Event& event);
   void OnControllerDeviceAxisMotion(const SDL_Event& event);
   void OnControllerDeviceButtonChanged(const SDL_Event& event);
+  void OnControllerSensorUpdate(const SDL_Event& event);
+  void ApplyGyro(ControllerState& controller, X_INPUT_STATE* out_state);
 
   inline uint64_t AnalogToKeyfield(const X_INPUT_GAMEPAD& gamepad) const;
   std::optional<size_t> GetControllerIndexFromInstanceID(
@@ -88,6 +115,8 @@ class SDLInputDriver final : public InputDriver {
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
+  // Sensor events arrive on the UI thread, GetState is called by the guest.
+  std::mutex gyro_mutex_;
 };
 
 }  // namespace sdl
