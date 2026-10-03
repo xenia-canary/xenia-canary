@@ -829,51 +829,37 @@ uint4_xe XeDXT3AAs1111TwoBlocksRowToBGRA4(uint2_xe halfblocks) {
   // Only 16 bits of half-blocks are used. X contains pixels 0123, Y - 4567 (in
   // the image, halfblocks.y is halfblocks.x + 8).
   // In the row, X contains pixels 01, Y - 23, Z - 45, W - 67.
-  // Assuming alpha in LSB and red in MSB, because it's consistent with how
-  // DXT1/DXT3/DXT5 color components and CTX1 X/Y are ordered in:
-  // http://fileadmin.cs.lth.se/cs/Personal/Michael_Doggett/talks/unc-xenos-doggett.pdf
-  // (LSB on the right, MSB on the left.)
-  // TODO(Triang3l): Investigate this better, 4D53085B is the only known game
-  // that uses it (for lighting in certain places - one of easy to notice usages
-  // is the T-shaped (or somewhat H-shaped) metal beams in the beginning of the
-  // first mission), however the contents don't say anything about the channel
-  // order.
+  // Red is in bit 0 of each pixel, alpha in bit 3. 5345084D samples the mask
+  // as k_DXT3A_AS_1_1_1_1 and reads it as k_16_16_16_16 integer data in a
+  // vertex shader, testing bit 0 of each 4 bit group to cull empty rectangles.
+  // Reversing the component order culls all rectangles and breaks tracking.
+  // TODO(knuckleslee): Verify with 4D53085B, which uses this format for
+  // lighting on the T-shaped metal beams near the start of the first mission.
   uint4_xe row =
-      (((halfblocks.xxyy >> uint2_xe(3u, 11u).xyxy) & 1u) << 8u) |
-      (((halfblocks.xxyy >> uint2_xe(7u, 15u).xyxy) & 1u) << 24u) |
-      (((halfblocks.xxyy >> uint2_xe(2u, 10u).xyxy) & 1u) << 4u) |
-      (((halfblocks.xxyy >> uint2_xe(6u, 14u).xyxy) & 1u) << 20u) |
-      ((halfblocks.xxyy >> uint2_xe(1u, 9u).xyxy) & 1u) |
-      (((halfblocks.xxyy >> uint2_xe(5u, 13u).xyxy) & 1u) << 16u) |
-      (((halfblocks.xxyy >> uint2_xe(0u, 8u).xyxy) & 1u) << 12u) |
-      (((halfblocks.xxyy >> uint2_xe(4u, 12u).xyxy) & 1u) << 28u);
+      (((halfblocks.xxyy >> uint2_xe(0u, 8u).xyxy) & 1u) << 8u) |
+      (((halfblocks.xxyy >> uint2_xe(4u, 12u).xyxy) & 1u) << 24u) |
+      (((halfblocks.xxyy >> uint2_xe(1u, 9u).xyxy) & 1u) << 4u) |
+      (((halfblocks.xxyy >> uint2_xe(5u, 13u).xyxy) & 1u) << 20u) |
+      ((halfblocks.xxyy >> uint2_xe(2u, 10u).xyxy) & 1u) |
+      (((halfblocks.xxyy >> uint2_xe(6u, 14u).xyxy) & 1u) << 16u) |
+      (((halfblocks.xxyy >> uint2_xe(3u, 11u).xyxy) & 1u) << 12u) |
+      (((halfblocks.xxyy >> uint2_xe(7u, 15u).xyxy) & 1u) << 28u);
   row |= row << 1u;
   row |= row << 2u;
   return row;
 }
 
 uint4_xe XeDXT3AAs1111TwoBlocksRowToARGB4(uint2_xe halfblocks) {
-  // Only 16 bits of half-blocks are used. X contains pixels 0123, Y - 4567 (in
-  // the image, halfblocks.y is halfblocks.x + 8).
-  // In the row, X contains pixels 01, Y - 23, Z - 45, W - 67.
-  // Assuming alpha in LSB and red in MSB, because it's consistent with how
-  // DXT1/DXT3/DXT5 color components and CTX1 X/Y are ordered in:
-  // http://fileadmin.cs.lth.se/cs/Personal/Michael_Doggett/talks/unc-xenos-doggett.pdf
-  // (LSB on the right, MSB on the left.)
-  // TODO(Triang3l): Investigate this better, 4D53085B is the only known game
-  // that uses it (for lighting in certain places - one of easy to notice usages
-  // is the T-shaped (or somewhat H-shaped) metal beams in the beginning of the
-  // first mission), however the contents don't say anything about the channel
-  // order.
+  // Same component order as XeDXT3AAs1111TwoBlocksRowToBGRA4.
   uint4_xe row =
-      (((halfblocks.xxyy >> uint2_xe(3u, 11u).xyxy) & 1u) << 4u) |
-      (((halfblocks.xxyy >> uint2_xe(7u, 15u).xyxy) & 1u) << 20u) |
-      (((halfblocks.xxyy >> uint2_xe(2u, 10u).xyxy) & 1u) << 8u) |
-      (((halfblocks.xxyy >> uint2_xe(6u, 14u).xyxy) & 1u) << 24u) |
-      (((halfblocks.xxyy >> uint2_xe(1u, 9u).xyxy) & 1u) << 12u) |
-      (((halfblocks.xxyy >> uint2_xe(5u, 13u).xyxy) & 1u) << 28u) |
-      ((halfblocks.xxyy >> uint2_xe(0u, 8u).xyxy) & 1u) |
-      (((halfblocks.xxyy >> uint2_xe(4u, 12u).xyxy) & 1u) << 16u);
+      (((halfblocks.xxyy >> uint2_xe(0u, 8u).xyxy) & 1u) << 4u) |
+      (((halfblocks.xxyy >> uint2_xe(4u, 12u).xyxy) & 1u) << 20u) |
+      (((halfblocks.xxyy >> uint2_xe(1u, 9u).xyxy) & 1u) << 8u) |
+      (((halfblocks.xxyy >> uint2_xe(5u, 13u).xyxy) & 1u) << 24u) |
+      (((halfblocks.xxyy >> uint2_xe(2u, 10u).xyxy) & 1u) << 12u) |
+      (((halfblocks.xxyy >> uint2_xe(6u, 14u).xyxy) & 1u) << 28u) |
+      ((halfblocks.xxyy >> uint2_xe(3u, 11u).xyxy) & 1u) |
+      (((halfblocks.xxyy >> uint2_xe(7u, 15u).xyxy) & 1u) << 16u);
   row |= row << 1u;
   row |= row << 2u;
   return row;
