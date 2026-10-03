@@ -50,6 +50,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_NO_SUCH_FILE                           ((X_STATUS)0xC000000FL)
 #define X_STATUS_INVALID_DEVICE_REQUEST                 ((X_STATUS)0xC0000010L)
 #define X_STATUS_END_OF_FILE                            ((X_STATUS)0xC0000011L)
+#define X_STATUS_IO_DEVICE_ERROR                        ((X_STATUS)0xC0000186L)
 #define X_STATUS_NO_MEMORY                              ((X_STATUS)0xC0000017L)
 #define X_STATUS_ALREADY_COMMITTED                      ((X_STATUS)0xC0000021L)
 #define X_STATUS_ACCESS_DENIED                          ((X_STATUS)0xC0000022L)
