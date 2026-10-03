@@ -164,6 +164,16 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
              args->unk1.get(), args->unk2.get(), args->unk3.get());
       return X_E_SUCCESS;
     }
+    case 0x0002C009: {
+      // Registers (non-zero) or removes (zero) a Kinect identity callback.
+      // TODO(knuckleslee): Invoke the callback for identity notifications.
+      if (!buffer_ptr) {
+        return X_E_INVALIDARG;
+      }
+      XELOGD("XamApp: Kinect identity callback {:08X}",
+             xe::load_and_swap<uint32_t>(buffer));
+      return X_E_SUCCESS;
+    }
     // Causes dashboard to correctly process language/region change. It does not
     // contain any buffer.
     case 0x8000000D: {
