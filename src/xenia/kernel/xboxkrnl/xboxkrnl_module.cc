@@ -264,7 +264,7 @@ void XboxkrnlModule::RegisterExportTable(
   export_resolver->RegisterTable("xboxkrnl.exe", &xboxkrnl_exports);
 }
 
-XboxkrnlModule::~XboxkrnlModule() = default;
+XboxkrnlModule::~XboxkrnlModule() { ShutdownCameraDevice(); }
 
 }  // namespace xboxkrnl
 }  // namespace kernel

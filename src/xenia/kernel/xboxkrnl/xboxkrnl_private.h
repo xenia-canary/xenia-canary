@@ -27,6 +27,10 @@ xe::cpu::Export* RegisterExport_xboxkrnl(xe::cpu::Export* export_entry);
 #include "xboxkrnl_module_export_groups.inc"
 #undef XE_MODULE_EXPORT_GROUP
 
+// Stops the camera worker and releases a host camera opened for
+// PsCamDeviceRequest.
+void ShutdownCameraDevice();
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe
