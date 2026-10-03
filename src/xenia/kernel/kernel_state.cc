@@ -17,6 +17,7 @@
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/ui/title_update_selector_dialog.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
@@ -30,7 +31,17 @@
 
 #include "third_party/crypto/TinySHA1.hpp"
 
-DEFINE_bool(apply_title_update, true, "Apply title updates.", "Kernel");
+DEFINE_string(
+    apply_title_update, "latest",
+    "Apply title updates.\n"
+    "Use: [off, select, latest]\n"
+    " off:\n"
+    "  No TU is applied to any title.\n"
+    " select:\n"
+    "  Allows user to select TU if multiple compatible TUs are found.\n"
+    " latest:\n"
+    "  If available always selects latest possible TU.",
+    "Kernel");
 DEFINE_bool(allow_incompatible_title_update, false,
             "Allow title updates with mismatched signatures to be applied.",
             "Kernel");
@@ -682,12 +693,7 @@ X_RESULT KernelState::FinishLoadingUserModule(
 
 X_RESULT KernelState::ApplyTitleUpdate(
     const object_ref<UserModule> title_module) {
-  const auto title_updates = FindTitleUpdate(title_module->title_id());
-  if (title_updates.empty()) {
-    return X_STATUS_SUCCESS;
-  }
-
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+  auto patch_module = LoadTitleUpdateModule(title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
   }
@@ -732,25 +738,89 @@ X_RESULT KernelState::ApplyTitleUpdate(
   return ApplyTitleUpdate(title_module, patch_module);
 }
 
-std::vector<xam::XCONTENT_DATA_INTERNAL> KernelState::FindTitleUpdate(
-    const uint32_t title_id) const {
-  if (!cvars::apply_title_update) {
-    return {};
+void KernelState::SearchAndMountTitleUpdate(
+    const uint32_t title_id, const xex2_opt_execution_info* exec_info) {
+  if (cvars::apply_title_update == "off") {
+    return;
   }
 
-  return xam_state_->content_manager()->ListContent(
-      1, 0, title_id, xe::XContentType::kInstaller,
-      xe::kernel::xam::XContentFlag::kNone);
-}
+  const auto title_updates = xam_state_->content_manager()->ListContent(
+      1, 0, title_id, XContentType::kInstaller, xam::XContentFlag::kNone);
 
-const object_ref<UserModule> KernelState::LoadTitleUpdate(
-    const xam::XCONTENT_DATA_INTERNAL* title_update,
-    const object_ref<UserModule> module) {
+  if (title_updates.empty()) {
+    return;
+  }
+
+  // Get execution info. For module and each package
+  xex2_opt_execution_info best_tu_match{};
+  xam::XCONTENT_DATA_INTERNAL selected_tu = title_updates.front();
+
+  if (title_updates.size() > 1 && cvars::apply_title_update == "latest") {
+    for (const auto& entry : title_updates) {
+      const auto package = content_manager()->OpenPackage(0, entry);
+
+      const auto package_exec_info =
+          package->GetContainerMetadata()->execution_info;
+      const auto installer_version =
+          package->GetContainerHeader()->extra_fields.installer_version;
+
+      // For now only verify title_id and media_id. If they match then it's a
+      // match.
+      if (exec_info->title_id == package_exec_info.title_id) {
+        if (exec_info->media_id != package_exec_info.media_id &&
+            !cvars::allow_incompatible_title_update) {
+          continue;
+        }
+
+        // Select TU with the highest version.
+        if (installer_version > best_tu_match.version_value) {
+          best_tu_match = package_exec_info;
+          best_tu_match.version_value = installer_version;
+          selected_tu = entry;
+        }
+      }
+    }
+  }
+
+  if (title_updates.size() > 1 && cvars::apply_title_update == "select") {
+    uint8_t selected_entry = 0xFF;
+
+    threading::Fence fence;
+    ui::WindowedAppContext& app_context =
+        kernel_state()->emulator()->display_window()->app_context();
+
+    const XLanguage user_language =
+        static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
+            kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE));
+
+    auto dialog = new kernel::xam::ui::TitleUpdateSelectorDialog(
+        kernel_state()->emulator()->imgui_drawer(),
+        kernel_state()->content_manager(), exec_info, title_updates,
+        user_language, &selected_entry);
+
+    if (app_context.CallInUIThreadSynchronous(
+            [&dialog, &fence]() { dialog->Then(&fence); })) {
+      fence.Wait();
+    }
+
+    // No TU selected. Default to none.
+    if (selected_entry == 0xFF) {
+      return;
+    }
+
+    if (selected_entry < title_updates.size()) {
+      selected_tu = title_updates[selected_entry];
+    }
+  }
+
   uint32_t content_license = 0;
   X_RESULT open_status = content_manager()->OpenContent(
-      "UPDATE", 0, *title_update, content_license,
-      module->is_multi_disc_title() ? module->disc_number() : -1);
+      "UPDATE", 0, selected_tu, content_license,
+      exec_info->disc_count > 1 ? exec_info->disc_number : -1);
+}
 
+const object_ref<UserModule> KernelState::LoadTitleUpdateModule(
+    const object_ref<UserModule> module) {
   std::string mount_path = "";
   if (!file_system()->FindSymbolicLink(kDefaultGameSymbolicLink, mount_path)) {
     return nullptr;

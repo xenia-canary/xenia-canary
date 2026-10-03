@@ -1555,25 +1555,11 @@ std::string Emulator::FindLaunchModule() {
   return path + "default.xex";
 }
 
-static std::string format_version(xex2_version version) {
-  // fmt::format doesn't like bit fields we use + to bypass it
-  return fmt::format("{}.{}.{}.{}", +version.major, +version.minor,
-                     +version.build, +version.qfe);
-}
-
 X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                   const std::string_view module_path) {
   // Making changes to the UI (setting the icon) and executing game config
   // load callbacks which expect to be called from the UI thread.
   // If not on UI thread, dispatch to it synchronously.
-  if (!display_window_->app_context().IsInUIThread()) {
-    X_STATUS result = X_STATUS_UNSUCCESSFUL;
-    display_window_->app_context().CallInUIThreadSynchronous(
-        [this, &path, &module_path, &result]() {
-          result = CompleteLaunch(path, module_path);
-        });
-    return result;
-  }
 
   // Setup NullDevices for raw HDD partition accesses
   // Cache/STFC code baked into games tries reading/writing to these
@@ -1598,7 +1584,9 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   title_id_ = std::nullopt;
   title_name_ = "";
   title_version_ = "";
-  display_window_->SetIcon(nullptr, 0);
+
+  display_window_->app_context().CallInUIThreadSynchronous(
+      [this]() { display_window_->SetIcon(nullptr, 0); });
 
   // Allow xam to request module loads.
   auto xam = kernel_state()->GetKernelModule<kernel::xam::XamModule>("xam.xex");
@@ -1616,6 +1604,9 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     return X_STATUS_NOT_SUPPORTED;
   }
 
+  kernel_state_->SearchAndMountTitleUpdate(
+      module->title_id(), module->xex_module()->opt_execution_info());
+
   X_RESULT result = kernel_state_->ApplyTitleUpdate(module);
   if (XFAILED(result)) {
     XELOGE("Failed to apply title update! Cannot run module {}", path);
@@ -1627,10 +1618,11 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     XELOGE("Failed to initialize user module {}", path);
     return result;
   }
+
   // Grab the current title ID.
-  xex2_opt_execution_info* info = nullptr;
+  const xex2_opt_execution_info* info =
+      module->xex_module()->opt_execution_info();
   uint32_t workspace_address = 0;
-  module->GetOptHeader(XEX_HEADER_EXECUTION_INFO, &info);
 
   kernel_state_->memory()
       ->LookupHeapByType(false, 0x1000)
@@ -1638,7 +1630,6 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
               kMemoryAllocationReserve | kMemoryAllocationCommit,
               kMemoryProtectRead | kMemoryProtectWrite, false,
               &workspace_address);
-
   if (!info) {
     title_id_ = 0;
   } else {
@@ -1649,173 +1640,177 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     }
   }
 
-  // Try and load the resource database (xex only).
-  if (module->title_id()) {
-    auto title_id = fmt::format("{:08X}", module->title_id());
+  display_window_->app_context().CallInUIThreadSynchronous([this, info,
+                                                            module]() {
+    // Try and load the resource database (xex only).
+    // At this point title_id_ is not optional.
+    if (title_id_.value() != 0) {
+      auto title_id = fmt::format("{:08X}", title_id_.value());
 
-    // Load the per-game configuration file and make sure updates are handled
-    // by the callbacks.
-    config::LoadGameConfig(title_id);
-    assert_true(game_config_load_callback_loop_next_index_ == SIZE_MAX);
-    game_config_load_callback_loop_next_index_ = 0;
-    while (game_config_load_callback_loop_next_index_ <
-           game_config_load_callbacks_.size()) {
-      game_config_load_callbacks_[game_config_load_callback_loop_next_index_++]
-          ->PostGameConfigLoad();
-    }
-    game_config_load_callback_loop_next_index_ = SIZE_MAX;
-
-    const auto db = kernel_state_->module_xdbf(module);
-
-    game_info_database_ =
-        std::make_unique<kernel::util::GameInfoDatabase>(db.get());
-    kernel_state_->xam_state()->LoadSpaInfo(db.get());
-
-    kernel_state_->xam_state()->user_tracker()->AddTitleToPlayedList();
-
-    if (game_info_database_->IsValid()) {
-      title_name_ = game_info_database_->GetTitleName(static_cast<XLanguage>(
-          kernel_state_->xconfig()->ReadSetting<uint32_t>(
-              kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE)));
-      XELOGI("Title name: {}", title_name_);
-
-      // Show achievments data
-      tabulate::Table table;
-      table.format().multi_byte_characters(true);
-      table.add_row({"ID", "Title", "Description", "Type", "Gamerscore"});
-
-      const std::vector<kernel::util::GameInfoDatabase::Achievement>
-          achievement_list = game_info_database_->GetAchievements();
-      for (const kernel::util::GameInfoDatabase::Achievement& entry :
-           achievement_list) {
-        const std::string type = GetAchievementTypeName(
-            kernel::xam::GetAchievementType(entry.flags));
-
-        table.add_row({fmt::format("{}", entry.id), entry.label,
-                       entry.description, type,
-                       fmt::format("{}", entry.gamerscore)});
+      // Load the per-game configuration file and make sure updates are handled
+      // by the callbacks.
+      config::LoadGameConfig(title_id);
+      assert_true(game_config_load_callback_loop_next_index_ == SIZE_MAX);
+      game_config_load_callback_loop_next_index_ = 0;
+      while (game_config_load_callback_loop_next_index_ <
+             game_config_load_callbacks_.size()) {
+        game_config_load_callbacks_
+            [game_config_load_callback_loop_next_index_++]
+                ->PostGameConfigLoad();
       }
-      XELOGI("\n-------------------- ACHIEVEMENTS --------------------\n{}",
-             table.str());
+      game_config_load_callback_loop_next_index_ = SIZE_MAX;
 
-      const std::vector<kernel::util::GameInfoDatabase::Property>
-          properties_list = game_info_database_->GetProperties();
+      const auto db = kernel_state_->module_xdbf(module);
 
-      // 4D5307DC SPA contains a lot of properties, limit properties to log.
-      const auto properties_list_limit =
-          properties_list | std::views::take(150);
+      game_info_database_ =
+          std::make_unique<kernel::util::GameInfoDatabase>(db.get());
+      kernel_state_->xam_state()->LoadSpaInfo(db.get());
 
-      table = tabulate::Table();
-      table.format().multi_byte_characters(true);
-      table.add_row({"ID", "Name", "Matchmaking", "Data Size"});
+      kernel_state_->xam_state()->user_tracker()->AddTitleToPlayedList();
 
-      for (const kernel::util::GameInfoDatabase::Property& entry :
-           properties_list_limit) {
-        std::string label =
-            string_util::remove_eol(string_util::trim(entry.description));
+      if (game_info_database_->IsValid()) {
+        title_name_ = game_info_database_->GetTitleName(static_cast<XLanguage>(
+            kernel_state_->xconfig()->ReadSetting<uint32_t>(
+                kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_LANGUAGE)));
+        XELOGI("Title name: {}", title_name_);
 
-        table.add_row({fmt::format("{:08X}", entry.id), label,
-                       entry.is_matchmaking ? "True" : "False",
-                       fmt::format("{}", entry.data_size)});
-      }
+        // Show achievments data
+        tabulate::Table table;
+        table.format().multi_byte_characters(true);
+        table.add_row({"ID", "Title", "Description", "Type", "Gamerscore"});
 
-      std::string properties_totals;
+        const std::vector<kernel::util::GameInfoDatabase::Achievement>
+            achievement_list = game_info_database_->GetAchievements();
+        for (const kernel::util::GameInfoDatabase::Achievement& entry :
+             achievement_list) {
+          const std::string type = GetAchievementTypeName(
+              kernel::xam::GetAchievementType(entry.flags));
 
-      if (properties_list.size() > properties_list_limit.size()) {
-        properties_totals =
-            fmt::format("\nProperties: {}/{}", properties_list_limit.size(),
-                        properties_list.size());
-      }
+          table.add_row({fmt::format("{}", entry.id), entry.label,
+                         entry.description, type,
+                         fmt::format("{}", entry.gamerscore)});
+        }
+        XELOGI("\n-------------------- ACHIEVEMENTS --------------------\n{}",
+               table.str());
 
-      XELOGI("\n-------------------- PROPERTIES --------------------{}\n{}",
-             properties_totals.c_str(), table.str());
+        const std::vector<kernel::util::GameInfoDatabase::Property>
+            properties_list = game_info_database_->GetProperties();
 
-      const std::vector<kernel::util::GameInfoDatabase::Context> contexts_list =
-          game_info_database_->GetContexts();
+        // 4D5307DC SPA contains a lot of properties, limit properties to log.
+        const auto properties_list_limit =
+            properties_list | std::views::take(150);
 
-      table = tabulate::Table();
-      table.format().multi_byte_characters(true);
-      table.add_row(
-          {"ID", "Name", "Matchmaking", "Default Value", "Max Value"});
+        table = tabulate::Table();
+        table.format().multi_byte_characters(true);
+        table.add_row({"ID", "Name", "Matchmaking", "Data Size"});
 
-      for (const kernel::util::GameInfoDatabase::Context& entry :
-           contexts_list) {
-        std::string label =
-            string_util::remove_eol(string_util::trim(entry.description));
+        for (const kernel::util::GameInfoDatabase::Property& entry :
+             properties_list_limit) {
+          std::string label =
+              string_util::remove_eol(string_util::trim(entry.description));
 
-        table.add_row({fmt::format("{:08X}", entry.id), label,
-                       entry.is_matchmaking ? "True" : "False",
-                       fmt::format("{}", entry.default_value),
-                       fmt::format("{}", entry.max_value)});
-      }
-      XELOGI("\n-------------------- CONTEXTS --------------------\n{}",
-             table.str());
+          table.add_row({fmt::format("{:08X}", entry.id), label,
+                         entry.is_matchmaking ? "True" : "False",
+                         fmt::format("{}", entry.data_size)});
+        }
 
-      const std::vector<kernel::util::GameInfoDatabase::StatsView> stats_views =
-          game_info_database_->GetStatsViews();
+        std::string properties_totals;
 
-      // 4D5307EA SPA contains a lot of stats, limit views to log.
-      const auto stats_views_limit = stats_views | std::views::take(100);
+        if (properties_list.size() > properties_list_limit.size()) {
+          properties_totals =
+              fmt::format("\nProperties: {}/{}", properties_list_limit.size(),
+                          properties_list.size());
+        }
 
-      table = tabulate::Table();
-      table.format().multi_byte_characters(true);
-      table.add_row({"ID", "View Type", "Name", "Skilled", "Arbitrated",
-                     "Hidden", "Team View", "Online Only"});
+        XELOGI("\n-------------------- PROPERTIES --------------------{}\n{}",
+               properties_totals.c_str(), table.str());
 
-      for (const kernel::util::GameInfoDatabase::StatsView& entry :
-           stats_views_limit) {
-        const std::string name =
-            string_util::remove_eol(string_util::trim(entry.view.name));
+        const std::vector<kernel::util::GameInfoDatabase::Context>
+            contexts_list = game_info_database_->GetContexts();
 
-        const std::string view_type =
-            kernel::xam::GetViewTypeName(entry.view.view_type);
-
-        table.add_row({fmt::format("{:08X}", entry.view.id), view_type, name,
-                       entry.view.skilled ? "True" : "False",
-                       entry.view.arbitrated ? "True" : "False",
-                       entry.view.hidden ? "True" : "False",
-                       entry.view.team_view ? "True" : "False",
-                       entry.view.online_only ? "True" : "False"});
-      }
-
-      std::string stats_view_totals;
-
-      if (stats_views.size() > stats_views_limit.size()) {
-        stats_view_totals = fmt::format(
-            "\nViews: {}/{}", stats_views_limit.size(), stats_views.size());
-      }
-      XELOGI("\n-------------------- STATS VIEWS --------------------{}\n{}",
-             stats_view_totals.c_str(), table.str());
-
-      const std::vector<kernel::util::GameInfoDatabase::PresenceMode>
-          presence_modes = game_info_database_->GetPresenceModes();
-
-      table = tabulate::Table();
-      table.format().multi_byte_characters(true);
-      table.add_row({"Context Value", "Contexts Count", "Properties Count"});
-
-      for (const kernel::util::GameInfoDatabase::PresenceMode& entry :
-           presence_modes) {
+        table = tabulate::Table();
+        table.format().multi_byte_characters(true);
         table.add_row(
-            {fmt::format("{}", entry.context_value),
-             fmt::format("{}", entry.property_bag.contexts.size()),
-             fmt::format("{}", entry.property_bag.properties.size())});
-      }
-      XELOGI("\n-------------------- PRESENCE MODES --------------------\n{}",
-             table.str());
+            {"ID", "Name", "Matchmaking", "Default Value", "Max Value"});
 
-      auto icon_block = game_info_database_->GetIcon();
-      if (!icon_block.empty()) {
-        display_window_->SetIcon(icon_block.data(), icon_block.size());
+        for (const kernel::util::GameInfoDatabase::Context& entry :
+             contexts_list) {
+          std::string label =
+              string_util::remove_eol(string_util::trim(entry.description));
+
+          table.add_row({fmt::format("{:08X}", entry.id), label,
+                         entry.is_matchmaking ? "True" : "False",
+                         fmt::format("{}", entry.default_value),
+                         fmt::format("{}", entry.max_value)});
+        }
+        XELOGI("\n-------------------- CONTEXTS --------------------\n{}",
+               table.str());
+
+        const std::vector<kernel::util::GameInfoDatabase::StatsView>
+            stats_views = game_info_database_->GetStatsViews();
+
+        // 4D5307EA SPA contains a lot of stats, limit views to log.
+        const auto stats_views_limit = stats_views | std::views::take(100);
+
+        table = tabulate::Table();
+        table.format().multi_byte_characters(true);
+        table.add_row({"ID", "View Type", "Name", "Skilled", "Arbitrated",
+                       "Hidden", "Team View", "Online Only"});
+
+        for (const kernel::util::GameInfoDatabase::StatsView& entry :
+             stats_views_limit) {
+          const std::string name =
+              string_util::remove_eol(string_util::trim(entry.view.name));
+
+          const std::string view_type =
+              kernel::xam::GetViewTypeName(entry.view.view_type);
+
+          table.add_row({fmt::format("{:08X}", entry.view.id), view_type, name,
+                         entry.view.skilled ? "True" : "False",
+                         entry.view.arbitrated ? "True" : "False",
+                         entry.view.hidden ? "True" : "False",
+                         entry.view.team_view ? "True" : "False",
+                         entry.view.online_only ? "True" : "False"});
+        }
+
+        std::string stats_view_totals;
+
+        if (stats_views.size() > stats_views_limit.size()) {
+          stats_view_totals = fmt::format(
+              "\nViews: {}/{}", stats_views_limit.size(), stats_views.size());
+        }
+        XELOGI("\n-------------------- STATS VIEWS --------------------{}\n{}",
+               stats_view_totals.c_str(), table.str());
+
+        const std::vector<kernel::util::GameInfoDatabase::PresenceMode>
+            presence_modes = game_info_database_->GetPresenceModes();
+
+        table = tabulate::Table();
+        table.format().multi_byte_characters(true);
+        table.add_row({"Context Value", "Contexts Count", "Properties Count"});
+
+        for (const kernel::util::GameInfoDatabase::PresenceMode& entry :
+             presence_modes) {
+          table.add_row(
+              {fmt::format("{}", entry.context_value),
+               fmt::format("{}", entry.property_bag.contexts.size()),
+               fmt::format("{}", entry.property_bag.properties.size())});
+        }
+        XELOGI("\n-------------------- PRESENCE MODES --------------------\n{}",
+               table.str());
+
+        auto icon_block = game_info_database_->GetIcon();
+        if (!icon_block.empty()) {
+          display_window_->SetIcon(icon_block.data(), icon_block.size());
+        }
       }
     }
-  }
-
-  // Initialize shader storage asynchronously - pipeline compilation happens in
-  // background while the game goes through its normal startup (loading screens,
-  // intro videos, etc.). With async_shader_compilation enabled, draws are
-  // skipped until pipelines are ready, so this is safe. By the time actual
-  // gameplay starts, most cached pipelines should be compiled.
+  });
+  // Initialize shader storage asynchronously - pipeline compilation happens
+  // in background while the game goes through its normal startup (loading
+  // screens, intro videos, etc.). With async_shader_compilation enabled,
+  // draws are skipped until pipelines are ready, so this is safe. By the time
+  // actual gameplay starts, most cached pipelines should be compiled.
   if (graphics_system_) {
     on_shader_storage_initialization(true);
     graphics_system_->InitializeShaderStorage(
@@ -1840,7 +1835,6 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                        module->hash().value());
     }
   }
-
   // Resume the main thread now.
   // If the debugger has requested a suspend this will just decrement the
   // suspend count without resuming it until the debugger wants.

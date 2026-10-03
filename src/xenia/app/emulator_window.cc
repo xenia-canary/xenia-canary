@@ -1980,10 +1980,7 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
       }
 
       if (selected_title_index < recently_launched_titles_.size()) {
-        app_context().CallInUIThread([this]() {
-          RunTitle(
-              recently_launched_titles_[selected_title_index].path_to_file);
-        });
+        RunTitle(recently_launched_titles_[selected_title_index].path_to_file);
       }
     } break;
     case ButtonFunctions::ClearMemoryPageState:
@@ -2264,86 +2261,92 @@ std::string EmulatorWindow::CanonicalizeFileExtension(
   return xe::utf8::lower_ascii(xe::path_to_utf8(path.extension()));
 }
 
-xe::X_STATUS EmulatorWindow::RunTitle(
-    const std::filesystem::path& path_to_file) {
-  std::error_code ec = {};
-  bool titleExists = std::filesystem::exists(path_to_file, ec);
-
-  if (path_to_file.empty() || !titleExists) {
-    std::string log_msg =
-        fmt::format("Failed to launch title path is {}.",
-                    path_to_file.empty() ? "empty" : "invalid");
-
-    if (!path_to_file.empty() && !titleExists) {
-      log_msg.append(fmt::format("\nProvided Path: {}", path_to_file));
-    }
-
-    if (ec) {
-      log_msg.append(fmt::format("\nExtended message info: {} ({:08X})",
-                                 ec.message(), ec.value()));
-    }
-
-    XELOGE("{}", log_msg);
-
-    ClearDialogs();
-
-    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
-                                        "Title Launch Failed!", log_msg);
-
-    return X_STATUS_NO_SUCH_FILE;
-  }
-
+void EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file) {
   if (emulator_->is_title_open()) {
-    // Terminate the current title and start a new title.
-    // if (emulator_->TerminateTitle() == X_STATUS_SUCCESS) {
-    //   return RunTitle(path);
-    // }
-
-    return X_STATUS_UNSUCCESSFUL;
+    return;
   }
 
-  // Prevent crashing the emulator by not loading a game if a game is already
-  // loaded.
-  auto abs_path = std::filesystem::absolute(path_to_file);
-
-  auto extension = CanonicalizeFileExtension(abs_path);
-
-  if (extension == ".7z" || extension == ".zip" || extension == ".rar" ||
-      extension == ".tar" || extension == ".gz") {
-    xe::ShowSimpleMessageBox(
-        xe::SimpleMessageBoxType::Error,
-        fmt::format(
-            "Unsupported format!\n"
-            "Xenia does not support running software in an archived format."));
-
-    return X_STATUS_UNSUCCESSFUL;
+  if (is_title_launch_in_progress_.load()) {
+    return;
   }
 
-  auto result = emulator_->LaunchPath(abs_path);
+  is_title_launch_in_progress_.store(true);
 
-  disable_hotkeys_ = false;
+  std::jthread([this, path_to_file]() {
+    std::error_code ec = {};
+    bool titleExists = std::filesystem::exists(path_to_file, ec);
 
-  ClearDialogs();
+    if (path_to_file.empty() || !titleExists) {
+      std::string log_msg =
+          fmt::format("Failed to launch title path is {}.",
+                      path_to_file.empty() ? "empty" : "invalid");
 
-  if (result) {
-    XELOGE("Failed to launch target: {:08X}", result);
+      if (!path_to_file.empty() && !titleExists) {
+        log_msg.append(fmt::format("\nProvided Path: {}", path_to_file));
+      }
 
-    xe::ui::ImGuiDialog::ShowMessageBox(
-        imgui_drawer_.get(), "Title Launch Failed!",
-        "Failed to launch title.\n\nCheck xenia.log for technical details.");
+      if (ec) {
+        log_msg.append(fmt::format("\nExtended message info: {} ({:08X})",
+                                   ec.message(), ec.value()));
+      }
 
-    emulator_->file_system()->Clear();
-  } else {
-    AddRecentlyLaunchedTitle(path_to_file, emulator_->title_name());
+      XELOGE("{}", log_msg);
+      app_context().CallInUIThreadSynchronous([this]() { ClearDialogs(); });
 
-    auto xam =
-        emulator_->kernel_state()->GetKernelModule<kernel::xam::XamModule>(
-            "xam.xex");
+      xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
+                                          "Title Launch Failed!", log_msg);
 
-    xam->loader_data().host_path = xe::path_to_utf8(abs_path);
-  }
+      is_title_launch_in_progress_.store(false);
+      return;
+    }
 
-  return result;
+    // Prevent crashing the emulator by not loading a game if a game is already
+    // loaded.
+    auto abs_path = std::filesystem::absolute(path_to_file);
+
+    auto extension = CanonicalizeFileExtension(abs_path);
+
+    if (extension == ".7z" || extension == ".zip" || extension == ".rar" ||
+        extension == ".tar" || extension == ".gz") {
+      xe::ShowSimpleMessageBox(xe::SimpleMessageBoxType::Error,
+                               fmt::format("Unsupported format!\n"
+                                           "Xenia does not support running "
+                                           "software in an archived format."));
+
+      is_title_launch_in_progress_.store(false);
+      return;
+    }
+
+    auto result = emulator_->LaunchPath(abs_path);
+
+    app_context().CallInUIThreadSynchronous([this, result, path_to_file,
+                                             abs_path]() {
+      disable_hotkeys_ = false;
+
+      ClearDialogs();
+
+      if (result) {
+        XELOGE("Failed to launch target: {:08X}", result);
+
+        xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
+                                            "Title Launch Failed!",
+                                            "Failed to launch title.\n\nCheck "
+                                            "xenia.log for technical details.");
+
+        emulator_->file_system()->Clear();
+      } else {
+        AddRecentlyLaunchedTitle(path_to_file, emulator_->title_name());
+
+        auto xam =
+            emulator_->kernel_state()->GetKernelModule<kernel::xam::XamModule>(
+                "xam.xex");
+
+        xam->loader_data().host_path = xe::path_to_utf8(abs_path);
+      }
+    });
+
+    is_title_launch_in_progress_.store(false);
+  }).detach();
 }
 
 void EmulatorWindow::RunPreviouslyPlayedTitle() {
