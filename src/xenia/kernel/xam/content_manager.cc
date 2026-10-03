@@ -19,6 +19,7 @@
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xam/user_profile.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
 #include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/vfs/devices/host_path_device.h"
@@ -30,6 +31,13 @@ namespace kernel {
 namespace xam {
 
 static std::string_view kSpaFilename = "spa.bin";
+
+static uint32_t GetContentLicense(uint32_t package_license_mask) {
+  if (static_cast<uint32_t>(cvars::license_mask) > 1) {
+    return package_license_mask | static_cast<uint32_t>(cvars::license_mask);
+  }
+  return package_license_mask;
+}
 
 ContentManager::ContentManager(KernelState* kernel_state,
                                const std::filesystem::path& root_path)
@@ -429,17 +437,14 @@ X_RESULT ContentManager::CreateContent(const std::string_view root_name,
   auto global_lock = global_critical_region_.Acquire();
 
   if (IsContentOpen(root_name)) {
-    // Already content open with this root name.
     return X_ERROR_ALREADY_EXISTS;
   }
 
   auto package_path = ResolvePackagePath(xuid, data);
   if (std::filesystem::exists(package_path)) {
-    // Exists, must not!
     return X_ERROR_ALREADY_EXISTS;
   }
 
-  // Ensure that parent path exists
   std::filesystem::create_directories(package_path.parent_path());
 
   if (!CreateAndMountPackage(package_path, root_name, data)) {
@@ -476,10 +481,7 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     return X_ERROR_FILE_NOT_FOUND;
   }
 
-  content_license = package->GetContentMetadata().license_mask;
-  if (static_cast<uint32_t>(cvars::license_mask) > 1) {
-    content_license |= cvars::license_mask;
-  }
+  content_license = GetContentLicense(package->GetPackageLicense());
 
   // Check for SPA file in package. Check it only for DLCs
   if (data.content_type == XContentType::kMarketplaceContent) {
@@ -490,6 +492,49 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     }
   }
 
+  return X_ERROR_SUCCESS;
+}
+
+X_RESULT ContentManager::OpenContent(const std::string_view root_name,
+                                     const std::string_view path,
+                                     const XContentFlag flags,
+                                     uint32_t& content_license) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  if (IsContentOpen(root_name)) {
+    // Already content open with this root name.
+    return X_ERROR_ALREADY_EXISTS;
+  }
+
+  auto entry = kernel_state_->file_system()->ResolvePath(path);
+  if (!entry || (entry->attributes() & vfs::kFileAttributeDirectory)) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  auto package = std::make_unique<ContentPackageContainer>(
+      kernel_state_->file_system(), GeneratePackageDevicePath({}));
+  const X_STATUS status = package->LoadFromGuestFile(entry);
+  if (XFAILED(status)) {
+    XELOGE("{}: Cannot open {}: {:08X}", __func__, path, status);
+    return xboxkrnl::xeRtlNtStatusToDosError(status);
+  }
+
+  // Only packages signed by Microsoft are strongly signed.
+  if ((flags & XContentFlag::kStronglySigned) &&
+      package->GetContainerHeader()->content_header.magic ==
+          XContentPackageType::kCon) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+
+  // The header has been verified, so a package that cannot be mounted has a
+  // damaged file table or block chain.
+  auto mounted_package = MountPackage(root_name, std::move(package));
+  if (!mounted_package) {
+    XELOGE("{}: Cannot mount {} as {}", __func__, path, root_name);
+    return X_ERROR_FILE_CORRUPT;
+  }
+
+  content_license = GetContentLicense(mounted_package->GetPackageLicense());
   return X_ERROR_SUCCESS;
 }
 

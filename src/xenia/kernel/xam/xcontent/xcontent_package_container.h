@@ -11,16 +11,9 @@
 #define XENIA_KERNEL_XAM_XCONTENT_XCONTENT_PACKAGE_CONTAINER_H_
 
 #include <memory>
-#include <string>
-#include <unordered_map>
+#include <vector>
 
-#include "xenia/base/memory.h"
-#include "xenia/base/mutex.h"
-#include "xenia/base/string_key.h"
-#include "xenia/base/string_util.h"
-#include "xenia/xbox.h"
-
-#include "xenia/kernel/xam/xcontent/xcontent.h"
+#include "xenia/base/mapped_memory.h"
 #include "xenia/kernel/xam/xcontent/xcontent_package.h"
 
 namespace xe {
@@ -33,6 +26,8 @@ class ContentPackageContainer final : public ContentPackage {
   ContentPackageContainer(vfs::VirtualFileSystem* file_system,
                           const std::string_view device_path,
                           const std::filesystem::path& package_path);
+  ContentPackageContainer(vfs::VirtualFileSystem* file_system,
+                          const std::string_view device_path);
   // Ctor for creating new packages.
   ContentPackageContainer(vfs::VirtualFileSystem* file_system,
                           const std::string_view device_path,
@@ -43,8 +38,11 @@ class ContentPackageContainer final : public ContentPackage {
 
   ~ContentPackageContainer();
 
+  // read-only packages from guest files. Copies kept until closed.
+  X_STATUS LoadFromGuestFile(vfs::Entry* entry);
+
   bool IsValidPackage() const {
-    return header_.content_header.is_magic_valid();
+    return package_ && header_.content_header.is_magic_valid();
   }
 
   std::unique_ptr<vfs::Device> MountPackage() override;
@@ -61,12 +59,19 @@ class ContentPackageContainer final : public ContentPackage {
   X_RESULT Flush() override { return X_ERROR_SUCCESS; }
 
  private:
+  static constexpr size_t kHeaderSize =
+      sizeof(XContentHeader) + sizeof(XContentMetadata);
+
   bool LoadPackage(const std::filesystem::path& package_path,
                    MappedMemory::Mode open_mode = MappedMemory::Mode::kRead);
   bool CreatePackage(const std::filesystem::path& package_path,
                      const XCONTENT_DATA_INTERNAL& metadata);
   bool LoadAndVerifyHeader(const std::filesystem::path& package_path);
+  // Reads the header and then the whole package from open guest files.
+  X_STATUS ReadPackage(vfs::File* file, size_t size, std::string_view path);
+  bool VerifyHeader(size_t size, std::string_view path);
 
+  std::vector<uint8_t> package_buffer_;
   std::unique_ptr<MappedMemory> package_;
 };
 

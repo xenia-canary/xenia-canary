@@ -92,6 +92,10 @@ class ContentManager {
                        const XCONTENT_DATA_INTERNAL& data,
                        uint32_t& content_license,
                        const uint32_t disc_number = -1);
+  // Guest path under the requested root name.
+  X_RESULT OpenContent(const std::string_view root_name,
+                       const std::string_view path, const XContentFlag flags,
+                       uint32_t& content_license);
   X_RESULT CloseContent(const std::string_view root_name);
   X_RESULT CloseContentByDeviceName(const std::string_view device_name);
   X_RESULT GetContentThumbnail(const uint64_t xuid,

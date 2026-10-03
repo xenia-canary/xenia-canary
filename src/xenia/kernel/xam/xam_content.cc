@@ -486,12 +486,67 @@ DECLARE_XAM_EXPORT1(XamContentCreateInternal, kContent, kImplemented);
 
 dword_result_t XamContentOpenFile_entry(
     dword_t user_index, lpstring_t root_name, lpstring_t path, dword_t flags,
-    lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
+    dword_t cache_size, lpdword_t license_mask_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
-  // TODO(gibbed): arguments assumed based on XamContentCreate.
-  return X_ERROR_FILE_NOT_FOUND;
+  if (user_index != XUserIndexNone && user_index != XUserIndexAny) {
+    const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (!user) {
+      return X_ERROR_NO_SUCH_USER;
+    }
+    if (IsGuestXUID(user->xuid())) {
+      return X_ERROR_ACCESS_DENIED;
+    }
+  }
+
+  if (!root_name || *root_name == '\0') {
+    return X_ERROR_INVALID_NAME;
+  }
+
+  std::string symlink_path = root_name.value();
+  if (!symlink_path.ends_with(':')) {
+    symlink_path += ':';
+  }
+
+  if (kernel_state()->file_system()->IsSymbolicLinkRegistered(symlink_path)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!path || *path == '\0') {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto content_manager = kernel_state()->content_manager();
+
+  auto run = [content_manager, root_name = root_name.value(),
+              path = path.value(), flags, license_mask_ptr, overlapped_ptr](
+                 uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+    uint32_t content_license = 0;
+    X_RESULT result = content_manager->OpenContent(
+        root_name, path, static_cast<XContentFlag>(flags.value()),
+        content_license);
+
+    if (license_mask_ptr && XSUCCEEDED(result)) {
+      *license_mask_ptr = content_license;
+    }
+
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = 0;
+
+    if (result && overlapped_ptr) {
+      result = X_ERROR_FUNCTION_FAILED;
+    }
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
 }
-DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kStub);
+DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kSketchy);
 
 dword_result_t XamContentFlush_entry(lpstring_t root_name,
                                      pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
