@@ -7,25 +7,25 @@ test_addo_1:
   #_ REGISTER_OUT xer 0x00000000
 
 test_addo_2:
-  #_ REGISTER_IN r4 0x7FFFFFFFFFFFFFFF
-  #_ REGISTER_IN r5 0x0000000000000001
-  addo r3, r4, r5
-  blr
-  #_ REGISTER_OUT r3 0x8000000000000000
-  #_ REGISTER_OUT xer 0xC0000000
-
-# Overflows only if judged on 32 bits.
-test_addo_3:
   #_ REGISTER_IN r4 0x000000007FFFFFFF
   #_ REGISTER_IN r5 0x0000000000000001
   addo r3, r4, r5
   blr
   #_ REGISTER_OUT r3 0x0000000080000000
+  #_ REGISTER_OUT xer 0xC0000000
+
+# Only a 64-bit overflow, which 32-bit mode ignores.
+test_addo_3:
+  #_ REGISTER_IN r4 0x7FFFFFFFFFFFFFFF
+  #_ REGISTER_IN r5 0x0000000000000001
+  addo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x8000000000000000
   #_ REGISTER_OUT xer 0x00000000
 
 # XER[OV] clears on the second add, XER[SO] does not.
 test_addo_4:
-  #_ REGISTER_IN r4 0x7FFFFFFFFFFFFFFF
+  #_ REGISTER_IN r4 0x000000007FFFFFFF
   #_ REGISTER_IN r5 0x0000000000000001
   #_ REGISTER_IN r7 0x0000000000000001
   #_ REGISTER_IN r8 0x0000000000000002
@@ -37,7 +37,7 @@ test_addo_4:
 
 # A compare into any field copies XER[SO] into that field's summary bit.
 test_addo_5:
-  #_ REGISTER_IN r4 0x7FFFFFFFFFFFFFFF
+  #_ REGISTER_IN r4 0x000000007FFFFFFF
   #_ REGISTER_IN r5 0x0000000000000001
   #_ REGISTER_IN r6 0x0000000000000000
   addo r3, r4, r5
@@ -48,7 +48,7 @@ test_addo_5:
 
 # mtxer clears the sticky bit, and the next compare must not resurrect it.
 test_addo_6:
-  #_ REGISTER_IN r4 0x7FFFFFFFFFFFFFFF
+  #_ REGISTER_IN r4 0x000000007FFFFFFF
   #_ REGISTER_IN r5 0x0000000000000001
   #_ REGISTER_IN r6 0x0000000000000000
   addo r3, r4, r5
