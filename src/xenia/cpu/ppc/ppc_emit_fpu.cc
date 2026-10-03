@@ -464,14 +464,46 @@ int InstrEmit_mffsx(PPCHIRBuilder& f, const InstrData& i) {
   return 0;
 }
 
+// mtfsb can't set the FEX and VX summaries (bits 1 and 2) directly and setting
+// an exception bit that was clear also sets FX.
+static int InstrEmit_mtfsb(PPCHIRBuilder& f, const InstrData& i, bool value) {
+  const uint32_t bit = i.X.RT;
+  if (bit != 1 && bit != 2) {
+    const uint32_t mask = 1u << (31 - bit);
+    Value* fpscr = f.LoadFPSCR();
+    Value* v;
+    if (value) {
+      // OX, UX, ZX, XX and the VX causes (bits 3-12 and 21-23).
+      const bool exception =
+          (bit >= 3 && bit <= 12) || (bit >= 21 && bit <= 23);
+      // A VX cause sets the VX summary too.
+      const uint32_t vx = exception && bit >= 7 ? 0x20000000 : 0;
+      v = f.Or(fpscr, f.LoadConstantInt32(mask | vx));
+      if (exception) {
+        Value* was_clear = f.Not(f.Shl(fpscr, int8_t(bit)));
+        v = f.Or(v, f.And(was_clear, f.LoadConstantInt32(0x80000000)));
+      }
+    } else {
+      v = f.And(fpscr, f.LoadConstantInt32(~mask));
+    }
+    f.StoreFPSCR(v);
+    // Update the system rounding mode.
+    if (mask & 0x7) {
+      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(7)));
+    }
+  }
+  if (i.X.Rc) {
+    f.CopyFPSCRToCR1();
+  }
+  return 0;
+}
+
 int InstrEmit_mtfsb0x(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_mtfsb(f, i, false);
 }
 
 int InstrEmit_mtfsb1x(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_mtfsb(f, i, true);
 }
 
 int InstrEmit_mtfsfx(PPCHIRBuilder& f, const InstrData& i) {
