@@ -438,6 +438,23 @@ dword_result_t XamShowMessageBoxUIEx_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowMessageBoxUIEx, kUI, kImplemented);
 
+// XamShowMessageBoxUI with the tracking ID of a Kinect skeleton first.
+// TODO(knuckleslee): Selecting the buttons with Kinect is not supported.
+dword_result_t XamShowNuiMessageBoxUI_entry(
+    dword_t tracking_id, dword_t user_index, lpu16string_t title_ptr,
+    lpu16string_t text_ptr, dword_t button_count, lpdword_t button_ptrs,
+    dword_t active_button, dword_t flags,
+    pointer_t<MESSAGEBOX_RESULT> result_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!overlapped) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return XamShowMessageBoxUi(user_index, title_ptr, text_ptr, button_count,
+                             button_ptrs, active_button, flags, result_ptr,
+                             overlapped);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiMessageBoxUI, kUI, kSketchy);
+
 dword_result_t XNotifyQueueUI_entry(dword_t exnq, dword_t dwUserIndex,
                                     qword_t qwAreas,
                                     lpu16string_t displayText_ptr,
@@ -595,6 +612,17 @@ dword_result_t XamShowDeviceSelectorUI_entry(
       overlapped);
 }
 DECLARE_XAM_EXPORT1(XamShowDeviceSelectorUI, kUI, kImplemented);
+
+// XamShowDeviceSelectorUI with the tracking ID of a Kinect skeleton first.
+dword_result_t XamShowNuiDeviceSelectorUI_entry(
+    dword_t tracking_id, dword_t user_index, dword_t content_type,
+    dword_t content_flags, qword_t total_requested, lpdword_t device_id_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return XamShowDeviceSelectorUI_entry(user_index, content_type, content_flags,
+                                       total_requested, device_id_ptr,
+                                       overlapped);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiDeviceSelectorUI, kUI, kSketchy);
 
 std::string disc_title = "Disc Read Error";
 std::string disc_desc =
