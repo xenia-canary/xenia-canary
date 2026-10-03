@@ -37,8 +37,11 @@ Value* SubDidCarry(PPCHIRBuilder& f, Value* v1, Value* v2) {
               f.IsFalse(trunc_v2));
 }
 
-// Full width, because sticky XER[SO] never clears a false positive.
+// Titles run in 32-bit mode, where XER[OV] reflects the low 32 bits.
 Value* AddDidOverflow(PPCHIRBuilder& f, Value* v1, Value* v2, Value* v) {
+  v1 = f.Truncate(v1, INT32_TYPE);
+  v2 = f.Truncate(v2, INT32_TYPE);
+  v = f.Truncate(v, INT32_TYPE);
   Value* a = f.Xor(v1, v);
   Value* b = f.Xor(v2, v);
   return f.CompareSLT(f.And(a, b), f.LoadZero(v->type));
@@ -401,7 +404,8 @@ int InstrEmit_negx(PPCHIRBuilder& f, const InstrData& i) {
   Value* v = f.Neg(ra);
   f.StoreGPR(i.XO.RT, v);
   if (i.XO.OE) {
-    f.StoreOV(f.CompareEQ(ra, f.LoadConstantInt64(INT64_MIN)));
+    f.StoreOV(f.CompareEQ(f.Truncate(ra, INT32_TYPE),
+                          f.LoadConstantInt32(INT32_MIN)));
   }
   if (i.XO.Rc) {
     f.UpdateCR(0, v);
