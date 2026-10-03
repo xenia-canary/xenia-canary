@@ -181,6 +181,7 @@ bool XmaContextNew::Work() {
         data.output_buffer_padding);
 
     const uint32_t pre_decode_offset = data.input_buffer_read_offset;
+    const uint32_t pre_decode_buffer = data.current_buffer;
     const uint8_t pre_remaining_subframes = current_frame_remaining_subframes_;
 
     Decode(&data);
@@ -207,6 +208,7 @@ bool XmaContextNew::Work() {
     // (offset unchanged) while Consume() drained the frame.
     if (pre_remaining_subframes == 0 &&
         data.input_buffer_read_offset == pre_decode_offset &&
+        data.current_buffer == pre_decode_buffer &&
         current_frame_remaining_subframes_ == 0) {
       XELOGAPU(
           "XmaContext {}: Decode stalled at offset {} (no progress), "
@@ -265,9 +267,18 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   data->output_buffer_read_offset = 0;
   data->output_buffer_write_offset = 0;
 
+  ResetStreamStateLocked();
+}
+
+void XmaContextNew::ResetStreamStateLocked() {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  split_frame_pending_ = false;
+  split_frame_offset_ = 0;
+  split_frame_size_ = 0;
+  split_next_packet_index_ = 0;
+  split_frame_loop_end_ = false;
 }
 
 void XmaContextNew::Disable() { set_is_enabled(false); }
@@ -277,6 +288,8 @@ void XmaContextNew::Release() {
   std::lock_guard<xe_mutex> lock(lock_);
   assert_true(is_allocated());
 
+  ResetStreamStateLocked();
+  set_is_enabled(false);
   set_is_allocated(false);
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
   std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));  // Zero it.
@@ -399,6 +412,10 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   uint8_t* current_input_buffer = GetCurrentInputBuffer(data);
 
+  if (split_frame_pending_) {
+    ResumeSplitFrame(data);
+    return;
+  }
   input_buffer_.fill(0);
 
   // Detect if we're about to decode the loop end frame (before
@@ -498,13 +515,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     const uint8_t* next_packet =
         GetNextPacket(data, next_packet_index, current_input_packet_count);
     if (!next_packet) {
-      // Next buffer not available yet.  We can't resolve the split header
-      // without it, so consume (swap) the current buffer and move on.
-      XELOGAPU(
-          "XmaContext {}: Split frame header at packet {}, next buffer "
-          "unavailable — swapping input buffer",
-          id(), packet_index);
-      SwapInputBuffer(data);
+      SaveSplitFrame(data, packet, relative_offset, 0, next_packet_index,
+                     current_input_packet_count, is_loop_end_frame);
       return;
     }
     std::memcpy(input_buffer_.data(), packet + kBytesPerPacketHeader,
@@ -549,10 +561,9 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
           GetNextPacket(data, next_packet_index, current_input_packet_count);
 
       if (!next_packet) {
-        // Error path
-        // Decoder probably should return error here
-        // Not sure what error code should be returned
-        data->error_status = 4;
+        SaveSplitFrame(data, packet, relative_offset,
+                       packet_info.current_frame_size_, next_packet_index,
+                       current_input_packet_count, is_loop_end_frame);
         return;
       }
       // Copy next packet to buffer
@@ -581,42 +592,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   const uint32_t padding_start = static_cast<uint8_t>(
       stream.Copy(xma_frame_.data() + 1, packet_info.current_frame_size_));
 
-  raw_frame_.fill(0);
-
-  PrepareDecoder(data->sample_rate, bool(data->is_stereo));
-  PreparePacket(packet_info.current_frame_size_, padding_start);
-  if (DecodePacket(av_context_, av_packet_, av_frame_)) {
-    // dump_raw(av_frame_, id());
-    ConvertFrame(reinterpret_cast<const uint8_t**>(&av_frame_->data),
-                 bool(data->is_stereo), raw_frame_.data());
-    current_frame_remaining_subframes_ = 4 << data->is_stereo;
-
-    // Loop end: limit output to subframes 0..loop_subframe_end.
-    if (is_loop_end_frame) {
-      loop_frame_output_limit_ = (data->loop_subframe_end + 1)
-                                 << data->is_stereo;
-      XELOGAPU(
-          "XmaContext {}: Loop end frame - limiting output to {} subframes "
-          "(loop_subframe_end={})",
-          id(), loop_frame_output_limit_, data->loop_subframe_end);
-    } else {
-      loop_frame_output_limit_ = 0;
-    }
-
-    // Loop start: skip leading subframes per loop_subframe_skip.
-    // Reducing remaining shifts the read offset forward in Consume().
-    if (loop_start_skip_pending_) {
-      const uint8_t skip = data->loop_subframe_skip << data->is_stereo;
-      if (skip < current_frame_remaining_subframes_) {
-        XELOGAPU(
-            "XmaContext {}: Loop start - skipping {} leading subframes "
-            "(loop_subframe_skip={})",
-            id(), skip, data->loop_subframe_skip);
-        current_frame_remaining_subframes_ -= skip;
-      }
-      loop_start_skip_pending_ = false;
-    }
-  }
+  DecodeFrame(data, packet_info.current_frame_size_, padding_start,
+              is_loop_end_frame);
 
   // Compute where to go next.
   if (!packet_info.isLastFrameInPacket()) {
@@ -673,6 +650,128 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   }
   data->input_buffer_read_offset = next_input_offset;
   return;
+}
+
+void XmaContextNew::SaveSplitFrame(
+    XMA_CONTEXT_DATA* data, const uint8_t* packet, uint32_t relative_offset,
+    uint32_t frame_size, uint32_t next_packet_index, uint32_t packet_count,
+    bool is_loop_end_frame) {
+  const uint32_t next_buffer = data->current_buffer ^ 1;
+  if (next_packet_index < packet_count ||
+      (data->IsInputBufferValid(next_buffer) &&
+       !data->GetInputBufferAddress(next_buffer))) {
+    // An inaccessible packet inside a valid buffer is not input starvation.
+    data->error_status = 4;
+    return;
+  }
+  std::memcpy(input_buffer_.data(), packet + kBytesPerPacketHeader,
+              kBytesPerPacketData);
+  split_frame_pending_ = true;
+  // Emulator traces for title 55530825 show a split 15-bit frame header
+  // with 11 bits in the consumed packet and its continuation supplied on a
+  // later kick. Preserve the packet payload so that header and body splits
+  // decode identically whether the next buffer is available now or later.
+  split_frame_offset_ = relative_offset - kBitsPerPacketHeader;
+  split_frame_size_ = frame_size;
+  split_next_packet_index_ = next_packet_index - packet_count;
+  split_frame_loop_end_ = is_loop_end_frame;
+  // Preserve the fragment before releasing the buffer for guest refill.
+  // Waiting for a continuation is not a decoding error.
+  SwapInputBuffer(data);
+}
+
+void XmaContextNew::ResumeSplitFrame(XMA_CONTEXT_DATA* data) {
+  if (!data->GetCurrentInputBufferAddress()) {
+    split_frame_pending_ = false;
+    data->error_status = 4;
+    return;
+  }
+  const uint32_t packet_count =
+      GetCurrentInputBufferSize(data) / kBytesPerPacket;
+  if (split_next_packet_index_ >= packet_count) {
+    split_next_packet_index_ -= packet_count;
+    SwapInputBuffer(data);
+    return;
+  }
+  const uint32_t packet_index = split_next_packet_index_;
+  const uint8_t* packet =
+      GetCurrentInputBuffer(data) + packet_index * kBytesPerPacket;
+  std::memcpy(input_buffer_.data() + kBytesPerPacketData,
+              packet + kBytesPerPacketHeader, kBytesPerPacketData);
+  BitStream stream(input_buffer_.data(), input_buffer_.size() * 8);
+  stream.SetOffset(split_frame_offset_);
+  const uint32_t frame_size =
+      split_frame_size_ ? split_frame_size_ : uint32_t(stream.Peek(15));
+  if (frame_size < kBitsPerFrameHeader + 1 ||
+      frame_size == xma::kMaxFrameLength ||
+      frame_size > stream.BitsRemaining()) {
+    split_frame_pending_ = false;
+    data->error_status = 4;
+    return;
+  }
+  xma_frame_.fill(0);
+  const uint32_t padding_start =
+      uint32_t(stream.Copy(xma_frame_.data() + 1, frame_size));
+  split_frame_pending_ = false;
+  DecodeFrame(data, frame_size, padding_start, split_frame_loop_end_);
+
+  const uint32_t first_frame = xma::GetPacketFrameOffset(packet);
+  if (first_frame <= kMaxFrameSizeinBits) {
+    data->input_buffer_read_offset =
+        packet_index * kBitsPerPacket + first_frame;
+    return;
+  }
+  const uint8_t skip = xma::GetPacketSkipCount(packet);
+  const uint32_t next_packet = packet_index + (skip == 0xFF ? 1 : skip + 1);
+  const uint32_t offset =
+      GetNextPacketReadOffset(data, next_packet, packet_count);
+  if (next_packet >= packet_count || offset == kBitsPerPacketHeader) {
+    SwapInputBuffer(data);
+  }
+  data->input_buffer_read_offset = offset;
+}
+
+void XmaContextNew::DecodeFrame(XMA_CONTEXT_DATA* data, uint32_t frame_size,
+                                uint32_t padding_start,
+                                bool is_loop_end_frame) {
+  raw_frame_.fill(0);
+
+  if (PrepareDecoder(data->sample_rate, bool(data->is_stereo)) < 0) {
+    return;
+  }
+  PreparePacket(frame_size, padding_start);
+  if (DecodePacket(av_context_, av_packet_, av_frame_)) {
+    // dump_raw(av_frame_, id());
+    ConvertFrame(reinterpret_cast<const uint8_t**>(&av_frame_->data),
+                 bool(data->is_stereo), raw_frame_.data());
+    current_frame_remaining_subframes_ = 4 << data->is_stereo;
+
+    // Loop end: limit output to subframes 0..loop_subframe_end.
+    if (is_loop_end_frame) {
+      loop_frame_output_limit_ = (data->loop_subframe_end + 1)
+                                 << data->is_stereo;
+      XELOGAPU(
+          "XmaContext {}: Loop end frame - limiting output to {} subframes "
+          "(loop_subframe_end={})",
+          id(), loop_frame_output_limit_, data->loop_subframe_end);
+    } else {
+      loop_frame_output_limit_ = 0;
+    }
+
+    // Loop start: skip leading subframes per loop_subframe_skip.
+    // Reducing remaining shifts the read offset forward in Consume().
+    if (loop_start_skip_pending_) {
+      const uint8_t skip = data->loop_subframe_skip << data->is_stereo;
+      if (skip < current_frame_remaining_subframes_) {
+        XELOGAPU(
+            "XmaContext {}: Loop start - skipping {} leading subframes "
+            "(loop_subframe_skip={})",
+            id(), skip, data->loop_subframe_skip);
+        current_frame_remaining_subframes_ -= skip;
+      }
+      loop_start_skip_pending_ = false;
+    }
+  }
 }
 
 //  Frame & Packet searching methods
