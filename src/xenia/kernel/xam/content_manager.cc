@@ -31,6 +31,57 @@ namespace xam {
 
 static std::string_view kSpaFilename = "spa.bin";
 
+namespace {
+
+// Owns a copy of a guest file for devices that cannot map their entries.
+class HeapMappedMemory final : public MappedMemory {
+ public:
+  explicit HeapMappedMemory(std::vector<uint8_t> buffer)
+      : buffer_(std::move(buffer)) {
+    data_ = buffer_.data();
+    size_ = buffer_.size();
+  }
+
+ private:
+  std::vector<uint8_t> buffer_;
+};
+
+std::unique_ptr<MappedMemory> MapGuestFile(vfs::Entry* entry) {
+  if (entry->can_map()) {
+    return entry->OpenMapped(MappedMemory::Mode::kRead, 0, 0);
+  }
+
+  vfs::File* file = nullptr;
+  const X_STATUS open_result =
+      entry->Open(vfs::FileAccess::kGenericRead, &file);
+  if (XFAILED(open_result)) {
+    XELOGE("{}: Cannot open {}: {:08X}", __func__, entry->path(), open_result);
+    return nullptr;
+  }
+
+  std::vector<uint8_t> buffer(entry->size());
+  size_t bytes_read = 0;
+  const X_STATUS result = file->ReadSync(buffer, 0, &bytes_read);
+  file->Destroy();
+  if (XFAILED(result) || bytes_read != buffer.size()) {
+    XELOGE("{}: Read of {} failed: {:08X}, read {:X} of {:X} bytes", __func__,
+           entry->path(), result, bytes_read, buffer.size());
+    return nullptr;
+  }
+
+  return std::make_unique<HeapMappedMemory>(std::move(buffer));
+}
+
+// Combines the license mask of a package with the license_mask cvar.
+uint32_t GetContentLicense(uint32_t package_license_mask) {
+  if (static_cast<uint32_t>(cvars::license_mask) > 1) {
+    return package_license_mask | cvars::license_mask;
+  }
+  return package_license_mask;
+}
+
+}  // namespace
+
 ContentManager::ContentManager(KernelState* kernel_state,
                                const std::filesystem::path& root_path)
     : kernel_state_(kernel_state), root_path_(root_path) {}
@@ -476,10 +527,8 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     return X_ERROR_FILE_NOT_FOUND;
   }
 
-  content_license = package->GetContentMetadata().license_mask;
-  if (static_cast<uint32_t>(cvars::license_mask) > 1) {
-    content_license |= cvars::license_mask;
-  }
+  content_license =
+      GetContentLicense(package->GetContentMetadata().license_mask);
 
   // Check for SPA file in package. Check it only for DLCs
   if (data.content_type == XContentType::kMarketplaceContent) {
@@ -490,6 +539,40 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     }
   }
 
+  return X_ERROR_SUCCESS;
+}
+
+X_RESULT ContentManager::OpenContentFromGuestFile(
+    const std::string_view root_name, const std::string_view guest_path,
+    uint32_t& content_license) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  if (IsContentOpen(root_name)) {
+    XELOGW("{}: Root name {} is already in use", __func__, root_name);
+    return X_ERROR_ALREADY_EXISTS;
+  }
+
+  auto entry = kernel_state_->file_system()->ResolvePath(guest_path);
+  if (!entry || entry->attributes() & vfs::kFileAttributeDirectory) {
+    XELOGW("{}: {} is not a file", __func__, guest_path);
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  auto package = std::make_unique<ContentPackageContainer>(
+      kernel_state_->file_system(), GeneratePackageDevicePath({}),
+      MapGuestFile(entry));
+  if (!package->IsValidPackage()) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  auto mounted_package = MountPackage(root_name, std::move(package));
+  if (!mounted_package) {
+    XELOGE("{}: Cannot mount {} as {}", __func__, guest_path, root_name);
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  content_license =
+      GetContentLicense(mounted_package->GetContentMetadata().license_mask);
   return X_ERROR_SUCCESS;
 }
 
