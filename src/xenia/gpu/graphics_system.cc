@@ -319,24 +319,26 @@ void GraphicsSystem::WriteRegisterThunk(void* ppc_context, GraphicsSystem* gs,
   gs->WriteRegister(addr, value);
 }
 
+std::map<uint32_t, uint32_t> registor_map = {
+    {0x0F00, 0x08100748},  // RB_EDRAM_TIMING
+    {0x0F01, 0x0000200E},  // RB_BC_CONTROL
+    {0x0F2D, 0xBBBBBB00},  // Unk, used in dash 1838
+    {0x1844,
+     0x00000000},  // AVIVO_D1GRPH_PRIMARY_SURFACE_ADDRESS, double check return
+    {0x1951, 0x00000001},   // interrupt status, return vblank
+    {0x1961, 0x050002D0}};  // AVIVO_D1MODE_VIEWPORT_SIZE, Screen res -
+                            // 1280x720, maximum [width(0x0FFF), height(0x0FFF)]
+
 uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
   uint32_t r = (addr & 0xFFFF) / 4;
 
-  switch (r) {
-    case 0x0F00:  // RB_EDRAM_TIMING
-      return 0x08100748;
-    case 0x0F01:  // RB_BC_CONTROL
-      return 0x0000200E;
-    case 0x1951:  // interrupt status
-      return 1;   // vblank
-    case 0x1961:  // AVIVO_D1MODE_VIEWPORT_SIZE
-                  // Screen res - 1280x720
-                  // maximum [width(0x0FFF), height(0x0FFF)]
-      return 0x050002D0;
-    default:
-      if (!register_file()->IsValidRegister(r)) {
-        XELOGE("GPU: Read from unknown register ({:04X})", r);
-      }
+  if (registor_map.contains(r)) {
+    return registor_map.at(r);
+  } else {
+    if (!register_file()->IsValidRegister(r)) {
+      XELOGE("GPU: Read from unknown register ({:04X})", r);
+      assert_always();
+    }
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
@@ -346,15 +348,15 @@ uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
 void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
   uint32_t r = (addr & 0xFFFF) / 4;
 
-  switch (r) {
-    case 0x01C5:  // CP_RB_WPTR
-      command_processor_->UpdateWritePointer(value);
-      break;
-    case 0x1844:  // AVIVO_D1GRPH_PRIMARY_SURFACE_ADDRESS
-      break;
-    default:
+  if (r == 0x01C5) {  // CP_RB_WPTR
+    command_processor_->UpdateWritePointer(value);
+  } else if (registor_map.contains(r)) {
+    registor_map[r] = value;
+  } else {
+    if (!register_file()->IsValidRegister(r)) {
       XELOGW("Unknown GPU register {:04X} write: {:08X}", r, value);
-      break;
+      assert_always();
+    }
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
