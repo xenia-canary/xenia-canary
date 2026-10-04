@@ -52,6 +52,15 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
                         uint32_t& x_blocks, uint32_t& y_blocks,
                         uint32_t& z_blocks);
 
+// Gets a base-level block's physical address in a non-stacked 2D texture,
+// adding the packed mip offset where needed. FetchTexture applies the sampler's
+// address modes before calling this.
+// Currently only used by the interpreter's very limited texture fetch support.
+// Doesn't select mip levels or handle other dimensions.
+uint32_t GetBaseBlockAddress2D(const xenos::xe_gpu_texture_fetch_t& fetch,
+                               uint32_t x_blocks, uint32_t y_blocks,
+                               uint32_t bytes_per_block_log2);
+
 // Both tiled and linear textures, as it appears from Direct3D 9 texture
 // alignment disassembly (where the parameter indicating whether the texture is
 // tiled only has effect on aligning the width to max(256 / block size, 32)
