@@ -9,11 +9,14 @@
 
 #include "xenia/gpu/shader_interpreter.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
 
+#include "xenia/base/byte_order.h"
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/texture_address.h"
 
 namespace xe {
 namespace gpu {
@@ -21,6 +24,7 @@ namespace gpu {
 void ShaderInterpreter::Execute() {
   // For more consistency between invocations in case of a malformed shader.
   state_.Reset();
+  texture_fetch_unsupported_ = false;
 
   const uint32_t* bool_constants =
       &register_file_[XE_GPU_REG_SHADER_CONSTANT_BOOL_000_031];
@@ -99,8 +103,15 @@ void ShaderInterpreter::Execute() {
             }
             if (fetch_instr.opcode() == ucode::FetchOpcode::kVertexFetch) {
               ExecuteVertexFetchInstruction(fetch_instr.vertex_fetch());
+            } else if (fetch_instr.opcode() ==
+                       ucode::FetchOpcode::kTextureFetch) {
+              ExecuteTextureFetchInstruction(fetch_instr.texture_fetch());
+            } else if (fetch_instr.opcode() ==
+                       ucode::FetchOpcode::kSetTextureLod) {
+              // The level of detail doesn't affect single-level textures.
             } else {
-              // Not supporting texture fetching (very complex).
+              // Not supporting other texture instructions (very complex).
+              texture_fetch_unsupported_ = true;
               float zero_result[4] = {};
               StoreFetchResult(fetch_instr.dest(),
                                fetch_instr.is_dest_relative(),
@@ -1042,6 +1053,149 @@ void ShaderInterpreter::StoreFetchResult(uint32_t dest, bool is_dest_relative,
         break;
     }
   }
+}
+
+namespace {
+
+// The only supported texture format is k_16_16_16_16.
+constexpr uint32_t kSupportedTexelComponentCount = 4;
+constexpr uint32_t kSupportedTexelSizeLog2 = 3;
+// The texture fetch constant has the pitch in units of 32 texels and the base
+// address in units of 4096 bytes.
+constexpr uint32_t kTexturePitchTexelsLog2 = 5;
+constexpr uint32_t kTextureBaseAddressBytesLog2 = 12;
+constexpr uint64_t kPhysicalAddressSpaceSize = UINT64_C(1) << 29;
+// Larger texel coordinates are only reached with an infinity or NaN.
+constexpr float kMaxTexelCoordinateAbs = 1e9f;
+
+bool IsTextureFetchClampModeSupported(xenos::ClampMode clamp_mode) {
+  return clamp_mode == xenos::ClampMode::kRepeat ||
+         clamp_mode == xenos::ClampMode::kClampToEdge;
+}
+
+}  // namespace
+
+bool ShaderInterpreter::FetchTexture(ucode::TextureFetchInstruction instr,
+                                     float* result_out) const {
+  // Supports point-sampled single-level 2D textures with unsigned integer
+  // k_16_16_16_16 data.
+  if (instr.dimension() != xenos::FetchOpDimension::k2D) {
+    return false;
+  }
+  xenos::xe_gpu_texture_fetch_t fetch_constant =
+      register_file_.GetTextureFetch(instr.fetch_constant_index());
+  if (fetch_constant.type != xenos::FetchConstantType::kTexture ||
+      fetch_constant.dimension != xenos::DataDimension::k2DOrStacked ||
+      fetch_constant.stacked || fetch_constant.mip_max_level ||
+      fetch_constant.sign_x != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_y != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_z != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_w != xenos::TextureSign::kUnsigned ||
+      !IsTextureFetchClampModeSupported(fetch_constant.clamp_x) ||
+      !IsTextureFetchClampModeSupported(fetch_constant.clamp_y) ||
+      fetch_constant.mag_filter != xenos::TextureFilter::kPoint ||
+      fetch_constant.min_filter != xenos::TextureFilter::kPoint ||
+      instr.has_mag_filter() || instr.has_min_filter() ||
+      instr.offset_x() != 0.0f || instr.offset_y() != 0.0f ||
+      instr.use_register_gradients() || fetch_constant.exp_adjust ||
+      !fetch_constant.num_format ||
+      fetch_constant.format != xenos::TextureFormat::k_16_16_16_16 ||
+      (fetch_constant.endianness != xenos::Endian::kNone &&
+       fetch_constant.endianness != xenos::Endian::k8in16)) {
+    return false;
+  }
+
+  const uint32_t sizes[2] = {uint32_t(fetch_constant.size_2d.width) + 1,
+                             uint32_t(fetch_constant.size_2d.height) + 1};
+  const xenos::ClampMode clamp_modes[2] = {fetch_constant.clamp_x,
+                                           fetch_constant.clamp_y};
+  const float* source = GetTempRegister(instr.src(), instr.is_src_relative());
+  uint32_t src_swizzle = instr.src_swizzle();
+  uint32_t texel[2];
+  for (uint32_t i = 0; i < 2; ++i) {
+    float coordinate_float = source[(src_swizzle >> (2 * i)) & 0b11];
+    if (!instr.unnormalized_coordinates()) {
+      coordinate_float *= float(sizes[i]);
+    }
+    float floored = std::floor(coordinate_float);
+    if (!(std::fabs(floored) < kMaxTexelCoordinateAbs)) {
+      return false;
+    }
+    int64_t coordinate = int64_t(floored);
+    if (clamp_modes[i] == xenos::ClampMode::kRepeat) {
+      coordinate %= int64_t(sizes[i]);
+      if (coordinate < 0) {
+        coordinate += int64_t(sizes[i]);
+      }
+    } else {
+      coordinate =
+          std::min(std::max(coordinate, int64_t(0)), int64_t(sizes[i]) - 1);
+    }
+    texel[i] = uint32_t(coordinate);
+  }
+
+  const uint32_t pitch_texels = uint32_t(fetch_constant.pitch)
+                                << kTexturePitchTexelsLog2;
+  uint64_t texel_offset;
+  if (fetch_constant.tiled) {
+    texel_offset = uint64_t(
+        texture_address::Tiled2D(int32_t(texel[0]), int32_t(texel[1]),
+                                 pitch_texels, kSupportedTexelSizeLog2));
+  } else {
+    texel_offset = (uint64_t(texel[1]) * pitch_texels + uint64_t(texel[0]))
+                   << kSupportedTexelSizeLog2;
+  }
+  uint64_t address =
+      ((uint64_t(fetch_constant.base_address) << kTextureBaseAddressBytesLog2) +
+       texel_offset) &
+      (kPhysicalAddressSpaceSize - 1);
+  constexpr uint32_t kTexelSize = UINT32_C(1) << kSupportedTexelSizeLog2;
+  if (address + kTexelSize > kPhysicalAddressSpaceSize) {
+    return false;
+  }
+  if (trace_writer_) {
+    trace_writer_->WriteMemoryRead(uint32_t(address), kTexelSize);
+  }
+  const uint8_t* texel_memory = memory_.TranslatePhysical(uint32_t(address));
+  float data[kSupportedTexelComponentCount];
+  for (uint32_t i = 0; i < kSupportedTexelComponentCount; ++i) {
+    uint16_t value;
+    std::memcpy(&value, texel_memory + sizeof(uint16_t) * i, sizeof(value));
+    // k8in16 swaps the bytes of each 16-bit component.
+    if (fetch_constant.endianness == xenos::Endian::k8in16) {
+      value = xe::byte_swap(value);
+    }
+    data[i] = float(value);
+  }
+
+  float result[4];
+  for (uint32_t i = 0; i < 4; ++i) {
+    ucode::FetchDestinationSwizzle component_swizzle =
+        ucode::GetFetchDestinationComponentSwizzle(fetch_constant.swizzle, i);
+    if (component_swizzle == ucode::FetchDestinationSwizzle::k0) {
+      result[i] = 0.0f;
+    } else if (component_swizzle == ucode::FetchDestinationSwizzle::k1) {
+      result[i] = 1.0f;
+    } else if (uint32_t(component_swizzle) < kSupportedTexelComponentCount) {
+      result[i] = data[uint32_t(component_swizzle)];
+    } else {
+      return false;
+    }
+  }
+  std::memcpy(result_out, result, sizeof(result));
+  return true;
+}
+
+void ShaderInterpreter::ExecuteTextureFetchInstruction(
+    ucode::TextureFetchInstruction instr) {
+  // Returns zero and sets texture_fetch_unsupported_ if the fetch is not
+  // supported.
+  float result[4] = {};
+  if (!FetchTexture(instr, result)) {
+    texture_fetch_unsupported_ = true;
+  }
+  StoreFetchResult(instr.dest(), instr.is_dest_relative(), instr.dest_swizzle(),
+                   result);
 }
 
 void ShaderInterpreter::ExecuteVertexFetchInstruction(

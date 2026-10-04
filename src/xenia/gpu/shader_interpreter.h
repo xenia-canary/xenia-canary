@@ -48,22 +48,32 @@ class ShaderInterpreter {
   const float* temp_registers() const { return &temp_registers_[0][0]; }
   float* temp_registers() { return &temp_registers_[0][0]; }
 
-  static bool CanInterpretShader(const Shader& shader) {
+  // With allow_basic_texture_fetches, check was_texture_fetch_unsupported
+  // after executing.
+  static bool CanInterpretShader(const Shader& shader,
+                                 bool allow_basic_texture_fetches = false) {
     assert_true(shader.is_ucode_analyzed());
-    // Texture instructions are not very common in vertex shaders (and not used
-    // in Direct3D 9's internal rectangles such as clears) and are extremely
-    // complex, not implemented.
-    if (shader.uses_texture_fetch_instruction_results()) {
+    // Texture instructions are extremely complex, only a small subset is
+    // implemented.
+    if (!allow_basic_texture_fetches &&
+        shader.uses_texture_fetch_instruction_results()) {
       return false;
     }
     return true;
+  }
+
+  // Whether a texture fetch in the last Execute was unsupported and returned
+  // zero.
+  bool was_texture_fetch_unsupported() const {
+    return texture_fetch_unsupported_;
   }
   void SetShader(xenos::ShaderType shader_type, const uint32_t* ucode) {
     shader_type_ = shader_type;
     ucode_ = ucode;
   }
-  void SetShader(const Shader& shader) {
-    assert_true(CanInterpretShader(shader));
+  void SetShader(const Shader& shader,
+                 bool allow_basic_texture_fetches = false) {
+    assert_true(CanInterpretShader(shader, allow_basic_texture_fetches));
     SetShader(shader.type(), shader.ucode_dwords());
   }
 
@@ -126,6 +136,10 @@ class ShaderInterpreter {
   void StoreFetchResult(uint32_t dest, bool is_dest_relative, uint32_t swizzle,
                         const float* value);
   void ExecuteVertexFetchInstruction(ucode::VertexFetchInstruction instr);
+  // Returns false if the fetch is not supported.
+  bool FetchTexture(ucode::TextureFetchInstruction instr,
+                    float* result_out) const;
+  void ExecuteTextureFetchInstruction(ucode::TextureFetchInstruction instr);
 
   const RegisterFile& register_file_;
   const Memory& memory_;
@@ -133,6 +147,8 @@ class ShaderInterpreter {
   TraceWriter* trace_writer_ = nullptr;
 
   ExportSink* export_sink_ = nullptr;
+
+  bool texture_fetch_unsupported_ = false;
 
   xenos::ShaderType shader_type_ = xenos::ShaderType::kVertex;
   const uint32_t* ucode_ = nullptr;
