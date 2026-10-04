@@ -327,6 +327,8 @@ uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
       return 0x08100748;
     case 0x0F01:  // RB_BC_CONTROL
       return 0x0000200E;
+    case 0x0F2D:  // RB_HSIO_INTERFACE_ALIGNER_VALUE
+      return 0x00BBBBBB;
     case 0x1951:  // interrupt status
       return 1;   // vblank
     case 0x1961:  // AVIVO_D1MODE_VIEWPORT_SIZE
@@ -349,6 +351,10 @@ void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
   switch (r) {
     case 0x01C5:  // CP_RB_WPTR
       command_processor_->UpdateWritePointer(value);
+      break;
+    case 0x0F01:  // RB_BC_CONTROL
+      break;
+    case 0x0F2D:  // RB_HSIO_INTERFACE_ALIGNER_VALUE
       break;
     case 0x1844:  // AVIVO_D1GRPH_PRIMARY_SURFACE_ADDRESS
       break;
