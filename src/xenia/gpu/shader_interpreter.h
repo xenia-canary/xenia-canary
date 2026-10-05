@@ -48,13 +48,15 @@ class ShaderInterpreter {
   const float* temp_registers() const { return &temp_registers_[0][0]; }
   float* temp_registers() { return &temp_registers_[0][0]; }
 
-  // With allow_basic_texture_fetches, check was_texture_fetch_unsupported
-  // after executing.
+  // Rejects shaders with texture fetch results unless explicitly allowed.
+  // That (admittedly rare) path only supports point sampled unsigned integer
+  // 16_16_16_16 data from the base level of a 2D texture.
+  // Allowing texture fetches doesn't confirm that the shader can execute, and
+  // support also depends on bound constants checked during Execute.
+  // Other formats and sampling modes might need support in the future.
   static bool CanInterpretShader(const Shader& shader,
                                  bool allow_basic_texture_fetches = false) {
     assert_true(shader.is_ucode_analyzed());
-    // Texture instructions are extremely complex, only a small subset is
-    // implemented.
     if (!allow_basic_texture_fetches &&
         shader.uses_texture_fetch_instruction_results()) {
       return false;
@@ -62,8 +64,8 @@ class ShaderInterpreter {
     return true;
   }
 
-  // Whether a texture fetch in the last Execute was unsupported and returned
-  // zero.
+  // Whether an executed texture instruction is supported.
+  // Reset at the start of each Execute.
   bool was_texture_fetch_unsupported() const {
     return texture_fetch_unsupported_;
   }
@@ -136,7 +138,9 @@ class ShaderInterpreter {
   void StoreFetchResult(uint32_t dest, bool is_dest_relative, uint32_t swizzle,
                         const float* value);
   void ExecuteVertexFetchInstruction(ucode::VertexFetchInstruction instr);
-  // Returns false if the fetch is not supported.
+  // Reads a point sampled texel and applies the texture swizzle.
+  // StoreFetchResult applies the instruction destination swizzle afterwards.
+  // Unsupported fetch leave result_out unchanged.
   bool FetchTexture(ucode::TextureFetchInstruction instr,
                     float* result_out) const;
   void ExecuteTextureFetchInstruction(ucode::TextureFetchInstruction instr);
