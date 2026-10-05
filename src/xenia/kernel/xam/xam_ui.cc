@@ -596,56 +596,55 @@ dword_result_t XamShowDeviceSelectorUI_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowDeviceSelectorUI, kUI, kImplemented);
 
+std::string disc_title = "Disc Read Error";
+std::string disc_desc =
+    "There's been an issue reading content from the game disc.\nThis is "
+    "likely caused by bad or unimplemented file IO calls.";
+
 void XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
+  // uses XamIsDataCenterMode & XamShowAndWaitForMessageBoxEx, same as
+  // XamShowNuiDirtyDiscErrorUI except flag = 1, user index always set to
+  // XUserIndexAny
   if (cvars::headless) {
     assert_always();
-    exit(1);
     return;
   }
-
-  std::string title = "Disc Read Error";
-  std::string desc =
-      "There's been an issue reading content from the game disc.\nThis is "
-      "likely caused by bad or unimplemented file IO calls.";
 
   const Emulator* emulator = kernel_state()->emulator();
   xe::ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
   xeXamDispatchDialog<MessageBoxDialog>(
-      new MessageBoxDialog(imgui_drawer, title, desc, {"OK"}, 0),
+      new MessageBoxDialog(imgui_drawer, disc_title, disc_desc, {"OK"}, 0),
       [](MessageBoxDialog*) -> X_RESULT { return X_ERROR_SUCCESS; }, 0);
-  // This is death, and should never return.
-  // TODO(benvanik): cleaner exit.
-  exit(1);
 }
-DECLARE_XAM_EXPORT1(XamShowDirtyDiscErrorUI, kUI, kImplemented);
+DECLARE_XAM_EXPORT1(XamShowDirtyDiscErrorUI, kUI, kStub);
+
+void XamShowNuiDirtyDiscErrorUI_entry(dword_t tracking_id) {
+  // xeXamNuiHudCheck & XamShowAndWaitForMessageBoxEx, same as
+  // XamShowDirtyDiscErrorUI except flag = 0x2001, user index always set to
+  // XUserIndexAny
+  if (cvars::headless) {
+    assert_always();
+    return;
+  }
+
+  const Emulator* emulator = kernel_state()->emulator();
+  xe::ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  xeXamDispatchDialog<MessageBoxDialog>(
+      new MessageBoxDialog(imgui_drawer, disc_title, disc_desc, {"OK"}, 0),
+      [](MessageBoxDialog*) -> X_RESULT { return X_ERROR_SUCCESS; }, 0);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiDirtyDiscErrorUI, kUI, kStub);
 
 dword_result_t XamShowPartyUI_entry(dword_t user_index) {
   return X_ERROR_FUNCTION_FAILED;
 }
-DECLARE_XAM_EXPORT1(XamShowPartyUI, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamShowPartyUI, kUI, kStub);
 
-dword_result_t XamShowCommunitySessionsUI_entry(unknown_t r3, unknown_t r4) {
+dword_result_t XamShowCommunitySessionsUI_entry(dword_t user_index,
+                                                dword_t social_sessions_flags) {
   return X_ERROR_FUNCTION_FAILED;
 }
-DECLARE_XAM_EXPORT1(XamShowCommunitySessionsUI, kNone, kStub);
-
-// this is supposed to do a lot more, calls another function that triggers some
-// cbs
-dword_result_t XamSetDashContext_entry(dword_t value,
-                                       const ppc_context_t& ctx) {
-  ctx->kernel_state->dash_context_ = value;
-  kernel_state()->BroadcastNotification(kXNotificationSystemDashContextChanged,
-                                        0);
-  return 0;
-}
-
-DECLARE_XAM_EXPORT1(XamSetDashContext, kNone, kImplemented);
-
-dword_result_t XamGetDashContext_entry(const ppc_context_t& ctx) {
-  return ctx->kernel_state->dash_context_;
-}
-
-DECLARE_XAM_EXPORT1(XamGetDashContext, kNone, kImplemented);
+DECLARE_XAM_EXPORT1(XamShowCommunitySessionsUI, kUI, kStub);
 
 // https://gitlab.com/GlitchyScripts/xlivelessness/-/blob/master/xlivelessness/xlive/xdefs.hpp?ref_type=heads#L1235
 dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
@@ -875,9 +874,22 @@ dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowMarketplaceDownloadItemsUI, kUI, kSketchy);
 
+dword_result_t XamShowGoldUpgradeUI_entry(dword_t user_index, dword_t unk,
+                                          dword_t title_id) {
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamShowGoldUpgradeUI, kUI, kStub);
+
+dword_result_t XamShowMultiplayerUpgradeUI_entry(dword_t user_index) {
+  return XamShowGoldUpgradeUI_entry(user_index, 6,
+                                    kernel_state()->emulator()->title_id());
+}
+DECLARE_XAM_EXPORT1(XamShowMultiplayerUpgradeUI, kUI, kImplemented);
+
 dword_result_t XamShowForcedNameChangeUI_entry(dword_t user_index) {
-  // Changes from 6 to 8 past NXE
-  return XamShowMarketplaceUIEx_entry(user_index, 6, 0, 0xffffffff, 0, 0, 0, 0);
+  return XamShowMarketplaceUIEx_entry(
+      user_index, X_MARKETPLACE_ENTRYPOINT::ForcedNameChangeV2, 0, 0xffffffff,
+      0, 0, 0, 0);
 }
 DECLARE_XAM_EXPORT1(XamShowForcedNameChangeUI, kUI, kImplemented);
 
@@ -1026,11 +1038,11 @@ dword_result_t XamShowSigninUIEx_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowSigninUIEx, kUserProfiles, kSketchy);
 
-dword_result_t XamShowNuiSigninUI_entry(dword_t unk, dword_t user_index,
+dword_result_t XamShowNuiSigninUI_entry(dword_t tracking_id, dword_t user_index,
                                         dword_t flags) {
   uint32_t users_needed = 1;
   uint32_t sent_flags = flags | static_cast<uint32_t>(SigninUiFlags::NUI);
-  // xeXamNuiHudCheck(unk) = success then continue else return
+  // xeXamNuiHudCheck(tracking_id) = success then continue else return
   return xeXamShowSigninUI(user_index, users_needed, sent_flags);
 }
 DECLARE_XAM_EXPORT1(XamShowNuiSigninUI, kUserProfiles, kSketchy);
@@ -1115,6 +1127,78 @@ dword_result_t XamShowEditProfileUI_entry(dword_t user_index) {
       close);
 }
 DECLARE_XAM_EXPORT1(XamShowEditProfileUI, kUserProfiles, kImplemented);
+
+// UI
+dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
+                                                dword_t tracking_id,
+                                                dword_t flags) {
+  /* Notes:
+     - calls XamPackageManagerGetExperienceMode(&var) with var = 1
+     - If returns less than zero or (var & 1) == 0 then get error message:
+       - if XamPackageManagerGetExperienceMode = 0 then call XamShowMessageBoxUI
+         - if XamShowMessageBoxUI returns 0x3e5 then XamShowNuiTroubleshooterUI
+     returns 0
+       - else XamShowNuiTroubleshooterUI returns 0x65b and call another func
+     - else:
+       - call XamNuiHudSetEngagedTrackingID(tracking_id) and doesn't care aboot
+     return and set var2 = 2
+       - checks if (flag & 0x800000) == 0
+         - if true call XamNuiGetDeviceStatus.
+           - if XamNuiGetDeviceStatus != 0 set var2 = 3
+       - else var2 = 4
+       - XamAppRequestLoadEx(var2);
+       - if return = 0 then XamShowNuiTroubleshooterUI returns 5
+       - else set buffer[8] and call
+     XMsgSystemProcessCall(0xfe,0x21028,buffer,0xc);
+     - XamNuiNatalCameraUpdateComplete calls
+     XamShowNuiTroubleshooterUI(0xff,0,0) if param = -0x7ff8fffe
+  */
+
+  if (cvars::headless) {
+    return 0;
+  }
+
+  const Emulator* emulator = kernel_state()->emulator();
+  xe::ui::Window* display_window = emulator->display_window();
+  xe::ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  if (display_window && imgui_drawer) {
+    xe::threading::Fence fence;
+    if (display_window->app_context().CallInUIThreadSynchronous([&]() {
+          xe::ui::ImGuiDialog::ShowMessageBox(
+              imgui_drawer, "NUI Troubleshooter",
+              "The game has indicated there is a problem with NUI (Kinect).")
+              ->Then(&fence);
+        })) {
+      kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
+      fence.Wait();
+      kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
+    }
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamShowNuiTroubleshooterUI, kNone, kStub);
+
+dword_result_t XamShowNuiHardwareRequiredUI_entry(unknown_t unk1) {
+  if (unk1 != 0) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  return XamShowNuiTroubleshooterUI_entry(0xff, 0, 0x400000);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiHardwareRequiredUI, kNone, kImplemented);
+
+dword_result_t XamShowNuiGuideUI_entry(unknown_t tracking_id, unknown_t unk2) {
+  /* Notes:
+   - calls xeXamNuiHudCheck, if success call XamAppRequestLoadEx(4) and if
+   succeed call XMsgSystemProcessCall and some sub function that ensures correct
+   h_result is returned
+   - if XamAppRequestLoadEx(4) fails return X_ERROR_ACCESS_DENIED
+  */
+
+  return X_ERROR_ACCESS_DENIED;
+}
+DECLARE_XAM_EXPORT1(XamShowNuiGuideUI, kNone, kStub);
 
 }  // namespace xam
 }  // namespace kernel

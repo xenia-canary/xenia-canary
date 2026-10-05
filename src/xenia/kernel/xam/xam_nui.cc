@@ -13,10 +13,6 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
-#include "xenia/ui/imgui_dialog.h"
-#include "xenia/ui/imgui_drawer.h"
-#include "xenia/ui/window.h"
-#include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -245,7 +241,6 @@ DECLARE_XAM_EXPORT1(XamNuiIsChatMicEnabled, kNone, kImplemented);
    - XamNuiHudGetEngagedTrackingID, XamNuiHudIsEnabled,
    XamNuiHudSetEngagedTrackingID, XamNuiHudInterpretFrame, and
    XamNuiHudGetEngagedEnrollmentIndex all utilize the same data address
-   - engaged_tracking_id set second param of XamShowNuiTroubleshooterUI
 */
 uint32_t nui_unknown_1 = 0;
 uint32_t engaged_tracking_id = 0;
@@ -289,19 +284,6 @@ dword_result_t XamNuiHudIsEnabled_entry() {
 }
 DECLARE_XAM_EXPORT1(XamNuiHudIsEnabled, kNone, kImplemented);
 
-uint32_t XeXamNuiHudCheck(dword_t unk1) {
-  uint32_t check = XamNuiHudIsEnabled_entry();
-  if (check == 0) {
-    return X_ERROR_ACCESS_DENIED;
-  }
-
-  check = XamNuiHudSetEngagedTrackingID_entry(unk1);
-  if (check != 0) {
-    return X_ERROR_FUNCTION_FAILED;
-  }
-  return X_STATUS_SUCCESS;
-}
-
 dword_result_t XamNuiHudGetInitializeFlags_entry() {
   /* HUD_Flags Notes:
      - set by 0x2B003
@@ -327,89 +309,6 @@ void XamNuiHudGetVersions_entry(lpqword_t unk1, lpqword_t unk2) {
   }
 }
 DECLARE_XAM_EXPORT1(XamNuiHudGetVersions, kNone, kImplemented);
-
-// UI
-dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
-                                                dword_t tracking_id,
-                                                dword_t flags) {
-  /* Notes:
-     - calls XamPackageManagerGetExperienceMode(&var) with var = 1
-     - If returns less than zero or (var & 1) == 0 then get error message:
-       - if XamPackageManagerGetExperienceMode = 0 then call XamShowMessageBoxUI
-         - if XamShowMessageBoxUI returns 0x3e5 then XamShowNuiTroubleshooterUI
-     returns 0
-       - else XamShowNuiTroubleshooterUI returns 0x65b and call another func
-     - else:
-       - call XamNuiHudSetEngagedTrackingID(tracking_id) and doesn't care aboot
-     return and set var2 = 2
-       - checks if (flag & 0x800000) == 0
-         - if true call XamNuiGetDeviceStatus.
-           - if XamNuiGetDeviceStatus != 0 set var2 = 3
-       - else var2 = 4
-       - XamAppRequestLoadEx(var2);
-       - if return = 0 then XamShowNuiTroubleshooterUI returns 5
-       - else set buffer[8] and call
-     XMsgSystemProcessCall(0xfe,0x21028,buffer,0xc);
-     - XamNuiNatalCameraUpdateComplete calls
-     XamShowNuiTroubleshooterUI(0xff,0,0) if param = -0x7ff8fffe
-  */
-
-  if (cvars::headless) {
-    return 0;
-  }
-
-  const Emulator* emulator = kernel_state()->emulator();
-  ui::Window* display_window = emulator->display_window();
-  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
-  if (display_window && imgui_drawer) {
-    xe::threading::Fence fence;
-    if (display_window->app_context().CallInUIThreadSynchronous([&]() {
-          xe::ui::ImGuiDialog::ShowMessageBox(
-              imgui_drawer, "NUI Troubleshooter",
-              "The game has indicated there is a problem with NUI (Kinect).")
-              ->Then(&fence);
-        })) {
-      kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
-      fence.Wait();
-      kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
-    }
-  }
-
-  return X_ERROR_SUCCESS;
-}
-DECLARE_XAM_EXPORT1(XamShowNuiTroubleshooterUI, kNone, kStub);
-
-dword_result_t XamShowNuiHardwareRequiredUI_entry(unknown_t unk1) {
-  if (unk1 != 0) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
-  return XamShowNuiTroubleshooterUI_entry(0xff, 0, 0x400000);
-}
-DECLARE_XAM_EXPORT1(XamShowNuiHardwareRequiredUI, kNone, kImplemented);
-
-dword_result_t XamShowNuiGuideUI_entry(unknown_t unk1, unknown_t unk2) {
-  /* Notes:
-   - calls an unnamed function that checks XamNuiHudIsEnabled and
-   XamNuiHudSetEngagedTrackingID
-     - if XamNuiHudIsEnabled returns false then fuctions fails return
-   X_ERROR_ACCESS_DENIED
-     - else calls XamNuiHudSetEngagedTrackingID and if returns less than 0 then
-   returns X_ERROR_FUNCTION_FAILED
-     - else return X_ERROR_SUCCESS
-   - if return offunc is X_ERROR_SUCCESS then call up ui screen
-   - else return value of func
-  */
-
-  // decompiler error stops me from knowing which param gets used here
-  uint32_t result = XeXamNuiHudCheck(0);
-  if (!result) {
-    // operations here
-    // XMsgSystemProcessCall(0xfe,0x21030, undefined local_30[8] ,0xc);
-  }
-  return result;
-}
-DECLARE_XAM_EXPORT1(XamShowNuiGuideUI, kNone, kStub);
 
 /* XamNuiIdentity Notes:
    - most require message calls to xam in 0x0002Cxxx area
