@@ -23,6 +23,7 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
+#include "xenia/gpu/resolve_vertex_processor.h"
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
@@ -3146,13 +3147,21 @@ bool VulkanCommandProcessor::IssueCopy() {
   if (!BeginSubmission(true)) {
     return false;
   }
+  if (draw_util::IsResolveUsingVertexShader(*register_file_)) {
+    return IssueCopyWithVertexShader();
+  }
 
+  return IssueCopy(nullptr);
+}
+
+bool VulkanCommandProcessor::IssueCopy(
+    const draw_util::ResolveRectangle* rectangle) {
   uint32_t written_address, written_length;
   reg::RB_COPY_DEST_INFO copy_dest_info;
   bool is_scaled;
   if (!render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_,
                                      written_address, written_length,
-                                     &copy_dest_info, &is_scaled)) {
+                                     &copy_dest_info, &is_scaled, rectangle)) {
     return false;
   }
 
@@ -3591,6 +3600,35 @@ bool VulkanCommandProcessor::IssueCopy() {
             "VulkanCommandProcessor: Failed to map readback buffer memory for "
             "resolve");
       }
+    }
+  }
+
+  return true;
+}
+
+XE_NOINLINE
+bool VulkanCommandProcessor::IssueCopyWithVertexShader() {
+  auto vertex_shader = static_cast<VulkanShader*>(active_vertex_shader());
+  if (!vertex_shader) {
+    XELOGE("Resolve draw has no vertex shader");
+    return false;
+  }
+
+  pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
+
+  ResolveVertexProcessor vertex_processor(*register_file_, *memory_,
+                                          trace_writer_);
+  if (!vertex_processor.Process(*vertex_shader)) {
+    return false;
+  }
+
+  for (const auto& rectangle : vertex_processor.rectangles()) {
+    // Resume after a readback wait from the previous rectangle.
+    if (!BeginSubmission(false)) {
+      return false;
+    }
+    if (!IssueCopy(&rectangle)) {
+      return false;
     }
   }
 

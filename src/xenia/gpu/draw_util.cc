@@ -1175,7 +1175,7 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                     uint32_t draw_resolution_scale_y,
                     bool fixed_rg16_truncated_to_minus_1_to_1,
                     bool fixed_rgba16_truncated_to_minus_1_to_1,
-                    ResolveInfo& info_out) {
+                    ResolveInfo& info_out, const ResolveRectangle* rectangle) {
   // Don't pass uninitialized values to shaders, not to leak data to frame
   // captures. Also initialize an invalid resolve to empty.
   info_out.coordinate_info.packed = 0;
@@ -1199,40 +1199,49 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
 
   // Get the extent of pixels covered by the resolve rectangle, according to the
   // top-left rasterization rule.
-  // D3D9 HACK: Vertices to use are always in vf0, and are written by the CPU.
-  xenos::xe_gpu_vertex_fetch_t fetch = regs.GetVertexFetch(0);
-  if (fetch.type != xenos::FetchConstantType::kVertex || fetch.size != 3 * 2) {
-    XELOGE("Unsupported resolve vertex buffer format");
-    assert_always();
-    return false;
-  }
-  trace_writer.WriteMemoryRead(fetch.address * sizeof(uint32_t),
-                               fetch.size * sizeof(uint32_t));
-  const float* vertices_guest = reinterpret_cast<const float*>(
-      memory.TranslatePhysical(fetch.address * sizeof(uint32_t)));
   // Most vertices have a negative half-pixel offset applied, which we reverse.
   float half_pixel_offset =
       regs.Get<reg::PA_SU_VTX_CNTL>().pix_center == xenos::PixelCenter::kD3DZero
           ? 0.5f
           : 0.0f;
-  int32_t vertices_fixed[6];
-  float vertices_swapped[6];
-  for (size_t i = 0; i < xe::countof(vertices_fixed); ++i) {
-    vertices_swapped[i] = xenos::GpuSwap(vertices_guest[i], fetch.endian);
-    vertices_fixed[i] =
-        ui::FloatToD3D11Fixed16p8(vertices_swapped[i] + half_pixel_offset);
-  }
 
-  // Inclusive.
-  int32_t x0 = std::min(std::min(vertices_fixed[0], vertices_fixed[2]),
-                        vertices_fixed[4]);
-  int32_t y0 = std::min(std::min(vertices_fixed[1], vertices_fixed[3]),
-                        vertices_fixed[5]);
-  // Exclusive.
-  int32_t x1 = std::max(std::max(vertices_fixed[0], vertices_fixed[2]),
-                        vertices_fixed[4]);
-  int32_t y1 = std::max(std::max(vertices_fixed[1], vertices_fixed[3]),
-                        vertices_fixed[5]);
+  int32_t x0, y0, x1, y1;
+  if (rectangle) {
+    // Inclusive.
+    x0 = ui::FloatToD3D11Fixed16p8(rectangle->left + half_pixel_offset);
+    y0 = ui::FloatToD3D11Fixed16p8(rectangle->top + half_pixel_offset);
+    // Exclusive.
+    x1 = ui::FloatToD3D11Fixed16p8(rectangle->right + half_pixel_offset);
+    y1 = ui::FloatToD3D11Fixed16p8(rectangle->bottom + half_pixel_offset);
+  } else {
+    // D3D9 HACK: Vertices to use are always in vf0, and are written by the CPU.
+    xenos::xe_gpu_vertex_fetch_t fetch = regs.GetVertexFetch(0);
+    if (fetch.type != xenos::FetchConstantType::kVertex ||
+        fetch.size != 3 * 2) {
+      XELOGE("Unsupported resolve vertex buffer format");
+      assert_always();
+      return false;
+    }
+    trace_writer.WriteMemoryRead(fetch.address * sizeof(uint32_t),
+                                 fetch.size * sizeof(uint32_t));
+    const float* vertices_guest = reinterpret_cast<const float*>(
+        memory.TranslatePhysical(fetch.address * sizeof(uint32_t)));
+    int32_t vertices_fixed[6];
+    for (size_t i = 0; i < xe::countof(vertices_fixed); ++i) {
+      vertices_fixed[i] = ui::FloatToD3D11Fixed16p8(
+          xenos::GpuSwap(vertices_guest[i], fetch.endian) + half_pixel_offset);
+    }
+    // Inclusive.
+    x0 = std::min(std::min(vertices_fixed[0], vertices_fixed[2]),
+                  vertices_fixed[4]);
+    y0 = std::min(std::min(vertices_fixed[1], vertices_fixed[3]),
+                  vertices_fixed[5]);
+    // Exclusive.
+    x1 = std::max(std::max(vertices_fixed[0], vertices_fixed[2]),
+                  vertices_fixed[4]);
+    y1 = std::max(std::max(vertices_fixed[1], vertices_fixed[3]),
+                  vertices_fixed[5]);
+  }
   // Top-left - include .5 (0.128 treated as 0 covered, 0.129 as 0 not covered).
   x0 = (x0 + 127) >> 8;
   y0 = (y0 + 127) >> 8;

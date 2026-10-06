@@ -23,6 +23,7 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
+#include "xenia/gpu/resolve_vertex_processor.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/gpu/xenos_zpd_report.h"
 #include "xenia/kernel/kernel_state.h"
@@ -3293,6 +3294,9 @@ bool D3D12CommandProcessor::IssueCopy() {
   if (!BeginSubmission(true)) {
     return false;
   }
+  if (draw_util::IsResolveUsingVertexShader(*register_file_)) {
+    return IssueCopy_VertexShaderPath();
+  }
   ReadbackResolveMode readback_mode = GetReadbackResolveMode();
   if (readback_mode == ReadbackResolveMode::kDisabled) {
     uint32_t written_address, written_length;
@@ -3304,13 +3308,14 @@ bool D3D12CommandProcessor::IssueCopy() {
   }
 }
 XE_NOINLINE
-bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath(
+    const draw_util::ResolveRectangle* rectangle) {
   uint32_t written_address, written_length;
   reg::RB_COPY_DEST_INFO copy_dest_info;
   bool is_scaled;
   if (!render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_,
                                      written_address, written_length,
-                                     &copy_dest_info, &is_scaled)) {
+                                     &copy_dest_info, &is_scaled, rectangle)) {
     return false;
   }
   if (!written_length) {
@@ -3592,6 +3597,45 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
       read_source->Unmap(0, &readback_write_range);
     }
   }
+  return true;
+}
+
+XE_NOINLINE
+bool D3D12CommandProcessor::IssueCopy_VertexShaderPath() {
+  auto vertex_shader = static_cast<D3D12Shader*>(active_vertex_shader());
+  if (!vertex_shader) {
+    XELOGE("Resolve draw has no vertex shader");
+    return false;
+  }
+
+  pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
+
+  ResolveVertexProcessor vertex_processor(*register_file_, *memory_,
+                                          trace_writer_);
+  if (!vertex_processor.Process(*vertex_shader)) {
+    return false;
+  }
+
+  ReadbackResolveMode readback_mode = GetReadbackResolveMode();
+
+  for (const auto& rectangle : vertex_processor.rectangles()) {
+    // Resume after a readback wait from the previous rectangle.
+    if (!BeginSubmission(false)) {
+      return false;
+    }
+
+    if (readback_mode == ReadbackResolveMode::kDisabled) {
+      uint32_t written_address, written_length;
+      if (!render_target_cache_->Resolve(
+              *memory_, *shared_memory_, *texture_cache_, written_address,
+              written_length, nullptr, nullptr, &rectangle)) {
+        return false;
+      }
+    } else if (!IssueCopy_ReadbackResolvePath(&rectangle)) {
+      return false;
+    }
+  }
+
   return true;
 }
 

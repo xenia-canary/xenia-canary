@@ -540,6 +540,16 @@ struct MemExportRange {
 void AddMemExportRanges(const RegisterFile& regs, const Shader& shader,
                         std::vector<MemExportRange>& ranges_out);
 
+// Returns whether the vertex shader should get the resolve rectangles.
+// D3D normal resolve gives three float2 vertices in vf0, which are directly
+// read without running the shader.
+inline bool IsResolveUsingVertexShader(const RegisterFile& regs) {
+  xenos::xe_gpu_vertex_fetch_t fetch = regs.GetVertexFetch(0);
+  return fetch.type != xenos::FetchConstantType::kVertex ||
+         fetch.size != 3 * 2 ||
+         regs.Get<reg::VGT_DRAW_INITIATOR>().num_indices > 3;
+}
+
 // To avoid passing values that the shader won't understand (even though
 // Direct3D 9 shouldn't pass them anyway).
 XE_NOINLINE
@@ -818,17 +828,27 @@ struct ResolveInfo {
   }
 };
 
+// GetResolveInfo adds the half pixel and window offsets.
+struct ResolveRectangle {
+  float left;
+  float top;
+  float right;
+  float bottom;
+};
+
 // Returns false if there was an error obtaining the info making it totally
 // invalid. fixed_rg[ba]16_truncated_to_minus_1_to_1 is false if 16_16[_16_16]
 // color render target formats are properly emulated as -32...32, true if
 // emulated as snorm, with range limited to -1...1, but with correct blending
 // within that range.
+// If rectangle is null, it is taken from the vertices in vf0.
 bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                     TraceWriter& trace_writer, uint32_t draw_resolution_scale_x,
                     uint32_t draw_resolution_scale_y,
                     bool fixed_rg16_truncated_to_minus_1_to_1,
                     bool fixed_rgba16_truncated_to_minus_1_to_1,
-                    ResolveInfo& info_out);
+                    ResolveInfo& info_out,
+                    const ResolveRectangle* rectangle = nullptr);
 
 // Returns log2 of the resolve copy destination texel size in bytes for the
 // destination info previously returned by a render target cache Resolve (with

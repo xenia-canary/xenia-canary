@@ -1093,7 +1093,7 @@ bool VulkanRenderTargetCache::Resolve(
     const Memory& memory, VulkanSharedMemory& shared_memory,
     VulkanTextureCache& texture_cache, uint32_t& written_address_out,
     uint32_t& written_length_out, reg::RB_COPY_DEST_INFO* copy_dest_info_out,
-    bool* written_scaled_out) {
+    bool* written_scaled_out, const draw_util::ResolveRectangle* rectangle) {
   written_address_out = 0;
   written_length_out = 0;
   if (written_scaled_out) {
@@ -1106,7 +1106,7 @@ bool VulkanRenderTargetCache::Resolve(
   if (!draw_util::GetResolveInfo(
           register_file(), memory, trace_writer_, draw_resolution_scale_x(),
           draw_resolution_scale_y(), IsFixedRG16TruncatedToMinus1To1(),
-          IsFixedRGBA16TruncatedToMinus1To1(), resolve_info)) {
+          IsFixedRGBA16TruncatedToMinus1To1(), resolve_info, rectangle)) {
     return false;
   }
 
@@ -1147,7 +1147,7 @@ bool VulkanRenderTargetCache::Resolve(
       if (!draw_util::GetResolveInfo(register_file(), memory, trace_writer_, 1,
                                      1, IsFixedRG16TruncatedToMinus1To1(),
                                      IsFixedRGBA16TruncatedToMinus1To1(),
-                                     resolve_info)) {
+                                     resolve_info, rectangle)) {
         return false;
       }
     }
