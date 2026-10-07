@@ -36,7 +36,7 @@ uint32_t lower_ascii(const uint32_t c) {
 }
 
 uint32_t upper_ascii(const uint32_t c) {
-  return c >= 'A' && c <= 'Z' ? c + 32 : c;
+  return c >= 'a' && c <= 'z' ? c - 32 : c;
 }
 
 bool equal_ascii_case(const uint32_t l, const uint32_t r) {
