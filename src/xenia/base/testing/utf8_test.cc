@@ -220,8 +220,16 @@ TEST_CASE("UTF-8 Count", "[utf8]") {
   TEST_LANGUAGE_EXAMPLES(utf8::count, results);
 }
 
-// TODO(gibbed): lower_ascii
-// TODO(gibbed): upper_ascii
+TEST_CASE("UTF-8 Lower ASCII", "[utf8]") {
+  REQUIRE(utf8::lower_ascii("Hello, World 123") == "hello, world 123");
+  REQUIRE(utf8::lower_ascii("ÆBLE ÅB") == "Æble Åb");
+}
+
+TEST_CASE("UTF-8 Upper ASCII", "[utf8]") {
+  REQUIRE(utf8::upper_ascii("Hello, World 123") == "HELLO, WORLD 123");
+  REQUIRE(utf8::upper_ascii("HELLO") == "HELLO");
+  REQUIRE(utf8::upper_ascii("æble åb") == "æBLE åB");
+}
 // TODO(gibbed): hash_fnv1a
 // TODO(gibbed): hash_fnv1a_case
 
