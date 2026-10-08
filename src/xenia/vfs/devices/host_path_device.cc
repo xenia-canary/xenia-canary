@@ -24,8 +24,7 @@ HostPathDevice::HostPathDevice(const std::string_view mount_path,
     : Device(mount_path),
       name_(package ? "STFS" : "FATX"),
       host_path_(host_path),
-      read_only_(read_only),
-      is_package_(package) {}
+      read_only_(read_only) {}
 
 HostPathDevice::~HostPathDevice() = default;
 

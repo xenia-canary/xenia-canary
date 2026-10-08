@@ -155,8 +155,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
           &bytes_read, apc_context);
 
       if (io_status_block) {
-        io_status_block->status =
-            result == X_STATUS_PENDING ? X_STATUS_SUCCESS : result;
+        io_status_block->status = result;
         io_status_block->information = bytes_read;
       }
 
@@ -164,7 +163,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
       // though were are completing immediately.
       // Low bit probably means do not queue to IO ports.
       if ((uint32_t)apc_routine_ptr & ~1) {
-        if (apc_context && XSUCCEEDED(result)) {
+        if (apc_context && result == X_STATUS_SUCCESS) {
           auto thread = XThread::GetCurrentThread();
           thread->EnqueueApc(static_cast<uint32_t>(apc_routine_ptr) & ~1u,
                              apc_context, io_status_block, 0);
@@ -181,6 +180,18 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
               kernel_memory()->TranslateVirtual(buffer.guest_address());
           patch->OnFileRead(file->entry()->name(), host_buf, buffer_length,
                             buffer.guest_address());
+        }
+      }
+
+      if (!file->is_synchronous()) {
+        // Special case for STFS. Reads return pending even at EOF.
+        if (file->device()->name() == "STFS") {
+          if (result == X_STATUS_SUCCESS || result == X_STATUS_END_OF_FILE) {
+            result = X_STATUS_PENDING;
+          }
+        } else if (buffer_length && !file->is_buffered() &&
+                   result == X_STATUS_SUCCESS) {
+          result = X_STATUS_PENDING;
         }
       }
     } else {

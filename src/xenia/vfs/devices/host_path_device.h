@@ -43,8 +43,6 @@ class HostPathDevice : public Device {
   uint32_t sectors_per_allocation_unit() const override { return 1; }
   uint32_t bytes_per_sector() const override { return 0x200; }
 
-  bool is_package_mounted() const { return is_package_; }
-
  protected:
   friend class HostPathEntry;
   std::filesystem::path host_path() const { return host_path_; }
@@ -60,8 +58,6 @@ class HostPathDevice : public Device {
   std::filesystem::path host_path_;
   std::unique_ptr<Entry> root_entry_;
   bool read_only_;
-  // Used while mounting directory as a STFS like package
-  bool is_package_;
 };
 
 }  // namespace vfs
