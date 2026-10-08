@@ -1046,7 +1046,12 @@ void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
     listener->EnqueueNotification(kXNotificationSystemUI,
                                   xam_state()->IsUIActive());
     listener->EnqueueNotification(kXNotificationSystemSignInChanged, 1);
-    listener->EnqueueNotification(kXNotificationSystemStorageDevicesChanged, 0);
+    // 415607FA: Doesn't like receiving this notification on boot. Causes game
+    // to crash.
+    if (title_id() == kDashboardID) {
+      listener->EnqueueNotification(kXNotificationSystemStorageDevicesChanged,
+                                    0);
+    }
   }
   if (!has_notified_live_startup_ && listener->mask() & kXNotifyLive) {
     has_notified_live_startup_ = true;
