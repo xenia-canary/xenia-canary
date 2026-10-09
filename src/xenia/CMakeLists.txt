@@ -52,6 +52,7 @@ endif()
 
 if(WIN32)
   add_subdirectory(apu/xaudio2)
+  add_subdirectory(debug/gdb)
   add_subdirectory(gpu/d3d12)
   add_subdirectory(hid/xinput)
   add_subdirectory(ui/d3d12)
