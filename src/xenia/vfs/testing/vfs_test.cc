@@ -38,16 +38,19 @@ TEST_CASE("Create content below a mounted device", "[vfs]") {
   } cleanup{content_root};
 
   VirtualFileSystem vfs;
-  auto content = std::make_unique<HostPathDevice>(
-      "\\Device\\Harddisk0\\Partition1\\Content", content_root, false);
-  REQUIRE(content->Initialize());
-  vfs.RegisterDevice(std::move(content));
+  constexpr std::string_view content_mount =
+      "\\Device\\Harddisk0\\Partition1\\Content";
+  REQUIRE(vfs.RegisterHostPathDevice(content_mount, content_root));
+  auto content_entry = vfs.ResolvePath(content_mount);
+  REQUIRE(content_entry);
+  REQUIRE(vfs.RegisterHostPathDevice(content_mount, content_root));
+  REQUIRE(vfs.ResolvePath(content_mount) == content_entry);
   auto raw_hdd = std::make_unique<NullDevice>(
       "\\Device\\Harddisk0", std::initializer_list<std::string>{"\\Cache0"});
   REQUIRE(raw_hdd->Initialize());
   vfs.RegisterDevice(std::move(raw_hdd));
 
-  std::string mount_path;
+  std::string mount_path = "\\Device\\Harddisk0\\Partition1\\Content";
   SECTION("Absolute HDD device path") {
     mount_path = "\\Device\\Harddisk0\\Partition1\\Content";
   }
@@ -55,6 +58,30 @@ TEST_CASE("Create content below a mounted device", "[vfs]") {
     REQUIRE(vfs.RegisterSymbolicLink(
         "content:", "\\Device\\Harddisk0\\Partition1\\Content"));
     mount_path = "content:";
+  }
+  SECTION("Folders and packages created outside the VFS") {
+    const auto external_dir =
+        content_root / "0000000000000000" / "12345678" / "00000002";
+    std::filesystem::create_directories(external_dir);
+    std::ofstream(external_dir / "ExistingPackage") << "existing data";
+    const auto guest_dir =
+        mount_path + "\\0000000000000000\\12345678\\00000002";
+    REQUIRE(vfs.ResolvePath(guest_dir));
+    auto existing = vfs.ResolvePath(guest_dir + "\\existingpackage");
+    REQUIRE(existing);
+    REQUIRE(existing->size() == 13);
+    REQUIRE(vfs.CreatePath(guest_dir + "\\existingpackage",
+                           kFileAttributeNormal) == nullptr);
+    REQUIRE(std::filesystem::file_size(external_dir / "ExistingPackage") == 13);
+    REQUIRE(vfs.ResolvePath(guest_dir + "\\ExistingPackage") == existing);
+  }
+  SECTION("Content mount after clearing a failed launch") {
+    vfs.Clear();
+    REQUIRE(vfs.RegisterHostPathDevice(content_mount, content_root));
+    auto retry_hdd = std::make_unique<NullDevice>(
+        "\\Device\\Harddisk0", std::initializer_list<std::string>{"\\Cache0"});
+    REQUIRE(retry_hdd->Initialize());
+    vfs.RegisterDevice(std::move(retry_hdd));
   }
   const std::string package_path =
       mount_path + "\\0000000000000000\\12345678\\00000002\\test-package";
@@ -81,6 +108,39 @@ TEST_CASE("Create content below a mounted device", "[vfs]") {
   REQUIRE(std::string(saved_bytes.data(), saved_bytes.size()) == "PIRS");
 
   REQUIRE(vfs.ResolvePath("\\Device\\Harddisk0\\Cache0"));
+}
+
+TEST_CASE("Nested devices match complete path components", "[vfs]") {
+  VirtualFileSystem vfs;
+  auto parent = std::make_unique<NullDevice>(
+      "\\Device\\Harddisk0\\Partition1",
+      std::initializer_list<std::string>{"\\ContentCache.pkg"});
+  auto nested = std::make_unique<NullDevice>(
+      "\\Device\\Harddisk0\\Partition1\\Content",
+      std::initializer_list<std::string>{"\\Cache.pkg"});
+  REQUIRE(parent->Initialize());
+  REQUIRE(nested->Initialize());
+  auto parent_device = parent.get();
+  auto nested_device = nested.get();
+  SECTION("Parent registered first") {
+    vfs.RegisterDevice(std::move(parent));
+    vfs.RegisterDevice(std::move(nested));
+  }
+  SECTION("Nested device registered first") {
+    vfs.RegisterDevice(std::move(nested));
+    vfs.RegisterDevice(std::move(parent));
+  }
+  auto sibling =
+      vfs.ResolvePath("\\Device\\Harddisk0\\Partition1\\ContentCache.pkg");
+  REQUIRE(sibling);
+  REQUIRE(sibling->device() == parent_device);
+  auto child =
+      vfs.ResolvePath("\\Device\\Harddisk0\\Partition1\\Content\\Cache.pkg");
+  REQUIRE(child);
+  REQUIRE(child->device() == nested_device);
+  auto root = vfs.ResolvePath("\\Device\\Harddisk0\\Partition1\\Content");
+  REQUIRE(root);
+  REQUIRE(root->device() == nested_device);
 }
 
 TEST_CASE("STFS Decode date and time", "[stfs_decode]") {

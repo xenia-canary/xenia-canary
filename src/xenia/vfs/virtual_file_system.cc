@@ -9,6 +9,7 @@
 
 #include "xenia/vfs/virtual_file_system.h"
 #include "xenia/kernel/xam/content_manager.h"
+#include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 
 #include "devices/host_path_entry.h"
@@ -38,6 +39,22 @@ void VirtualFileSystem::Clear() {
 Device* VirtualFileSystem::RegisterDevice(std::unique_ptr<Device> device) {
   auto global_lock = global_critical_region_.Acquire();
   return devices_.emplace_back(std::move(device)).get();
+}
+
+bool VirtualFileSystem::RegisterHostPathDevice(
+    const std::string_view mount_path, const std::filesystem::path& host_path) {
+  auto global_lock = global_critical_region_.Acquire();
+  for (const auto& device : devices_) {
+    if (device->mount_path() == mount_path) {
+      return true;
+    }
+  }
+  auto device = std::make_unique<HostPathDevice>(mount_path, host_path, false);
+  if (!device->Initialize()) {
+    return false;
+  }
+  RegisterDevice(std::move(device));
+  return true;
 }
 
 bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
@@ -138,10 +155,17 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   }
 
   // Find the device.
-  auto it = std::ranges::find_if(std::as_const(devices_), [&](const auto& d) {
-    return xe::utf8::starts_with(normalized_path, d->mount_path());
-  });
-  if (it == devices_.cend()) {
+  Device* device = nullptr;
+  for (const auto& candidate : devices_) {
+    const auto& mount = candidate->mount_path();
+    if (!mount.empty() && xe::utf8::starts_with(normalized_path, mount) &&
+        (normalized_path.size() == mount.size() || mount.back() == '\\' ||
+         normalized_path[mount.size()] == '\\') &&
+        (!device || mount.size() > device->mount_path().size())) {
+      device = candidate.get();
+    }
+  }
+  if (!device) {
     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is
     // not an actual problem nor something we care about.
     if (path != "ShaderDumpxe:\\CompareBackEnds") {
@@ -150,7 +174,6 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
     return nullptr;
   }
 
-  const auto& device = *it;
   auto relative_path = normalized_path.substr(device->mount_path().size());
   return device->ResolvePath(relative_path);
 }

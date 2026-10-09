@@ -306,16 +306,6 @@ X_STATUS Emulator::Setup(
   // Bring up the virtual filesystem used by the kernel.
   file_system_ = std::make_unique<xe::vfs::VirtualFileSystem>();
 
-  // Install discs may copy content packages directly to the HDD rather than
-  // using XamContentCreate. Route those accesses to the same content directory
-  // used by ContentManager, before the broader dummy HDD device is registered.
-  auto content_device = std::make_unique<vfs::HostPathDevice>(
-      "\\Device\\Harddisk0\\Partition1\\Content", content_root_, false);
-  if (!content_device->Initialize()) {
-    return X_STATUS_UNSUCCESSFUL;
-  }
-  file_system_->RegisterDevice(std::move(content_device));
-
   patcher_ = std::make_unique<xe::patcher::Patcher>(storage_root_);
 
   XELOGI("{}: Initializing Kernel...", __func__);
@@ -568,6 +558,14 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
 }
 
 X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
+  // Recreate the content mount after a failed launch clears the filesystem.
+  // Install discs use this path to copy packages directly to ContentManager's
+  // content directory without calling XamContentCreate.
+  if (!file_system_->RegisterHostPathDevice(
+          "\\Device\\Harddisk0\\Partition1\\Content", content_root_)) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
   X_STATUS mount_result = X_STATUS_SUCCESS;
 
   switch (GetFileSignature(path)) {
