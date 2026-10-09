@@ -306,6 +306,16 @@ X_STATUS Emulator::Setup(
   // Bring up the virtual filesystem used by the kernel.
   file_system_ = std::make_unique<xe::vfs::VirtualFileSystem>();
 
+  // Install discs may copy content packages directly to the HDD rather than
+  // using XamContentCreate. Route those accesses to the same content directory
+  // used by ContentManager, before the broader dummy HDD device is registered.
+  auto content_device = std::make_unique<vfs::HostPathDevice>(
+      "\\Device\\Harddisk0\\Partition1\\Content", content_root_, false);
+  if (!content_device->Initialize()) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  file_system_->RegisterDevice(std::move(content_device));
+
   patcher_ = std::make_unique<xe::patcher::Patcher>(storage_root_);
 
   XELOGI("{}: Initializing Kernel...", __func__);

@@ -157,31 +157,25 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
 
 Entry* VirtualFileSystem::CreatePath(const std::string_view path,
                                      uint32_t attributes) {
-  // Create all required directories recursively.
-  auto path_parts = xe::utf8::split_path(path);
-  if (path_parts.empty()) {
+  auto global_lock = global_critical_region_.Acquire();
+  const auto normalized_path = xe::utf8::canonicalize_guest_path(path);
+  const auto parent_path = xe::utf8::find_base_guest_path(normalized_path);
+  if (parent_path.empty()) {
     return nullptr;
   }
-  auto partial_path = std::string(path_parts[0]);
-  auto partial_entry = ResolvePath(partial_path);
-  if (!partial_entry) {
-    return nullptr;
+
+  // Start at the nearest existing parent, which may itself be a mounted
+  // device. Splitting from the first component loses the leading backslash
+  // in absolute paths and tries to resolve an unmounted "Device" directory.
+  auto parent_entry = ResolvePath(parent_path);
+  if (!parent_entry) {
+    parent_entry = CreatePath(parent_path, kFileAttributeDirectory);
   }
-  auto parent_entry = partial_entry;
-  for (size_t i = 1; i < path_parts.size() - 1; ++i) {
-    partial_path = xe::utf8::join_guest_paths(partial_path, path_parts[i]);
-    auto child_entry = ResolvePath(partial_path);
-    if (!child_entry) {
-      child_entry =
-          parent_entry->CreateEntry(path_parts[i], kFileAttributeDirectory);
-    }
-    if (!child_entry) {
-      return nullptr;
-    }
-    parent_entry = child_entry;
-  }
-  return parent_entry->CreateEntry(path_parts[path_parts.size() - 1],
-                                   attributes);
+  return parent_entry
+             ? parent_entry->CreateEntry(
+                   xe::utf8::find_name_from_guest_path(normalized_path),
+                   attributes)
+             : nullptr;
 }
 
 bool VirtualFileSystem::DeletePath(const std::string_view path) {

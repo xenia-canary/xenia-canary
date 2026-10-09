@@ -140,8 +140,20 @@ dword_result_t xeXamContentResolve(
         static_cast<uint32_t>(content_data.content_type.get()),
         content_data.file_name());
 
-    string_util::copy_truncating(path_ptr, root_device_path + relative_path,
-                                 path_size);
+    const std::string resolved_path = root_device_path + relative_path;
+    if (create_directory) {
+      // Observed with title 4D53084D: the installer requests directory
+      // creation for the HDD destination, then copies the package with
+      // NtCreateFile/NtWriteFile. Create the package file's parent directory.
+      auto filesystem = kernel_state()->file_system();
+      const auto directory = xe::utf8::find_base_guest_path(resolved_path);
+      if (!filesystem->ResolvePath(directory) &&
+          !filesystem->CreatePath(directory, vfs::kFileAttributeDirectory)) {
+        return X_ERROR_ACCESS_DENIED;
+      }
+    }
+
+    string_util::copy_truncating(path_ptr, resolved_path, path_size);
 
     // Check if it exists and try to mount that package
     // Result of buffer_ptr is sent to RtlInitAnsiString.
