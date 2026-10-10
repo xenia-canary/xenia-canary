@@ -29,6 +29,7 @@ struct CreateOptions {
   static constexpr uint32_t FILE_DIRECTORY_FILE = 0x00000001;
   // Optimization - files access will be sequential, not random.
   static constexpr uint32_t FILE_SEQUENTIAL_ONLY = 0x00000004;
+  static constexpr uint32_t FILE_NO_INTERMEDIATE_BUFFERING = 0x00000008;
   static constexpr uint32_t FILE_SYNCHRONOUS_IO_ALERT = 0x00000010;
   static constexpr uint32_t FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020;
   static constexpr uint32_t FILE_NON_DIRECTORY_FILE = 0x00000040;
@@ -94,7 +95,11 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
     bool synchronous =
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_ALERT) ||
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_NONALERT);
-    file = object_ref<XFile>(new XFile(kernel_state(), vfs_file, synchronous));
+
+    bool allow_buffering =
+        !(create_options & CreateOptions::FILE_NO_INTERMEDIATE_BUFFERING);
+    file = object_ref<XFile>(
+        new XFile(kernel_state(), vfs_file, synchronous, allow_buffering));
 
     // Handle ref is incremented, so return that.
     handle = file->handle();
@@ -148,6 +153,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
           buffer.guest_address(), buffer_length,
           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
           &bytes_read, apc_context);
+
       if (io_status_block) {
         io_status_block->status = result;
         io_status_block->information = bytes_read;
@@ -164,10 +170,6 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
         }
       }
 
-      if (!file->is_synchronous() && result != X_STATUS_END_OF_FILE) {
-        result = X_STATUS_PENDING;
-      }
-
       // Mark that we should signal the event now. We do this after
       // we have written the info out.
       signal_event = true;
@@ -178,6 +180,18 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
               kernel_memory()->TranslateVirtual(buffer.guest_address());
           patch->OnFileRead(file->entry()->name(), host_buf, buffer_length,
                             buffer.guest_address());
+        }
+      }
+
+      if (!file->is_synchronous()) {
+        // Special case for STFS. Reads return pending even at EOF.
+        if (file->device()->name() == "STFS") {
+          if (result == X_STATUS_SUCCESS || result == X_STATUS_END_OF_FILE) {
+            result = X_STATUS_PENDING;
+          }
+        } else if (buffer_length && !file->is_buffered() &&
+                   result == X_STATUS_SUCCESS) {
+          result = X_STATUS_PENDING;
         }
       }
     } else {
@@ -210,7 +224,6 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
   if (ev && signal_event) {
     ev->Set(0, false);
   }
-
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT2(NtReadFile, kFileSystem, kImplemented, kHighFrequency);

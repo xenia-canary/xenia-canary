@@ -73,7 +73,8 @@ ContentPackageDirectory::~ContentPackageDirectory() {
 }
 
 std::unique_ptr<vfs::Device> ContentPackageDirectory::MountPackage() {
-  return std::make_unique<vfs::HostPathDevice>(device_path_, host_path_, false);
+  return std::make_unique<vfs::HostPathDevice>(device_path_, host_path_, false,
+                                               true);
 }
 
 X_RESULT ContentPackageDirectory::Flush() { return WriteContentHeaderFile(); }

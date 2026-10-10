@@ -24,7 +24,8 @@ class HostPathEntry;
 class HostPathDevice : public Device {
  public:
   HostPathDevice(const std::string_view mount_path,
-                 const std::filesystem::path& host_path, bool read_only);
+                 const std::filesystem::path& host_path, bool read_only,
+                 bool package = false);
   ~HostPathDevice() override;
 
   bool Initialize() override;

@@ -16,10 +16,12 @@
 namespace xe {
 namespace kernel {
 
-XFile::XFile(KernelState* kernel_state, vfs::File* file, bool synchronous)
+XFile::XFile(KernelState* kernel_state, vfs::File* file, bool synchronous,
+             bool allow_buffering)
     : XObject(kernel_state, kObjectType),
       file_(file),
-      is_synchronous_(synchronous) {
+      is_synchronous_(synchronous),
+      allow_buffering_(allow_buffering) {
   async_event_ = threading::Event::CreateAutoResetEvent(false);
   assert_not_null(async_event_);
 }
