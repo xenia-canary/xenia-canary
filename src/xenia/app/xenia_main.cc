@@ -716,7 +716,7 @@ void EmulatorApp::EmulatorThread() {
   emulator_->on_launch.AddListener([&](auto title_id, const auto& game_title) {
     if (cvars::discord) {
       discord::DiscordPresence::PlayingTitle(
-          game_title.empty() ? "Unknown Title" : std::string(game_title));
+          game_title.empty() ? "Unknown Title" : game_title, title_id);
     }
     app_context().CallInUIThread([this]() { emulator_window_->UpdateTitle(); });
     emulator_thread_event_->Set();
