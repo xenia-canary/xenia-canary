@@ -18,6 +18,14 @@ namespace kernel {
 namespace xam {
 namespace apps {
 
+struct X_NUI_TITLE_INITIALIZE_DATA {
+  xe::be<uint64_t> xam_version;
+  xe::be<uint64_t> xtl_version;
+  xe::be<uint32_t> flags;
+  // 0x04 padding
+};
+static_assert_size(X_NUI_TITLE_INITIALIZE_DATA, 0x18);
+
 class XamApp : public App {
  public:
   explicit XamApp(KernelState* kernel_state);
