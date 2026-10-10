@@ -103,6 +103,7 @@ X_STATUS XObject::Delete() {
 bool XObject::SaveObject(ByteStream* stream) {
   stream->Write<uint32_t>(allocated_guest_object_);
   stream->Write<uint32_t>(guest_object_ptr_);
+  stream->Write<uint32_t>(guest_object_type_ptr_.load());
 
   stream->Write(uint32_t(handles_.size()));
   stream->Write(&handles_[0], handles_.size() * sizeof(X_HANDLE));
@@ -113,6 +114,7 @@ bool XObject::SaveObject(ByteStream* stream) {
 bool XObject::RestoreObject(ByteStream* stream) {
   allocated_guest_object_ = stream->Read<uint32_t>() > 0;
   guest_object_ptr_ = stream->Read<uint32_t>();
+  guest_object_type_ptr_.store(stream->Read<uint32_t>());
 
   handles_.resize(stream->Read<uint32_t>());
   stream->Read(&handles_[0], handles_.size() * sizeof(X_HANDLE));
@@ -123,6 +125,18 @@ bool XObject::RestoreObject(ByteStream* stream) {
   }
 
   return true;
+}
+
+void XObject::SetNativeType() {
+  // Use the host object type for these objects.
+  if (allocated_guest_object_) {
+    return;
+  }
+
+  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(
+      guest_object_ptr_ - sizeof(X_OBJECT_HEADER));
+
+  guest_object_type_ptr_.store(header->object_type_ptr);
 }
 
 object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,

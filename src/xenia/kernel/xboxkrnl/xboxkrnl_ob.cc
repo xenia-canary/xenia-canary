@@ -242,23 +242,6 @@ dword_result_t ObLookupAnyThreadByThreadId_entry(dword_t thread_id,
 }
 DECLARE_XBOXKRNL_EXPORT1(ObLookupAnyThreadByThreadId, kNone, kImplemented);
 
-// Objects from ObCreateObject, including those of title-defined types, have
-// their type in the X_OBJECT_HEADER before them.
-static bool ObjectHeaderHasType(uint32_t native_ptr, uint32_t object_type_ptr) {
-  if (native_ptr < sizeof(X_OBJECT_HEADER)) {
-    return false;
-  }
-  const uint32_t header_ptr = native_ptr - sizeof(X_OBJECT_HEADER);
-  BaseHeap* heap = kernel_memory()->LookupHeap(header_ptr);
-  uint32_t protect = 0;
-  if (!heap || !heap->QueryProtect(header_ptr, &protect) ||
-      !(protect & kMemoryProtectRead)) {
-    return false;
-  }
-  auto header = kernel_memory()->TranslateVirtual<X_OBJECT_HEADER*>(header_ptr);
-  return header->object_type_ptr == object_type_ptr;
-}
-
 dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
                                                dword_t object_type_ptr,
                                                lpdword_t out_object_ptr) {
@@ -272,17 +255,23 @@ dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
 
   uint32_t native_ptr = object->guest_object();
 
-  if (object_type_ptr && !ObjectHeaderHasType(native_ptr, object_type_ptr)) {
-    auto& object_types =
-        kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
-
-    if (object_types.contains(object->type())) {
-      if (object_type_ptr != object_types[object->type()]) {
-        return X_STATUS_OBJECT_TYPE_MISMATCH;
+  if (object_type_ptr) {
+    // Use guest type recorded when opening the object,
+    // or host type mapping if none was recorded.
+    uint32_t actual_type_ptr = object->guest_object_type();
+    if (!actual_type_ptr) {
+      auto& object_types =
+          kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
+      auto it = object_types.find(object->type());
+      if (it != object_types.end()) {
+        actual_type_ptr = it->second;
+      } else {
+        assert_unhandled_case(object->type());
+        native_ptr = 0xDEADF00D;
       }
-    } else {
-      assert_unhandled_case(object->type());
-      native_ptr = 0xDEADF00D;
+    }
+    if (actual_type_ptr && object_type_ptr != actual_type_ptr) {
+      return X_STATUS_OBJECT_TYPE_MISMATCH;
     }
   }
 
