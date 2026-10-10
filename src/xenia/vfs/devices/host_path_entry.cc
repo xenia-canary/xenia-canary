@@ -53,6 +53,28 @@ HostPathEntry* HostPathEntry::Create(Device* device, Entry* parent,
   return entry;
 }
 
+Entry* HostPathEntry::GetChild(const std::string_view name) {
+  auto global_lock = global_critical_region_.Acquire();
+  if (auto child = Entry::GetChild(name)) {
+    return child;
+  }
+  if (!(attributes_ & kFileAttributeDirectory) || name.empty() || name == "." ||
+      name == ".." || name.find_first_of("/\\") != name.npos) {
+    return nullptr;
+  }
+
+  // ContentManager and content imports can create files outside this device.
+  // Adopt missing entries without replacing cached objects held by open files.
+  for (const auto& info : xe::filesystem::ListFiles(host_path_)) {
+    if (xe::utf8::equal_case(xe::path_to_utf8(info.name), name)) {
+      children_.emplace_back(
+          HostPathEntry::Create(device_, this, host_path_ / info.name, info));
+      return children_.back().get();
+    }
+  }
+  return nullptr;
+}
+
 X_STATUS HostPathEntry::Open(uint32_t desired_access, File** out_file) {
   if (is_read_only() && (desired_access & (FileAccess::kFileWriteData |
                                            FileAccess::kFileAppendData))) {

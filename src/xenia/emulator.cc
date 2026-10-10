@@ -558,6 +558,14 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
 }
 
 X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
+  // Recreate the content mount after a failed launch clears the filesystem.
+  // Install discs use this path to copy packages directly to ContentManager's
+  // content directory without calling XamContentCreate.
+  if (!file_system_->RegisterHostPathDevice(
+          "\\Device\\Harddisk0\\Partition1\\Content", content_root_)) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+
   X_STATUS mount_result = X_STATUS_SUCCESS;
 
   switch (GetFileSignature(path)) {

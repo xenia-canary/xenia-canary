@@ -31,6 +31,9 @@ class VirtualFileSystem {
   void Clear();
 
   Device* RegisterDevice(std::unique_ptr<Device> device);
+  // Register a writable host directory unless the device is already mounted.
+  bool RegisterHostPathDevice(const std::string_view mount_path,
+                              const std::filesystem::path& host_path);
   bool UnregisterDevice(const std::string_view path);
 
   bool RegisterSymbolicLink(const std::string_view path,
