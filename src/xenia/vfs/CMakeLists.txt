@@ -7,7 +7,7 @@ if(_vfs_dump AND _vfs_srcs)
   list(REMOVE_ITEM _vfs_srcs ${_vfs_dump})
   set_target_properties(xenia-vfs PROPERTIES SOURCES "${_vfs_srcs}")
 endif()
-target_link_libraries(xenia-vfs PUBLIC xenia-base zstd zarchive)
+target_link_libraries(xenia-vfs PUBLIC xenia-base lz4 zstd zarchive)
 xe_target_defaults(xenia-vfs)
 
 if(XENIA_BUILD_MISC)
