@@ -40,6 +40,42 @@ ContentPackageContainer::ContentPackageContainer(
 
 ContentPackageContainer::ContentPackageContainer(
     vfs::VirtualFileSystem* file_system, const std::string_view device_path,
+    std::unique_ptr<MappedMemory> package_data)
+    : ContentPackage(file_system, device_path, {}),
+      package_(std::move(package_data)) {
+  header_ = {};
+  if (!package_) {
+    return;
+  }
+
+  if (package_->size() < sizeof(XContentContainerHeader)) {
+    XELOGE("{}: Package size {:X} is smaller than the header size {:X}",
+           __func__, package_->size(), sizeof(XContentContainerHeader));
+    package_ = nullptr;
+    return;
+  }
+
+  header_ = *reinterpret_cast<XContentContainerHeader*>(package_->data());
+  if (!header_.content_header.is_magic_valid()) {
+    XELOGE("{}: Invalid package magic {:08X}", __func__,
+           static_cast<uint32_t>(header_.content_header.magic.get()));
+    package_ = nullptr;
+    return;
+  }
+
+  const size_t package_data_offset =
+      xe::round_up(header_.content_header.header_size,
+                   vfs::XContentContainerDevice::kBlockSize);
+  if (package_data_offset > package_->size()) {
+    XELOGE("{}: Package data offset {:X} is larger than the package size {:X}",
+           __func__, package_data_offset, package_->size());
+    package_ = nullptr;
+    header_ = {};
+  }
+}
+
+ContentPackageContainer::ContentPackageContainer(
+    vfs::VirtualFileSystem* file_system, const std::string_view device_path,
     const std::filesystem::path& package_path,
     const XCONTENT_DATA_INTERNAL& metadata,
     const xex2_opt_execution_info* execution_info, const SpaInfo* spa_info)
@@ -165,6 +201,12 @@ std::unique_ptr<vfs::Device> ContentPackageContainer::MountPackage() {
                           package_->size() - package_data_offset));
       break;
     case XContentVolumeType::kSvod:
+      // SVOD data lives in separate files next to the header on the host.
+      if (host_path_.empty()) {
+        XELOGE("{}: SVOD packages without a host path are not supported",
+               __func__);
+        break;
+      }
       device = std::make_unique<vfs::SvodContainerDevice>(
           device_path_, host_path_, header_.content_metadata.data_file_count,
           &header_.content_metadata.volume_descriptor.svod);

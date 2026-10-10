@@ -489,9 +489,61 @@ dword_result_t XamContentOpenFile_entry(
     lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   // TODO(gibbed): arguments assumed based on XamContentCreate.
-  return X_ERROR_FILE_NOT_FOUND;
+  // Mounts a package file from a guest device under root_name. The flags are
+  // ignored.
+  if (!root_name || *root_name == '\0') {
+    return X_ERROR_INVALID_NAME;
+  }
+
+  // Check if we have something under provided symlink.
+  std::string symlink_path = root_name.value();
+  if (!symlink_path.ends_with(':')) {
+    symlink_path += ':';
+  }
+
+  if (kernel_state()->file_system()->IsSymbolicLinkRegistered(symlink_path)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!path || *path == '\0') {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [root_name = std::string(root_name.value()),
+              path = std::string(path.value()), disposition_ptr,
+              license_mask_ptr, overlapped_ptr](uint32_t& extended_error,
+                                                uint32_t& length) -> X_RESULT {
+    uint32_t content_license = 0;
+    X_RESULT result =
+        kernel_state()->content_manager()->OpenContentFromGuestFile(
+            root_name, path, content_license);
+
+    if (license_mask_ptr && XSUCCEEDED(result)) {
+      *license_mask_ptr = content_license;
+    }
+
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = static_cast<uint32_t>(kDispositionState::Open);
+
+    if (disposition_ptr) {
+      *disposition_ptr = static_cast<uint32_t>(kDispositionState::Open);
+    }
+
+    if (result && overlapped_ptr) {
+      result = X_ERROR_FUNCTION_FAILED;
+    }
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
 }
-DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kStub);
+DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kSketchy);
 
 dword_result_t XamContentFlush_entry(lpstring_t root_name,
                                      pointer_t<XAM_OVERLAPPED> overlapped_ptr) {

@@ -33,6 +33,12 @@ class ContentPackageContainer final : public ContentPackage {
   ContentPackageContainer(vfs::VirtualFileSystem* file_system,
                           const std::string_view device_path,
                           const std::filesystem::path& package_path);
+  // Ctor for reading an existing package that is already in memory, for
+  // example a package file stored on a guest device. Only read-only access is
+  // supported and the package has no host path.
+  ContentPackageContainer(vfs::VirtualFileSystem* file_system,
+                          const std::string_view device_path,
+                          std::unique_ptr<MappedMemory> package_data);
   // Ctor for creating new packages.
   ContentPackageContainer(vfs::VirtualFileSystem* file_system,
                           const std::string_view device_path,
