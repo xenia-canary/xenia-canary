@@ -894,30 +894,34 @@ void KernelState::TerminateTitle() {
   terminate_notifications_.clear();
   */
 
+  auto threads_to_terminate =
+      threads_by_id_ |
+      std::views::filter([](const std::pair<uint32_t, XThread*>& pair) {
+        return !XThread::IsInThread(pair.second) &&
+               pair.second->is_guest_thread() && pair.second->is_running();
+      }) |
+      std::views::keys;
+
+  const std::vector<uint32_t> thread_ids(threads_to_terminate.begin(),
+                                         threads_to_terminate.end());
+
   // Kill all guest threads.
-  for (auto it = threads_by_id_.begin(); it != threads_by_id_.end();) {
-    if (!XThread::IsInThread(it->second) && it->second->is_guest_thread()) {
-      auto thread = it->second;
+  for (const auto& thread_id : thread_ids) {
+    auto thread = GetThreadByID(thread_id);
 
-      if (thread->is_running()) {
-        // Need to step the thread to a safe point (returns it to guest code
-        // so it's guaranteed to not be holding any locks / in host kernel
-        // code / etc). Can't do that properly if we have the lock.
-        if (!emulator_->is_paused()) {
-          thread->thread()->Suspend();
-        }
-
-        global_lock.unlock();
-        processor_->StepToGuestSafePoint(thread->thread_id());
-        thread->Terminate(0);
-        global_lock.lock();
-      }
-
-      // Erase it from the thread list.
-      it = threads_by_id_.erase(it);
-    } else {
-      ++it;
+    // Need to step the thread to a safe point (returns it to guest code
+    // so it's guaranteed to not be holding any locks / in host kernel
+    // code / etc). Can't do that properly if we have the lock.
+    if (!emulator_->is_paused()) {
+      thread->thread()->Suspend();
     }
+
+    global_lock.unlock();
+    processor_->StepToGuestSafePoint(thread->thread_id());
+    thread->Terminate(0);
+    global_lock.lock();
+
+    UnregisterThread(thread.get());
   }
 
   // Third: Unload all user modules (including the executable).
