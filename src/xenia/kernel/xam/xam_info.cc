@@ -477,7 +477,8 @@ dword_result_t XamLoaderGetLaunchData_entry(lpvoid_t buffer_ptr,
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetLaunchData, kNone, kSketchy);
 
-void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
+void XamLoaderLaunchTitleEx_entry(lpstring_t launch_path, lpstring_t mount_path,
+                                  lpstring_t cmd_line, dword_t flags) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
 
   auto& loader_data = xam->loader_data();
@@ -487,8 +488,8 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   std::string message;
 
   // Translate the launch path to a full path.
-  if (raw_name_ptr && !raw_name_ptr.value().empty()) {
-    loader_data.launch_path = xe::path_to_utf8(raw_name_ptr.value());
+  if (launch_path && !launch_path.value().empty()) {
+    loader_data.launch_path = xe::path_to_utf8(launch_path.value());
     xam->SaveLoaderData();
     title = "Title was restarted";
     message =
@@ -525,39 +526,24 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   // This function does not return.
   kernel_state()->TerminateTitle();
 }
+DECLARE_XAM_EXPORT1(XamLoaderLaunchTitleEx, kNone, kSketchy);
+
+void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
+  XamLoaderLaunchTitleEx_entry(raw_name_ptr, nullptr, nullptr, flags | 4);
+}
 DECLARE_XAM_EXPORT1(XamLoaderLaunchTitle, kNone, kSketchy);
 
 void XamLoaderTerminateTitle_entry() {
-  std::string title = "Title terminated";
-  std::string message = "Game requested exit to dashboard.";
-  assert_always("Game requested exit to dashboard via XamLoaderTerminateTitle");
-
-  auto display_window = kernel_state()->emulator()->display_window();
-  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
-
-  if (display_window && imgui_drawer) {
-    display_window->app_context().CallInUIThreadSynchronous(
-        [imgui_drawer, title, message]() {
-          auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
-              imgui_drawer, title.c_str(), message.c_str());
-
-          std::jthread([dialog]() {
-            while (!dialog->IsClosing()) {
-              std::this_thread::yield();
-            }
-
-            config::SaveConfig();
-            xe::FlushLog();
-
-            std::quick_exit(0);
-          }).detach();
-        });
-  }
-
-  // This function does not return.
-  kernel_state()->TerminateTitle();
+  // check some address and if false call RtlSleep instead
+  XamLoaderLaunchTitleEx_entry(nullptr, nullptr, nullptr, 0);
 }
 DECLARE_XAM_EXPORT1(XamLoaderTerminateTitle, kNone, kSketchy);
+
+void XamLoaderRebootToServerDash_entry() {
+  // calls XamIsDataCenterMode and if return is true call XamLoaderLaunchTitleEx
+  XamLoaderLaunchTitleEx_entry(nullptr, nullptr, nullptr, 0);
+}
+DECLARE_XAM_EXPORT1(XamLoaderRebootToServerDash, kNone, kSketchy);
 
 uint32_t XamAllocImpl(uint32_t flags, uint32_t size,
                       xe::be<uint32_t>* out_ptr) {
