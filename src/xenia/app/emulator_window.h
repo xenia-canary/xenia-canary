@@ -219,6 +219,19 @@ class EmulatorWindow {
     EmulatorWindow& emulator_window_;
   };
 
+  class GyroConfigDialog final : public ui::ImGuiDialog {
+   public:
+    GyroConfigDialog(ui::ImGuiDrawer* imgui_drawer,
+                     EmulatorWindow& emulator_window)
+        : ui::ImGuiDialog(imgui_drawer), emulator_window_(emulator_window) {}
+
+   protected:
+    void OnDraw(ImGuiIO& io) override;
+
+   private:
+    EmulatorWindow& emulator_window_;
+  };
+
   class XMPConfigDialog final : public ui::ImGuiDialog {
    public:
     XMPConfigDialog(ui::ImGuiDrawer* imgui_drawer,
@@ -280,6 +293,7 @@ class EmulatorWindow {
   void GpuTraceFrame();
   void GpuClearCaches();
   void ToggleDisplayConfigDialog();
+  void ToggleGyroConfigDialog();
   void ToggleControllerVibration();
   void ShowCompatibility();
   void ShowFAQ();
@@ -321,6 +335,7 @@ class EmulatorWindow {
   bool initializing_shader_storage_ = false;
 
   std::unique_ptr<DisplayConfigDialog> display_config_dialog_;
+  std::unique_ptr<GyroConfigDialog> gyro_config_dialog_;
   std::unique_ptr<ConsoleSettingsDialog> console_settings_dialog_;
   std::unique_ptr<ContentListDialog> content_list_dialog_;
   // Storing pointers and toggling dialog state is useful for broadcasting

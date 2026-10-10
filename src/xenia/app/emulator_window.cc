@@ -31,10 +31,12 @@
 #include "xenia/base/profiling.h"
 #include "xenia/base/system.h"
 #include "xenia/base/threading.h"
+#include "xenia/config.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/graphics_system.h"
+#include "xenia/hid/hid_flags.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_module.h"
@@ -593,6 +595,152 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
   }
 }
 
+namespace {
+// Overrides a cvar defined in another translation unit, where OVERRIDE_* can't
+// reach the cvar's registration.
+template <typename T>
+void OverrideCvarByName(const char* name, T value) {
+  if (!cvar::ConfigVars) {
+    return;
+  }
+  auto it = cvar::ConfigVars->find(name);
+  if (it == cvar::ConfigVars->end()) {
+    return;
+  }
+  auto config_var = dynamic_cast<cvar::ConfigVar<T>*>(it->second);
+  if (config_var) {
+    config_var->OverrideConfigValue(value);
+  }
+}
+}  // namespace
+
+void EmulatorWindow::GyroConfigDialog::OnDraw(ImGuiIO& io) {
+  ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(20, 20), ImGuiCond_FirstUseEver);
+  // Translucent so the effect of the changes can be seen in the game.
+  ImGui::SetNextWindowBgAlpha(0.6f);
+  bool dialog_open = true;
+  if (!ImGui::Begin("Gyro Aiming", &dialog_open,
+                    ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_AlwaysAutoResize |
+                        ImGuiWindowFlags_HorizontalScrollbar)) {
+    ImGui::End();
+    Close();
+    return;
+  }
+
+  if (cvars::hid != "sdl" && cvars::hid != "any") {
+    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f),
+                       "Gyro aiming requires hid = \"sdl\" in the config "
+                       "(currently \"%s\").",
+                       cvars::hid.c_str());
+    ImGui::Spacing();
+  }
+
+  // Override the values in the cvars, applying them immediately and saving
+  // them to the config. The gyro cvars are defined in xenia-hid, so they're
+  // looked up by name rather than with OVERRIDE_*.
+  auto edit_double = [](const char* name, double current, float value) {
+    if (float(current) != value) {
+      OverrideCvarByName<double>(name, value);
+    }
+  };
+
+  if (ImGui::TreeNodeEx("Activation", ImGuiTreeNodeFlags_Framed |
+                                          ImGuiTreeNodeFlags_DefaultOpen)) {
+    int mode = cvars::gyro_mode;
+    ImGui::RadioButton("Disabled", &mode, 0);
+    ImGui::RadioButton("Always on", &mode, 1);
+    ImGui::RadioButton("While holding LT / L2 (aim)", &mode, 2);
+    ImGui::RadioButton("While holding LB / L1", &mode, 3);
+    if (mode != cvars::gyro_mode) {
+      OverrideCvarByName<int32_t>("gyro_mode", mode);
+    }
+    ImGui::TreePop();
+  }
+
+  if (ImGui::TreeNodeEx("Sensitivity", ImGuiTreeNodeFlags_Framed |
+                                           ImGuiTreeNodeFlags_DefaultOpen)) {
+    float sensitivity_x = float(cvars::gyro_sensitivity_x);
+    float sensitivity_y = float(cvars::gyro_sensitivity_y);
+    ImGui::TextUnformatted("Horizontal:");
+    ImGui::SliderFloat("##GyroSensitivityX", &sensitivity_x, 0.1f, 5.0f,
+                       "%.2f");
+    ImGui::TextUnformatted("Vertical:");
+    ImGui::SliderFloat("##GyroSensitivityY", &sensitivity_y, 0.1f, 5.0f,
+                       "%.2f");
+    if (ImGui::Button("Match vertical to horizontal")) {
+      sensitivity_y = sensitivity_x;
+    }
+    edit_double("gyro_sensitivity_x", cvars::gyro_sensitivity_x, sensitivity_x);
+    edit_double("gyro_sensitivity_y", cvars::gyro_sensitivity_y, sensitivity_y);
+
+    bool invert_x = cvars::gyro_invert_x;
+    bool invert_y = cvars::gyro_invert_y;
+    ImGui::Checkbox("Invert horizontal", &invert_x);
+    ImGui::SameLine();
+    ImGui::Checkbox("Invert vertical", &invert_y);
+    if (invert_x != cvars::gyro_invert_x) {
+      OverrideCvarByName<bool>("gyro_invert_x", invert_x);
+    }
+    if (invert_y != cvars::gyro_invert_y) {
+      OverrideCvarByName<bool>("gyro_invert_y", invert_y);
+    }
+    ImGui::TreePop();
+  }
+
+  if (ImGui::TreeNodeEx("Fine tuning", ImGuiTreeNodeFlags_Framed |
+                                           ImGuiTreeNodeFlags_DefaultOpen)) {
+    float anti_deadzone = float(cvars::gyro_anti_deadzone);
+    ImGui::TextUnformatted(
+        "Anti-deadzone (raise it if small motions are ignored,\n"
+        "lower it if the aim jitters or drifts):");
+    ImGui::SliderFloat("##GyroAntiDeadzone", &anti_deadzone, 0.0f, 0.6f,
+                       "%.2f");
+    edit_double("gyro_anti_deadzone", cvars::gyro_anti_deadzone, anti_deadzone);
+
+    float smoothing = float(cvars::gyro_smoothing_threshold);
+    ImGui::TextUnformatted(
+        "Smoothing of slow motions to hide hand shake (degrees/s, 0 = "
+        "disabled):");
+    ImGui::SliderFloat("##GyroSmoothing", &smoothing, 0.0f, 15.0f, "%.1f");
+    edit_double("gyro_smoothing_threshold", cvars::gyro_smoothing_threshold,
+                smoothing);
+
+    float roll_mix = float(cvars::gyro_roll_mix);
+    ImGui::TextUnformatted(
+        "Rolling the controller sideways also turns (0 = no, 1 = fully):");
+    ImGui::SliderFloat("##GyroRollMix", &roll_mix, 0.0f, 1.0f, "%.2f");
+    edit_double("gyro_roll_mix", cvars::gyro_roll_mix, roll_mix);
+    ImGui::TreePop();
+  }
+
+  ImGui::Spacing();
+  if (ImGui::Button("Reset to defaults")) {
+    OverrideCvarByName<int32_t>("gyro_mode", 2);
+    OverrideCvarByName<double>("gyro_sensitivity_x", 1.0);
+    OverrideCvarByName<double>("gyro_sensitivity_y", 1.0);
+    OverrideCvarByName<double>("gyro_anti_deadzone", 0.20);
+    OverrideCvarByName<double>("gyro_smoothing_threshold", 4.0);
+    OverrideCvarByName<double>("gyro_roll_mix", 0.0);
+    OverrideCvarByName<bool>("gyro_invert_x", false);
+    OverrideCvarByName<bool>("gyro_invert_y", false);
+  }
+  ImGui::TextUnformatted(
+      "Changes apply immediately and are saved when this window is "
+      "closed.");
+
+  ImGui::End();
+
+  if (!dialog_open) {
+    config::SaveConfig();
+    Close();
+    emulator_window_.ToggleGyroConfigDialog();
+    // `this` might have been destroyed by ToggleGyroConfigDialog.
+    return;
+  }
+}
+
 void EmulatorWindow::ContentInstallDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(ImVec2(20, 20), ImGuiCond_FirstUseEver);
@@ -882,6 +1030,10 @@ bool EmulatorWindow::Initialize() {
   // HID menu.
   auto hid_menu = MenuItem::Create(MenuItem::Type::kPopup, "&HID");
   {
+    hid_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, "&Gyro Aiming...", "",
+        std::bind(&EmulatorWindow::ToggleGyroConfigDialog, this)));
+    hid_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     hid_menu->AddChild(MenuItem::Create(
         MenuItem::Type::kString, "&Toggle controller vibration", "",
         std::bind(&EmulatorWindow::ToggleControllerVibration, this)));
@@ -1645,6 +1797,20 @@ void EmulatorWindow::SetFullscreen(bool fullscreen_) {
 
 void EmulatorWindow::ToggleFullscreen() {
   SetFullscreen(!window_->IsFullscreen());
+}
+
+void EmulatorWindow::ToggleGyroConfigDialog() {
+  if (!gyro_config_dialog_) {
+    gyro_config_dialog_ =
+        std::make_unique<GyroConfigDialog>(imgui_drawer_.get(), *this);
+  } else {
+    if (gyro_config_dialog_->IsClosing()) {
+      gyro_config_dialog_.release();
+    } else {
+      gyro_config_dialog_.reset();
+      config::SaveConfig();
+    }
+  }
 }
 
 void EmulatorWindow::ToggleDisplayConfigDialog() {
@@ -2458,6 +2624,10 @@ void EmulatorWindow::ClearDialogs() {
 
   if (display_config_dialog_) {
     display_config_dialog_.reset();
+  }
+
+  if (gyro_config_dialog_) {
+    gyro_config_dialog_.reset();
   }
 
   if (console_settings_dialog_) {

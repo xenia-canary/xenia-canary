@@ -9,6 +9,10 @@
 
 #include "xenia/hid/sdl/sdl_input_driver.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 #endif  // XE_PLATFORM_WIN32
@@ -105,6 +109,13 @@ X_STATUS SDLInputDriver::Setup() {
           return 0;
         },
         this);
+
+    // Over Bluetooth, PlayStation controllers only report motion sensors in
+    // their enhanced report mode, which SDL enables together with rumble.
+    if (cvars::gyro_mode != 0) {
+      SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
+      SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
+    }
 
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
       return;
@@ -230,8 +241,118 @@ X_RESULT SDLInputDriver::GetState(uint32_t user_index,
     controller->state.packet_number++;
     controller->state_changed = false;
   }
-  std::memcpy(out_state, &controller->state, sizeof(*out_state));
+  if (controller->gyro.enabled) {
+    ApplyGyro(*controller, out_state);
+  } else {
+    std::memcpy(out_state, &controller->state, sizeof(*out_state));
+  }
   return X_ERROR_SUCCESS;
+}
+
+void SDLInputDriver::ApplyGyro(ControllerState& controller,
+                               X_INPUT_STATE* out_state) {
+  // Rotation speed (deg/s) at which a sensitivity of 1.0 fully deflects the
+  // stick.
+  constexpr float kFullDeflectionSpeed = 100.0f;
+  // Samples older than this are considered stale (sensor stopped reporting).
+  constexpr uint32_t kStaleSampleMs = 100;
+
+  GyroState& gyro = controller.gyro;
+  const X_INPUT_GAMEPAD& pad = controller.state.gamepad;
+
+  bool active = false;
+  switch (cvars::gyro_mode) {
+    case 1:
+      active = true;
+      break;
+    case 2:
+      active = pad.left_trigger > HID_SDL_TRIGG_THRES;
+      break;
+    case 3:
+      active = (pad.buttons & X_INPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+      break;
+    default:
+      break;
+  }
+
+  float speed[3] = {};
+  {
+    std::lock_guard<std::mutex> lock(gyro_mutex_);
+    if (gyro.count) {
+      for (int i = 0; i < 3; i++) {
+        gyro.last_avg[i] = gyro.sum[i] / gyro.count;
+        gyro.sum[i] = 0.0f;
+      }
+      gyro.count = 0;
+    }
+    if (SDL_GetTicks() - gyro.last_sample_ticks > kStaleSampleMs) {
+      std::memset(gyro.last_avg, 0, sizeof(gyro.last_avg));
+    }
+    if (gyro.calibrated) {
+      for (int i = 0; i < 3; i++) {
+        speed[i] = gyro.last_avg[i] - gyro.bias[i];
+      }
+    }
+  }
+
+  // Positive yaw / roll turn left and positive pitch tilts up (SDL convention),
+  // while positive stick X is right and positive stick Y is up.
+  float speed_x = -(speed[1] + float(cvars::gyro_roll_mix) * speed[2]);
+  float speed_y = speed[0];
+
+  // Soft tiered smoothing: slow movements are averaged to hide hand shake,
+  // fast movements pass through unfiltered to keep latency low.
+  const float threshold = float(cvars::gyro_smoothing_threshold);
+  gyro.smoothed[0] += (speed_x - gyro.smoothed[0]) * 0.3f;
+  gyro.smoothed[1] += (speed_y - gyro.smoothed[1]) * 0.3f;
+  if (threshold > 0.0f) {
+    float magnitude = std::sqrt(speed_x * speed_x + speed_y * speed_y);
+    float direct = std::clamp(
+        (magnitude - threshold * 0.5f) / (threshold * 0.5f), 0.0f, 1.0f);
+    speed_x = speed_x * direct + gyro.smoothed[0] * (1.0f - direct);
+    speed_y = speed_y * direct + gyro.smoothed[1] * (1.0f - direct);
+  }
+
+  float dx = 0.0f, dy = 0.0f;
+  if (active) {
+    dx = speed_x * float(cvars::gyro_sensitivity_x) / kFullDeflectionSpeed;
+    dy = speed_y * float(cvars::gyro_sensitivity_y) / kFullDeflectionSpeed;
+    if (cvars::gyro_invert_x) {
+      dx = -dx;
+    }
+    if (cvars::gyro_invert_y) {
+      dy = -dy;
+    }
+    // Radial anti-deadzone, so the smallest motion already gets past the
+    // game's stick deadzone.
+    float magnitude = std::sqrt(dx * dx + dy * dy);
+    if (magnitude > 0.001f) {
+      float anti_deadzone =
+          std::clamp(float(cvars::gyro_anti_deadzone), 0.0f, 0.9f);
+      float scaled =
+          anti_deadzone + (1.0f - anti_deadzone) * std::min(magnitude, 1.0f);
+      dx *= scaled / magnitude;
+      dy *= scaled / magnitude;
+    }
+  }
+
+  auto add_to_stick = [](int16_t stick, float offset) -> int16_t {
+    float value = std::clamp(stick / 32767.0f + offset, -1.0f, 1.0f);
+    return static_cast<int16_t>(std::lround(value * 32767.0f));
+  };
+  const int16_t offset_rx = add_to_stick(0, dx);
+  const int16_t offset_ry = add_to_stick(0, dy);
+  if (offset_rx != gyro.last_rx || offset_ry != gyro.last_ry) {
+    controller.state.packet_number++;
+    gyro.last_rx = offset_rx;
+    gyro.last_ry = offset_ry;
+  }
+
+  std::memcpy(out_state, &controller.state, sizeof(*out_state));
+  if (dx != 0.0f || dy != 0.0f) {
+    out_state->gamepad.thumb_rx = add_to_stick(pad.thumb_rx, dx);
+    out_state->gamepad.thumb_ry = add_to_stick(pad.thumb_ry, dy);
+  }
 }
 
 X_RESULT SDLInputDriver::SetState(uint32_t user_index,
@@ -436,6 +557,9 @@ void SDLInputDriver::HandleEvent(const SDL_Event& event) {
     case SDL_CONTROLLERBUTTONUP:
       OnControllerDeviceButtonChanged(event);
       break;
+    case SDL_CONTROLLERSENSORUPDATE:
+      OnControllerSensorUpdate(event);
+      break;
     default:
       break;
   }
@@ -506,6 +630,20 @@ void SDLInputDriver::OnControllerDeviceAdded(const SDL_Event& event) {
     // XInput seems to start with packet_number = 1 .
     state.state_changed = true;
     UpdateXCapabilities(state);
+
+    if (cvars::gyro_mode != 0 &&
+        SDL_GameControllerHasSensor(controller, SDL_SENSOR_GYRO)) {
+      if (SDL_GameControllerSetSensorEnabled(controller, SDL_SENSOR_GYRO,
+                                             SDL_TRUE) == 0) {
+        state.gyro.enabled = true;
+        XELOGI(
+            "SDL OnControllerDeviceAdded: Gyro aiming enabled. Keep the "
+            "controller still for a moment to calibrate.");
+      } else {
+        XELOGW("SDL OnControllerDeviceAdded: Unable to enable gyro: {}",
+               SDL_GetError());
+      }
+    }
 
     XELOGI("SDL OnControllerDeviceAdded: Added at index {}.", user_id);
     XELOGI("SDL Controller {}: {}", user_id,
@@ -621,6 +759,97 @@ void SDLInputDriver::OnControllerDeviceButtonChanged(const SDL_Event& event) {
   }
   controller.state.gamepad.buttons = xbuttons;
   controller.state_changed = true;
+}
+
+void SDLInputDriver::OnControllerSensorUpdate(const SDL_Event& event) {
+  // Range (deg/s) all samples must stay within to count as holding still.
+  constexpr float kStillRange = 1.5f;
+  // How long the controller must be still to (re)calibrate.
+  constexpr uint64_t kStillTimeUs = 600000;
+  // Once calibrated, a still period whose average is further than this from
+  // the current bias is most likely a slow deliberate turn, not drift - only
+  // accept it after the controller is still for much longer.
+  constexpr float kMaxBiasChange = 2.0f;
+  constexpr uint64_t kLongStillTimeUs = 3000000;
+  // Never treat a rotation faster than this as drift.
+  constexpr float kMaxBias = 8.0f;
+  constexpr float kRadToDeg = 57.2957795f;
+
+  if (event.csensor.sensor != SDL_SENSOR_GYRO) {
+    return;
+  }
+  auto idx = GetControllerIndexFromInstanceID(event.csensor.which);
+  if (!idx) {
+    return;
+  }
+  GyroState& gyro = controllers_.at(*idx).gyro;
+  if (!gyro.enabled) {
+    return;
+  }
+
+  float sample[3];
+  for (int i = 0; i < 3; i++) {
+    sample[i] = event.csensor.data[i] * kRadToDeg;
+  }
+  const uint64_t now_us = event.csensor.timestamp_us
+                              ? event.csensor.timestamp_us
+                              : uint64_t(event.csensor.timestamp) * 1000;
+
+  std::lock_guard<std::mutex> lock(gyro_mutex_);
+  for (int i = 0; i < 3; i++) {
+    gyro.sum[i] += sample[i];
+  }
+  gyro.count++;
+  gyro.last_sample_ticks = SDL_GetTicks();
+
+  // Bias calibration: track a window of samples and restart it whenever the
+  // controller moves.
+  bool still = gyro.window_count > 0;
+  for (int i = 0; i < 3 && still; i++) {
+    still = std::max(gyro.window_max[i], sample[i]) -
+                std::min(gyro.window_min[i], sample[i]) <=
+            kStillRange;
+  }
+  if (!still) {
+    for (int i = 0; i < 3; i++) {
+      gyro.window_sum[i] = 0.0f;
+      gyro.window_min[i] = sample[i];
+      gyro.window_max[i] = sample[i];
+    }
+    gyro.window_count = 0;
+    gyro.window_start_us = now_us;
+  }
+  for (int i = 0; i < 3; i++) {
+    gyro.window_sum[i] += sample[i];
+    gyro.window_min[i] = std::min(gyro.window_min[i], sample[i]);
+    gyro.window_max[i] = std::max(gyro.window_max[i], sample[i]);
+  }
+  gyro.window_count++;
+
+  const uint64_t still_time = now_us - gyro.window_start_us;
+  if (still_time < kStillTimeUs) {
+    return;
+  }
+  float mean[3];
+  bool plausible = true;
+  bool close_to_bias = true;
+  for (int i = 0; i < 3; i++) {
+    mean[i] = gyro.window_sum[i] / gyro.window_count;
+    plausible &= std::abs(mean[i]) <= kMaxBias;
+    close_to_bias &= std::abs(mean[i] - gyro.bias[i]) <= kMaxBiasChange;
+  }
+  if (!plausible ||
+      (gyro.calibrated && !close_to_bias && still_time < kLongStillTimeUs)) {
+    return;
+  }
+  if (!gyro.calibrated) {
+    XELOGI("SDL Gyro: Calibrated controller {} (bias {:.2f}, {:.2f}, {:.2f}).",
+           *idx, mean[0], mean[1], mean[2]);
+  }
+  std::memcpy(gyro.bias, mean, sizeof(gyro.bias));
+  gyro.calibrated = true;
+  // Keep refining from a fresh window.
+  gyro.window_count = 0;
 }
 
 std::optional<size_t> SDLInputDriver::GetControllerIndexFromInstanceID(
