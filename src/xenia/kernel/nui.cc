@@ -24,23 +24,25 @@ bool NUIController::NuiInitialized() {
 }
 uint32_t NUIController::GetNUIDataPtr() { return nui_data_ptr; }
 char NUIController::GetUnknown2() { return nui_unknown_2; }
-void NUIController::SetCallback(uint32_t callback) { nui_callback = callback; }
+void NUIController::SetTiltCallback(uint32_t callback) {
+  tilt_callback_ = callback;
+}
 void NUIController::SetEngagedTrackingId(uint32_t tracking_id) {
   engaged_tracking_id = tracking_id;
 }
 uint32_t NUIController::GetEngagedTrackingId() { return engaged_tracking_id; }
-uint32_t NUIController::GetHudFlags() { return nui_hud_flags; }
-void NUIController::SetHudFlags(uint32_t flags) { nui_hud_flags = flags; }
-uint64_t NUIController::GetNUIVerID(uint32_t index) {
+uint32_t NUIController::GetInitFlags() { return init_flags_; }
+void NUIController::SetInitFlags(uint32_t flags) { init_flags_ = flags; }
+uint64_t NUIController::GetNUIVersion(uint32_t index) {
   if (index > 1) {
     // You set index out of bounds
     assert_always();
     return 0;
   }
-  return nui_ver_id[index];
+  return nui_versions_[index];
 }
-void NUIController::SetNUIVerID(uint64_t ver_id, uint32_t index) {
-  nui_ver_id[index] = ver_id;
+void NUIController::SetNUIVersion(uint64_t version, uint32_t index) {
+  nui_versions_[index] = version;
 }
 uint64_t NUIController::GetSessionId() { return session_id; }
 void NUIController::SetSessionId(uint64_t id) { session_id = id; }

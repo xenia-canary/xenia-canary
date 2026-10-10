@@ -18,18 +18,16 @@ namespace kernel {
 
 class NUIController {
   /* NUI Notes:
-     - nui_hud_flags:
+     - init_flags_:
        - set by 0x2B003
-       - set to 0 by unnamed func alongside version_id
+       - set to 0 by title shutdown, alongside version_id
        - known values:
           - 0x40000000
           - 0x200
-     - nui_ver1 & 2:
-       - set by 0x2B003
-       - set to 0 by unnamed func alongside nui_hud_flags
-       - known values:
-          - 0x40000000
-          - 0x200
+     - nui_versions_:
+       - set by 0x2B003 (XAM and XTL versions)
+       - set to 0 by title shutdown, alongside init_flags_
+       - must be XAM vesion 5
   */
  public:
   NUIController();
@@ -38,13 +36,13 @@ class NUIController {
   bool NuiInitialized();
   uint32_t GetNUIDataPtr();
   char GetUnknown2();
-  void SetCallback(uint32_t callback);
+  void SetTiltCallback(uint32_t callback);
   uint32_t GetEngagedTrackingId();
   void SetEngagedTrackingId(uint32_t tracking_id);
-  uint32_t GetHudFlags();
-  void SetHudFlags(uint32_t flags);
-  uint64_t GetNUIVerID(uint32_t index);
-  void SetNUIVerID(uint64_t ver_id, uint32_t index);
+  uint32_t GetInitFlags();
+  void SetInitFlags(uint32_t flags);
+  uint64_t GetNUIVersion(uint32_t index);
+  void SetNUIVersion(uint64_t version, uint32_t index);
   uint64_t GetSessionId();
   void SetSessionId(uint64_t id);
   uint32_t NuiHudCheck(uint64_t tracking_id);
@@ -55,9 +53,9 @@ class NUIController {
   uint32_t engaged_tracking_id =
       0x0;  // exists at 0x118 within nui data structure
   uint64_t session_id = 0x0;
-  uint32_t nui_callback = 0x0;
-  uint32_t nui_hud_flags = 0x0;
-  uint64_t nui_ver_id[2] = {};
+  uint32_t tilt_callback_ = 0x0;
+  uint32_t init_flags_ = 0x0;
+  uint64_t nui_versions_[2] = {};
 };
 
 enum X_TILT_STATUS_FLAGS : uint32_t {
@@ -73,7 +71,7 @@ struct X_NUI_TILT_STATUS {
   be<uint32_t> signature;  // 'XtSs'
   be<uint32_t> unknown_08[6];
   // Gravity direction.
-  be<int32_t> accelerometer[3];
+  be<int32_t> gravity_long_avg[3];
   be<X_TILT_STATUS_FLAGS> flags;
   be<uint32_t> unknown_30[8];
 };

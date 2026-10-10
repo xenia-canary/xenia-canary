@@ -24,25 +24,23 @@ namespace xam {
 struct X_NUI_DEVICE_STATUS {
   /* Notes:
      - for one side func of XamNuiGetDeviceStatus
-       - if some data addressis less than zero then unk1 = it
-       - else another func is called and its return can set unk1 = c0051200 or
-     some value involving DetroitDeviceRequest
+       - if some data address is less than zero then tilt_status = it
+       - else another func is called and its return can set
+     tilt_status = c0051200 or some value involving DetroitDeviceRequest
        - next PsCamDeviceRequest is called and if its return is less than zero
-     then X_NUI_DEVICE_STATUS = return of PsCamDeviceRequest
+     then camera_status = return of PsCamDeviceRequest
        - else it equals an unknown local_1c
        - finally McaDeviceRequest is called and if its return is less than zero
-     then unk2 = return of McaDeviceRequest
+     then mic_status = return of McaDeviceRequest
        - else it equals an unknown local_14
-     - status can be set to X_NUI_DEVICE_STATUS[3] | 0x44 or | 0x40
+     - status_bits can be set to status_bits | 0x44 or | 0x40
   */
-  xe::be<uint32_t> unk0;
-  xe::be<uint32_t> unk1;
-  xe::be<uint32_t> unk2;
-  xe::be<uint32_t> status;
-  xe::be<uint32_t> serial_number_ptr;  // 0x12 for number & \0\0
-  xe::be<uint32_t> unk5;
+  xe::be<uint32_t> camera_status;
+  xe::be<uint32_t> tilt_status;
+  xe::be<uint32_t> mic_status;
+  xe::be<uint32_t> status_bits;
 };
-static_assert(sizeof(X_NUI_DEVICE_STATUS) == 24, "Size matters");
+static_assert_size(X_NUI_DEVICE_STATUS, 0x10);
 
 // Get
 dword_result_t XamNuiGetDeviceStatus_entry(
@@ -50,12 +48,12 @@ dword_result_t XamNuiGetDeviceStatus_entry(
   /* Notes:
      - it does return a value that is not always used
      - returns values are X_ERROR_SUCCESS, 0xC0050006, and others
-     - 1) On func start *status_ptr = 0, status_ptr->unk1 = 0, status_ptr->unk2
-     = 0, and status_ptr->status = 0
+     - 1) On func start *status_ptr = 0, status_ptr->tilt_status = 0,
+     status_ptr->mic_status = 0, and status_ptr->status_bits = 0
      - 2) calls XamXStudioRequest(6,&var <- = 0);
      - if return is greater than -1 && var & 0x80000000 != 0 then set
-     status_ptr->unk1 = 0xC000009D, status_ptr->unk2 = 0xC000009D, and
-     status_ptr->status = status_ptr[3] = 0x20
+     status_ptr->tilt_status = 0xC000009D, status_ptr->mic_status = 0xC000009D,
+     and status_ptr->status_bits = 0x20
      - lots of branching functions after
   */
 
@@ -63,7 +61,7 @@ dword_result_t XamNuiGetDeviceStatus_entry(
 
   const bool kinect_initialized = kernel_state()->nui()->NuiInitialized();
 
-  status_ptr->status = kinect_initialized;
+  status_ptr->status_bits = kinect_initialized;
   return kinect_initialized ? X_ERROR_SUCCESS : 0xC0050006;
 }
 DECLARE_XAM_EXPORT1(XamNuiGetDeviceStatus, kNone, kStub);
@@ -122,7 +120,7 @@ DECLARE_XAM_EXPORT1(XamNuiSkeletonGetBestSkeletonIndex, kNone, kStub);
    - most require message calls to xam in 0x0002Bxxx area
 */
 dword_result_t XamNuiCameraTiltSetCallback_entry(dword_t callback) {
-  kernel_state()->nui()->SetCallback(callback);
+  kernel_state()->nui()->SetTiltCallback(callback);
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamNuiCameraTiltSetCallback, kNone, kStub);
@@ -132,36 +130,26 @@ dword_result_t XamNuiCameraTiltGetStatus_entry(
   /* Notes:
      - Used by XamNuiCameraElevationGetAngle, and XamNuiCameraSetFlags
      - if it returns anything greater than -1 then both above functions continue
-     - Both funcs send in a param of *unk = 0x50 bytes to copy
-     - unk2
-     - Ghidra decompile fails
+     - Both funcs request 0x50 bytes with XtSs header
   */
-  // TODO(knuckleslee): Report the Kinect accelerometer and motor status.
-  constexpr int32_t kAccelerometerOneG = 819;
   if (!tilt_status || tilt_status->buffer_size < sizeof(X_NUI_TILT_STATUS) ||
       tilt_status->signature != make_fourcc("XtSs")) {
     return X_E_FAIL;
   }
-  std::memset(tilt_status->unknown_08, 0, sizeof(tilt_status->unknown_08));
-  // Level and not moving.
-  tilt_status->accelerometer[0] = 0;
-  tilt_status->accelerometer[1] = kAccelerometerOneG;
-  tilt_status->accelerometer[2] = 0;
-  tilt_status->flags = static_cast<X_TILT_STATUS_FLAGS>(0);
-  std::memset(tilt_status->unknown_30, 0, sizeof(tilt_status->unknown_30));
-  return X_E_FAIL;  // until implementation improves
+  // TODO(knuckleslee): Report the Kinect accelerometer and motor status.
+  return X_E_FAIL;
 }
 DECLARE_XAM_EXPORT1(XamNuiCameraTiltGetStatus, kNone, kStub);
 
-dword_result_t XamNuiCameraElevationGetAngle_entry(lpqword_t elevation_angle,
+dword_result_t XamNuiCameraElevationGetAngle_entry(lpdword_t elevation_angle,
                                                    lpdword_t camera_moving) {
-  X_NUI_TILT_STATUS tilt_status;
+  X_NUI_TILT_STATUS tilt_status = {};
   tilt_status.buffer_size = sizeof(tilt_status);
   tilt_status.signature = make_fourcc("XtSs");  // (XtSs)?
   X_STATUS result = XamNuiCameraTiltGetStatus_entry(&tilt_status);
   if (XSUCCEEDED(result)) {
-    // TODO(knuckleslee): Output the angle once its format is known.
-    // uses accelerometer[2] & accelerometer[1] to find angle
+    // TODO(knuckleslee): Calculate the angle in degrees from
+    // gravity_long_avg[2] and gravity_long_avg[1].
     *elevation_angle = 0;
     *camera_moving =
         tilt_status.flags & (X_TILT_STATUS_FLAGS::TILT_STATUS_UNK1 |
@@ -174,10 +162,10 @@ DECLARE_XAM_EXPORT1(XamNuiCameraElevationGetAngle, kNone, kStub);
 
 dword_result_t XamNuiCameraGetTiltControllerType_entry() {
   /* Notes:
-     - calls DetroitDeviceRequest to check for kinect
-     - (LZCOUNT(result) << 0x20) >> 0x25;
-     - returns true or false for device connected
+     - Earlier decompile notes: DetroitDeviceRequest and
+       (LZCOUNT(result) << 0x20) >> 0x25.
   */
+  // TODO(boma): Get the controller type from connected device.
   const bool kinect_initialized =
       kernel_state()->xconfig()->ReadSetting<uint32_t>(
           X_CONFIG_CATEGORY::XCONFIG_USER_CATEGORY, XCONFIG_USER_RETAIL_FLAGS) &
@@ -191,7 +179,7 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
   int controller_type = XamNuiCameraGetTiltControllerType_entry();
 
   if (controller_type == 1) {
-    X_NUI_TILT_STATUS tilt_status;
+    X_NUI_TILT_STATUS tilt_status = {};
     tilt_status.buffer_size = sizeof(tilt_status);
     tilt_status.signature = make_fourcc("XtSs");  // (XtSs)?
     result = XamNuiCameraTiltGetStatus_entry(&tilt_status);
@@ -201,8 +189,11 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
     // TODO(knuckleslee): Apply the flags once their meaning is known.
     return X_E_FAIL;  // until implementation improves
   }
-  if (controller_type > 3) {
-    result = X_E_FAIL;  // until implementation improves
+  if (controller_type == 2) {
+    return X_ERROR_SUCCESS;
+  }
+  if (controller_type >= 3) {
+    return X_E_FAIL;  // until implementation improves
   }
   return result;
 }
@@ -302,17 +293,18 @@ dword_result_t XamNuiHudIsEnabled_entry() {
 DECLARE_XAM_EXPORT1(XamNuiHudIsEnabled, kNone, kImplemented);
 
 dword_result_t XamNuiHudGetInitializeFlags_entry() {
-  return kernel_state()->nui()->GetHudFlags();
+  return kernel_state()->nui()->GetInitFlags();
 }
 DECLARE_XAM_EXPORT1(XamNuiHudGetInitializeFlags, kNone, kImplemented);
 
-void XamNuiHudGetVersions_entry(lpqword_t unk1, lpqword_t unk2) {
+void XamNuiHudGetVersions_entry(lpqword_t xam_version_ptr,
+                                lpqword_t xtl_version_ptr) {
   auto nui_ = kernel_state()->nui();
-  if (unk1) {
-    *unk1 = nui_->GetNUIVerID(0);
+  if (xam_version_ptr) {
+    *xam_version_ptr = nui_->GetNUIVersion(0);
   }
-  if (unk2) {
-    *unk2 = nui_->GetNUIVerID(1);
+  if (xtl_version_ptr) {
+    *xtl_version_ptr = nui_->GetNUIVersion(1);
   }
 }
 DECLARE_XAM_EXPORT1(XamNuiHudGetVersions, kNone, kImplemented);

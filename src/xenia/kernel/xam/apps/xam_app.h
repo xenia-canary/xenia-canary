@@ -18,14 +18,13 @@ namespace kernel {
 namespace xam {
 namespace apps {
 
-#pragma pack(push, 4)
-struct X_2B003_UNK {
-  xe::be<uint64_t> unk1;
-  xe::be<uint64_t> unk2;
+struct X_NUI_TITLE_INITIALIZE_DATA {
+  xe::be<uint64_t> xam_version;
+  xe::be<uint64_t> xtl_version;
   xe::be<uint32_t> flags;
+  // 0x04 padding
 };
-static_assert_size(X_2B003_UNK, 0x14);
-#pragma pack(pop)
+static_assert_size(X_NUI_TITLE_INITIALIZE_DATA, 0x18);
 
 class XamApp : public App {
  public:

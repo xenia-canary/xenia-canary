@@ -163,15 +163,17 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // Games used in:
       // 4D5309C9
       // It only receives buffer
-      X_2B003_UNK* args = reinterpret_cast<X_2B003_UNK*>(buffer);
-      XELOGD("XamNuiUnk2B003({:016X}, {:016X}, flags: 0x{:08X}), Stubbed",
-             args->unk1.get(), args->unk2.get(), args->flags.get());
+      X_NUI_TITLE_INITIALIZE_DATA* args =
+          reinterpret_cast<X_NUI_TITLE_INITIALIZE_DATA*>(buffer);
+      XELOGD("XNuiTitleInitialize({:016X}, {:016X}, flags: 0x{:08X}), Stubbed",
+             args->xam_version.get(), args->xtl_version.get(),
+             args->flags.get());
       X_HRESULT result = X_E_FAIL;
 
-      if (args->unk1 == 5) {
-        kernel_state_->nui()->SetNUIVerID(uint64_t(args->unk1), 0);
-        kernel_state_->nui()->SetNUIVerID(uint64_t(args->unk2), 1);
-        kernel_state_->nui()->SetHudFlags(uint32_t(args->flags));
+      if (args->xam_version == 5) {
+        kernel_state_->nui()->SetNUIVersion(uint64_t(args->xam_version), 0);
+        kernel_state_->nui()->SetNUIVersion(uint64_t(args->xtl_version), 1);
+        kernel_state_->nui()->SetInitFlags(uint32_t(args->flags));
         if ((args->flags & 0x80000000) == 0) {
           XELOGD("Todo: write data to two pointers");
           result = X_E_SUCCESS;
@@ -190,11 +192,12 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // Emerald Dashboard
       // Called with no buffer
 
-      kernel_state_->nui()->SetNUIVerID(0, 0);
-      kernel_state_->nui()->SetNUIVerID(0, 1);
-      kernel_state_->nui()->SetHudFlags(0);
+      kernel_state_->nui()->SetNUIVersion(0, 0);
+      kernel_state_->nui()->SetNUIVersion(0, 1);
+      kernel_state_->nui()->SetInitFlags(0);
+      kernel_state_->nui()->SetTiltCallback(0);
 
-      XELOGD("XamNuiUnk2B004 stubbed");
+      XELOGD("XNuiTitleShutdown stubbed");
       return X_E_SUCCESS;
     }
     case 0x0002C009: {
