@@ -427,8 +427,6 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
     }
     case 0x00070025: {
       // XMPCreateUserPlaylistEnumerator
-      // For whatever reason buffer_length is 0 in this case.
-      // Return buffer size is set to be items * 0x338 bytes.
       // Games used in:
       // 54540809, 494707D4
       XMP_CREATE_USER_PLAYLIST_ENUMERATOR* args =
@@ -443,6 +441,13 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
           args->xmp_client != apu::XMP_CLIENT::Game) {
         return X_E_INVALIDARG;
       }
+      auto* enum_structure =
+          memory_->TranslateVirtual<XMP_USER_PLAYLIST_ENUMERATOR*>(
+              args->private_enum_structure_ptr);
+      enum_structure->unk1 = 0;
+      enum_structure->unk3 = 0;
+      enum_structure->unk4 = 0;
+      enum_structure->flags = args->flags;
       return X_E_SUCCESS;
     }
     case 0x00070029: {

@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xenumerator.h"
+#include "xenia/kernel/kernel_state.h"
 
 namespace xe {
 namespace kernel {
@@ -16,7 +17,8 @@ XEnumerator::XEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
                          size_t item_size)
     : XObject(kernel_state, kObjectType),
       items_per_enumerate_(items_per_enumerate),
-      item_size_(item_size) {}
+      item_size_(item_size),
+      private_enum_size_(0) {}
 
 XEnumerator::~XEnumerator() = default;
 
@@ -40,16 +42,16 @@ X_STATUS XEnumerator::Initialize(uint32_t user_index, uint32_t app_id,
     *extra_buffer =
         !extra_buffer ? nullptr : &native_object[sizeof(X_KENUMERATOR)];
   }
+  private_enum_size_ = extra_size;
 
-  extra_size_ = extra_size;
   return X_STATUS_SUCCESS;
 }
 
 X_STATUS XEnumerator::Initialize(uint32_t user_index, uint32_t app_id,
                                  uint32_t open_message, uint32_t close_message,
-                                 uint32_t flags) {
-  return Initialize(user_index, app_id, open_message, close_message, flags, 0,
-                    nullptr);
+                                 uint32_t flags, uint32_t extra_size) {
+  return Initialize(user_index, app_id, open_message, close_message, flags,
+                    extra_size, nullptr);
 }
 
 uint8_t* XStaticUntypedEnumerator::AppendItem() {
