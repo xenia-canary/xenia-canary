@@ -55,6 +55,12 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
   size_t n = 0;
   for (n = 0; n < descriptor_->file_table_block_count; n++) {
     const size_t offset = BlockToOffset(table_block_index);
+    if (!InBounds(offset, sizeof(directory))) {
+      XELOGE("STFS: file table block {} is outside the package",
+             table_block_index);
+      return Result::kReadError;
+    }
+
     directory = *reinterpret_cast<StfsDirectoryBlock*>(data_->data() + offset);
 
     for (size_t m = 0; m < kEntriesPerDirectoryBlock; m++) {
@@ -72,11 +78,18 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
 
       std::unique_ptr<StfsContainerEntry> entry =
           ReadEntry(parent_entry, &dir_entry);
+      if (!entry) {
+        return Result::kReadError;
+      }
+
       all_entries.push_back(entry.get());
       parent_entry->children_.emplace_back(std::move(entry));
     }
 
     const StfsHashEntry* block_hash = GetBlockHash(table_block_index);
+    if (!block_hash) {
+      return Result::kReadError;
+    }
     table_block_index = block_hash->level0_next_block();
     if (table_block_index == kEndOfChain) {
       break;
@@ -133,9 +146,17 @@ std::unique_ptr<StfsContainerEntry> StfsContainerDevice::ReadEntry(
       size_t block_size =
           std::min(static_cast<size_t>(kBlockSize), remaining_size);
       size_t offset = BlockToOffset(block_index);
+      if (!InBounds(offset, block_size)) {
+        XELOGE("STFS: block {} of {} is outside the package", block_index,
+               name);
+        return nullptr;
+      }
+      const StfsHashEntry* block_hash = GetBlockHash(block_index);
+      if (!block_hash) {
+        return nullptr;
+      }
       entry->block_list_.push_back({0, offset, block_size});
       remaining_size -= block_size;
-      auto block_hash = GetBlockHash(block_index);
       block_index = block_hash->level0_next_block();
     }
 
@@ -224,14 +245,30 @@ const uint8_t StfsContainerDevice::GetAmountOfHashLevelsToCheck(
   return 0;
 }
 
-void StfsContainerDevice::UpdateCachedHashTable(
+bool StfsContainerDevice::InBounds(size_t offset, size_t length) const {
+  if (!data_) {
+    return false;
+  }
+  const size_t end = offset + length;
+  return end >= offset && end <= data_->size();
+}
+
+bool StfsContainerDevice::UpdateCachedHashTable(
     uint32_t block_index, uint8_t hash_level,
     uint32_t& secondary_table_offset) {
   const size_t hash_offset = BlockToHashBlockOffset(block_index, hash_level);
   // Do nothing. It's already there.
   if (!cached_hash_tables_.count(hash_offset)) {
-    cached_hash_tables_[hash_offset] = *reinterpret_cast<StfsHashTable*>(
-        data_->data() + hash_offset + secondary_table_offset);
+    const size_t at = hash_offset + secondary_table_offset;
+    if (!InBounds(at, sizeof(StfsHashTable))) {
+      XELOGE(
+          "STFS: the hash table for block {} (level {}) is at {:X}, past the "
+          "end of the {} byte package",
+          block_index, hash_level, at, data_ ? data_->size() : 0);
+      return false;
+    }
+    cached_hash_tables_[hash_offset] =
+        *reinterpret_cast<StfsHashTable*>(data_->data() + at);
   }
 
   uint32_t record = block_index % kBlocksPerHashLevel[0];
@@ -242,14 +279,18 @@ void StfsContainerDevice::UpdateCachedHashTable(
   const StfsHashEntry* record_data =
       &cached_hash_tables_[hash_offset].entries[record];
   secondary_table_offset = record_data->levelN_active_index() ? kBlockSize : 0;
+  return true;
 }
 
-void StfsContainerDevice::UpdateCachedHashTables(
+bool StfsContainerDevice::UpdateCachedHashTables(
     uint32_t block_index, uint8_t highest_hash_level_to_update,
     uint32_t& secondary_table_offset) {
   for (int8_t level = highest_hash_level_to_update; level >= 0; level--) {
-    UpdateCachedHashTable(block_index, level, secondary_table_offset);
+    if (!UpdateCachedHashTable(block_index, level, secondary_table_offset)) {
+      return false;
+    }
   }
+  return true;
 }
 
 const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
@@ -266,8 +307,10 @@ const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
     hash_levels_to_process = 0;
   }
 
-  UpdateCachedHashTables(block_index, hash_levels_to_process,
-                         secondary_table_offset);
+  if (!UpdateCachedHashTables(block_index, hash_levels_to_process,
+                              secondary_table_offset)) {
+    return nullptr;
+  }
 
   const size_t hash_offset = BlockToHashBlockOffset(block_index, 0);
   const uint32_t record = block_index % kBlocksPerHashLevel[0];

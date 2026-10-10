@@ -156,6 +156,20 @@ std::unique_ptr<vfs::Device> ContentPackageContainer::MountPackage() {
       xe::round_up(header_.content_header.header_size,
                    vfs::XContentContainerDevice::kBlockSize);
 
+  // The metadata records how much data the package should hold, so an
+  // incomplete download can be named as such instead of reading off the end
+  // of the mapping later. Some packages leave the field at zero.
+  const uint64_t expected_size = header_.content_metadata.content_size;
+  if (expected_size && package_->size() >= package_data_offset &&
+      expected_size > package_->size() - package_data_offset) {
+    XELOGE(
+        "XContent: {} holds {} bytes of data where its metadata describes {}. "
+        "The package is incomplete and will not be mounted.",
+        xe::path_to_utf8(host_path_), package_->size() - package_data_offset,
+        expected_size);
+    return nullptr;
+  }
+
   std::unique_ptr<vfs::Device> device = nullptr;
   switch (header_.content_metadata.volume_type) {
     case XContentVolumeType::kStfs:
