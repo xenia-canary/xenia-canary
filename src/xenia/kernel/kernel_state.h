@@ -258,6 +258,8 @@ class KernelState {
     return object_ref<T>(reinterpret_cast<T*>(module.release()));
   }
 
+  void SearchAndMountTitleUpdate(const uint32_t title_id,
+                                 const xex2_opt_execution_info* exec_info);
   X_RESULT ApplyTitleUpdate(const object_ref<UserModule> title_module);
   // Terminates a title: Unloads all modules, and kills all guest threads.
   // This DOES NOT RETURN if called from a guest thread!
@@ -337,10 +339,7 @@ class KernelState {
                          int tls_static_data_address);
   void InitializeKernelGuestGlobals();
 
-  std::vector<xam::XCONTENT_DATA_INTERNAL> FindTitleUpdate(
-      const uint32_t title_id) const;
-  const object_ref<UserModule> LoadTitleUpdate(
-      const xam::XCONTENT_DATA_INTERNAL* title_update,
+  const object_ref<UserModule> LoadTitleUpdateModule(
       const object_ref<UserModule> module);
   bool IsPatchSignatureProper(const object_ref<UserModule> title_module,
                               const object_ref<UserModule> patch_module) const;
