@@ -361,6 +361,24 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
                               args.depth_bias_slope_factor);
       } break;
 
+      case Command::kVkSetDepthBias2EXT: {
+        auto& args = *reinterpret_cast<const ArgsVkSetDepthBias2EXT*>(stream);
+        VkDepthBiasRepresentationInfoEXT representation_info = {};
+        representation_info.sType =
+            VK_STRUCTURE_TYPE_DEPTH_BIAS_REPRESENTATION_INFO_EXT;
+        representation_info.depthBiasRepresentation =
+            args.depth_bias_representation;
+        representation_info.depthBiasExact = args.depth_bias_exact;
+        VkDepthBiasInfoEXT depth_bias_info = {};
+        depth_bias_info.sType = VK_STRUCTURE_TYPE_DEPTH_BIAS_INFO_EXT;
+        depth_bias_info.pNext = &representation_info;
+        depth_bias_info.depthBiasConstantFactor =
+            args.depth_bias_constant_factor;
+        depth_bias_info.depthBiasClamp = args.depth_bias_clamp;
+        depth_bias_info.depthBiasSlopeFactor = args.depth_bias_slope_factor;
+        dfn.vkCmdSetDepthBias2EXT(command_buffer, &depth_bias_info);
+      } break;
+
       case Command::kVkSetScissor: {
         auto& args = *reinterpret_cast<const ArgsVkSetScissor*>(stream);
         dfn.vkCmdSetScissor(

@@ -202,6 +202,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(EXT_host_query_reset, 1, 2)
       // #82.
       XE_UI_VULKAN_STRUCT_EXTENSION(EXT_conditional_rendering)
+      // #284.
+      XE_UI_VULKAN_STRUCT_EXTENSION(EXT_depth_bias_control)
       // #252.
       XE_UI_VULKAN_LOCAL_EXTENSION(EXT_fragment_shader_interlock)
       // #277.
@@ -328,6 +330,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       VkPhysicalDeviceConditionalRenderingFeaturesEXT,
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT>
       features_EXT_conditional_rendering;
+  VulkanFeatures<
+      VkPhysicalDeviceDepthBiasControlFeaturesEXT,
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_BIAS_CONTROL_FEATURES_EXT>
+      features_EXT_depth_bias_control;
 
   if (get_physical_device_properties2_supported) {
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0)) {
@@ -375,6 +381,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     if (device->extensions_.ext_EXT_conditional_rendering) {
       features_EXT_conditional_rendering.Link(supported_features_2,
                                               device_create_info);
+    }
+    if (device->extensions_.ext_EXT_depth_bias_control) {
+      features_EXT_depth_bias_control.Link(supported_features_2,
+                                           device_create_info);
     }
     ifn.vkGetPhysicalDeviceProperties2(physical_device, &properties_2);
     ifn.vkGetPhysicalDeviceFeatures2(physical_device, &supported_features_2);
@@ -769,6 +779,15 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     }
   }
 
+  if (device->extensions_.ext_EXT_depth_bias_control) {
+    if (with_gpu_emulation) {
+      XE_UI_VULKAN_FEATURE_2(features_EXT_depth_bias_control, depthBiasControl)
+      XE_UI_VULKAN_FEATURE_2(features_EXT_depth_bias_control,
+                             leastRepresentableValueForceUnormRepresentation)
+      XE_UI_VULKAN_FEATURE_2(features_EXT_depth_bias_control, depthBiasExact)
+    }
+  }
+
 #undef XE_UI_VULKAN_LIMIT
 #undef XE_UI_VULKAN_ENUM_LIMIT
 #undef XE_UI_VULKAN_FEATURE
@@ -847,6 +866,9 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   }
   if (device->extensions_.ext_EXT_conditional_rendering) {
 #include "xenia/ui/vulkan/functions/device_ext_conditional_rendering.inc"
+  }
+  if (device->extensions_.ext_EXT_depth_bias_control) {
+#include "xenia/ui/vulkan/functions/device_ext_depth_bias_control.inc"
   }
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 
