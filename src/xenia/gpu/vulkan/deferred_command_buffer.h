@@ -418,6 +418,21 @@ class DeferredCommandBuffer {
     args.depth_bias_slope_factor = depth_bias_slope_factor;
   }
 
+  // VK_EXT_depth_bias_control.
+  void CmdVkSetDepthBias2EXT(
+      float depth_bias_constant_factor, float depth_bias_clamp,
+      float depth_bias_slope_factor,
+      VkDepthBiasRepresentationEXT depth_bias_representation,
+      bool depth_bias_exact) {
+    auto& args = *reinterpret_cast<ArgsVkSetDepthBias2EXT*>(WriteCommand(
+        Command::kVkSetDepthBias2EXT, sizeof(ArgsVkSetDepthBias2EXT)));
+    args.depth_bias_constant_factor = depth_bias_constant_factor;
+    args.depth_bias_clamp = depth_bias_clamp;
+    args.depth_bias_slope_factor = depth_bias_slope_factor;
+    args.depth_bias_representation = depth_bias_representation;
+    args.depth_bias_exact = depth_bias_exact ? VK_TRUE : VK_FALSE;
+  }
+
   void CmdVkSetScissor(uint32_t first_scissor, uint32_t scissor_count,
                        const VkRect2D* scissors) {
     constexpr size_t header_size =
@@ -498,6 +513,7 @@ class DeferredCommandBuffer {
     kVkPushConstants,
     kVkSetBlendConstants,
     kVkSetDepthBias,
+    kVkSetDepthBias2EXT,
     kVkSetScissor,
     kVkSetStencilCompareMask,
     kVkSetStencilReference,
@@ -702,6 +718,14 @@ class DeferredCommandBuffer {
     float depth_bias_constant_factor;
     float depth_bias_clamp;
     float depth_bias_slope_factor;
+  };
+
+  struct ArgsVkSetDepthBias2EXT {
+    float depth_bias_constant_factor;
+    float depth_bias_clamp;
+    float depth_bias_slope_factor;
+    VkDepthBiasRepresentationEXT depth_bias_representation;
+    VkBool32 depth_bias_exact;
   };
 
   struct ArgsVkSetScissor {

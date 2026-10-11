@@ -176,6 +176,12 @@ class VulkanDevice {
     // VK_EXT_conditional_rendering (#82)
 
     bool conditionalRendering = false;
+
+    // VK_EXT_depth_bias_control (#284)
+
+    bool depthBiasControl = false;
+    bool leastRepresentableValueForceUnormRepresentation = false;
+    bool depthBiasExact = false;
   };
 
   // Properties of the core API and enabled extensions, and enabled features.
@@ -204,6 +210,7 @@ class VulkanDevice {
     // Has optional features not implied by this being true.
     bool ext_1_3_KHR_maintenance4 = false;       // #414
     bool ext_EXT_conditional_rendering = false;  // #82
+    bool ext_EXT_depth_bias_control = false;     // #284
 #if XE_PLATFORM_WIN32
     // VK_EXT_full_screen_exclusive (#256, Windows only)
     bool ext_EXT_full_screen_exclusive = false;
@@ -231,6 +238,8 @@ class VulkanDevice {
 #include "xenia/ui/vulkan/functions/device_1_3_khr_maintenance4.inc"
     // VK_EXT_conditional_rendering (#82)
 #include "xenia/ui/vulkan/functions/device_ext_conditional_rendering.inc"
+    // VK_EXT_depth_bias_control (#284)
+#include "xenia/ui/vulkan/functions/device_ext_depth_bias_control.inc"
 #undef XE_UI_VULKAN_FUNCTION_PROMOTED
 #undef XE_UI_VULKAN_FUNCTION
   };
