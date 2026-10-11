@@ -48,14 +48,6 @@ AudioDriver* SDLAudioSystem::CreateDriver(xe::threading::Semaphore* semaphore,
                             need_format_conversion);
 }
 
-void SDLAudioSystem::DestroyDriver(AudioDriver* driver) {
-  assert_not_null(driver);
-  auto sdldriver = dynamic_cast<SDLAudioDriver*>(driver);
-  assert_not_null(sdldriver);
-  sdldriver->Shutdown();
-  delete sdldriver;
-}
-
 }  // namespace sdl
 }  // namespace apu
 }  // namespace xe

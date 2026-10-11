@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/apu/nop/nop_audio_driver.h"
+#include "xenia/apu/nop_audio_driver.h"
 
 namespace xe {
 namespace apu {

@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_APU_NOP_NOP_AUDIO_DRIVER_H_
-#define XENIA_APU_NOP_NOP_AUDIO_DRIVER_H_
+#ifndef XENIA_APU_NOP_AUDIO_DRIVER_H_
+#define XENIA_APU_NOP_AUDIO_DRIVER_H_
 
 #include "xenia/apu/audio_driver.h"
 #include "xenia/base/threading.h"
@@ -40,4 +40,4 @@ class NopAudioDriver : public AudioDriver {
 }  // namespace apu
 }  // namespace xe
 
-#endif  // XENIA_APU_NOP_NOP_AUDIO_DRIVER_H_
+#endif  // XENIA_APU_NOP_AUDIO_DRIVER_H_

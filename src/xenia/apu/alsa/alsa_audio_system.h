@@ -27,12 +27,11 @@ class ALSAAudioSystem : public AudioSystem {
 
   std::string name() const override { return "ALSA"; }
 
-  X_RESULT CreateDriver(size_t index, xe::threading::Semaphore* semaphore,
+  X_STATUS CreateDriver(size_t index, xe::threading::Semaphore* semaphore,
                         AudioDriver** out_driver) override;
   AudioDriver* CreateDriver(xe::threading::Semaphore* semaphore,
                             uint32_t frequency, uint32_t channels,
                             bool need_format_conversion) override;
-  void DestroyDriver(AudioDriver* driver) override;
 
  protected:
   void Initialize() override;

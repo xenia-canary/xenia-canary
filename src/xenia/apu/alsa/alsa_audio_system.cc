@@ -47,7 +47,7 @@ std::unique_ptr<AudioSystem> ALSAAudioSystem::Create(
   return std::make_unique<ALSAAudioSystem>(processor);
 }
 
-X_RESULT ALSAAudioSystem::CreateDriver(size_t index,
+X_STATUS ALSAAudioSystem::CreateDriver(size_t index,
                                        xe::threading::Semaphore* semaphore,
                                        AudioDriver** out_driver) {
   assert_not_null(out_driver);
@@ -61,32 +61,20 @@ X_RESULT ALSAAudioSystem::CreateDriver(size_t index,
     XELOGE("Failed to initialize ALSA driver for client index {}", index);
     delete driver;
     *out_driver = nullptr;
-    return X_ERROR_NOT_FOUND;
+    return X_STATUS_UNSUCCESSFUL;
   }
 
   *out_driver = driver;
   XELOGI("Successfully created ALSA driver for client index {}", index);
-  return X_ERROR_SUCCESS;
+  return X_STATUS_SUCCESS;
 }
 
 AudioDriver* ALSAAudioSystem::CreateDriver(xe::threading::Semaphore* semaphore,
                                            uint32_t frequency,
                                            uint32_t channels,
                                            bool need_format_conversion) {
-  auto driver = new ALSAAudioDriver(semaphore, frequency, channels,
-                                    need_format_conversion);
-  if (!driver->Initialize()) {
-    delete driver;
-    return nullptr;
-  }
-  return driver;
-}
-
-void ALSAAudioSystem::DestroyDriver(AudioDriver* driver) {
-  assert_not_null(driver);
-  ALSAAudioDriver* alsa_driver = static_cast<ALSAAudioDriver*>(driver);
-  alsa_driver->Shutdown();
-  delete alsa_driver;
+  return new ALSAAudioDriver(semaphore, frequency, channels,
+                             need_format_conversion);
 }
 
 }  // namespace alsa

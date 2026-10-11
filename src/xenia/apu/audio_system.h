@@ -71,7 +71,9 @@ class AudioSystem {
   virtual X_STATUS CreateDriver(size_t index,
                                 xe::threading::Semaphore* semaphore,
                                 AudioDriver** out_driver) = 0;
-  virtual void DestroyDriver(AudioDriver* driver) = 0;
+  X_STATUS CreateClientDriver(size_t index, xe::threading::Semaphore* semaphore,
+                              AudioDriver** out_driver);
+  void DestroyDriver(AudioDriver* driver);
 
   Memory* memory_ = nullptr;
   cpu::Processor* processor_ = nullptr;

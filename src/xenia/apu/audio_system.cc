@@ -13,6 +13,7 @@
 
 #include "xenia/apu/apu_flags.h"
 #include "xenia/apu/audio_driver.h"
+#include "xenia/apu/nop_audio_driver.h"
 #include "xenia/apu/xma_decoder.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
@@ -221,10 +222,10 @@ void AudioSystem::Shutdown() {
     for (size_t i = 0; i < kMaximumClientCount; ++i) {
       if (clients_[i].in_use) {
         DestroyDriver(clients_[i].driver);
+        clients_[i].driver = nullptr;
         if (clients_[i].wrapped_callback_arg) {
           memory()->SystemHeapFree(clients_[i].wrapped_callback_arg);
         }
-        clients_[i].driver = nullptr;
         clients_[i].callback = 0;
         clients_[i].callback_arg = 0;
         clients_[i].wrapped_callback_arg = 0;
@@ -245,8 +246,8 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   auto ret = client_semaphore->Release(kMaximumQueuedFrames, nullptr);
   assert_true(ret);
 
-  AudioDriver* driver;
-  auto result = CreateDriver(index, client_semaphore, &driver);
+  AudioDriver* driver = nullptr;
+  auto result = CreateClientDriver(index, client_semaphore, &driver);
   if (XFAILED(result)) {
     XELOGE("AudioSystem::RegisterClient: CreateDriver failed for index={}",
            index);
@@ -313,8 +314,8 @@ void AudioSystem::UnregisterClient(size_t index) {
   std::lock_guard<std::mutex> guard(clients_[index].lock);
 
   DestroyDriver(clients_[index].driver);
-  memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
   clients_[index].driver = nullptr;
+  memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
   clients_[index].callback = 0;
   clients_[index].callback_arg = 0;
   clients_[index].wrapped_callback_arg = 0;
@@ -388,7 +389,7 @@ bool AudioSystem::Restore(ByteStream* stream) {
     assert_true(ret);
 
     AudioDriver* driver = nullptr;
-    auto status = CreateDriver(id, client_semaphore, &driver);
+    auto status = CreateClientDriver(id, client_semaphore, &driver);
     if (XFAILED(status)) {
       XELOGE(
           "AudioSystem::Restore - Call to CreateDriver failed with status "
@@ -425,6 +426,32 @@ void AudioSystem::Resume() {
   resume_event_->Set();
 
   xma_decoder_->Resume();
+}
+
+X_STATUS AudioSystem::CreateClientDriver(size_t index,
+                                         xe::threading::Semaphore* semaphore,
+                                         AudioDriver** out_driver) {
+  *out_driver = nullptr;
+  X_STATUS result = CreateDriver(index, semaphore, out_driver);
+  if (result == X_STATUS_SUCCESS && *out_driver) {
+    return result;
+  }
+
+  if (*out_driver) {
+    DestroyDriver(*out_driver);
+  }
+  // The audio worker paces registered clients; release their slots immediately.
+  *out_driver = new nop::NopAudioDriver(semaphore);
+  XELOGW("APU: {} failed to create a driver for client {}; continuing silently",
+         name(), index);
+  return X_STATUS_SUCCESS;
+}
+
+void AudioSystem::DestroyDriver(AudioDriver* driver) {
+  if (driver) {
+    driver->Shutdown();
+    delete driver;
+  }
 }
 
 }  // namespace apu
