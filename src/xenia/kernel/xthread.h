@@ -492,6 +492,8 @@ class XThread : public XObject, public cpu::Thread {
   // Returns the previous suspend_count value.
   uint32_t SelfSuspend();
 #endif
+  // Drops the guest's lwarx reservation after a host suspend.
+  void ReleaseGuestReservation();
 
   xe::threading::Thread* thread() { return thread_.get(); }
 
