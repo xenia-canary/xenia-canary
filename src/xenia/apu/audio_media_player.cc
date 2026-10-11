@@ -10,6 +10,7 @@
 #include "xenia/apu/audio_media_player.h"
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/audio_system.h"
+#include "xenia/apu/pacing_audio_driver.h"
 #include "xenia/apu/xma_context.h"
 #include "xenia/base/logging.h"
 
@@ -530,6 +531,9 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
   DeleteDriver();
 
   std::unique_lock<xe_mutex> guard(driver_mutex_);
+  if (!sample_rate || !channels || channels > AudioDriver::kFrameSamplesMax) {
+    return false;
+  }
   driver_semaphore_ = xe::threading::Semaphore::Create(
       AudioSystem::kMaximumQueuedFrames, AudioSystem::kMaximumQueuedFrames);
 
@@ -537,19 +541,27 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
     return false;
   }
 
-  driver_ = std::unique_ptr<AudioDriver>(audio_system_->CreateDriver(
-      driver_semaphore_.get(), sample_rate, channels, false));
-  if (!driver_) {
-    driver_semaphore_.reset();
-    return false;
+  driver_.reset(audio_system_->CreateDriver(driver_semaphore_.get(),
+                                            sample_rate, channels, false));
+  if (driver_ && driver_->Initialize()) {
+    return true;
   }
-
-  if (!driver_->Initialize()) {
-    driver_semaphore_.reset();
+  if (driver_) {
     driver_->Shutdown();
     driver_.reset();
+  }
+  driver_ = std::make_unique<PacingAudioDriver>(
+      driver_semaphore_.get(), sample_rate,
+      AudioDriver::kFrameSamplesMax / channels);
+  if (!driver_->Initialize()) {
+    driver_.reset();
+    driver_semaphore_.reset();
     return false;
   }
+  XELOGW(
+      "APU: {} failed to create or initialize a media driver; "
+      "continuing silently",
+      audio_system_->name());
 
   return true;
 }
@@ -557,13 +569,11 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
 void AudioMediaPlayer::DeleteDriver() {
   std::unique_lock<xe_mutex> guard(driver_mutex_);
   if (driver_) {
-    if (driver_semaphore_) {
-      driver_semaphore_.reset();
-    }
-
+    // Stop the driver before destroying the semaphore used by its callbacks.
     driver_->Shutdown();
     driver_.reset();
   }
+  driver_semaphore_.reset();
 }
 
 }  // namespace apu

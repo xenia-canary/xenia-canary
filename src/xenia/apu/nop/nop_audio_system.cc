@@ -10,7 +10,8 @@
 #include "xenia/apu/nop/nop_audio_system.h"
 
 #include "xenia/apu/apu_flags.h"
-#include "xenia/apu/nop/nop_audio_driver.h"
+#include "xenia/apu/nop_audio_driver.h"
+#include "xenia/apu/pacing_audio_driver.h"
 #include "xenia/base/assert.h"
 
 namespace xe {
@@ -30,6 +31,7 @@ X_STATUS NopAudioSystem::CreateDriver(size_t index,
                                       xe::threading::Semaphore* semaphore,
                                       AudioDriver** out_driver) {
   assert_not_null(out_driver);
+  // The audio worker already paces registered guest clients.
   *out_driver = new NopAudioDriver(semaphore);
   return X_STATUS_SUCCESS;
 }
@@ -37,10 +39,12 @@ X_STATUS NopAudioSystem::CreateDriver(size_t index,
 AudioDriver* NopAudioSystem::CreateDriver(xe::threading::Semaphore* semaphore,
                                           uint32_t frequency, uint32_t channels,
                                           bool need_format_conversion) {
-  return new NopAudioDriver(semaphore);
+  if (!channels || channels > AudioDriver::kFrameSamplesMax) {
+    return nullptr;
+  }
+  return new PacingAudioDriver(semaphore, frequency,
+                               AudioDriver::kFrameSamplesMax / channels);
 }
-
-void NopAudioSystem::DestroyDriver(AudioDriver* driver) { delete driver; }
 
 }  // namespace nop
 }  // namespace apu

@@ -32,7 +32,6 @@ class SDLAudioSystem : public AudioSystem {
   AudioDriver* CreateDriver(xe::threading::Semaphore* semaphore,
                             uint32_t frequency, uint32_t channels,
                             bool need_format_conversion) override;
-  void DestroyDriver(AudioDriver* driver) override;
 
  protected:
   void Initialize() override;
