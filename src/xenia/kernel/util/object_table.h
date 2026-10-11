@@ -41,6 +41,16 @@ class ObjectTable {
   X_STATUS ReleaseHandleInLock(X_HANDLE handle);
   X_STATUS RemoveHandle(X_HANDLE handle);
 
+  // Track guest opens separately from pointer references held on the slot.
+  X_STATUS OpenGuestHandle(X_HANDLE handle, const XObject* object);
+  bool IsGuestHandleOpen(X_HANDLE handle, const XObject* object);
+  // Claim an open before running guest code; report the prior total.
+  X_STATUS ClaimGuestClose(X_HANDLE handle, const XObject* object,
+                           int32_t* out_handle_count, uint64_t* out_generation);
+  // The generation prevents a close callback from releasing a recycled slot.
+  X_STATUS ReleaseHandleOf(X_HANDLE handle, const XObject* object,
+                           uint64_t generation);
+
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
 
@@ -86,6 +96,9 @@ class ObjectTable {
  private:
   struct ObjectTableEntry {
     int handle_ref_count = 0;
+    // -1 means this slot has not been opened by ObOpenObjectByPointer.
+    int32_t guest_open_count = -1;
+    uint64_t generation = 0;
     XObject* object = nullptr;
   };
   ObjectTableEntry* LookupTableInLock(X_HANDLE handle);
@@ -109,6 +122,8 @@ class ObjectTable {
   ObjectTableEntry* host_table_ = nullptr;
   uint32_t last_free_entry_ = 0;
   uint32_t last_free_host_entry_ = 0;
+  uint64_t next_handle_generation_ = 0;
+  bool restoring_legacy_guest_opens_ = false;
   std::unordered_map<string_key_case, X_HANDLE> name_table_;
 };
 

@@ -282,7 +282,7 @@ class XObject {
   // if we allocated it!
   uint32_t guest_object_ptr_ = 0;
   bool allocated_guest_object_ = false;
-
+  // Guest type recorded by ObOpenObjectByPointer.
   std::atomic<uint32_t> guest_object_type_ptr_{0};
 };
 

@@ -1340,8 +1340,10 @@ bool KernelState::Restore(ByteStream* stream) {
     return false;
   }
 
-  // Restore the object table
-  object_table_.Restore(stream);
+  // Restore the object table.
+  if (!object_table_.Restore(stream)) {
+    return false;
+  }
 
   // TLS bitmap is now stored per-process in X_KPROCESS structures (in guest
   // memory) Skip reading old global TLS bitmap if present in old save files

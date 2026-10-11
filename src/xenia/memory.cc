@@ -1736,6 +1736,9 @@ xe::memory::PageAccess BaseHeap::QueryRangeAccess(uint32_t low_address,
   {
     auto global_lock = global_critical_region_.Acquire();
     for (uint32_t i = low_page_number; i <= high_page_number; ++i) {
+      if (!(page_table_[i].state & kMemoryAllocationCommit)) {
+        return xe::memory::PageAccess::kNoAccess;
+      }
       uint32_t page_protect = page_table_[i].current_protect;
       if (!(page_protect & kMemoryProtectRead)) {
         all_readable = false;
