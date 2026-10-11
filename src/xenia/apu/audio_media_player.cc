@@ -472,6 +472,35 @@ X_STATUS AudioMediaPlayer::SetVolume(float volume) {
   return X_STATUS_SUCCESS;
 }
 
+AudioMediaPlayer::ControllerSettings& AudioMediaPlayer::GetControllerSettings(
+    XMP_CLIENT xmp_client) {
+  PlaybackController controller = PlaybackController::User;
+  if (xmp_client == XMP_CLIENT::Game) {
+    controller = PlaybackController::Game;
+  } else if (xmp_client == XMP_CLIENT::MCE) {
+    controller = PlaybackController::MCE;
+  }
+
+  return controller_settings_[uint32_t(controller)];
+}
+
+void AudioMediaPlayer::SetPlaybackController(
+    PlaybackController playback_controller) {
+  const bool changed = playback_controller != playback_controller_;
+  playback_controller_ = playback_controller;
+  if (!changed ||
+      uint32_t(playback_controller) >= xe::countof(controller_settings_)) {
+    return;
+  }
+
+  const ControllerSettings& settings =
+      controller_settings_[uint32_t(playback_controller)];
+  SetPlaybackMode(settings.playback_mode);
+  SetRepeatMode(settings.repeat_mode);
+  SetPlaybackFlags(settings.playback_flags);
+  SetVolume(settings.volume);
+}
+
 bool AudioMediaPlayer::IsLastSongInPlaylist() const {
   if (!active_playlist_) {
     return false;

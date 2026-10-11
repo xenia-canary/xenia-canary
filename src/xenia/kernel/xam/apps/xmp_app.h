@@ -100,7 +100,7 @@ static_assert_size(XMP_PLAY_TITLE_PLAYLIST, 0xC);
 
 struct XMP_STOP {
   xe::be<apu::XMP_CLIENT> xmp_client;
-  xe::be<uint32_t> allow_restart;
+  xe::be<uint32_t> no_wait;
 };
 static_assert_size(XMP_STOP, 0x8);
 
@@ -300,13 +300,25 @@ class XmpApp : public App {
                                    uint32_t flags, uint32_t out_song_handles,
                                    uint32_t out_playlist_handle);
   X_HRESULT XMPDeleteTitlePlaylist(uint32_t playlist_handle);
-  X_HRESULT XMPPlayTitlePlaylist(uint32_t playlist_handle,
+  X_HRESULT XMPPlayTitlePlaylist(apu::XMP_CLIENT xmp_client,
+                                 uint32_t playlist_handle,
                                  uint32_t song_handle);
-  X_HRESULT XMPContinue();
-  X_HRESULT XMPStop(uint32_t unk);
-  X_HRESULT XMPPause();
-  X_HRESULT XMPNext();
-  X_HRESULT XMPPrevious();
+  X_HRESULT XMPAccessCheck(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPContinue(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPStop(apu::XMP_CLIENT xmp_client, bool no_wait);
+  X_HRESULT XMPPause(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPNext(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPPrevious(apu::XMP_CLIENT xmp_client);
+  X_HRESULT XMPSetPlaybackBehavior(apu::XMP_CLIENT xmp_client,
+                                   PlaybackMode playback_mode,
+                                   RepeatMode repeat_mode,
+                                   PlaybackFlags playback_flags);
+  X_HRESULT XMPGetPlaybackBehavior(apu::XMP_CLIENT xmp_client,
+                                   uint32_t playback_mode_ptr,
+                                   uint32_t repeat_mode_ptr,
+                                   uint32_t playback_flags_ptr);
+  X_HRESULT XMPSetVolume(apu::XMP_CLIENT xmp_client, float volume);
+  X_HRESULT XMPGetVolume(apu::XMP_CLIENT xmp_client, uint32_t volume_ptr);
   X_HRESULT XMPGetTitlePlaylistBufferSize(apu::XMP_CLIENT xmp_client,
                                           uint32_t song_count,
                                           uint32_t storage_ptr);
