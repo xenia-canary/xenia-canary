@@ -9,7 +9,6 @@
 
 #include "xenia/vfs/virtual_file_system.h"
 #include "xenia/kernel/xam/content_manager.h"
-#include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 
 #include "devices/host_path_entry.h"
@@ -39,22 +38,6 @@ void VirtualFileSystem::Clear() {
 Device* VirtualFileSystem::RegisterDevice(std::unique_ptr<Device> device) {
   auto global_lock = global_critical_region_.Acquire();
   return devices_.emplace_back(std::move(device)).get();
-}
-
-bool VirtualFileSystem::RegisterHostPathDevice(
-    const std::string_view mount_path, const std::filesystem::path& host_path) {
-  auto global_lock = global_critical_region_.Acquire();
-  for (const auto& device : devices_) {
-    if (device->mount_path() == mount_path) {
-      return true;
-    }
-  }
-  auto device = std::make_unique<HostPathDevice>(mount_path, host_path, false);
-  if (!device->Initialize()) {
-    return false;
-  }
-  RegisterDevice(std::move(device));
-  return true;
 }
 
 bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
@@ -259,19 +242,12 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
       return X_STATUS_FILE_IS_A_DIRECTORY;
     }
 
-    // If the entry does not exist on the host then remove the cached entry
-    if (parent_entry) {
-      const xe::vfs::HostPathEntry* host_path =
-          dynamic_cast<const xe::vfs::HostPathEntry*>(parent_entry);
-
-      if (host_path) {
-        auto const file_path = host_path->host_path() / entry->name();
-
-        if (!std::filesystem::exists(file_path)) {
-          // Remove cached entry
-          entry->Delete();
-          entry = nullptr;
-        }
+    // Use the entry's backing path: a directory may be backed by a host
+    // folder outside its parent's host directory.
+    if (auto host_entry = dynamic_cast<const HostPathEntry*>(entry)) {
+      if (!std::filesystem::exists(host_entry->host_path())) {
+        entry->Delete();
+        entry = nullptr;
       }
     }
   }

@@ -23,6 +23,7 @@
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
+#include "xenia/vfs/devices/host_path_entry.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/xbox.h"
 
@@ -877,13 +878,20 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
     return X_STATUS_NO_SUCH_FILE;
   }
 
-  const std::filesystem::path host_path =
-      kernel_state()->emulator()->content_root() / entry->name();
-
-  if (!std::filesystem::exists(host_path)) {
-    uint64_t progress = 0;
-    vfs::VirtualFileSystem::ExtractDeviceFile(
-        entry, kernel_state()->emulator()->content_root(), progress, true);
+  std::filesystem::path host_path;
+  if (auto host_entry = dynamic_cast<vfs::HostPathEntry*>(entry)) {
+    // Mount host-backed packages directly from their resolved guest entry.
+    host_path = host_entry->host_path();
+  } else {
+    host_path = kernel_state()->emulator()->content_root() / entry->name();
+    if (!std::filesystem::exists(host_path)) {
+      uint64_t progress = 0;
+      const auto result = vfs::VirtualFileSystem::ExtractDeviceFile(
+          entry, kernel_state()->emulator()->content_root(), progress, true);
+      if (result != X_STATUS_SUCCESS) {
+        return result;
+      }
+    }
   }
 
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");

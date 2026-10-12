@@ -33,6 +33,9 @@ class HostPathEntry : public Entry {
   const std::filesystem::path& host_path() const { return host_path_; }
 
   Entry* GetChild(const std::string_view name) override;
+  const std::vector<std::unique_ptr<Entry>>& children() const override;
+  Entry* IterateChildren(const xe::filesystem::WildcardEngine& engine,
+                         size_t* current_index) override;
 
   X_STATUS Open(uint32_t desired_access, File** out_file) override;
 
@@ -49,6 +52,8 @@ class HostPathEntry : public Entry {
 
  private:
   friend class HostPathDevice;
+
+  void RefreshChildren();
 
   std::unique_ptr<Entry> CreateEntryInternal(const std::string_view name,
                                              uint32_t attributes) override;

@@ -63,16 +63,67 @@ Entry* HostPathEntry::GetChild(const std::string_view name) {
     return nullptr;
   }
 
-  // ContentManager and content imports can create files outside this device.
-  // Adopt missing entries without replacing cached objects held by open files.
-  for (const auto& info : xe::filesystem::ListFiles(host_path_)) {
-    if (xe::utf8::equal_case(xe::path_to_utf8(info.name), name)) {
-      children_.emplace_back(
-          HostPathEntry::Create(device_, this, host_path_ / info.name, info));
-      return children_.back().get();
+  // Most lookups can stat the requested file without listing its siblings.
+  auto full_path = host_path_ / xe::to_path(name);
+  auto info = xe::filesystem::GetInfo(full_path);
+  if (!info) {
+    // Guest names are case insensitive even on case-sensitive host filesystems.
+    for (const auto& candidate : xe::filesystem::ListFiles(host_path_)) {
+      if (xe::utf8::equal_case(xe::path_to_utf8(candidate.name), name)) {
+        full_path = host_path_ / candidate.name;
+        info = candidate;
+        break;
+      }
     }
   }
-  return nullptr;
+  if (!info) {
+    return nullptr;
+  }
+  children_.emplace_back(
+      HostPathEntry::Create(device_, this, full_path, *info));
+  return children_.back().get();
+}
+
+void HostPathEntry::RefreshChildren() {
+  auto global_lock = global_critical_region_.Acquire();
+  if (!(attributes_ & kFileAttributeDirectory)) {
+    return;
+  }
+  // Keep recursive enumeration finite if a host symlink points to an ancestor.
+  std::error_code ec;
+  const auto canonical_self = std::filesystem::canonical(host_path_, ec);
+  if (!ec) {
+    for (auto ancestor = parent_; ancestor; ancestor = ancestor->parent()) {
+      const auto host_ancestor = static_cast<HostPathEntry*>(ancestor);
+      const auto canonical_ancestor =
+          std::filesystem::canonical(host_ancestor->host_path(), ec);
+      if (!ec && canonical_self == canonical_ancestor) {
+        return;
+      }
+    }
+  }
+  // Only enumerate this directory. Descendants are discovered when accessed.
+  // Preserve cached entries, including directories with separate host backing.
+  for (const auto& info : xe::filesystem::ListFiles(host_path_)) {
+    const auto name = xe::path_to_utf8(info.name);
+    if (!Entry::GetChild(name)) {
+      children_.emplace_back(
+          HostPathEntry::Create(device_, this, host_path_ / info.name, info));
+    }
+  }
+}
+
+const std::vector<std::unique_ptr<Entry>>& HostPathEntry::children() const {
+  const_cast<HostPathEntry*>(this)->RefreshChildren();
+  return children_;
+}
+
+Entry* HostPathEntry::IterateChildren(
+    const xe::filesystem::WildcardEngine& engine, size_t* current_index) {
+  if (!*current_index) {
+    RefreshChildren();
+  }
+  return Entry::IterateChildren(engine, current_index);
 }
 
 X_STATUS HostPathEntry::Open(uint32_t desired_access, File** out_file) {
@@ -120,7 +171,7 @@ std::unique_ptr<Entry> HostPathEntry::CreateEntryInternal(
 }
 
 bool HostPathEntry::DeleteEntryInternal(Entry* entry) {
-  auto full_path = host_path_ / xe::to_path(entry->name());
+  auto full_path = static_cast<HostPathEntry*>(entry)->host_path();
   std::error_code ec;  // avoid exception on remove/remove_all failure
   if (entry->attributes() & kFileAttributeDirectory) {
     // Delete entire directory and contents.
@@ -146,10 +197,17 @@ bool HostPathEntry::DeleteEntryInternal(Entry* entry) {
 
 void HostPathEntry::RenameEntryInternal(
     const std::vector<std::string_view>& path_parts) {
-  const std::string relative_path = xe::utf8::join_paths(path_parts);
-  const std::string new_host_path_ = xe::utf8::join_paths(
-      xe::path_to_utf8(static_cast<HostPathDevice*>(device_)->host_path()),
-      relative_path);
+  if (path_parts.empty()) {
+    return;
+  }
+  const auto guest_path = xe::utf8::join_guest_paths(path_parts);
+  auto destination_parent = static_cast<HostPathEntry*>(
+      device_->ResolvePath(xe::utf8::find_base_guest_path(guest_path)));
+  if (!destination_parent) {
+    return;
+  }
+  const auto new_host_path_ =
+      destination_parent->host_path() / xe::to_path(path_parts.back());
 
   std::error_code ec;
   std::filesystem::rename(host_path_, new_host_path_, ec);

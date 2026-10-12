@@ -28,6 +28,10 @@ class HostPathDevice : public Device {
   ~HostPathDevice() override;
 
   bool Initialize() override;
+  // Add a directory to this device using an independently configured host
+  // folder. Entries below it still belong to this device, not a nested device.
+  bool AddDirectory(const std::string_view name,
+                    const std::filesystem::path& host_path);
   void Dump(StringBuffer* string_buffer) override;
   Entry* ResolvePath(const std::string_view path) override;
 
@@ -47,12 +51,6 @@ class HostPathDevice : public Device {
   std::filesystem::path host_path() const { return host_path_; }
 
  private:
-  void PopulateEntry(HostPathEntry* parent_entry);
-  // Walks one directory, with the canonical path of every directory already
-  // on this branch, so a symlink into one of them is not followed again.
-  void PopulateEntry(HostPathEntry* parent_entry,
-                     std::vector<std::filesystem::path>& ancestors);
-
   std::string name_;
   std::filesystem::path host_path_;
   std::unique_ptr<Entry> root_entry_;

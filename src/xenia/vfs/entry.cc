@@ -42,7 +42,7 @@ void Entry::Dump(xe::StringBuffer* string_buffer, int indent) {
   }
   string_buffer->Append(name());
   string_buffer->Append('\n');
-  for (auto& child : children_) {
+  for (auto& child : children()) {
     child->Dump(string_buffer, indent + 2);
   }
 }

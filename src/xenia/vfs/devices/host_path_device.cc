@@ -42,7 +42,6 @@ bool HostPathDevice::Initialize() {
   auto root_entry = new HostPathEntry(this, nullptr, "", host_path_);
   root_entry->attributes_ = kFileAttributeDirectory;
   root_entry_ = std::unique_ptr<Entry>(root_entry);
-  PopulateEntry(root_entry);
 
   return true;
 }
@@ -60,49 +59,28 @@ Entry* HostPathDevice::ResolvePath(const std::string_view path) {
   return root_entry_->ResolvePath(path);
 }
 
-void HostPathDevice::PopulateEntry(HostPathEntry* parent_entry) {
-  std::vector<std::filesystem::path> ancestors;
-  PopulateEntry(parent_entry, ancestors);
-}
-
-void HostPathDevice::PopulateEntry(
-    HostPathEntry* parent_entry,
-    std::vector<std::filesystem::path>& ancestors) {
-  // Directory symlinks are walked now that the type comes from the stat, so a
-  // link back into a directory already on this path would recurse until the
-  // stack runs out. A link to a sibling subtree still gets walked: it
-  // duplicates entries but ends, so only genuine self-containment is cut.
+bool HostPathDevice::AddDirectory(const std::string_view name,
+                                  const std::filesystem::path& host_path) {
+  auto global_lock = global_critical_region_.Acquire();
+  if (!root_entry_ || read_only_ || name.empty() || name == "." ||
+      name == ".." || name.find_first_of("/\\") != name.npos ||
+      root_entry_->Entry::GetChild(name)) {
+    return false;
+  }
   std::error_code ec;
-  auto canonical_self =
-      std::filesystem::canonical(parent_entry->host_path(), ec);
-  if (!ec) {
-    for (const auto& seen : ancestors) {
-      if (seen == canonical_self) {
-        XELOGW(
-            "HostPathDevice: {} is already on the path being walked; not "
-            "following it again",
-            xe::path_to_utf8(parent_entry->host_path()));
-        return;
-      }
-    }
-    ancestors.push_back(canonical_self);
+  std::filesystem::create_directories(host_path, ec);
+  if (ec) {
+    return false;
   }
-
-  auto child_infos = xe::filesystem::ListFiles(parent_entry->host_path());
-  for (auto& child_info : child_infos) {
-    auto child = HostPathEntry::Create(
-        this, parent_entry, parent_entry->host_path() / child_info.name,
-        child_info);
-    parent_entry->children_.push_back(std::unique_ptr<Entry>(child));
-
-    if (child_info.type == xe::filesystem::FileInfo::Type::kDirectory) {
-      PopulateEntry(child, ancestors);
-    }
+  auto info = xe::filesystem::GetInfo(host_path);
+  if (!info || info->type != xe::filesystem::FileInfo::Type::kDirectory) {
+    return false;
   }
-
-  if (!ec) {
-    ancestors.pop_back();
-  }
+  info->name = xe::to_path(name);
+  auto root = static_cast<HostPathEntry*>(root_entry_.get());
+  root->children_.emplace_back(
+      HostPathEntry::Create(this, root, host_path, *info));
+  return true;
 }
 
 }  // namespace vfs

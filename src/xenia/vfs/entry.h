@@ -108,12 +108,12 @@ class Entry {
   virtual Entry* GetChild(const std::string_view name);
   Entry* ResolvePath(const std::string_view path);
 
-  const std::vector<std::unique_ptr<Entry>>& children() const {
+  virtual const std::vector<std::unique_ptr<Entry>>& children() const {
     return children_;
   }
-  size_t child_count() const { return children_.size(); }
-  Entry* IterateChildren(const xe::filesystem::WildcardEngine& engine,
-                         size_t* current_index);
+  size_t child_count() const { return children().size(); }
+  virtual Entry* IterateChildren(const xe::filesystem::WildcardEngine& engine,
+                                 size_t* current_index);
 
   Entry* CreateEntry(const std::string_view name, uint32_t attributes);
   bool Delete(Entry* entry);

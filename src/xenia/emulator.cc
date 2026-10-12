@@ -558,12 +558,16 @@ Emulator::FileSignatureType Emulator::GetFileSignature(
 }
 
 X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
-  // Recreate the content mount after a failed launch clears the filesystem.
-  // Install discs use this path to copy packages directly to ContentManager's
-  // content directory without calling XamContentCreate.
-  if (!file_system_->RegisterHostPathDevice(
-          "\\Device\\Harddisk0\\Partition1\\Content", content_root_)) {
-    return X_STATUS_UNSUCCESSFUL;
+  // The HDD owns Content as a directory, with the same host backing used by
+  // ContentManager. Rebuild it here after a failed launch clears the VFS.
+  constexpr std::string_view hdd_path = "\\Device\\Harddisk0\\Partition1";
+  if (!file_system_->ResolvePath(hdd_path)) {
+    auto hdd = std::make_unique<vfs::HostPathDevice>(
+        hdd_path, storage_root_ / "hdd" / "Partition1", false);
+    if (!hdd->Initialize() || !hdd->AddDirectory("Content", content_root_)) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    file_system_->RegisterDevice(std::move(hdd));
   }
 
   X_STATUS mount_result = X_STATUS_SUCCESS;
@@ -576,7 +580,7 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {
-      mount_result = MountPath(path, "\\Device\\Harddisk0\\Partition1");
+      mount_result = MountPath(path, "\\Device\\Cdrom0");
       return mount_result ? mount_result : LaunchXexFile(path);
     } break;
     case FileSignatureType::LIVE:
@@ -609,7 +613,7 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
   // We create a virtual filesystem pointing to its directory and symlink
   // that to the game filesystem.
   // e.g., /my/files/foo.xex will get a local fs at:
-  // \\Device\\Harddisk0\\Partition1
+  // \\Device\\Cdrom0
   // and then get that symlinked to game:\, so
   // -> game:\foo.xex
   // Get just the filename (foo.xex).
@@ -1588,12 +1592,6 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   // By using a NullDevice that just returns success to all IO requests it
   // should allow games to believe cache/raw disk was accessed successfully
 
-  // NOTE: this should probably be moved to xenia_main.cc, but right now we
-  // need to register the \Device\Harddisk0\ NullDevice _after_ the
-  // \Device\Harddisk0\Partition1 HostPathDevice, otherwise requests to
-  // Partition1 will go to this. Registering during CompleteLaunch allows us
-  // to make sure any HostPathDevices are ready beforehand. (see comment above
-  // cache:\ device registration for more info about why)
   auto null_paths = {std::string("\\Partition0"), std::string("\\Cache0"),
                      std::string("\\Cache1")};
   auto null_device =
