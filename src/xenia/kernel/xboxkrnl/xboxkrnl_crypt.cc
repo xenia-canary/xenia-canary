@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <bit>
 #include <random>
+#include <vector>
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_crypt.h"
 
@@ -108,10 +109,10 @@ static_assert_size(XECRYPT_RSA, 0x10);
 
 struct XECRYPT_SIG {
   xe::be<uint64_t> aqwPad[0x1C];
-  xe::be<uint8_t> One;
-  uint8_t Salt[0xA];
-  uint8_t Hash[0x14];
-  xe::be<uint8_t> End;
+  xe::be<uint8_t> one;
+  uint8_t salt[0xA];
+  uint8_t hash[0x14];
+  xe::be<uint8_t> end;
 };
 static_assert_size(XECRYPT_SIG, 0x100);  // size 256
 
@@ -783,6 +784,12 @@ void XeCryptBnQw_SwapDwQwLeBe_entry(pointer_t<uint64_t> qw_inp,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQw_SwapDwQwLeBe, kNone, kImplemented);
 
+void XeCryptBnQw_Copy_entry(lpqword_t source, lpqword_t dest,
+                            dword_t num_qwords) {
+  std::memmove(dest, source, 8 * num_qwords);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQw_Copy, kNone, kImplemented);
+
 dword_result_t XeCryptBnQwNeRsaPubCrypt_entry(pointer_t<uint64_t> qw_a,
                                               pointer_t<uint64_t> qw_b,
                                               pointer_t<XECRYPT_RSA> rsa) {
@@ -831,6 +838,86 @@ dword_result_t XeCryptBnQwBeSigVerify_entry(pointer_t<XECRYPT_SIG> sig,
   return true;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwBeSigVerify, kNone, kStub);
+
+qword_result_t XeCryptBnQwNeModInv_entry(qword_t input) {
+  uint64_t intermediate = input;
+  // Compute the 2-adic of qw such that: result = -1 + input^2
+  uint64_t result = (intermediate * 3) ^ 2;
+  intermediate = 1 - (result * intermediate);
+
+  // Raise it to another 32 such that: result = -1 + input^64
+  for (uint32_t i = 5; i < 32; i <<= 1) {
+    result = result * (intermediate + 1);
+    intermediate = intermediate * intermediate;
+  }
+
+  // Done
+  result = result * (intermediate + 1);
+  return result;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeModInv, kNone, kImplemented);
+
+// Montgomery multiplication: out = a * b / 2^(64 * size) mod modulus, where
+// inverse is modulus[0]^-1 mod 2^64 from XeCryptBnQwNeModInv. Like the kernel,
+// this keeps the sums of a * b and m * modulus apart and subtracts them at the
+// end, adding the modulus back unless the first sum is larger.
+void XeCryptBnQwNeModMul_entry(lpqword_t qw_a, lpqword_t qw_b, lpqword_t qw_out,
+                               qword_t inverse, lpqword_t modulus,
+                               dword_t size) {
+  using xecrypt::bignum::u128;
+  using xecrypt::bignum::u128_add;
+  using xecrypt::bignum::u128_from;
+  using xecrypt::bignum::u128_mul64;
+
+  const uint32_t n = size;
+  if (!n) {
+    return;
+  }
+
+  std::vector<uint64_t> ab(n), mn(n);
+  for (uint32_t i = 0; i < n; i++) {
+    uint64_t b = qw_b[i];
+    // Makes the low qwords of both sums equal, so they drop out of the shift
+    uint64_t m = (ab[0] - mn[0] + b * uint64_t(qw_a[0])) * uint64_t(inverse);
+
+    uint64_t ab_carry = 0;
+    uint64_t mn_carry = 0;
+    for (uint32_t j = 0; j < n; j++) {
+      u128 t = u128_add(u128_add(u128_mul64(b, qw_a[j]), ab[j]), ab_carry);
+      u128 u = u128_add(u128_add(u128_mul64(m, modulus[j]), mn[j]), mn_carry);
+      if (j) {
+        ab[j - 1] = t.lo;
+        mn[j - 1] = u.lo;
+      }
+      ab_carry = t.hi;
+      mn_carry = u.hi;
+    }
+    ab[n - 1] = ab_carry;
+    mn[n - 1] = mn_carry;
+  }
+
+  bool greater = false;
+  for (uint32_t i = n; i-- > 0;) {
+    if (ab[i] != mn[i]) {
+      greater = ab[i] > mn[i];
+      break;
+    }
+  }
+
+  // Inputs are only read above, so the output can overlap them
+  uint64_t carry = 0;
+  uint64_t borrow = 0;
+  for (uint32_t i = 0; i < n; i++) {
+    u128 sum = u128_add(
+        u128_add(u128_from(ab[i]), greater ? 0 : uint64_t(modulus[i])), carry);
+    carry = sum.hi;
+    uint64_t diff = sum.lo - mn[i];
+    uint64_t next_borrow = sum.lo < mn[i] || diff < borrow;
+    qw_out[i] = diff - borrow;
+    borrow = next_borrow;
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeModMul, kNone, kImplemented);
 
 // Builds a PKCS #1 v1.5 signature block for a SHA-1 hash, stored as a
 // little-endian number. format selects the DigestInfo: 0 is the standard
