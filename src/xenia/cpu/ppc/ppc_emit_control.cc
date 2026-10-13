@@ -422,11 +422,16 @@ int InstrEmit_crxor(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_mcrf(PPCHIRBuilder& f, const InstrData& i) {
+  // CR[4*BF+32 : 4*BF+35] <- CR[4*BFA+32 : 4*BFA+35]
+  // A plain copy of the four bits. LoadCR(n) returns field n in its own
+  // position of the CR word, so StoreCR(crfd, LoadCR(crfs)) would read the
+  // wrong bits whenever crfd != crfs, and UpdateCR would then replace LT/GT/EQ
+  // with a signed compare of that word against zero.
   uint32_t crfd = i.XL.BO >> 2;
-  Value* bi = f.LoadCR(i.XL.BI >> 2);
-
-  f.StoreCR(crfd, bi);
-  f.UpdateCR(crfd, bi);
+  uint32_t crfs = i.XL.BI >> 2;
+  for (uint32_t bit = 0; bit < 4; ++bit) {
+    f.StoreCRField(crfd, bit, f.LoadCRField(crfs, bit));
+  }
   return 0;
 }
 
