@@ -734,6 +734,14 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
       }
     }
 
+    uint2_xe XeResolveColorCopySampleOffsetsBytes(XeResolveInfo resolve_info) {
+      return uint2_xe(
+          (2u * 4u * resolve_info.resolution_scale.x) <<
+              resolve_info.edram_format_ints_log2,
+          2u * (80u * 4u) * resolve_info.resolution_scale.x *
+              resolve_info.resolution_scale.y);
+    }
+
     uint2_xe XeResolveColorCopySource2SampleAddressesBytes(
         XeResolveInfo resolve_info, uint2_xe pixel_index, uint sample_index) {
       return uint2_xe(
@@ -748,23 +756,25 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
         XeResolveInfo resolve_info, uint2_xe pixel_index,
         out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1)) {
       uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+      uint2_xe sample_addresses =
+          XeResolveColorCopySource2SampleAddressesBytes(
+              resolve_info, pixel_index, first_sample);
       XeResolveLoad2RGBAUnswappedPixelSamplesFromRaw(
           pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-          XeResolveColorCopySource2SampleAddressesBytes(
-              resolve_info, pixel_index, first_sample),
-              resolve_info.edram_format_ints_log2, resolve_info.edram_format,
-              pixel_0, pixel_1);
+          sample_addresses, resolve_info.edram_format_ints_log2,
+          resolve_info.edram_format, pixel_0, pixel_1);
       XeResolveDecodePWLGammaSource(resolve_info, pixel_0);
       XeResolveDecodePWLGammaSource(resolve_info, pixel_1);
       float exp_bias = resolve_info.dest_exp_bias_factor;
       dont_flatten_xe
       if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+        uint2_xe sample_offsets =
+            XeResolveColorCopySampleOffsetsBytes(resolve_info);
         exp_bias *= 0.5f;
         float4_xe msaa_resolve_pixel_0, msaa_resolve_pixel_1;
         XeResolveLoad2RGBAUnswappedPixelSamplesFromRaw(
             pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-            XeResolveColorCopySource2SampleAddressesBytes(
-                resolve_info, pixel_index, first_sample | 1u),
+            sample_addresses + sample_offsets.x,
             resolve_info.edram_format_ints_log2, resolve_info.edram_format,
             msaa_resolve_pixel_0, msaa_resolve_pixel_1);
         XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_0);
@@ -777,11 +787,9 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           XeResolveLoad2RGBAUnswappedPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              XeResolveColorCopySource2SampleAddressesBytes(
-                  resolve_info, pixel_index, 2u),
-                  resolve_info.edram_format_ints_log2,
-                  resolve_info.edram_format, msaa_resolve_pixel_0,
-                  msaa_resolve_pixel_1);
+              sample_addresses + sample_offsets.y,
+              resolve_info.edram_format_ints_log2, resolve_info.edram_format,
+              msaa_resolve_pixel_0, msaa_resolve_pixel_1);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_0);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_1);
           pixel_0 += msaa_resolve_pixel_0;
@@ -789,11 +797,9 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           XeResolveLoad2RGBAUnswappedPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              XeResolveColorCopySource2SampleAddressesBytes(
-                  resolve_info, pixel_index, 3u),
-                  resolve_info.edram_format_ints_log2,
-                  resolve_info.edram_format, msaa_resolve_pixel_0,
-                  msaa_resolve_pixel_1);
+              sample_addresses + sample_offsets.x + sample_offsets.y,
+              resolve_info.edram_format_ints_log2, resolve_info.edram_format,
+              msaa_resolve_pixel_0, msaa_resolve_pixel_1);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_0);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_1);
           pixel_0 += msaa_resolve_pixel_0;
@@ -827,12 +833,13 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
         out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1),
         out_param_xe(float4_xe, pixel_2), out_param_xe(float4_xe, pixel_3)) {
       uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+      uint4_xe sample_addresses =
+          XeResolveColorCopySource4SampleAddressesBytes(
+              resolve_info, pixel_index, first_sample);
       XeResolveLoad4RGBAUnswappedPixelSamplesFromRaw(
           pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-          XeResolveColorCopySource4SampleAddressesBytes(
-              resolve_info, pixel_index, first_sample),
-          resolve_info.edram_format_ints_log2, resolve_info.edram_format,
-          pixel_0, pixel_1, pixel_2, pixel_3);
+          sample_addresses, resolve_info.edram_format_ints_log2,
+          resolve_info.edram_format, pixel_0, pixel_1, pixel_2, pixel_3);
       XeResolveDecodePWLGammaSource(resolve_info, pixel_0);
       XeResolveDecodePWLGammaSource(resolve_info, pixel_1);
       XeResolveDecodePWLGammaSource(resolve_info, pixel_2);
@@ -840,6 +847,8 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
       float exp_bias = resolve_info.dest_exp_bias_factor;
       dont_flatten_xe
       if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+        uint2_xe sample_offsets =
+            XeResolveColorCopySampleOffsetsBytes(resolve_info);
         exp_bias *= 0.5f;
         float4_xe msaa_resolve_pixel_0;
         float4_xe msaa_resolve_pixel_1;
@@ -847,8 +856,7 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
         float4_xe msaa_resolve_pixel_3;
         XeResolveLoad4RGBAUnswappedPixelSamplesFromRaw(
             pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-            XeResolveColorCopySource4SampleAddressesBytes(
-                resolve_info, pixel_index, first_sample | 1u),
+            sample_addresses + sample_offsets.x,
             resolve_info.edram_format_ints_log2, resolve_info.edram_format,
             msaa_resolve_pixel_0, msaa_resolve_pixel_1, msaa_resolve_pixel_2,
             msaa_resolve_pixel_3);
@@ -866,8 +874,7 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           XeResolveLoad4RGBAUnswappedPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              XeResolveColorCopySource4SampleAddressesBytes(resolve_info,
-                                                            pixel_index, 2u),
+              sample_addresses + sample_offsets.y,
               resolve_info.edram_format_ints_log2, resolve_info.edram_format,
               msaa_resolve_pixel_0, msaa_resolve_pixel_1, msaa_resolve_pixel_2,
               msaa_resolve_pixel_3);
@@ -882,12 +889,10 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           XeResolveLoad4RGBAUnswappedPixelSamplesFromRaw(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              XeResolveColorCopySource4SampleAddressesBytes(
-                  resolve_info, pixel_index, 3u),
-                  resolve_info.edram_format_ints_log2,
-                  resolve_info.edram_format, msaa_resolve_pixel_0,
-                  msaa_resolve_pixel_1, msaa_resolve_pixel_2,
-                  msaa_resolve_pixel_3);
+              sample_addresses + sample_offsets.x + sample_offsets.y,
+              resolve_info.edram_format_ints_log2, resolve_info.edram_format,
+              msaa_resolve_pixel_0, msaa_resolve_pixel_1, msaa_resolve_pixel_2,
+              msaa_resolve_pixel_3);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_0);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_1);
           XeResolveDecodePWLGammaSource(resolve_info, msaa_resolve_pixel_2);
@@ -912,18 +917,10 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
 
     void XeResolveLoad8ScalarSamples(
         param_byte_buffer_xe(xe_resolve_edram) param_next_after_byte_buffer_xe
-        XeResolveInfo resolve_info, uint2_xe pixel_index, uint sample_index,
-        uint address_adjustment_bytes, bool source_blue, bool source_alpha,
+        XeResolveInfo resolve_info, uint4_xe addresses_0123,
+        uint4_xe addresses_4567, bool source_blue, bool source_alpha,
         bool decode_pwl_gamma, out_param_xe(float4_xe, pixels_0123),
         out_param_xe(float4_xe, pixels_4567)) {
-      uint4_xe addresses_0123 =
-          XeResolveColorCopySource4SampleAddressesBytes(
-              resolve_info, pixel_index, sample_index) +
-              address_adjustment_bytes;
-      uint4_xe addresses_4567 =
-          XeResolveColorCopySource4SampleAddressesBytes(
-              resolve_info, pixel_index + uint2_xe(4u, 0u), sample_index) +
-          address_adjustment_bytes;
       XeResolveLoad8ScalarPixelSamplesFromRaw(
           pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
           addresses_0123, addresses_4567,
@@ -956,20 +953,29 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
       bool decode_pwl_gamma =
           XeResolveSourceUsesPWLGamma(resolve_info) && !source_alpha;
       uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+      uint4_xe addresses_0123 =
+          XeResolveColorCopySource4SampleAddressesBytes(
+              resolve_info, pixel_index, first_sample) +
+          address_adjustment_bytes;
+      uint4_xe addresses_4567 =
+          XeResolveColorCopySource4SampleAddressesBytes(
+              resolve_info, pixel_index + uint2_xe(4u, 0u), first_sample) +
+          address_adjustment_bytes;
       XeResolveLoad8ScalarSamples(
           pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-          resolve_info, pixel_index, first_sample, address_adjustment_bytes,
-          source_blue, source_alpha, decode_pwl_gamma, pixels_0123,
-          pixels_4567);
+          resolve_info, addresses_0123, addresses_4567, source_blue, source_alpha,
+          decode_pwl_gamma, pixels_0123, pixels_4567);
       float exp_bias = resolve_info.dest_exp_bias_factor;
       dont_flatten_xe
       if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+        uint2_xe sample_offsets =
+            XeResolveColorCopySampleOffsetsBytes(resolve_info);
         exp_bias *= 0.5f;
         float4_xe msaa_resolve_pixels_0123, msaa_resolve_pixels_4567;
         XeResolveLoad8ScalarSamples(
             pass_byte_buffer_xe(xe_resolve_edram) pass_next_after_byte_buffer_xe
-            resolve_info, pixel_index, first_sample | 1u,
-            address_adjustment_bytes, source_blue, source_alpha,
+            resolve_info, addresses_0123 + sample_offsets.x,
+            addresses_4567 + sample_offsets.x, source_blue, source_alpha,
             decode_pwl_gamma, msaa_resolve_pixels_0123,
             msaa_resolve_pixels_4567);
         pixels_0123 += msaa_resolve_pixels_0123;
@@ -980,15 +986,17 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           XeResolveLoad8ScalarSamples(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              resolve_info, pixel_index, 2u, address_adjustment_bytes,
-              source_blue, source_alpha, decode_pwl_gamma,
-              msaa_resolve_pixels_0123, msaa_resolve_pixels_4567);
+              resolve_info, addresses_0123 + sample_offsets.y,
+              addresses_4567 + sample_offsets.y, source_blue, source_alpha,
+              decode_pwl_gamma, msaa_resolve_pixels_0123,
+              msaa_resolve_pixels_4567);
           pixels_0123 += msaa_resolve_pixels_0123;
           pixels_4567 += msaa_resolve_pixels_4567;
           XeResolveLoad8ScalarSamples(
               pass_byte_buffer_xe(xe_resolve_edram)
               pass_next_after_byte_buffer_xe
-              resolve_info, pixel_index, 3u, address_adjustment_bytes,
+              resolve_info, addresses_0123 + sample_offsets.x + sample_offsets.y,
+              addresses_4567 + sample_offsets.x + sample_offsets.y,
               source_blue, source_alpha, decode_pwl_gamma,
               msaa_resolve_pixels_0123, msaa_resolve_pixels_4567);
           pixels_0123 += msaa_resolve_pixels_0123;
