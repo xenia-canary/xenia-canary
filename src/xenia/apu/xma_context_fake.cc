@@ -87,9 +87,9 @@ bool XmaContextFake::Work() {
   // We don't have enough space to even make one pass
   if (minimum_subframe_decode_count >
       remaining_subframe_blocks_in_output_buffer_) {
-    XELOGD("XmaContextFake {}: No space for subframe decoding {}/{}!", id(),
-           minimum_subframe_decode_count,
-           remaining_subframe_blocks_in_output_buffer_);
+    XELOGAPU("XmaContextFake {}: No space for subframe decoding {}/{}!", id(),
+             minimum_subframe_decode_count,
+             remaining_subframe_blocks_in_output_buffer_);
     data.Store(context_ptr);
     return true;
   }

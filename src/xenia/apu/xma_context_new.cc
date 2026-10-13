@@ -162,9 +162,9 @@ bool XmaContextNew::Work() {
   // Waiting for decoder to return more space.
   if (minimum_subframe_decode_count >
       remaining_subframe_blocks_in_output_buffer_) {
-    XELOGD("XmaContext {}: No space for subframe decoding {}/{}!", id(),
-           minimum_subframe_decode_count,
-           remaining_subframe_blocks_in_output_buffer_);
+    XELOGAPU("XmaContext {}: No space for subframe decoding {}/{}!", id(),
+             minimum_subframe_decode_count,
+             remaining_subframe_blocks_in_output_buffer_);
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
