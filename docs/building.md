@@ -37,6 +37,9 @@ xb premake
 
 # Format code to the style guide:
 xb format
+
+# Build and run the unit tests:
+xb test
 ```
 <!--
 # Remove intermediate files and build outputs (doesn't work on Linux):
