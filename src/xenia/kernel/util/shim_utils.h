@@ -18,6 +18,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/string_buffer.h"
+#include "xenia/base/utf8.h"
 #include "xenia/cpu/export_resolver.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/kernel/kernel_flags.h"
@@ -92,10 +93,19 @@ inline std::string_view TranslateAnsiString(const Memory* memory,
       ansi_string->length);
 }
 
+// An object name as the guest passed it, minus surrounding whitespace and any
+// leading "\??\". On the console "\??\" is the DOS devices directory, where the
+// drive links (game:, cache:, ...) live: NtCreateFile opens "\??\game:\x" and
+// rejects a bare "game:\x". Symbolic links here are registered without the
+// prefix (ObCreateSymbolicLink strips it), so drop it before resolving.
 inline std::string TranslateAnsiPath(const Memory* memory,
                                      const X_ANSI_STRING* ansi_string) {
-  return string_util::trim(
-      std::string(TranslateAnsiString(memory, ansi_string)));
+  auto path =
+      string_util::trim(std::string(TranslateAnsiString(memory, ansi_string)));
+  if (utf8::starts_with(path, "\\??\\")) {
+    path.erase(0, 4);
+  }
+  return path;
 }
 
 inline std::string_view TranslateAnsiStringAddress(const Memory* memory,
