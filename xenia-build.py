@@ -1368,7 +1368,7 @@ class TestCommand(BaseBuildCommand):
         super(TestCommand, self).__init__(
             subparsers,
             name="test",
-            help_short="Runs automated tests that have been built with `xb build`.",
+            help_short="Builds and runs automated tests.",
             help_long="""
             To pass arguments to the test executables separate them with `--`.
             For example, you can run only the instr_foo.s tests with:
@@ -1392,6 +1392,8 @@ class TestCommand(BaseBuildCommand):
             "xenia-kernel-tests",
             ]
         args["target"] = test_targets
+        # Test targets only exist when XENIA_BUILD_TESTS is enabled.
+        args["build_tests"] = True
 
         # Build all targets (if desired).
         if not args["no_build"]:
