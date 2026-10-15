@@ -194,7 +194,7 @@ Emulator::~Emulator() {
 
 X_STATUS Emulator::Setup(
     ui::Window* display_window, ui::ImGuiDrawer* imgui_drawer,
-    bool require_cpu_backend,
+    bool require_cpu_backend, bool with_presentation,
     std::function<std::unique_ptr<apu::AudioSystem>(cpu::Processor*)>
         audio_system_factory,
     std::function<std::unique_ptr<gpu::GraphicsSystem>()>
@@ -299,8 +299,11 @@ X_STATUS Emulator::Setup(
     return result;
   }
 
-  // Add inputSystem to UI
-  imgui_drawer_->LoadInputSystem(input_system_.get());
+  // Add inputSystem to UI. Headless users such as the trace dumpers don't
+  // provide an ImGui drawer.
+  if (imgui_drawer_) {
+    imgui_drawer_->LoadInputSystem(input_system_.get());
+  }
 
   XELOGI("{}: Initializing VFS...", __func__);
   // Bring up the virtual filesystem used by the kernel.
@@ -330,7 +333,7 @@ X_STATUS Emulator::Setup(
   result = graphics_system_->Setup(
       processor_.get(), kernel_state_.get(),
       display_window_ ? &display_window_->app_context() : nullptr,
-      display_window_ != nullptr);
+      with_presentation);
   if (result) {
     XELOGE("{}: Failed to setup graphics_system!", __func__);
     return result;
