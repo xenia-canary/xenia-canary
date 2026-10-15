@@ -15,6 +15,10 @@
 #include "xenia/base/mutex.h"
 #include "xenia/xbox.h"
 
+#ifdef Portal
+#undef Portal
+#endif
+
 namespace xe {
 namespace hid {
 
@@ -34,15 +38,18 @@ class Portal {
   virtual void OnDeviceArrival() = 0;
   virtual void OnDeviceRemoval() = 0;
 
+ protected:
+  xe_mutex lock_;
+
  private:
   virtual void OpenDevice() = 0;
   virtual void CloseDevice() = 0;
+  virtual bool UsesAsyncReads() const = 0;
 
   virtual X_STATUS ReadInternal(std::span<uint8_t> data,
                                 int32_t& read_count) = 0;
   virtual X_STATUS WriteInternal(std::span<uint8_t> data) = 0;
 
-  xe_mutex lock_;
   X_STATUS previous_status_ = 0;
 };
 
