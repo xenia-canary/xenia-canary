@@ -9,8 +9,8 @@
  */
 
 #include <algorithm>
-#include <cctype>
 #include <atomic>
+#include <cctype>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -79,7 +79,8 @@ constexpr uint32_t kQueryFlagNumber = 0x20000000;
 constexpr uint32_t kQueryCustom = 65535;
 
 constexpr uint32_t kErrorInsufficientBuffer = 122;
-constexpr uint32_t kErrorHeaderNotFound = 12150;  // ERROR_WINHTTP_HEADER_NOT_FOUND
+constexpr uint32_t kErrorHeaderNotFound =
+    12150;  // ERROR_WINHTTP_HEADER_NOT_FOUND
 
 enum class HType { kSession, kConnect, kRequest };
 
@@ -118,8 +119,12 @@ struct HObject {
   bool use_tls = false;
 
   ~HObject() {
-    if (h_connect) WinHttpCloseHandle(h_connect);
-    if (h_session) WinHttpCloseHandle(h_session);
+    if (h_connect) {
+      WinHttpCloseHandle(h_connect);
+    }
+    if (h_session) {
+      WinHttpCloseHandle(h_session);
+    }
   }
 };
 
@@ -136,7 +141,9 @@ std::deque<Event> g_events;
 std::atomic<uint32_t> g_next_id{0x4100};
 
 std::wstring ToWide(const std::string& s) {
-  if (s.empty()) return std::wstring();
+  if (s.empty()) {
+    return std::wstring();
+  }
   int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
   std::wstring w(n, L'\0');
   MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), w.data(), n);
@@ -144,12 +151,14 @@ std::wstring ToWide(const std::string& s) {
 }
 
 std::string ToNarrow(const std::wstring& w) {
-  if (w.empty()) return std::string();
+  if (w.empty()) {
+    return std::string();
+  }
   int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), nullptr, 0,
                               nullptr, nullptr);
   std::string s(n, '\0');
-  WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), s.data(), n,
-                      nullptr, nullptr);
+  WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), s.data(), n, nullptr,
+                      nullptr);
   return s;
 }
 
@@ -168,7 +177,9 @@ uint32_t Register(std::shared_ptr<HObject> obj) {
 
 std::shared_ptr<HObject> SessionOf(const std::shared_ptr<HObject>& o) {
   auto p = o;
-  while (p && p->type != HType::kSession) p = p->parent;
+  while (p && p->type != HType::kSession) {
+    p = p->parent;
+  }
   return p;
 }
 
@@ -179,7 +190,9 @@ void QueueEvent(const std::shared_ptr<HObject>& req, uint32_t status,
 }
 
 void LogBody(const char* tag, const uint8_t* data, size_t len) {
-  if (!cvars::xhttp_log_bodies || !len) return;
+  if (!cvars::xhttp_log_bodies || !len) {
+    return;
+  }
   size_t n = std::min<size_t>(len, 4096);
   std::string s;
   s.reserve(n);
@@ -201,14 +214,20 @@ void Perform(const std::shared_ptr<HObject>& r) {
 
   if (!cvars::xhttp_redirect_host.empty()) {
     host = cvars::xhttp_redirect_host;
-    if (cvars::xhttp_redirect_port) port = (uint16_t)cvars::xhttp_redirect_port;
+    if (cvars::xhttp_redirect_port) {
+      port = (uint16_t)cvars::xhttp_redirect_port;
+    }
   }
   if (cvars::xhttp_force_http) {
-    if (tls && !cvars::xhttp_redirect_port && !cvars::xhttp_redirect_host.empty())
+    if (tls && !cvars::xhttp_redirect_port &&
+        !cvars::xhttp_redirect_host.empty()) {
       port = 80;
+    }
     tls = false;
   }
-  if (!port) port = tls ? 443 : 80;
+  if (!port) {
+    port = tls ? 443 : 80;
+  }
 
   XELOGI("XHttp {} http{}://{}:{}{}  (title asked for {})", r->verb,
          tls ? "s" : "", host, port, r->path, conn->host);
@@ -252,7 +271,9 @@ void Perform(const std::shared_ptr<HObject>& r) {
       wheaders.empty() ? 0 : (DWORD)-1L,
       r->body.empty() ? WINHTTP_NO_REQUEST_DATA : r->body.data(),
       (DWORD)r->body.size(), (DWORD)r->body.size(), 0);
-  if (ok) ok = WinHttpReceiveResponse(hreq, nullptr);
+  if (ok) {
+    ok = WinHttpReceiveResponse(hreq, nullptr);
+  }
   if (!ok) {
     r->failed = true;
     r->error = GetLastError();
@@ -263,10 +284,9 @@ void Perform(const std::shared_ptr<HObject>& r) {
   }
 
   DWORD status = 0, sz = sizeof(status);
-  WinHttpQueryHeaders(hreq,
-                      WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &sz,
-                      WINHTTP_NO_HEADER_INDEX);
+  WinHttpQueryHeaders(
+      hreq, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+      WINHTTP_HEADER_NAME_BY_INDEX, &status, &sz, WINHTTP_NO_HEADER_INDEX);
   r->status_code = status;
 
   DWORD hsz = 0;
@@ -285,13 +305,19 @@ void Perform(const std::shared_ptr<HObject>& r) {
 
   for (;;) {
     DWORD avail = 0;
-    if (!WinHttpQueryDataAvailable(hreq, &avail) || !avail) break;
+    if (!WinHttpQueryDataAvailable(hreq, &avail) || !avail) {
+      break;
+    }
     size_t old = r->response.size();
     r->response.resize(old + avail);
     DWORD got = 0;
-    if (!WinHttpReadData(hreq, r->response.data() + old, avail, &got)) break;
+    if (!WinHttpReadData(hreq, r->response.data() + old, avail, &got)) {
+      break;
+    }
     r->response.resize(old + got);
-    if (!got) break;
+    if (!got) {
+      break;
+    }
   }
   XELOGI("XHttp response status {} ({} bytes)", status, r->response.size());
   LogBody("response headers", (const uint8_t*)ToNarrow(r->raw_headers).data(),
@@ -305,7 +331,9 @@ void Perform(const std::shared_ptr<HObject>& r) {
 void FinishRequest(const std::shared_ptr<HObject>& r, bool async) {
   Perform(r);
   r->done = true;
-  if (!async) return;
+  if (!async) {
+    return;
+  }
   if (r->failed) {
     // XHTTP_ASYNC_RESULT { DWORD_PTR dwResult; DWORD dwError; }
     auto* mem = kernel_memory()->TranslateVirtual<uint8_t*>(r->scratch);
@@ -326,9 +354,7 @@ dword_result_t NetDll_XHttpStartup_entry(dword_t caller, dword_t reserved,
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpStartup, kNetworking, kImplemented);
 
-dword_result_t NetDll_XHttpShutdown_entry(dword_t caller) {
-  return 1;
-}
+dword_result_t NetDll_XHttpShutdown_entry(dword_t caller) { return 1; }
 DECLARE_XAM_EXPORT1(NetDll_XHttpShutdown, kNetworking, kImplemented);
 
 dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t user_agent,
@@ -358,7 +384,9 @@ dword_result_t NetDll_XHttpCloseHandle_entry(dword_t caller, dword_t handle) {
   {
     std::lock_guard<std::mutex> lock(g_mutex);
     auto it = g_objects.find(handle);
-    if (it == g_objects.end()) return 0;
+    if (it == g_objects.end()) {
+      return 0;
+    }
     o = it->second;
     g_objects.erase(it);
   }
@@ -396,7 +424,9 @@ dword_result_t NetDll_XHttpSetStatusCallback_entry(dword_t caller,
                                                    dword_t flags,
                                                    dword_t reserved) {
   auto o = Lookup(handle);
-  if (!o) return 0;
+  if (!o) {
+    return 0;
+  }
   uint32_t prev = o->callback;
   o->callback = callback;
   o->callback_mask = flags;
@@ -406,10 +436,12 @@ dword_result_t NetDll_XHttpSetStatusCallback_entry(dword_t caller,
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpSetStatusCallback, kNetworking, kImplemented);
 
-dword_result_t NetDll_XHttpOpenRequest_entry(
-    dword_t caller, dword_t connect, lpstring_t verb, lpstring_t object,
-    lpstring_t version, lpstring_t referrer, lpdword_t accept_types,
-    dword_t flags) {
+dword_result_t NetDll_XHttpOpenRequest_entry(dword_t caller, dword_t connect,
+                                             lpstring_t verb, lpstring_t object,
+                                             lpstring_t version,
+                                             lpstring_t referrer,
+                                             lpdword_t accept_types,
+                                             dword_t flags) {
   auto c = Lookup(connect);
   if (!c || c->type != HType::kConnect) {
     XThread::SetLastError(6);
@@ -419,9 +451,13 @@ dword_result_t NetDll_XHttpOpenRequest_entry(
   r->type = HType::kRequest;
   r->parent = c;
   r->verb = verb ? std::string((const char*)verb) : "GET";
-  if (r->verb.empty()) r->verb = "GET";
+  if (r->verb.empty()) {
+    r->verb = "GET";
+  }
   r->path = object ? std::string((const char*)object) : "/";
-  if (r->path.empty()) r->path = "/";
+  if (r->path.empty()) {
+    r->path = "/";
+  }
   r->req_flags = flags;
   r->scratch = kernel_memory()->SystemHeapAlloc(0x40);
   uint32_t id = Register(r);
@@ -448,10 +484,9 @@ dword_result_t NetDll_XHttpSendRequest_entry(
     size_t n = (headers_len == 0xFFFFFFFFu) ? strlen(h) : (size_t)headers_len;
     r->req_headers.assign(h, n);
     if (!r->req_headers.empty() &&
-        r->req_headers.compare(r->req_headers.size() >= 2
-                                   ? r->req_headers.size() - 2
-                                   : 0,
-                               2, "\r\n") != 0) {
+        r->req_headers.compare(
+            r->req_headers.size() >= 2 ? r->req_headers.size() - 2 : 0, 2,
+            "\r\n") != 0) {
       r->req_headers += "\r\n";
     }
   }
@@ -464,7 +499,9 @@ dword_result_t NetDll_XHttpSendRequest_entry(
   bool async = SessionOf(r)->open_flags & kOpenFlagAsync;
   XELOGI("XHttpSendRequest {:08X} optional={} total={}", (uint32_t)request,
          (uint32_t)optional_len, (uint32_t)total_len);
-  if (async) QueueEvent(r, kStatusSendRequestComplete, 0, 0);
+  if (async) {
+    QueueEvent(r, kStatusSendRequestComplete, 0, 0);
+  }
   XThread::SetLastError(X_ERROR_SUCCESS);
   return 1;
 }
@@ -480,7 +517,9 @@ dword_result_t NetDll_XHttpWriteData_entry(dword_t caller, dword_t request,
   }
   const uint8_t* p = (const uint8_t*)(void*)buffer;
   r->body.insert(r->body.end(), p, p + length);
-  if (written) *written = length;
+  if (written) {
+    *written = (uint32_t)length;
+  }
   bool async = SessionOf(r)->open_flags & kOpenFlagAsync;
   if (async) {
     auto* mem = kernel_memory()->TranslateVirtual<uint8_t*>(r->scratch);
@@ -517,8 +556,7 @@ DECLARE_XAM_EXPORT1(NetDll_XHttpReceiveResponse, kNetworking, kImplemented);
 
 dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
                                               dword_t info_level,
-                                              lpstring_t name,
-                                              lpvoid_t buffer,
+                                              lpstring_t name, lpvoid_t buffer,
                                               lpdword_t buffer_len,
                                               lpdword_t index) {
   auto r = Lookup(request);
@@ -540,7 +578,9 @@ dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
       return 0;
     }
     if (!buffer_len || *buffer_len < 4) {
-      if (buffer_len) *buffer_len = 4;
+      if (buffer_len) {
+        *buffer_len = 4;
+      }
       XThread::SetLastError(kErrorInsufficientBuffer);
       return 0;
     }
@@ -564,7 +604,9 @@ dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
     bool found = false;
     while (pos < all.size()) {
       size_t eol = all.find("\r\n", pos);
-      if (eol == std::string::npos) eol = all.size();
+      if (eol == std::string::npos) {
+        eol = all.size();
+      }
       std::string line = all.substr(pos, eol - pos);
       size_t colon = line.find(':');
       if (colon != std::string::npos && colon == wanted.size()) {
@@ -578,7 +620,9 @@ dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
         }
         if (eq) {
           size_t v = colon + 1;
-          while (v < line.size() && line[v] == ' ') ++v;
+          while (v < line.size() && line[v] == ' ') {
+            ++v;
+          }
           out = line.substr(v);
           found = true;
           break;
@@ -597,7 +641,9 @@ dword_result_t NetDll_XHttpQueryHeaders_entry(dword_t caller, dword_t request,
 
   uint32_t need = (uint32_t)out.size() + 1;
   if (!buffer_len || *buffer_len < need) {
-    if (buffer_len) *buffer_len = need;
+    if (buffer_len) {
+      *buffer_len = need;
+    }
     XThread::SetLastError(kErrorInsufficientBuffer);
     return 0;
   }
@@ -618,11 +664,17 @@ dword_result_t NetDll_XHttpReadData_entry(dword_t caller, dword_t request,
   }
   size_t remaining = r->response.size() - r->read_pos;
   uint32_t n = (uint32_t)std::min<size_t>(remaining, length);
-  if (n) std::memcpy((void*)buffer, r->response.data() + r->read_pos, n);
+  if (n) {
+    std::memcpy((void*)buffer, r->response.data() + r->read_pos, n);
+  }
   r->read_pos += n;
-  if (bytes_read) *bytes_read = n;
+  if (bytes_read) {
+    *bytes_read = n;
+  }
   bool async = SessionOf(r)->open_flags & kOpenFlagAsync;
-  if (async) QueueEvent(r, kStatusReadComplete, buffer.guest_address(), n);
+  if (async) {
+    QueueEvent(r, kStatusReadComplete, buffer.guest_address(), n);
+  }
   XThread::SetLastError(X_ERROR_SUCCESS);
   return 1;
 }
@@ -660,20 +712,27 @@ dword_result_t NetDll_XHttpDoWork_entry(dword_t caller, dword_t session,
     Event ev;
     {
       std::lock_guard<std::mutex> lock(g_mutex);
-      if (g_events.empty()) break;
+      if (g_events.empty()) {
+        break;
+      }
       ev = g_events.front();
       g_events.pop_front();
     }
     // Callback is inherited from the session unless set on the request.
     uint32_t cb = 0;
-    for (auto p = ev.request; p && !cb; p = p->parent) cb = p->callback;
-    if (!cb) continue;
-    uint64_t args[] = {ev.request->id, ev.request->context, ev.status,
-                       ev.info, ev.info_len};
-    XELOGI("XHttp callback {:08X}(h={:08X}, ctx={:08X}, status={:08X}, "
-           "info={:08X}, len={})",
-           cb, ev.request->id, ev.request->context, ev.status, ev.info,
-           ev.info_len);
+    for (auto p = ev.request; p && !cb; p = p->parent) {
+      cb = p->callback;
+    }
+    if (!cb) {
+      continue;
+    }
+    uint64_t args[] = {ev.request->id, ev.request->context, ev.status, ev.info,
+                       ev.info_len};
+    XELOGI(
+        "XHttp callback {:08X}(h={:08X}, ctx={:08X}, status={:08X}, "
+        "info={:08X}, len={})",
+        cb, ev.request->id, ev.request->context, ev.status, ev.info,
+        ev.info_len);
     kernel_state()->processor()->Execute(ctx->thread_state, cb, args,
                                          xe::countof(args));
   }
@@ -700,13 +759,17 @@ dword_result_t XamGetToken_entry(dword_t user_index, lpstring_t uri,
   xe::store_and_swap<uint32_t>(mem + 0, (uint32_t)tok.size());
   xe::store_and_swap<uint32_t>(mem + 4, addr + 8);
   std::memcpy(mem + 8, tok.c_str(), tok.size() + 1);
-  if (out_token) *out_token = addr;
+  if (out_token) {
+    *out_token = addr;
+  }
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamGetToken, kNetworking, kImplemented);
 
 dword_result_t XamFreeToken_entry(dword_t token) {
-  if (token) kernel_memory()->SystemHeapFree(token);
+  if (token) {
+    kernel_memory()->SystemHeapFree(token);
+  }
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamFreeToken, kNetworking, kImplemented);
