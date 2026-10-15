@@ -16,6 +16,7 @@ if(XENIA_BUILD_MISC)
     ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_trace_viewer_main.cc
   )
   if(WIN32)
+    set_target_properties(xenia-gpu-vulkan-trace-viewer PROPERTIES WIN32_EXECUTABLE TRUE)
     target_sources(xenia-gpu-vulkan-trace-viewer PRIVATE
       ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_win.cc)
   else()
