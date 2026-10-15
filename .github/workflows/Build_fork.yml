@@ -1,0 +1,9 @@
+name: Build fork (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows build
+    uses: ./.github/workflows/Windows_x86.yml

@@ -697,7 +697,11 @@ dword_result_t XampXAuthStartup_entry(pointer_t<XAUTH_SETTINGS> setttings) {
     return 0x80158401;
   }
 
+#ifdef XE_PLATFORM_WIN32
+  return 0;  // XAuth works through XamGetToken in xam_xhttp.cc
+#else
   return 0x80158406;
+#endif
 }
 DECLARE_XAM_EXPORT1(XampXAuthStartup, kNetworking, kStub);
 
@@ -717,6 +721,7 @@ dword_result_t XampXAuthGetTitleBuffer_entry() {
 }
 DECLARE_XAM_EXPORT1(XampXAuthGetTitleBuffer, kNetworking, kStub);
 
+#ifndef XE_PLATFORM_WIN32  // real implementation: xam_xhttp.cc
 dword_result_t NetDll_XHttpStartup_entry(dword_t caller, dword_t reserved,
                                          dword_t reserved_ptr,
                                          const ppc_context_t& ctx) {
@@ -752,6 +757,8 @@ dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t user_agent,
   return 0;
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpOpen, kNetworking, kStub);
+
+#endif
 
 dword_result_t NetDll_socket_entry(dword_t caller, dword_t af, dword_t type,
                                    dword_t protocol) {

@@ -18,6 +18,9 @@ endif()
 target_link_libraries(xenia-kernel PUBLIC
   aes_128 fmt zlib-ng pugixml xenia-apu xenia-base xenia-cpu xenia-hid xenia-vfs
 )
+if(WIN32)
+  target_link_libraries(xenia-kernel PUBLIC winhttp)
+endif()
 xe_target_defaults(xenia-kernel)
 
 if(XENIA_BUILD_TESTS)
