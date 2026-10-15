@@ -762,6 +762,13 @@ dword_result_t XamGetToken_entry(dword_t user_index, lpstring_t uri,
   if (out_token) {
     *out_token = addr;
   }
+  // Titles call this asynchronously and poll the XOVERLAPPED, so it has to be
+  // completed or they spin forever.
+  if (overlapped) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped.guest_address(),
+                                                X_ERROR_SUCCESS);
+    return X_ERROR_IO_PENDING;
+  }
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamGetToken, kNetworking, kImplemented);
