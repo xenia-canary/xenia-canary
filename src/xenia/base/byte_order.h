@@ -84,7 +84,8 @@ template <typename T, std::endian E>
 struct endian_store {
   endian_store() = default;
   endian_store(const T& src) { set(src); }
-  endian_store(const endian_store& other) { set(other); }
+  // endian_store(const endian_store& other) { set(other); }
+  endian_store(const endian_store& other) = default;
   operator T() const { return get(); }
 
   void set(const T& src) {
