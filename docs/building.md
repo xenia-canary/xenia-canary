@@ -94,8 +94,13 @@ get helpful spacers/movs in the disassembly.
 
 Linux support is extremely experimental and presently incomplete.
 
-The build script uses Clang 19. GCC while it should work in theory, is not easily
-interchangeable right now.
+The build script uses Clang 19 or newer, and CI builds with Clang 20. GCC while
+it should work in theory, is not easily interchangeable right now.
+
+Clang builds against the system's GCC C++ standard library (libstdc++), which
+must support C++20 `<format>`. That needs libstdc++ from GCC 13 or newer, so
+distributions with an older default GCC, such as Debian 12 or Ubuntu 22.04,
+can't build Xenia with their default toolchain. CI builds on Ubuntu 24.04.
 
 * Normal building via `xb build` uses CMake+Ninja.
 * Environment variables:
