@@ -59,6 +59,17 @@ GraphicsSystem::GraphicsSystem() : frame_limiter_worker_running_(false) {
 
 GraphicsSystem::~GraphicsSystem() = default;
 
+// The trace writer is compiled out of Release unless XENIA_ENABLE_GPU_TRACE is
+// enabled.
+constexpr bool kTraceCaptureAvailable =
+    XE_ENABLE_TRACE_WRITER_INSTRUMENTATION != 0;
+
+static void WarnTraceCaptureUnavailable() {
+  XELOGW(
+      "GPU trace capture isn't built into this configuration; use a Debug "
+      "build or enable the XENIA_ENABLE_GPU_TRACE CMake option");
+}
+
 X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
                                kernel::KernelState* kernel_state,
                                ui::WindowedAppContext* app_context,
@@ -442,11 +453,19 @@ void GraphicsSystem::InitializeShaderStorage(
 }
 
 void GraphicsSystem::RequestFrameTrace() {
-  command_processor_->RequestFrameTrace(cvars::trace_gpu_prefix);
+  if constexpr (kTraceCaptureAvailable) {
+    command_processor_->RequestFrameTrace(cvars::trace_gpu_prefix);
+  } else {
+    WarnTraceCaptureUnavailable();
+  }
 }
 
 void GraphicsSystem::BeginTracing() {
-  command_processor_->BeginTracing(cvars::trace_gpu_prefix);
+  if constexpr (kTraceCaptureAvailable) {
+    command_processor_->BeginTracing(cvars::trace_gpu_prefix);
+  } else {
+    WarnTraceCaptureUnavailable();
+  }
 }
 
 void GraphicsSystem::EndTracing() { command_processor_->EndTracing(); }
