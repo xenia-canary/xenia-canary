@@ -36,6 +36,11 @@ message(STATUS "Target architecture: XE_TARGET_AARCH64=${XE_TARGET_AARCH64} XE_T
 # Options
 option(XENIA_BUILD_TESTS "Build test suites" OFF)
 option(XENIA_BUILD_MISC "Build misc subprojects (trace viewers, shader compiler, vfs-dump, demos)" OFF)
+option(XENIA_ENABLE_GPU_TRACE "Enable GPU trace capture in Release" OFF)
+
+if(XENIA_ENABLE_GPU_TRACE)
+  add_compile_definitions(XE_OPTION_GPU_TRACE=1)
+endif()
 
 # Toggle profiler
 add_compile_definitions(XE_OPTION_PROFILING=0)
