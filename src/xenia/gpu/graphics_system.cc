@@ -9,12 +9,15 @@
 
 #include "xenia/gpu/graphics_system.h"
 
+#include <charconv>
+
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
+#include "xenia/base/utf8.h"
 #include "xenia/config.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/gpu_flags.h"
@@ -104,6 +107,33 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
   // Create command processor. This will spin up a thread to process all
   // incoming ringbuffer packets.
   command_processor_ = CreateCommandProcessor();
+
+  // Trace requests from the command line, made before Initialize starts the
+  // command processor thread, which reads the frame numbers on every swap.
+  if (cvars::trace_gpu_stream) {
+    BeginTracing();
+  }
+  std::vector<uint32_t> trace_frame_numbers;
+  for (std::string_view frame :
+       utf8::split(cvars::trace_gpu_frames, ", ", true)) {
+    uint32_t frame_number;
+    auto [end, error] = std::from_chars(
+        frame.data(), frame.data() + frame.size(), frame_number);
+    if (error != std::errc() || end != frame.data() + frame.size()) {
+      XELOGW("Ignoring invalid frame number \"{}\" in trace_gpu_frames", frame);
+      continue;
+    }
+    trace_frame_numbers.push_back(frame_number);
+  }
+  if (!trace_frame_numbers.empty()) {
+    if constexpr (kTraceCaptureAvailable) {
+      command_processor_->SetTraceFrameNumbers(cvars::trace_gpu_prefix,
+                                               std::move(trace_frame_numbers));
+    } else {
+      WarnTraceCaptureUnavailable();
+    }
+  }
+
   if (!command_processor_->Initialize()) {
     XELOGE("Unable to initialize command processor");
     return X_STATUS_UNSUCCESSFUL;
@@ -266,9 +296,6 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
   frame_limiter_worker_thread_->thread()->set_priority(
       threading::ThreadPriority::kNormal);
 #endif
-  if (cvars::trace_gpu_stream) {
-    BeginTracing();
-  }
 
   return X_STATUS_SUCCESS;
 }
