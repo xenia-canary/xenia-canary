@@ -187,6 +187,19 @@ uint8_t xeXamGetCountryFromOnlineCountry(uint8_t id) {
   return id < xe::countof(table) ? table[id] : 0;
 }
 
+uint32_t xeXamGetOnlineCountryFeatures(uint8_t id) {
+  static uint8_t constexpr table[] = {
+      0,  0, 0, 0, 4, 12, 12, 0, 12, 0, 0, 0, 0,  4,  0,  0,  12, 0,  12,
+      0,  0, 0, 0, 0, 12, 12, 0, 0,  0, 0, 0, 12, 12, 0,  12, 12, 0,  0,
+      0,  4, 0, 0, 0, 0,  12, 0, 0,  0, 0, 0, 12, 0,  0,  8,  0,  0,  4,
+      0,  0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,  0,  12, 0,  0,  12, 12,
+      12, 0, 0, 0, 0, 4,  0,  4, 0,  0, 0, 0, 0,  0,  12, 4,  0,  0,  0,
+      0,  0, 0, 0, 4, 0,  4,  0, 12, 0, 0, 0, 0,  0,  0,
+  };
+#pragma warning(suppress : 6385)
+  return id < xe::countof(table) ? table[id] : 0x80000000;
+}
+
 uint8_t xeXamGetLocaleFromCountry(uint8_t id) {
   static uint8_t constexpr table[] = {
       0,  43, 0, 0, 40, 2,  1,  0,  3,  0, 0, 0, 0,  4,  0,  0,  5,  0,  33,
@@ -487,6 +500,11 @@ dword_result_t XamGetCountryFromOnlineCountry_entry(dword_t id) {
   return xeXamGetCountryFromOnlineCountry(static_cast<uint8_t>(id));
 }
 DECLARE_XAM_EXPORT1(XamGetCountryFromOnlineCountry, kLocale, kImplemented);
+
+dword_result_t XamGetOnlineCountryFeatures_entry(dword_t id) {
+  return xeXamGetOnlineCountryFeatures(static_cast<uint8_t>(id));
+}
+DECLARE_XAM_EXPORT1(XamGetOnlineCountryFeatures, kLocale, kImplemented);
 
 dword_result_t XamGetLocaleEx_entry(dword_t max_country_id,
                                     dword_t max_locale_id) {
