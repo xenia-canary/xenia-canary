@@ -199,6 +199,27 @@ bool VirtualFileSystem::DeletePath(const std::string_view path) {
   return parent->Delete(entry);
 }
 
+X_STATUS VirtualFileSystem::NotFoundStatus(Entry* root_entry,
+                                           const std::string_view path) {
+  auto base_path = xe::utf8::find_base_guest_path(path);
+  if (base_path.empty()) {
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
+  }
+  if (root_entry ? root_entry->ResolvePath(base_path) : ResolvePath(base_path)) {
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
+  }
+  // The parent is missing: a missing drive (e.g. "nosuchdrive:") is still
+  // OBJECT_NAME_NOT_FOUND, a missing directory under a real one is not.
+  if (!root_entry) {
+    auto separator = path.find(kGuestPathSeparator);
+    auto device = path.substr(0, separator);
+    if (separator == std::string_view::npos || !ResolvePath(device)) {
+      return X_STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+  }
+  return X_STATUS_OBJECT_PATH_NOT_FOUND;
+}
+
 X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
                                      const std::string_view path,
                                      FileDisposition creation_disposition,
@@ -230,11 +251,14 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
                                : root_entry->ResolvePath(base_path);
     if (!parent_entry) {
       *out_action = FileAction::kDoesNotExist;
-      return X_STATUS_NO_SUCH_FILE;
+      return NotFoundStatus(root_entry, path);
     }
 
     auto file_name = xe::utf8::find_name_from_guest_path(path);
     entry = parent_entry->GetChild(file_name);
+  } else if (root_entry && path.empty()) {
+    // An empty name relative to a directory opens that directory.
+    entry = root_entry;
   } else {
     entry = !root_entry ? ResolvePath(path) : root_entry->GetChild(path);
   }
@@ -268,7 +292,7 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
       // Must exist.
       if (!entry) {
         *out_action = FileAction::kDoesNotExist;
-        return X_STATUS_NO_SUCH_FILE;
+        return NotFoundStatus(root_entry, path);
       }
       break;
     case FileDisposition::kCreate:
