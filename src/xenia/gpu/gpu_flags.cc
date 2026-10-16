@@ -12,6 +12,12 @@
 DEFINE_path(trace_gpu_prefix, "scratch/gpu/",
             "Prefix path for GPU trace files.", "GPU.Debug");
 DEFINE_bool(trace_gpu_stream, false, "Trace all GPU packets.", "GPU.Debug");
+DEFINE_string(trace_gpu_frames, "",
+              "Comma-separated frame numbers to capture as single frame GPU "
+              "traces, the same way as a manual frame trace request, for "
+              "example \"300,1200\". Frames are counted by the swaps "
+              "before them, and each trace is named after its frame number.",
+              "GPU.Debug");
 
 DEFINE_path(
     dump_shaders, "",

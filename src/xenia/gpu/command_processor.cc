@@ -9,6 +9,8 @@
 
 #include "xenia/gpu/command_processor.h"
 
+#include <algorithm>
+
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
@@ -262,6 +264,14 @@ void CommandProcessor::RequestFrameTrace(
   }
   trace_state_ = TraceState::kSingleFrame;
   trace_frame_path_ = root_path;
+}
+
+void CommandProcessor::SetTraceFrameNumbers(
+    const std::filesystem::path& root_path,
+    std::vector<uint32_t> frame_numbers) {
+  assert_false(worker_running_);
+  trace_frame_path_ = root_path;
+  trace_frame_numbers_ = std::move(frame_numbers);
 }
 
 void CommandProcessor::BeginTracing(const std::filesystem::path& root_path) {
