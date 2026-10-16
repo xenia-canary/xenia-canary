@@ -12,6 +12,7 @@
 #include <stdlib.h>
 
 #include <cstring>
+#include <string>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
@@ -23,16 +24,32 @@
 
 namespace xe {
 
-void LaunchWebBrowser(const std::string_view url) {
-  auto cmd = std::string("xdg-open ");
-  cmd.append(url);
-  system(cmd.c_str());
+namespace {
+void OpenUrl(const std::string& url) {
+  void* libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
+  if (!libsdl2) {
+    XELOGE("Failed to open {}: {}", url, dlerror());
+    return;
+  }
+  auto* pSDL_OpenURL =
+      reinterpret_cast<decltype(SDL_OpenURL)*>(dlsym(libsdl2, "SDL_OpenURL"));
+  auto* pSDL_GetError =
+      reinterpret_cast<decltype(SDL_GetError)*>(dlsym(libsdl2, "SDL_GetError"));
+  if (!pSDL_OpenURL) {
+    XELOGE("Failed to open {}: SDL_OpenURL is unavailable", url);
+  } else if (pSDL_OpenURL(url.c_str()) != 0) {
+    XELOGE("Failed to open {}: {}", url,
+           pSDL_GetError ? pSDL_GetError() : "unknown error");
+  }
+  dlclose(libsdl2);
 }
+}  // namespace
+
+void LaunchWebBrowser(const std::string_view url) { OpenUrl(std::string(url)); }
 
 void LaunchFileExplorer(const std::filesystem::path& path) {
-  auto cmd = std::string("xdg-open ");
-  cmd.append(path);
-  system(cmd.c_str());
+  std::error_code ec;
+  OpenUrl(std::filesystem::absolute(path, ec).string());
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
