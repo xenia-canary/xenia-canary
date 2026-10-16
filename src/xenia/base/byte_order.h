@@ -11,6 +11,7 @@
 #define XENIA_BASE_BYTE_ORDER_H_
 
 #include <cstdint>
+#include <type_traits>
 #if defined __has_include
 #if __has_include(<version>)
 #include <version>
@@ -84,7 +85,7 @@ template <typename T, std::endian E>
 struct endian_store {
   endian_store() = default;
   endian_store(const T& src) { set(src); }
-  endian_store(const endian_store& other) { set(other); }
+  endian_store(const endian_store& other) = default;
   operator T() const { return get(); }
 
   void set(const T& src) {
@@ -134,6 +135,10 @@ template <typename T>
 using be = endian_store<T, std::endian::big>;
 template <typename T>
 using le = endian_store<T, std::endian::little>;
+
+// Guest structures are copied and cleared with memcpy and memset.
+static_assert(std::is_trivially_copyable_v<be<uint32_t>>);
+static_assert(std::is_trivially_copyable_v<le<uint32_t>>);
 
 }  // namespace xe
 
