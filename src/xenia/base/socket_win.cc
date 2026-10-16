@@ -112,6 +112,15 @@ class Win32Socket : public Socket {
     return socket_ != INVALID_SOCKET;
   }
 
+  void set_nonblocking(bool nonblocking) override {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (socket_ == INVALID_SOCKET) {
+      return;
+    }
+    u_long val = nonblocking ? 1 : 0;
+    ioctlsocket(socket_, FIONBIO, &val);
+  }
+
   void Close() override {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
@@ -245,7 +254,7 @@ class Win32SocketServer : public SocketServer {
 
     sockaddr_in socket_addr = {0};
     socket_addr.sin_family = AF_INET;
-    socket_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socket_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     socket_addr.sin_port = htons(port);
     if (bind(socket_, reinterpret_cast<sockaddr*>(&socket_addr),
              sizeof(socket_addr)) == SOCKET_ERROR) {
