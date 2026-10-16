@@ -473,9 +473,9 @@ dword_result_t KeDelayExecutionThread_entry(dword_t processor_mode,
                                             dword_t alertable,
                                             lpqword_t interval_ptr,
                                             const ppc_context_t& context) {
+  // TODO(Ecredes): Verify whether a null interval should be treated as zero.
   uint64_t interval = interval_ptr ? static_cast<uint64_t>(*interval_ptr) : 0u;
-  return KeDelayExecutionThread(processor_mode, alertable,
-                                interval_ptr ? &interval : nullptr, context);
+  return KeDelayExecutionThread(processor_mode, alertable, &interval, context);
 }
 DECLARE_XBOXKRNL_EXPORT3(KeDelayExecutionThread, kThreading, kImplemented,
                          kBlocking, kHighFrequency);
