@@ -610,34 +610,14 @@ void EmulatorApp::EmulatorThread() {
   }
 
   if (cvars::mount_cache) {
-    auto cache0_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\CACHE0", emulator_->storage_root() / "cache0", false);
-    if (!cache0_device->Initialize()) {
-      XELOGE("Unable to scan cache0 path");
-    } else {
-      if (!fs->RegisterDevice(std::move(cache0_device))) {
-        XELOGE("Unable to register cache0 path");
-      } else {
-        fs->RegisterSymbolicLink("cache0:", "\\CACHE0");
-      }
-    }
+    // cache0: and cache1: are the volumes on the cache partitions (the
+    // \Device\Harddisk0 device, registered at launch), as STFC titles mount
+    // them. Fallbacks: a title's own ObCreateSymbolicLink replaces them.
+    fs->RegisterSymbolicLink("cache0:", "\\Device\\Harddisk0\\Cache0", true);
+    fs->RegisterSymbolicLink("cache1:", "\\Device\\Harddisk0\\Cache1", true);
 
-    auto cache1_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\CACHE1", emulator_->storage_root() / "cache1", false);
-    if (!cache1_device->Initialize()) {
-      XELOGE("Unable to scan cache1 path");
-    } else {
-      if (!fs->RegisterDevice(std::move(cache1_device))) {
-        XELOGE("Unable to register cache1 path");
-      } else {
-        fs->RegisterSymbolicLink("cache1:", "\\CACHE1");
-      }
-    }
-
-    // Some (older?) games try accessing cache:\ too
-    // NOTE: this must be registered _after_ the cache0/cache1 devices, due to
-    // substring/start_with logic inside VirtualFileSystem::ResolvePath, else
-    // accesses to those devices will go here instead
+    // Some (older?) games try accessing cache:\ without mounting it; on a
+    // console XMountUtilityDrive creates it, replacing this fallback.
     auto cache_device = std::make_unique<xe::vfs::HostPathDevice>(
         "\\CACHE", emulator_->storage_root() / "cache", false);
     if (!cache_device->Initialize()) {
@@ -646,7 +626,7 @@ void EmulatorApp::EmulatorThread() {
       if (!fs->RegisterDevice(std::move(cache_device))) {
         XELOGE("Unable to register cache path");
       } else {
-        fs->RegisterSymbolicLink("cache:", "\\CACHE");
+        fs->RegisterSymbolicLink("cache:", "\\CACHE", true);
       }
     }
   }

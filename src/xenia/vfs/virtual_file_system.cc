@@ -9,6 +9,7 @@
 
 #include "xenia/vfs/virtual_file_system.h"
 #include "xenia/kernel/xam/content_manager.h"
+#include "xenia/vfs/devices/harddisk_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 
 #include "devices/host_path_entry.h"
@@ -54,17 +55,31 @@ bool VirtualFileSystem::UnregisterDevice(const std::string_view path) {
 }
 
 bool VirtualFileSystem::RegisterSymbolicLink(const std::string_view path,
-                                             const std::string_view target) {
+                                             const std::string_view target,
+                                             bool fallback) {
   auto global_lock = global_critical_region_.Acquire();
   auto it = std::find_if(
       symlinks_.cbegin(), symlinks_.cend(),
       [&](const auto& s) { return xe::utf8::equal_case(path, s.first); });
   if (it != symlinks_.end()) {
-    XELOGE("Trying to re-register already registered symbolic link: {} => {}",
-           path, target);
-    return false;
+    auto fb = std::find_if(
+        fallback_symlinks_.cbegin(), fallback_symlinks_.cend(),
+        [&](const auto& name) { return xe::utf8::equal_case(path, name); });
+    if (fb == fallback_symlinks_.cend()) {
+      XELOGE(
+          "Trying to re-register already registered symbolic link: {} => {}",
+          path, target);
+      return false;
+    }
+    XELOGD("Replacing fallback symbolic link: {} => {}", it->first,
+           it->second);
+    fallback_symlinks_.erase(fb);
+    symlinks_.erase(it);
   }
 
+  if (fallback) {
+    fallback_symlinks_.push_back(std::string(path));
+  }
   symlinks_.insert({std::string(path), std::string(target)});
   XELOGD("Registered symbolic link: {} => {}", path, target);
 
@@ -81,6 +96,11 @@ bool VirtualFileSystem::UnregisterSymbolicLink(const std::string_view path) {
   }
   XELOGD("Unregistered symbolic link: {} => {}", it->first, it->second);
 
+  fallback_symlinks_.erase(
+      std::remove_if(
+          fallback_symlinks_.begin(), fallback_symlinks_.end(),
+          [&](const auto& name) { return xe::utf8::equal_case(path, name); }),
+      fallback_symlinks_.end());
   symlinks_.erase(it);
   return true;
 }
@@ -155,6 +175,37 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   const auto& device = *it;
   auto relative_path = normalized_path.substr(device->mount_path().size());
   return device->ResolvePath(relative_path);
+}
+
+Entry* VirtualFileSystem::ResolvePartition(const std::string_view path,
+                                           bool want_volume) {
+  auto global_lock = global_critical_region_.Acquire();
+  auto normalized_path(xe::utf8::canonicalize_guest_path(path));
+  std::string resolved_path;
+  if (ResolveSymbolicLink(normalized_path, resolved_path)) {
+    normalized_path = resolved_path;
+  }
+  for (const auto& device : devices_) {
+    if (!xe::utf8::starts_with(normalized_path, device->mount_path())) {
+      continue;
+    }
+    auto harddisk = dynamic_cast<HarddiskDevice*>(device.get());
+    if (!harddisk) {
+      return nullptr;
+    }
+    auto relative_path = normalized_path.substr(device->mount_path().size());
+    // Only a partition itself: one name under the disk.
+    auto name = std::string_view(relative_path);
+    while (!name.empty() && name.front() == '\\') {
+      name.remove_prefix(1);
+    }
+    if (name.empty() || name.find('\\') != std::string_view::npos) {
+      return nullptr;
+    }
+    return want_volume ? harddisk->ResolvePath(relative_path)
+                       : harddisk->ResolveRawPartition(relative_path);
+  }
+  return nullptr;
 }
 
 Entry* VirtualFileSystem::CreatePath(const std::string_view path,
@@ -245,8 +296,19 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
   Entry* parent_entry = nullptr;
   Entry* entry = nullptr;
 
+  // A partition opened by name: without a trailing separator it is the raw
+  // partition, with one (or as a directory) the volume on it, as on a
+  // console. Canonical paths drop the separator, so decide here.
+  Entry* partition = nullptr;
+  if (!root_entry) {
+    partition = ResolvePartition(
+        path, is_directory || (!path.empty() && path.back() == '\\'));
+  }
+
   auto base_path = xe::utf8::find_base_guest_path(path);
-  if (!base_path.empty()) {
+  if (partition) {
+    entry = partition;
+  } else if (!base_path.empty()) {
     parent_entry = !root_entry ? ResolvePath(base_path)
                                : root_entry->ResolvePath(base_path);
     if (!parent_entry) {

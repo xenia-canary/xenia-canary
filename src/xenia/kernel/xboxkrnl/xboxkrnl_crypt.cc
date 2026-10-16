@@ -8,6 +8,7 @@
 */
 
 #include <algorithm>
+#include <cstring>
 
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
@@ -1108,36 +1109,89 @@ dword_result_t XeKeysGetConsoleID_entry(pointer_t<XE_CONSOLE_ID> raw_bytes,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetConsoleID, kNone, kImplemented);
 
-dword_result_t XeKeysConsolePrivateKeySign_entry(
-    lpvoid_t hash, pointer_t<XE_CONSOLE_CERTIFICATE> output) {
-  if (!hash) {
-    return false;
-  }
-
-  if (!output) {
-    return false;
-  }
-
-  output.Zero();
-  output->console_id.RefurbBits = 0b0011;
-  output->console_id.ManufactureMonth = 0b1001;
-  output->console_id.ManufactureYear = 0b0001;
-  output->console_id.MacIndex3 = 0b01000000;
-  output->console_id.MacIndex4 = 0b01100110;
-  output->console_id.MacIndex5 = 0b01111110;
-  output->console_id.Crc = 0b0000;
-  output->console_type = Retail;
-  output->manufacture_date[0] = 2;
-  output->manufacture_date[1] = 0;
-  output->manufacture_date[2] = 0;
-  output->manufacture_date[3] = 5;
-  output->manufacture_date[4] = 1;
-  output->manufacture_date[5] = 1;
-  output->manufacture_date[6] = 2;
-  output->manufacture_date[7] = 2;
-  return true;
+// The emulated console's certificate.
+static void EmulatedConsoleCertificate(XE_CONSOLE_CERTIFICATE* cert) {
+  std::memset(cert, 0, sizeof(*cert));
+  cert->console_id.RefurbBits = 0b0011;
+  cert->console_id.ManufactureMonth = 0b1001;
+  cert->console_id.ManufactureYear = 0b0001;
+  cert->console_id.MacIndex3 = 0b01000000;
+  cert->console_id.MacIndex4 = 0b01100110;
+  cert->console_id.MacIndex5 = 0b01111110;
+  cert->console_id.Crc = 0b0000;
+  cert->console_type = Retail;
+  cert->manufacture_date[0] = 2;
+  cert->manufacture_date[1] = 0;
+  cert->manufacture_date[2] = 0;
+  cert->manufacture_date[3] = 5;
+  cert->manufacture_date[4] = 1;
+  cert->manufacture_date[5] = 1;
+  cert->manufacture_date[6] = 2;
+  cert->manufacture_date[7] = 2;
 }
-DECLARE_XBOXKRNL_EXPORT1(XeKeysConsolePrivateKeySign, kNone, kSketchy);
+
+// The emulated console's signature of a 20-byte hash. A console signs with
+// its RSA private key; the emulated one has none, so this derives the bytes
+// from the hash and a fixed secret. What titles rely on still holds: the
+// same hash always gives the same signature (as on a devkit), and only this
+// console's signature of a hash verifies against it.
+static void EmulatedConsoleSign(const uint8_t* hash, uint8_t* signature) {
+  static const char secret[] = "xenia emulated console key";
+  uint8_t block[0x14];
+  for (uint32_t i = 0, done = 0; done < 0x80; i++) {
+    sha1::SHA1 sha;
+    sha.processBytes(secret, sizeof(secret) - 1);
+    sha.processBytes(hash, 0x14);
+    uint8_t counter[4] = {uint8_t(i >> 24), uint8_t(i >> 16), uint8_t(i >> 8),
+                          uint8_t(i)};
+    sha.processBytes(counter, sizeof(counter));
+    sha.finalize(block);
+    uint32_t n = std::min<uint32_t>(0x14, 0x80 - done);
+    std::memcpy(signature + done, block, n);
+    done += n;
+  }
+}
+
+// Signs a 20-byte hash: the console certificate, then the signature. A
+// devkit returns 0, with the signature written.
+dword_result_t XeKeysConsolePrivateKeySign_entry(
+    lpvoid_t hash, pointer_t<XE_CONSOLE_SIGNATURE> output) {
+  if (!hash || !output) {
+    return 0;
+  }
+  EmulatedConsoleCertificate(&output->console_certificate);
+  EmulatedConsoleSign(hash.as<uint8_t*>(), output->signature);
+  return 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysConsolePrivateKeySign, kNone, kImplemented);
+
+// Returns whether signature is this console's signature of the 20-byte hash.
+// *cert_valid is 1 for this console's certificate, whether or not the
+// signature matched (as a devkit reports it).
+dword_result_t XeKeysConsoleSignatureVerification_entry(
+    lpvoid_t hash, pointer_t<XE_CONSOLE_SIGNATURE> signature,
+    lpdword_t cert_valid) {
+  if (!hash || !signature) {
+    return 0;
+  }
+  XE_CONSOLE_CERTIFICATE cert;
+  EmulatedConsoleCertificate(&cert);
+  bool ours = std::memcmp(&cert, &signature->console_certificate,
+                          sizeof(cert)) == 0;
+  if (cert_valid) {
+    *cert_valid = ours ? 1 : 0;
+  }
+  if (!ours) {
+    return 0;
+  }
+  uint8_t expected[0x80];
+  EmulatedConsoleSign(hash.as<uint8_t*>(), expected);
+  return std::memcmp(expected, signature->signature, sizeof(expected)) == 0
+             ? 1
+             : 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysConsoleSignatureVerification, kNone,
+                         kImplemented);
 
 }  // namespace xboxkrnl
 }  // namespace kernel
