@@ -388,7 +388,8 @@ dword_result_t NtCreateIoCompletion_entry(
     lpdword_t out_handle, dword_t desired_access,
     pointer_t<X_OBJECT_ATTRIBUTES> object_attribs,
     dword_t num_concurrent_threads) {
-  auto completion = new XIOCompletion(kernel_state());
+  auto completion =
+      object_ref<XIOCompletion>(new XIOCompletion(kernel_state()));
   if (out_handle) {
     *out_handle = completion->handle();
   }
