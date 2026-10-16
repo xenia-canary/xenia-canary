@@ -51,7 +51,7 @@ test_mcrf_3:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_3_constant:
   li r3, 5
@@ -62,7 +62,7 @@ test_mcrf_3_constant:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_4:
   #_ REGISTER_IN r3 100
@@ -100,7 +100,7 @@ test_mcrf_5:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  #_ REGISTER_OUT r12 0x00802080
 
 test_mcrf_5_constant:
   li r3, 10
@@ -116,4 +116,41 @@ test_mcrf_5_constant:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  #_ REGISTER_OUT r12 0x00802080
+
+# The record-form + mcrf pattern LLVM emits: andi. sets cr0, mcrf keeps it in
+# cr2 while cr0 is reused, and a later branch tests cr2[EQ].
+test_mcrf_6:
+  #_ REGISTER_IN r4 8
+  andi. r5, r4, 4
+  mcrf cr2, cr0
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r4 8
+  #_ REGISTER_OUT r5 0
+  #_ REGISTER_OUT r12 0x20200000
+
+test_mcrf_6_constant:
+  li r4, 8
+  andi. r5, r4, 4
+  mcrf cr2, cr0
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r4 8
+  #_ REGISTER_OUT r5 0
+  #_ REGISTER_OUT r12 0x20200000
+
+# A field copied onto itself is unchanged; GT and LT copies keep their bit.
+test_mcrf_7:
+  #_ REGISTER_IN r3 -1
+  #_ REGISTER_IN r4 1
+  cmpw cr1, r3, r4
+  cmpw cr5, r4, r3
+  mcrf cr1, cr1
+  mcrf cr3, cr5
+  mcrf cr4, cr1
+  mfcr r12
+  blr
+  #_ REGISTER_OUT r3 -1
+  #_ REGISTER_OUT r4 1
+  #_ REGISTER_OUT r12 0x08048400
