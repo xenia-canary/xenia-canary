@@ -1396,10 +1396,8 @@ bool Emulator::ExceptionCallback(Exception* ex) {
     return false;
   }
 
-  // Within range. Pause the emulator and eat the exception.
-  Pause();
-
-  // Dump information into the log.
+  // Within range. Dump information into the log before pausing, Pause() can
+  // block (e.g. waiting on the GPU/audio systems) and the dump would be lost.
   auto current_thread = kernel::XThread::GetCurrentThread();
   assert_not_null(current_thread);
 
@@ -1449,6 +1447,11 @@ bool Emulator::ExceptionCallback(Exception* ex) {
                     context->v[i].u32[2], context->v[i].u32[3]));
   }
   XELOGE("{}", crash_msg);
+  FlushLog();
+
+  // Pause the emulator and eat the exception.
+  Pause();
+
   std::string crash_dlg = fmt::format(
       "The guest has crashed.\n\n"
       "Xenia has now paused itself.\n\n"
