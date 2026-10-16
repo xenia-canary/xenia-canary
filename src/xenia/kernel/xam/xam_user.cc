@@ -137,12 +137,13 @@ DECLARE_XAM_EXPORT1(XamUserGetSigninInfo, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetName_entry(dword_t user_index, dword_t buffer,
                                     dword_t buffer_len) {
+  // Based on XAM only first byte is cleared on failure.
   if (user_index >= XUserMaxUserCount) {
+    kernel_memory()->Zero(buffer, 1);
     return X_ERROR_INVALID_PARAMETER;
   }
 
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
-    // Based on XAM only first byte is cleared in case of lack of user.
     kernel_memory()->Zero(buffer, 1);
     return X_ERROR_NO_SUCH_USER;
   }
