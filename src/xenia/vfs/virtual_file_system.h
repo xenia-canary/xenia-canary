@@ -40,6 +40,10 @@ class VirtualFileSystem {
   bool FindSymbolicLink(const std::string_view path, std::string& target);
 
   Entry* ResolvePath(const std::string_view path);
+  // The status a console's open of a name that does not resolve returns:
+  // STATUS_OBJECT_PATH_NOT_FOUND when a directory on the way is missing,
+  // otherwise STATUS_OBJECT_NAME_NOT_FOUND (the file, or the drive itself).
+  X_STATUS NotFoundStatus(Entry* root_entry, const std::string_view path);
 
   Entry* CreatePath(const std::string_view path, uint32_t attributes);
   bool DeletePath(const std::string_view path);

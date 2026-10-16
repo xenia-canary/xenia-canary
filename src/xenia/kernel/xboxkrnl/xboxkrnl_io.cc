@@ -36,6 +36,21 @@ struct CreateOptions {
   static constexpr uint32_t FILE_RANDOM_ACCESS = 0x00000800;
 };
 
+// With no root directory a console only accepts an absolute object name
+// ("\??\game:\x", "\Device\..."): NtCreateFile and NtQueryFullAttributesFile
+// reject a bare "game:\x" with STATUS_OBJECT_NAME_INVALID (checked on a
+// devkit). Relative to the DOS devices directory (0xFFFFFFFD) or an open
+// directory, a relative name is fine.
+static bool IsRootlessRelativeName(uint32_t root_directory,
+                                   const X_ANSI_STRING* name) {
+  if (root_directory != 0) {
+    return false;
+  }
+  auto raw = string_util::trim(
+      std::string(util::TranslateAnsiString(kernel_memory(), name)));
+  return !raw.empty() && raw[0] != '\\';
+}
+
 dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
                                   pointer_t<X_OBJECT_ATTRIBUTES> object_attrs,
                                   pointer_t<X_IO_STATUS_BLOCK> io_status_block,
@@ -58,6 +73,10 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
       kernel_memory()->TranslateVirtual<X_ANSI_STRING*>(object_attrs->name_ptr);
 
   vfs::Entry* root_entry = nullptr;
+
+  if (IsRootlessRelativeName(object_attrs->root_directory, object_name)) {
+    return X_STATUS_OBJECT_NAME_INVALID;
+  }
 
   // Compute path, possibly attrs relative.
   auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
@@ -487,6 +506,10 @@ dword_result_t NtQueryFullAttributesFile_entry(
     assert_always();
   }
 
+  if (IsRootlessRelativeName(obj_attribs->root_directory, object_name)) {
+    return X_STATUS_OBJECT_NAME_INVALID;
+  }
+
   auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
 
   // Enforce that the path is ASCII.
@@ -509,7 +532,7 @@ dword_result_t NtQueryFullAttributesFile_entry(
     return X_STATUS_SUCCESS;
   }
 
-  return X_STATUS_NO_SUCH_FILE;
+  return kernel_state()->file_system()->NotFoundStatus(nullptr, target_path);
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryFullAttributesFile, kFileSystem, kImplemented);
 
