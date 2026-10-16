@@ -17,6 +17,9 @@
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
+#if XE_PLATFORM_WIN32
+#include "xenia/base/platform_win.h"
+#endif
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/cpu/processor.h"
@@ -950,10 +953,45 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
   }
 
   if (thread_->Suspend(&unused_host_suspend_count)) {
+    if (!IsInThread(this)) {
+      ReleaseGuestReservation();
+    }
     return X_STATUS_SUCCESS;
   } else {
     return X_STATUS_UNSUCCESSFUL;
   }
+}
+
+// On real HW, the core loses lwarx reservation when the thread is switched out.
+// (on a suspended thread's stwcx). Proper HW just fails and retries.
+// The host suspend can land between lwarx and stwcx, which would spin waiting
+// for resume that never comes and deadlock.
+void XThread::ReleaseGuestReservation() {
+  if (!thread_state_) {
+    return;
+  }
+  auto backend = kernel_state()->processor()->backend();
+  // TODO(mcmilnick): Fix has only been tested on a windows machine. Linux still
+  // calls the release, but without the extra safety checks. Windows spins each
+  // Xbox thread as a real windows thread, so we can use GetThreadContext.
+  // Likely to be different as Linux does not have this API.
+#if XE_PLATFORM_WIN32
+  // Checks that the thread is truly stopped and ensures noone else is accessing
+  // the reservation.
+  HANDLE host_thread = thread_->native_handle();
+  CONTEXT host_context = {};
+  host_context.ContextFlags = CONTEXT_CONTROL;
+  for (int attempt = 0; attempt < 1000; ++attempt) {
+    if (!GetThreadContext(host_thread, &host_context) ||
+        !backend->IsInReservationHelper(host_context.Rip)) {
+      break;
+    }
+    ResumeThread(host_thread);
+    SwitchToThread();
+    SuspendThread(host_thread);
+  }
+#endif
+  backend->ReleaseReservation(thread_state_->context());
 }
 
 #if !XE_PLATFORM_WIN32
