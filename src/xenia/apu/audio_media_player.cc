@@ -414,19 +414,21 @@ std::span<uint8_t> AudioMediaPlayer::LoadSongToMemory() {
     return {};
   }
 
-  std::span<uint8_t> buffer = {
-      static_cast<uint8_t*>(av_malloc(vfs_file->entry()->size())),
-      vfs_file->entry()->size()};
-
-  if (buffer.empty()) {
+  const size_t file_size = vfs_file->entry()->size();
+  uint8_t* data =
+      file_size ? static_cast<uint8_t*>(av_malloc(file_size)) : nullptr;
+  if (!data) {
+    vfs_file->Destroy();
     return {};
   }
+  std::span<uint8_t> buffer = {data, file_size};
 
   size_t bytes_read = 0;
   result = vfs_file->ReadSync(buffer, 0, &bytes_read);
+  vfs_file->Destroy();
   if (result != X_ERROR_SUCCESS) {
     // Read failed. We need to manually release resources from av_malloc.
-    av_freep(buffer.data());
+    av_free(data);
     return {};
   }
 
