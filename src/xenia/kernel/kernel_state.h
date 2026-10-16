@@ -14,6 +14,8 @@
 #include <condition_variable>
 #include <functional>
 #include <list>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "xenia/base/bit_map.h"
@@ -276,7 +278,19 @@ class KernelState {
   void UnregisterNotifyListener(XNotifyListener* listener);
   void BroadcastNotification(XNotificationID id, uint32_t data);
 
-  util::NativeList* dpc_list() { return &dpc_list_; }
+  // Queues the KDPC at dpc_ptr to run its routine at DISPATCH_LEVEL, as
+  // KeInsertQueueDpc does. Returns false (and leaves its arguments alone) if
+  // it is already queued. Queued from a guest thread, it runs on that thread,
+  // as a console runs it on the queuing processor: before this returns at
+  // PASSIVE_LEVEL, or when the IRQL drops below DISPATCH_LEVEL (FlushDpcs).
+  // Queued from a host thread (a timer expiring), it runs on the kernel
+  // dispatch thread.
+  bool QueueDpc(uint32_t dpc_ptr, uint32_t arg1, uint32_t arg2);
+  // Runs the DPCs held for this thread's PCR; called as its IRQL drops below
+  // DISPATCH_LEVEL.
+  void FlushDpcs(cpu::ppc::PPCContext* context);
+  // Takes a queued DPC off the queue before it runs (KeRemoveQueueDpc).
+  bool RemoveQueuedDpc(uint32_t dpc_ptr);
 
   void CompleteOverlapped(uint32_t overlapped_ptr, X_RESULT result);
   void CompleteOverlappedEx(uint32_t overlapped_ptr, X_RESULT result,
@@ -328,6 +342,7 @@ class KernelState {
                              uint32_t cpu);
 
   void InitializeXbdmCpuCounters();
+  void RunQueuedDpc(uint32_t dpc_ptr);
   std::array<uint32_t, 0x11> xbdm_counters_address = {};
 
  private:
@@ -376,8 +391,13 @@ class KernelState {
 
   std::atomic<bool> dispatch_thread_running_;
   object_ref<XHostThread> dispatch_thread_;
-  // Must be guarded by the global critical region.
-  util::NativeList dpc_list_;
+  // The KDPCs queued and not yet run. Must be guarded by the global critical
+  // region. Tracked here rather than through the guest list entry, which
+  // KeInitializeDpc does not clear.
+  std::unordered_set<uint32_t> queued_dpcs_;
+  // DPCs queued at or above DISPATCH_LEVEL, by PCR, waiting for the IRQL to
+  // drop. Guarded by the global critical region.
+  std::unordered_map<uint32_t, std::vector<uint32_t>> held_dpcs_;
   std::condition_variable_any dispatch_cond_;
   std::list<std::function<void()>> dispatch_queue_;
 

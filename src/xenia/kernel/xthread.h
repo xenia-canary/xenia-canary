@@ -88,6 +88,8 @@ struct XDPC {
     type = 19;
     selected_cpu_number = 0;
     desired_cpu_number = 0;
+    list_entry.flink_ptr = 0;
+    list_entry.blink_ptr = 0;
     routine = guest_func;
     context = guest_context;
   }

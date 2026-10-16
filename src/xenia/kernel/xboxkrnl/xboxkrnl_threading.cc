@@ -1244,6 +1244,8 @@ void xeKfLowerIrql(PPCContext* ctx, unsigned char new_irql) {
   if (new_irql < 2) {
     // the called function does a ton of other stuff including changing the
     // irql and interrupt_related
+    // DPCs queued while at DISPATCH_LEVEL or above run as the IRQL drops.
+    kernel_state()->FlushDpcs(ctx);
   }
 }
 // irql is supposed to be per thread afaik...
@@ -1556,42 +1558,14 @@ DECLARE_XBOXKRNL_EXPORT2(KeInitializeDpc, kThreading, kImplemented, kSketchy);
 
 dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
                                       dword_t arg2) {
-  assert_always("DPC does not dispatch yet; going to hang!");
-
-  uint32_t list_entry_ptr = dpc.guest_address() + 4;
-
-  // Lock dispatcher.
-  auto global_lock = xe::global_critical_region::AcquireDirect();
-  auto dpc_list = kernel_state()->dpc_list();
-
-  // If already in a queue, abort.
-  if (dpc_list->IsQueued(list_entry_ptr)) {
-    return 0;
-  }
-
-  // Prep DPC.
-  dpc->arg1 = (uint32_t)arg1;
-  dpc->arg2 = (uint32_t)arg2;
-
-  dpc_list->Insert(list_entry_ptr);
-
-  return 1;
+  // Runs the routine at DISPATCH_LEVEL on the kernel dispatch thread; a
+  // console would run it on the processor that queued it.
+  return kernel_state()->QueueDpc(dpc.guest_address(), arg1, arg2) ? 1 : 0;
 }
-DECLARE_XBOXKRNL_EXPORT2(KeInsertQueueDpc, kThreading, kStub, kSketchy);
+DECLARE_XBOXKRNL_EXPORT2(KeInsertQueueDpc, kThreading, kImplemented, kSketchy);
 
 dword_result_t KeRemoveQueueDpc_entry(pointer_t<XDPC> dpc) {
-  bool result = false;
-
-  uint32_t list_entry_ptr = dpc.guest_address() + 4;
-
-  auto global_lock = xe::global_critical_region::AcquireDirect();
-  auto dpc_list = kernel_state()->dpc_list();
-  if (dpc_list->IsQueued(list_entry_ptr)) {
-    dpc_list->Remove(list_entry_ptr);
-    result = true;
-  }
-
-  return result ? 1 : 0;
+  return kernel_state()->RemoveQueuedDpc(dpc.guest_address()) ? 1 : 0;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeRemoveQueueDpc, kThreading, kImplemented);
 
@@ -1855,6 +1829,51 @@ void KeInitializeTimerEx_entry(pointer_t<X_KTIMER> timer, dword_t type,
   xeKeInitializeTimerEx(timer, type, proctype & 0xFF, context);
 }
 DECLARE_XBOXKRNL_EXPORT1(KeInitializeTimerEx, kThreading, kImplemented);
+
+// Due time in 100 ns units (negative: relative), period in milliseconds (0:
+// one-shot), and an optional DPC queued at each expiry. Returns whether the
+// timer was already set.
+static uint32_t xeKeSetTimerEx(X_KTIMER* timer,
+                               int64_t due_time, int32_t period,
+                               uint32_t dpc_ptr) {
+  auto object = XObject::GetNativeObject<XTimer>(kernel_state(), timer);
+  if (!object) {
+    return 0;
+  }
+  timer->due_time = static_cast<uint64_t>(due_time);
+  timer->period = static_cast<uint32_t>(period);
+  timer->dpc = dpc_ptr;
+  return object->SetTimerDpc(due_time,
+                             static_cast<uint32_t>(std::max<int32_t>(period, 0)),
+                             dpc_ptr)
+             ? 1
+             : 0;
+}
+
+dword_result_t KeSetTimerEx_entry(pointer_t<X_KTIMER> timer, qword_t due_time,
+                                  int_t period, pointer_t<XDPC> dpc) {
+  return xeKeSetTimerEx(timer,
+                        static_cast<int64_t>(due_time.value()), period.value(),
+                        dpc.guest_address());
+}
+DECLARE_XBOXKRNL_EXPORT1(KeSetTimerEx, kThreading, kImplemented);
+
+dword_result_t KeSetTimer_entry(pointer_t<X_KTIMER> timer, qword_t due_time,
+                                pointer_t<XDPC> dpc) {
+  return xeKeSetTimerEx(timer,
+                        static_cast<int64_t>(due_time.value()), 0,
+                        dpc.guest_address());
+}
+DECLARE_XBOXKRNL_EXPORT1(KeSetTimer, kThreading, kImplemented);
+
+dword_result_t KeCancelTimer_entry(pointer_t<X_KTIMER> timer) {
+  auto object = XObject::GetNativeObject<XTimer>(kernel_state(), timer);
+  if (!object) {
+    return 0;
+  }
+  return object->CancelTimerDpc() ? 1 : 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(KeCancelTimer, kThreading, kImplemented);
 
 }  // namespace xboxkrnl
 }  // namespace kernel
