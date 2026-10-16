@@ -9,9 +9,12 @@
 
 #include <alloca.h>
 #include <dlfcn.h>
+#include <spawn.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 
 #include <cstring>
+#include <string>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
@@ -21,18 +24,33 @@
 // Use headers in third party to not depend on system sdl headers for building
 #include "third_party/SDL2/include/SDL.h"
 
+extern char** environ;
+
 namespace xe {
 
+namespace {
+// No shell, so spaces and metacharacters in the target stay literal.
+void LaunchXdgOpen(const std::string& target) {
+  char xdg_open[] = "xdg-open";
+  char* argv[] = {xdg_open, const_cast<char*>(target.c_str()), nullptr};
+  pid_t pid;
+  int error = posix_spawnp(&pid, xdg_open, nullptr, nullptr, argv, environ);
+  if (error) {
+    XELOGE("Failed to launch xdg-open for {}: {}", target,
+           std::strerror(error));
+    return;
+  }
+  // Wait like system() did, so the child doesn't linger as a zombie.
+  waitpid(pid, nullptr, 0);
+}
+}  // namespace
+
 void LaunchWebBrowser(const std::string_view url) {
-  auto cmd = std::string("xdg-open ");
-  cmd.append(url);
-  system(cmd.c_str());
+  LaunchXdgOpen(std::string(url));
 }
 
 void LaunchFileExplorer(const std::filesystem::path& path) {
-  auto cmd = std::string("xdg-open ");
-  cmd.append(path);
-  system(cmd.c_str());
+  LaunchXdgOpen(path.string());
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
