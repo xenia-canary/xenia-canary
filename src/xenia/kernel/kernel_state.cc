@@ -56,7 +56,6 @@ KernelState::KernelState(Emulator* emulator)
     : emulator_(emulator),
       memory_(emulator->memory()),
       dispatch_thread_running_(false),
-      dpc_list_(emulator->memory()),
       kernel_trampoline_group_(emulator->processor()->backend()) {
   assert_null(shared_kernel_state_);
   shared_kernel_state_ = this;
@@ -1297,6 +1296,86 @@ void KernelState::EmulateCPInterruptDPC(uint32_t interrupt_callback,
   xboxkrnl::xeKeSetCurrentProcessType(X_PROCTYPE_IDLE, current_context);
 
   EndDPCImpersonation(current_context, dpc_scope);
+}
+
+bool KernelState::QueueDpc(uint32_t dpc_ptr, uint32_t arg1, uint32_t arg2) {
+  auto global_lock = global_critical_region_.Acquire();
+  if (!queued_dpcs_.insert(dpc_ptr).second) {
+    return false;
+  }
+  auto dpc = memory()->TranslateVirtual<XDPC*>(dpc_ptr);
+  dpc->arg1 = arg1;
+  dpc->arg2 = arg2;
+
+  auto thread = XThread::IsInThread() ? XThread::GetCurrentThread() : nullptr;
+  if (thread && thread->is_guest_thread()) {
+    auto context = thread->thread_state()->context();
+    auto kpcr = context->TranslateVirtualGPR<X_KPCR*>(context->r[13]);
+    if (kpcr->current_irql >= 2) {
+      held_dpcs_[static_cast<uint32_t>(context->r[13])].push_back(dpc_ptr);
+      return true;
+    }
+    global_lock.unlock();
+    RunQueuedDpc(dpc_ptr);
+    return true;
+  }
+
+  dispatch_queue_.push_back([this, dpc_ptr]() { RunQueuedDpc(dpc_ptr); });
+  dispatch_cond_.notify_all();
+  return true;
+}
+
+void KernelState::FlushDpcs(cpu::ppc::PPCContext* context) {
+  std::vector<uint32_t> dpcs;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    auto it = held_dpcs_.find(static_cast<uint32_t>(context->r[13]));
+    if (it == held_dpcs_.end()) {
+      return;
+    }
+    dpcs = std::move(it->second);
+    held_dpcs_.erase(it);
+  }
+  for (uint32_t dpc_ptr : dpcs) {
+    RunQueuedDpc(dpc_ptr);
+  }
+}
+
+bool KernelState::RemoveQueuedDpc(uint32_t dpc_ptr) {
+  auto global_lock = global_critical_region_.Acquire();
+  return queued_dpcs_.erase(dpc_ptr) != 0;
+}
+
+void KernelState::RunQueuedDpc(uint32_t dpc_ptr) {
+  uint32_t routine, context, arg1, arg2;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    // Removed (KeRemoveQueueDpc) after it was queued.
+    if (!queued_dpcs_.erase(dpc_ptr)) {
+      return;
+    }
+    auto dpc = memory()->TranslateVirtual<XDPC*>(dpc_ptr);
+    routine = dpc->routine;
+    context = dpc->context;
+    arg1 = dpc->arg1;
+    arg2 = dpc->arg2;
+  }
+  if (!routine) {
+    return;
+  }
+
+  // Run at DISPATCH_LEVEL on the current thread, impersonating a DPC.
+  auto thread = XThread::GetCurrentThread();
+  auto context_ptr = thread->thread_state()->context();
+  DPCImpersonationScope dpc_scope{};
+  BeginDPCImpersonation(context_ptr, dpc_scope);
+  uint64_t args[] = {dpc_ptr, context, arg1, arg2};
+  processor_->Execute(thread->thread_state(), routine, args, xe::countof(args));
+  EndDPCImpersonation(context_ptr, dpc_scope);
+  // DPCs the routine queued were held at DISPATCH_LEVEL.
+  if (dpc_scope.previous_irql_ < 2) {
+    FlushDpcs(context_ptr);
+  }
 }
 
 void KernelState::InitializeProcess(X_KPROCESS* process, uint32_t type,
