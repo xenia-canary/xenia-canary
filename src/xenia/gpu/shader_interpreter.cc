@@ -9,11 +9,13 @@
 
 #include "xenia/gpu/shader_interpreter.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
 
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/texture_util.h"
 
 namespace xe {
 namespace gpu {
@@ -21,6 +23,7 @@ namespace gpu {
 void ShaderInterpreter::Execute() {
   // For more consistency between invocations in case of a malformed shader.
   state_.Reset();
+  texture_fetch_unsupported_ = false;
 
   const uint32_t* bool_constants =
       &register_file_[XE_GPU_REG_SHADER_CONSTANT_BOOL_000_031];
@@ -99,8 +102,14 @@ void ShaderInterpreter::Execute() {
             }
             if (fetch_instr.opcode() == ucode::FetchOpcode::kVertexFetch) {
               ExecuteVertexFetchInstruction(fetch_instr.vertex_fetch());
+            } else if (fetch_instr.opcode() ==
+                       ucode::FetchOpcode::kTextureFetch) {
+              ExecuteTextureFetchInstruction(fetch_instr.texture_fetch());
+            } else if (fetch_instr.opcode() ==
+                       ucode::FetchOpcode::kSetTextureLod) {
             } else {
-              // Not supporting texture fetching (very complex).
+              // Not supporting other texture instructions (very complex).
+              texture_fetch_unsupported_ = true;
               float zero_result[4] = {};
               StoreFetchResult(fetch_instr.dest(),
                                fetch_instr.is_dest_relative(),
@@ -1042,6 +1051,157 @@ void ShaderInterpreter::StoreFetchResult(uint32_t dest, bool is_dest_relative,
         break;
     }
   }
+}
+
+bool ShaderInterpreter::FetchTexture(ucode::TextureFetchInstruction instr,
+                                     float* result_out) const {
+  // Supports point sampling of the base level of a 2D texture.
+  if (instr.dimension() != xenos::FetchOpDimension::k2D) {
+    return false;
+  }
+
+  xenos::xe_gpu_texture_fetch_t fetch_constant =
+      register_file_.GetTextureFetch(instr.fetch_constant_index());
+
+  if (fetch_constant.type != xenos::FetchConstantType::kTexture ||
+      fetch_constant.dimension != xenos::DataDimension::k2DOrStacked ||
+      fetch_constant.stacked) {
+    return false;
+  }
+
+  uint32_t width_minus_1, height_minus_1, mip_max_level;
+  // Use the effective mip range, which also depends on the mip address.
+  texture_util::GetSubresourcesFromFetchConstant(
+      fetch_constant, &width_minus_1, &height_minus_1, nullptr, nullptr,
+      nullptr, nullptr, &mip_max_level);
+
+  if (mip_max_level != 0) {
+    return false;
+  }
+
+  // Only 16_16_16_16 with unsigned integer components is supported right now.
+  if (fetch_constant.format != xenos::TextureFormat::k_16_16_16_16) {
+    return false;
+  }
+  if (!fetch_constant.num_format || fetch_constant.exp_adjust ||
+      fetch_constant.sign_x != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_y != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_z != xenos::TextureSign::kUnsigned ||
+      fetch_constant.sign_w != xenos::TextureSign::kUnsigned) {
+    return false;
+  }
+
+  // Filters override the fetch constant.
+  xenos::TextureFilter mag_filter =
+      instr.has_mag_filter() ? instr.mag_filter() : fetch_constant.mag_filter;
+  xenos::TextureFilter min_filter =
+      instr.has_min_filter() ? instr.min_filter() : fetch_constant.min_filter;
+  if (mag_filter != xenos::TextureFilter::kPoint ||
+      min_filter != xenos::TextureFilter::kPoint) {
+    return false;
+  }
+
+  if (instr.offset_x() != 0.0f || instr.offset_y() != 0.0f ||
+      instr.use_register_gradients()) {
+    return false;
+  }
+
+  // Wrapping forces normalized coordinates. Only support unnormalized
+  // coordinates when both dimensions clamp.
+  if (instr.unnormalized_coordinates() &&
+      (fetch_constant.clamp_x == xenos::ClampMode::kRepeat ||
+       fetch_constant.clamp_y == xenos::ClampMode::kRepeat)) {
+    return false;
+  }
+
+  const uint32_t sizes[2] = {width_minus_1 + 1, height_minus_1 + 1};
+  const xenos::ClampMode clamp_modes[2] = {fetch_constant.clamp_x,
+                                           fetch_constant.clamp_y};
+
+  const float* source = GetTempRegister(instr.src(), instr.is_src_relative());
+  uint32_t src_swizzle = instr.src_swizzle();
+  uint32_t texel[2];
+
+  for (uint32_t i = 0; i < 2; ++i) {
+    float coordinate = source[(src_swizzle >> (2 * i)) & 0b11];
+    if (!instr.unnormalized_coordinates()) {
+      coordinate *= float(sizes[i]);
+    }
+    if (!std::isfinite(coordinate)) {
+      return false;
+    }
+
+    // Wrap or clamp before converting to an integer.
+    coordinate = std::floor(coordinate);
+    switch (clamp_modes[i]) {
+      case xenos::ClampMode::kRepeat:
+        coordinate = std::fmod(coordinate, float(sizes[i]));
+        if (coordinate < 0.0f) {
+          coordinate += float(sizes[i]);
+        }
+        break;
+
+      case xenos::ClampMode::kClampToEdge:
+        coordinate = std::clamp(coordinate, 0.0f, float(sizes[i] - 1));
+        break;
+      default:
+        return false;
+    }
+
+    texel[i] = uint32_t(coordinate);
+  }
+
+  if (fetch_constant.endianness != xenos::Endian::kNone &&
+      fetch_constant.endianness != xenos::Endian::k8in16) {
+    return false;
+  }
+
+  constexpr uint32_t kBytesPerTexelLog2 = 3;
+  uint32_t address = texture_util::GetBaseBlockAddress2D(
+      fetch_constant, texel[0], texel[1], kBytesPerTexelLog2);
+
+  if (trace_writer_) {
+    trace_writer_->WriteMemoryRead(address, uint32_t(1) << kBytesPerTexelLog2);
+  }
+
+  const uint8_t* texel_memory = memory_.TranslatePhysical(address);
+  float data[4];
+
+  for (uint32_t i = 0; i < 4; ++i) {
+    uint16_t value;
+    std::memcpy(&value, texel_memory + sizeof(uint16_t) * i, sizeof(value));
+    data[i] = float(xenos::GpuSwap(value, fetch_constant.endianness));
+  }
+
+  // Applies the texture swizzle.
+  // StoreFetchResult applies the instruction's dest swizzle.
+  // result_out unchanged if a selector is unsupported.
+  float result[4];
+  for (uint32_t i = 0; i < 4; ++i) {
+    uint32_t component_swizzle = (fetch_constant.swizzle >> (3 * i)) & 0b111;
+    if (component_swizzle == xenos::XE_GPU_TEXTURE_SWIZZLE_0) {
+      result[i] = 0.0f;
+    } else if (component_swizzle == xenos::XE_GPU_TEXTURE_SWIZZLE_1) {
+      result[i] = 1.0f;
+    } else if (component_swizzle < 4) {
+      result[i] = data[component_swizzle];
+    } else {
+      return false;
+    }
+  }
+  std::memcpy(result_out, result, sizeof(result));
+  return true;
+}
+
+void ShaderInterpreter::ExecuteTextureFetchInstruction(
+    ucode::TextureFetchInstruction instr) {
+  float result[4] = {};
+  if (!FetchTexture(instr, result)) {
+    texture_fetch_unsupported_ = true;
+  }
+
+  StoreFetchResult(instr.dest(), instr.is_dest_relative(), instr.dest_swizzle(),
+                   result);
 }
 
 void ShaderInterpreter::ExecuteVertexFetchInstruction(

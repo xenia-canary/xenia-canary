@@ -213,6 +213,41 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
   return true;
 }
 
+uint32_t GetBaseBlockAddress2D(const xenos::xe_gpu_texture_fetch_t& fetch,
+                               uint32_t x_blocks, uint32_t y_blocks,
+                               uint32_t bytes_per_block_log2) {
+  assert_true(fetch.dimension == xenos::DataDimension::k2DOrStacked);
+  assert_false(fetch.stacked);
+  assert_true((uint32_t(1) << bytes_per_block_log2) ==
+              FormatInfo::Get(fetch.format)->bytes_per_block());
+
+  // Add the base level's offset within the packed mip tail.
+  if (fetch.packed_mips) {
+    uint32_t packed_offset[3];
+    GetPackedMipOffset(fetch.size_2d.width + 1, fetch.size_2d.height + 1, 1,
+                       fetch.format, 0, packed_offset[0], packed_offset[1],
+                       packed_offset[2]);
+    x_blocks += packed_offset[0];
+    y_blocks += packed_offset[1];
+  }
+
+  uint32_t pitch_blocks = xe::align(
+      (uint32_t(fetch.pitch) << 5) >> FormatInfo::GetWidthShift(fetch.format),
+      xenos::kTextureTileWidthHeight);
+  uint32_t offset =
+      fetch.tiled
+          ? uint32_t(texture_address::Tiled2D(int32_t(x_blocks),
+                                              int32_t(y_blocks), pitch_blocks,
+                                              bytes_per_block_log2))
+          : ((y_blocks * pitch_blocks + x_blocks) << bytes_per_block_log2);
+
+  // Wrapped to physical memory.
+  return ((uint32_t(fetch.base_address)
+           << xenos::kTextureSubresourceAlignmentBytesLog2) +
+          offset) &
+         0x1FFFFFFF;
+}
+
 TextureGuestLayout GetGuestTextureLayout(
     xenos::DataDimension dimension, uint32_t base_pitch_texels_div_32,
     uint32_t width_texels, uint32_t height_texels, uint32_t depth_or_array_size,
