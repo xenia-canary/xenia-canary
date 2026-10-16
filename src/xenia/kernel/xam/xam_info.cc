@@ -45,6 +45,7 @@ DEFINE_int32(avpack, 8,
              " 8 = HDMI (default)",
              "Video");
 DECLARE_int32(user_country);
+DECLARE_int32(video_standard);
 DECLARE_int32(user_language);
 DECLARE_uint32(audio_flag);
 
@@ -252,6 +253,16 @@ dword_result_t XGetAVPack_entry() {
   return (cvars::avpack);
 }
 DECLARE_XAM_EXPORT1(XGetAVPack, kNone, kStub);
+
+// XC_VIDEO_STANDARD_NTSC_M = 1, NTSC_J = 2, PAL_I = 3: the console's video
+// standard setting, the same value VdQueryVideoMode reports.
+dword_result_t XGetVideoStandard_entry() {
+  if (cvars::video_standard < 1 || cvars::video_standard > 3) {
+    return 1;
+  }
+  return cvars::video_standard;
+}
+DECLARE_XAM_EXPORT1(XGetVideoStandard, kVideo, kImplemented);
 
 uint32_t xeXGetGameRegion() {
   static uint32_t constexpr table[] = {
