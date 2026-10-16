@@ -42,6 +42,11 @@ class Device {
   virtual uint32_t sectors_per_allocation_unit() const = 0;
   virtual uint32_t bytes_per_sector() const = 0;
 
+  // FILE_FS_DEVICE_INFORMATION.DeviceType of the files on this device.
+  virtual uint32_t device_type() const { return 0x22; }  // FILE_DEVICE_UNKNOWN
+  // FILE_FS_VOLUME_INFORMATION.VolumeSerialNumber.
+  virtual uint32_t volume_serial_number() const { return 0; }
+
  protected:
   xe::global_critical_region global_critical_region_;
   std::string mount_path_;

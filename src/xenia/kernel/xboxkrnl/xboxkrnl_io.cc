@@ -18,6 +18,7 @@
 #include "xenia/kernel/xsymboliclink.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/vfs/device.h"
+#include "xenia/vfs/devices/harddisk_device.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -647,25 +648,36 @@ dword_result_t NtDeviceIoControlFile_entry(
     dword_t apc_context, pointer_t<X_IO_STATUS_BLOCK> io_status_block,
     dword_t io_control_code, lpvoid_t input_buffer, dword_t input_buffer_len,
     lpvoid_t output_buffer, dword_t output_buffer_len) {
-  // Called by XMountUtilityDrive cache-mounting code
-  // (checks if the returned values look valid, values below seem to pass the
-  // checks)
-  constexpr uint32_t cache_size = 0xFF000;
+  // Called by XMountUtilityDrive cache-mounting code. On a raw disk partition
+  // (\Device\Harddisk0\Cache0, ...) these are the disk's geometry and the
+  // partition's place on it, as a console reports them: 512-byte sectors, and
+  // 2 GB cache partitions. Anything else gets values that pass the checks.
+  uint64_t disk_sectors = 0xFF000 / 512;
+  uint64_t partition_offset = 0;
+  uint64_t partition_length = 0xFF000;
+  if (auto file = kernel_state()->object_table()->LookupObject<XFile>(handle)) {
+    if (auto raw = dynamic_cast<vfs::RawPartitionEntry*>(file->entry())) {
+      disk_sectors = vfs::HarddiskDevice::kDiskSectors;
+      partition_offset = raw->partition_offset();
+      partition_length = raw->partition_length();
+    }
+  }
 
   if (io_control_code == X_IOCTL_DISK_GET_DRIVE_GEOMETRY) {
     if (output_buffer_len < 0x8) {
       assert_always();
       return X_STATUS_BUFFER_TOO_SMALL;
     }
-    xe::store_and_swap<uint32_t>(output_buffer, cache_size / 512);
+    xe::store_and_swap<uint32_t>(output_buffer,
+                                 static_cast<uint32_t>(disk_sectors));
     xe::store_and_swap<uint32_t>(output_buffer + 4, 512);
   } else if (io_control_code == X_IOCTL_DISK_GET_PARTITION_INFO) {
     if (output_buffer_len < 0x10) {
       assert_always();
       return X_STATUS_BUFFER_TOO_SMALL;
     }
-    xe::store_and_swap<uint64_t>(output_buffer, 0);
-    xe::store_and_swap<uint64_t>(output_buffer + 8, cache_size);
+    xe::store_and_swap<uint64_t>(output_buffer, partition_offset);
+    xe::store_and_swap<uint64_t>(output_buffer + 8, partition_length);
   } else {
     XELOGD("NtDeviceIoControlFile(0x{:X}) - unhandled IOCTL!",
            uint32_t(io_control_code));
@@ -676,6 +688,17 @@ dword_result_t NtDeviceIoControlFile_entry(
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtDeviceIoControlFile, kFileSystem, kStub);
+
+// Called by XapiFormatFATVolumeEx once it has written a new file system to a
+// raw partition, so the next open mounts the new volume. Here the volume
+// follows the partition's superblock as it is written, so there is nothing
+// left to do.
+dword_result_t IoDismountVolumeByFileHandle_entry(dword_t handle) {
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(handle);
+  return file ? X_STATUS_SUCCESS : X_STATUS_INVALID_HANDLE;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolumeByFileHandle, kFileSystem,
+                         kImplemented);
 // device_extension_size = additional bytes of data (aligned up to 8 byte
 // granularity) that will be allocated at the tail of the resulting device
 // object. although it is allocated at the tail, it is accessed through a

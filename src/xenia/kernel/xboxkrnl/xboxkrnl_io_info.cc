@@ -346,7 +346,7 @@ dword_result_t NtQueryVolumeInformationFile_entry(
     case XFileFsVolumeInformation: {
       auto info = info_ptr.as<X_FILE_FS_VOLUME_INFORMATION*>();
       info->creation_time = 0;
-      info->serial_number = 0;  // set for FATX, but we don't do that currently
+      info->serial_number = file->device()->volume_serial_number();
       info->supports_objects = 0;
       info->label_length = 0;
       out_length = offsetof(X_FILE_FS_VOLUME_INFORMATION, label);
@@ -383,10 +383,9 @@ dword_result_t NtQueryVolumeInformationFile_entry(
     }
     case XFileFsDeviceInformation: {
       auto info = info_ptr.as<X_FILE_FS_DEVICE_INFORMATION*>();
-      auto file_device = file->device();
-      XELOGW("Stub XFileFsDeviceInformation!");
+      // 415608D8 checks for FILE_DEVICE_EHSTOR.
       info->device_type =
-          FILE_DEVICE_UNKNOWN;  // 415608D8 checks for FILE_DEVICE_EHSTOR;
+          static_cast<X_FILE_DEVICE_TYPE>(file->device()->device_type());
       info->characteristics = 0;
       out_length = sizeof(X_FILE_FS_DEVICE_INFORMATION);
       break;

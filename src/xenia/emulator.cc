@@ -57,6 +57,7 @@
 #include "xenia/vfs/devices/disc_image_device.h"
 #include "xenia/vfs/devices/disc_zarchive_device.h"
 #include "xenia/vfs/devices/host_path_device.h"
+#include "xenia/vfs/devices/harddisk_device.h"
 #include "xenia/vfs/devices/null_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/virtual_file_system.h"
@@ -1486,23 +1487,30 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   // load callbacks which expect to be called from the UI thread.
   assert_true(display_window_->app_context().IsInUIThread());
 
-  // Setup NullDevices for raw HDD partition accesses
-  // Cache/STFC code baked into games tries reading/writing to these
-  // By using a NullDevice that just returns success to all IO requests it
-  // should allow games to believe cache/raw disk was accessed successfully
+  // The raw partitions titles open by name: Partition0, and the cache
+  // partitions Cache0 and Cache1 that XMountUtilityDrive formats and mounts.
+  // Their sectors are kept in images under harddisk\, and the FATX volumes on
+  // the cache partitions in cache0\ and cache1\.
 
   // NOTE: this should probably be moved to xenia_main.cc, but right now we
-  // need to register the \Device\Harddisk0\ NullDevice _after_ the
+  // need to register the \Device\Harddisk0\ device _after_ the
   // \Device\Harddisk0\Partition1 HostPathDevice, otherwise requests to
   // Partition1 will go to this. Registering during CompleteLaunch allows us
   // to make sure any HostPathDevices are ready beforehand. (see comment above
   // cache:\ device registration for more info about why)
-  auto null_paths = {std::string("\\Partition0"), std::string("\\Cache0"),
-                     std::string("\\Cache1")};
-  auto null_device =
-      std::make_unique<vfs::NullDevice>("\\Device\\Harddisk0", null_paths);
-  if (null_device->Initialize()) {
-    file_system_->RegisterDevice(std::move(null_device));
+  auto harddisk_device = std::make_unique<vfs::HarddiskDevice>(
+      "\\Device\\Harddisk0", storage_root() / "harddisk", storage_root());
+  if (harddisk_device->Initialize()) {
+    file_system_->RegisterDevice(std::move(harddisk_device));
+  }
+  // The console's names for the volumes on the cache partitions: the targets
+  // of the \??\cache: link XMountUtilityDrive creates.
+  for (const char* cache : {"Cache0", "Cache1"}) {
+    auto name = std::string("\\Device\\") + cache;
+    if (!file_system_->IsSymbolicLinkRegistered(name)) {
+      file_system_->RegisterSymbolicLink(
+          name, std::string("\\Device\\Harddisk0\\") + cache);
+    }
   }
 
   // Reset state.
