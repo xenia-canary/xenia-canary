@@ -599,9 +599,6 @@ int InstrEmit_tw(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_twi(PPCHIRBuilder& f, const InstrData& i) {
-  if (cvars::ignore_trap_instructions) {
-    return 0;
-  }
   // a <- EXTS((RA)[32:63])
   // if (a < EXTS(SI)) & TO[0] then TRAP
   // if (a > EXTS(SI)) & TO[1] then TRAP
@@ -611,7 +608,14 @@ int InstrEmit_twi(PPCHIRBuilder& f, const InstrData& i) {
   if (i.D.RA == 0 && i.D.RT == 0x1F) {
     // This is a special trap. Probably.
     uint16_t type = (uint16_t)XEEXTS16(i.D.DS);
-    f.Trap(type);
+    // The debug-print traps (20, 26) are service calls, not checks: keep them
+    // when other traps are ignored, or OutputDebugString output is lost.
+    if (!cvars::ignore_trap_instructions || type == 20 || type == 26) {
+      f.Trap(type);
+    }
+    return 0;
+  }
+  if (cvars::ignore_trap_instructions) {
     return 0;
   }
   Value* ra =

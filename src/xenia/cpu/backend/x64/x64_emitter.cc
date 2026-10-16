@@ -11,8 +11,11 @@
 
 #include <stddef.h>
 
+#include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cstring>
+#include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
@@ -413,18 +416,22 @@ uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
 
   auto str = thread_state->memory()->TranslateVirtual<const char*>(str_ptr);
 
-  // Allocate temporary buffer and null-terminate to respect length parameter
-  char* string_tmp = new char[str_length + 1];
-  std::memcpy(string_tmp, str, str_length);
-  string_tmp[str_length] = 0;
+  // Copy to respect the length parameter, and trim trailing whitespace as
+  // DbgPrint does.
+  std::string message(str, str_length);
+  message.erase(std::find_if(message.rbegin(), message.rend(),
+                             [](uint8_t c) { return !std::isspace(c); })
+                    .base(),
+                message.end());
 
-  XELOGD("(DebugPrint) {}", string_tmp);
+  // Title debug output (OutputDebugString raises this trap): a devkit sends it
+  // to the debugger as DbgPrint output is, so log it at the same level.
+  XELOGI("(DebugPrint) {}", message);
 
   if (cvars::debugprint_trap_log) {
-    debugging::DebugPrint("(DebugPrint) {}", string_tmp);
+    debugging::DebugPrint("(DebugPrint) {}", message);
   }
 
-  delete[] string_tmp;
   return 0;
 }
 
