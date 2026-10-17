@@ -54,11 +54,15 @@ namespace xe {
 #if XE_PLATFORM_WIN32
 #define xenia_assert assert
 #else
-#define xenia_assert(expr) \
-  do {                     \
-    if (!(expr)) {         \
-      raise(SIGTRAP);      \
-    }                      \
+// Logs the failure, then breaks into an attached debugger, or otherwise asks
+// whether to abort or continue like the assertion dialog on Windows.
+void AssertFailed(const char* expression, const char* file, int line);
+
+#define xenia_assert(expr)                           \
+  do {                                               \
+    if (!(expr)) {                                   \
+      ::xe::AssertFailed(#expr, __FILE__, __LINE__); \
+    }                                                \
   } while (0)
 #endif
 #endif
