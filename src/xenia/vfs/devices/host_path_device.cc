@@ -20,11 +20,12 @@ namespace vfs {
 
 HostPathDevice::HostPathDevice(const std::string_view mount_path,
                                const std::filesystem::path& host_path,
-                               bool read_only)
+                               bool read_only, bool package)
     : Device(mount_path),
-      name_("STFS"),
+      name_(package ? "STFS" : "FATX"),
       host_path_(host_path),
-      read_only_(read_only) {}
+      read_only_(read_only),
+      is_package_(package) {}
 
 HostPathDevice::~HostPathDevice() = default;
 

@@ -24,7 +24,8 @@ class HostPathEntry;
 class HostPathDevice : public Device {
  public:
   HostPathDevice(const std::string_view mount_path,
-                 const std::filesystem::path& host_path, bool read_only);
+                 const std::filesystem::path& host_path, bool read_only,
+                 bool package = false);
   ~HostPathDevice() override;
 
   bool Initialize() override;
@@ -32,6 +33,7 @@ class HostPathDevice : public Device {
   Entry* ResolvePath(const std::string_view path) override;
 
   bool is_read_only() const override { return read_only_; }
+  bool is_io_queued() const override { return is_package_; }
 
   const std::string& name() const override { return name_; }
   uint32_t attributes() const override { return 0; }
@@ -57,6 +59,7 @@ class HostPathDevice : public Device {
   std::filesystem::path host_path_;
   std::unique_ptr<Entry> root_entry_;
   bool read_only_;
+  bool is_package_;
 };
 
 }  // namespace vfs

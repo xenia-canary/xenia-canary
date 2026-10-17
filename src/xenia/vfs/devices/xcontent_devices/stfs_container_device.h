@@ -32,6 +32,7 @@ class StfsContainerDevice : public XContentContainerDevice {
   bool is_read_only() const override {
     return descriptor_->flags.bits.read_only_format;
   }
+  bool is_io_queued() const override { return true; }
 
   uint32_t component_name_max_length() const override { return 40; }
 
