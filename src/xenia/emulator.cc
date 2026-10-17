@@ -1501,7 +1501,15 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 void Emulator::WaitUntilExit() {
   while (true) {
     if (main_thread_) {
-      xe::threading::Wait(main_thread_->thread(), false);
+      // The title may also request another executable to be launched from any
+      // of its threads, it is then terminated from the host.
+      xe::threading::WaitHandle* wait_handles[] = {main_thread_->thread(),
+                                                   title_launch_event_.get()};
+      xe::threading::WaitAny(wait_handles, xe::countof(wait_handles), false);
+    }
+
+    if (title_launch_requested_) {
+      break;
     }
 
     if (restoring_) {

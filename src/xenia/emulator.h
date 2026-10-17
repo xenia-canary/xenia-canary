@@ -10,6 +10,7 @@
 #ifndef XENIA_EMULATOR_H_
 #define XENIA_EMULATOR_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -195,6 +196,26 @@ class Emulator {
   // so that another title can be launched.
   X_STATUS TerminateTitle();
 
+  // Requested by the title through XAM, before it terminates itself with
+  // KernelState::TerminateTitle. That makes WaitUntilExit return through
+  // SignalTitleLaunch, the title must then be terminated and the executable
+  // described by the XAM loader data launched.
+  void RequestTitleLaunch() { title_launch_requested_ = true; }
+
+  // Wakes WaitUntilExit if the title requested a launch. Called once the host
+  // can see the thread terminating the title, so it waits for that thread
+  // rather than tearing the title down under it.
+  void SignalTitleLaunch() {
+    if (title_launch_requested_) {
+      title_launch_event_->Set();
+    }
+  }
+
+  bool ConsumeTitleLaunchRequest() {
+    title_launch_event_->Reset();
+    return title_launch_requested_.exchange(false);
+  }
+
   const std::unique_ptr<vfs::Device> CreateVfsDevice(
       const std::filesystem::path& path, const std::string_view mount_path);
 
@@ -375,6 +396,9 @@ class Emulator {
   std::optional<uint32_t> title_id_;  // Currently running title ID
   // VFS device the running title was mounted from.
   std::string title_mount_path_;
+  std::atomic<bool> title_launch_requested_ = false;
+  std::unique_ptr<threading::Event> title_launch_event_ =
+      threading::Event::CreateManualResetEvent(false);
   std::unique_ptr<kernel::util::GameInfoDatabase> game_info_database_;
 
   bool paused_;
