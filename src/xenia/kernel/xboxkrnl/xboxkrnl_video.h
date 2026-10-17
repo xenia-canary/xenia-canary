@@ -13,10 +13,15 @@
 #include "xenia/kernel/kernel.h"
 
 namespace xe {
+class Memory;
 namespace kernel {
 namespace xboxkrnl {
 
 void VdQueryVideoMode(X_VIDEO_MODE* video_mode, bool is_internal_resolution);
+
+// Restores the video variables titles set (the D3D device pointers) to their
+// initial values, so the next title doesn't see the previous title's device.
+void ResetVideoVariables(Memory* memory);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

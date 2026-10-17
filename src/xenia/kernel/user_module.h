@@ -122,6 +122,10 @@ class UserModule : public XModule {
   // which isn't really possible right now.
   bool is_attached_ = false;
 
+  // Set while XexLoadImage holds a reference to the module, released by the
+  // last XexUnloadImage or when the title is terminated.
+  bool has_guest_load_reference_ = false;
+
  private:
   void CalculateHash();
 

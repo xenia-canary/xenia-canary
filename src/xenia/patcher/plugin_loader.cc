@@ -23,6 +23,8 @@ DEFINE_bool(
 namespace xe {
 namespace patcher {
 
+static constexpr std::string_view kPluginsMountPath = "\\Device\\Plugins";
+
 PluginLoader::PluginLoader(kernel::KernelState* kernel_state,
                            const std::filesystem::path plugins_root) {
   kernel_state_ = kernel_state;
@@ -228,15 +230,20 @@ void PluginLoader::LoadTitlePlugin(const PluginInfoEntry& entry) {
   XELOGI("Plugin Loader: {} Plugin successfully loaded!", entry.name);
 }
 
-void PluginLoader::CreatePluginDevice(const uint32_t title_id) {
-  constexpr std::string_view mount_plugins = "\\Device\\Plugins";
+void PluginLoader::UnloadTitlePlugins() {
+  kernel_state_->file_system()->UnregisterSymbolicLink("plugins:");
+  kernel_state_->file_system()->UnregisterDevice(kPluginsMountPath);
+  is_any_plugin_loaded_ = false;
+}
 
+void PluginLoader::CreatePluginDevice(const uint32_t title_id) {
   const std::filesystem::path plugins_host_path =
       plugins_root_ / fmt::format("{:08X}", title_id);
 
-  kernel_state_->file_system()->RegisterSymbolicLink("plugins:", mount_plugins);
+  kernel_state_->file_system()->RegisterSymbolicLink("plugins:",
+                                                     kPluginsMountPath);
   auto device_plugins = std::make_unique<xe::vfs::HostPathDevice>(
-      mount_plugins, plugins_host_path, false);
+      kPluginsMountPath, plugins_host_path, false);
 
   if (!device_plugins->Initialize()) {
     xe::FatalError("Unable to mount {}; file not found or corrupt.");

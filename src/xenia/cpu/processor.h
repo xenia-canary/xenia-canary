@@ -101,7 +101,7 @@ class Processor {
   }
 
   bool AddModule(std::unique_ptr<Module> module);
-  void RemoveModule(const std::string_view name);
+  void RemoveModule(const Module* module);
   Module* GetModule(const std::string_view name);
   std::vector<Module*> GetModules();
 
@@ -113,6 +113,10 @@ class Processor {
   Function* QueryFunction(uint32_t address);
   std::vector<Function*> FindFunctionsWithAddress(uint32_t address);
   void RemoveFunctionByAddress(uint32_t address);
+  // Discards the generated code of all guest functions once the modules of a
+  // terminated title are removed. Functions of the modules that remain (kernel
+  // trampolines) are generated again when called next.
+  void ResetGuestCode();
 
   Function* LookupFunction(uint32_t address);
   Module* LookupModule(uint32_t address);
