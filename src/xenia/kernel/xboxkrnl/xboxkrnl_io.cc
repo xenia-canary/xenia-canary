@@ -29,6 +29,7 @@ struct CreateOptions {
   static constexpr uint32_t FILE_DIRECTORY_FILE = 0x00000001;
   // Optimization - files access will be sequential, not random.
   static constexpr uint32_t FILE_SEQUENTIAL_ONLY = 0x00000004;
+  static constexpr uint32_t FILE_NO_INTERMEDIATE_BUFFERING = 0x00000008;
   static constexpr uint32_t FILE_SYNCHRONOUS_IO_ALERT = 0x00000010;
   static constexpr uint32_t FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020;
   static constexpr uint32_t FILE_NON_DIRECTORY_FILE = 0x00000040;
@@ -94,7 +95,10 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
     bool synchronous =
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_ALERT) ||
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_NONALERT);
-    file = object_ref<XFile>(new XFile(kernel_state(), vfs_file, synchronous));
+    bool allow_buffering =
+        !(create_options & CreateOptions::FILE_NO_INTERMEDIATE_BUFFERING);
+    file = object_ref<XFile>(
+        new XFile(kernel_state(), vfs_file, synchronous, allow_buffering));
 
     // Handle ref is incremented, so return that.
     handle = file->handle();
@@ -130,6 +134,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
   X_STATUS result = X_STATUS_SUCCESS;
 
   bool signal_event = false;
+  bool pending = false;
   auto ev = kernel_state()->object_table()->LookupObject<XEvent>(event_handle);
   if (event_handle && !ev) {
     result = X_STATUS_INVALID_HANDLE;
@@ -147,7 +152,8 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
       result = file->Read(
           buffer.guest_address(), buffer_length,
           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
-          &bytes_read, apc_context);
+          &bytes_read, apc_context, true, &pending);
+
       if (io_status_block) {
         io_status_block->status = result;
         io_status_block->information = bytes_read;
@@ -162,10 +168,6 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
           thread->EnqueueApc(static_cast<uint32_t>(apc_routine_ptr) & ~1u,
                              apc_context, io_status_block, 0);
         }
-      }
-
-      if (!file->is_synchronous() && result != X_STATUS_END_OF_FILE) {
-        result = X_STATUS_PENDING;
       }
 
       // Mark that we should signal the event now. We do this after
@@ -211,7 +213,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
     ev->Set(0, false);
   }
 
-  return result;
+  return pending ? X_STATUS_PENDING : result;
 }
 DECLARE_XBOXKRNL_EXPORT2(NtReadFile, kFileSystem, kImplemented, kHighFrequency);
 
@@ -222,6 +224,7 @@ dword_result_t NtReadFileScatter_entry(
   X_STATUS result = X_STATUS_SUCCESS;
 
   bool signal_event = false;
+  bool pending = false;
   auto ev = kernel_state()->object_table()->LookupObject<XEvent>(event_handle);
   if (event_handle && !ev) {
     result = X_STATUS_INVALID_HANDLE;
@@ -239,7 +242,7 @@ dword_result_t NtReadFileScatter_entry(
       result = file->ReadScatter(
           segment_array.guest_address(), length,
           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
-          &bytes_read, apc_context);
+          &bytes_read, apc_context, &pending);
       if (io_status_block) {
         io_status_block->status = result;
         io_status_block->information = bytes_read;
@@ -254,10 +257,6 @@ dword_result_t NtReadFileScatter_entry(
           thread->EnqueueApc(static_cast<uint32_t>(apc_routine_ptr) & ~1u,
                              apc_context, io_status_block, 0);
         }
-      }
-
-      if (!file->is_synchronous()) {
-        result = X_STATUS_PENDING;
       }
 
       // Mark that we should signal the event now. We do this after
@@ -288,7 +287,7 @@ dword_result_t NtReadFileScatter_entry(
     }
   }
 
-  if (XFAILED(result) && io_status_block) {
+  if (XFAILED(result) && io_status_block && !signal_event) {
     io_status_block->status = result;
     io_status_block->information = 0;
   }
@@ -297,7 +296,7 @@ dword_result_t NtReadFileScatter_entry(
     ev->Set(0, false);
   }
 
-  return result;
+  return pending ? X_STATUS_PENDING : result;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtReadFileScatter, kFileSystem, kImplemented);
 
@@ -310,6 +309,7 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
 
   // Grab event to signal.
   bool signal_event = false;
+  bool pending = false;
   auto ev = kernel_state()->object_table()->LookupObject<XEvent>(event_handle);
   if (event_handle && !ev) {
     result = X_STATUS_INVALID_HANDLE;
@@ -330,7 +330,7 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
       result = file->Write(
           buffer.guest_address(), buffer_length,
           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
-          &bytes_written, apc_context);
+          &bytes_written, apc_context, &pending);
 
       if (io_status_block) {
         io_status_block->status = result;
@@ -346,10 +346,6 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
           thread->EnqueueApc(static_cast<uint32_t>(apc_routine) & ~1u,
                              apc_context, io_status_block, 0);
         }
-      }
-
-      if (!file->is_synchronous()) {
-        result = X_STATUS_PENDING;
       }
 
       // Mark that we should signal the event now. We do this after
@@ -384,7 +380,7 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
     ev->Set(0, false);
   }
 
-  return result;
+  return pending ? X_STATUS_PENDING : result;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtWriteFile, kFileSystem, kImplemented);
 
