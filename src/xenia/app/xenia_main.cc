@@ -781,10 +781,18 @@ void EmulatorApp::EmulatorThread() {
     xe::threading::Wait(emulator_thread_event_.get(), false);
     emulator_->WaitUntilExit();
 
-    // The title exited to launch another executable (xex swap).
-    if (emulator_->ConsumeTitleLaunchRequest()) {
-      app_context().CallInUIThread(
-          [this]() { emulator_window_->LaunchNextTitle(); });
+    switch (emulator_->ConsumeTitleExitRequest()) {
+      case Emulator::TitleExitRequest::kLaunchNext:
+        // The title exited to launch another executable (xex swap).
+        app_context().CallInUIThread(
+            [this]() { emulator_window_->LaunchNextTitle(); });
+        break;
+      case Emulator::TitleExitRequest::kDashboard:
+        app_context().CallInUIThread(
+            [this]() { emulator_window_->ExitToDashboard(); });
+        break;
+      case Emulator::TitleExitRequest::kNone:
+        break;
     }
   }
 }

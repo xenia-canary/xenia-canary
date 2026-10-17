@@ -364,6 +364,11 @@ X_STATUS Emulator::TerminateTitle() {
 
   kernel_state_->TerminateTitle();
 
+  // Don't keep showing the last frame of the title.
+  if (graphics_system_) {
+    graphics_system_->ClearGuestOutput();
+  }
+
   // Destroying the main thread frees its stack and TLS, so it must happen
   // before the title memory is released.
   main_thread_.reset();
@@ -1501,14 +1506,15 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 void Emulator::WaitUntilExit() {
   while (true) {
     if (main_thread_) {
-      // The title may also request another executable to be launched from any
-      // of its threads, it is then terminated from the host.
+      // The title may also request to exit (launch another executable or
+      // return to the dashboard) from any of its threads, it is then
+      // terminated from the host.
       xe::threading::WaitHandle* wait_handles[] = {main_thread_->thread(),
-                                                   title_launch_event_.get()};
+                                                   title_exit_event_.get()};
       xe::threading::WaitAny(wait_handles, xe::countof(wait_handles), false);
     }
 
-    if (title_launch_requested_) {
+    if (title_exit_request_ != TitleExitRequest::kNone) {
       break;
     }
 

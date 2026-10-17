@@ -433,6 +433,16 @@ void GraphicsSystem::DetachTitle() {
   }
 }
 
+void GraphicsSystem::ClearGuestOutput() {
+  if (!presenter_ || !command_processor_) {
+    return;
+  }
+  // Guest output is refreshed from the command processor thread. A zero size
+  // disables it, presenting a black screen until the next title swaps.
+  command_processor_->CallInThread(
+      [this]() { presenter_->RefreshGuestOutput(0, 0, 0, 0, nullptr); });
+}
+
 void GraphicsSystem::MarkVblank() {
   SCOPE_profile_cpu_f("gpu");
 

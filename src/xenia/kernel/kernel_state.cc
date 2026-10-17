@@ -916,7 +916,7 @@ void KernelState::TerminateTitle() {
     }
     // Only now, the host terminating the title waits for this thread instead
     // of tearing the title down under it.
-    emulator_->SignalTitleLaunch();
+    emulator_->SignalTitleExit();
 
     // Release the mutants this thread owns, so threads and host callbacks
     // waiting for them can finish. Windows abandons them when the thread
