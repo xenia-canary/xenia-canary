@@ -72,6 +72,8 @@ class GraphicsSystem {
 
   // Stops calling into and writing to the memory of a title that is exiting.
   void DetachTitle();
+  // Replaces the last frame of a terminated title with a black screen.
+  void ClearGuestOutput();
 
   virtual void ClearCaches();
 

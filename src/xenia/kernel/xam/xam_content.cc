@@ -896,7 +896,8 @@ dword_result_t xeXamContentLaunchImage(dword_t user_index,
   xam->ResolveNextTitlePath();
 
   // Launched once this title has exited.
-  kernel_state()->emulator()->RequestTitleLaunch();
+  kernel_state()->emulator()->RequestTitleExit(
+      Emulator::TitleExitRequest::kLaunchNext);
 
   kernel_state()->TerminateTitle();
   return X_ERROR_SUCCESS;

@@ -479,6 +479,16 @@ dword_result_t XamLoaderGetLaunchData_entry(lpvoid_t buffer_ptr,
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetLaunchData, kNone, kSketchy);
 
+// There is no dashboard, the title is terminated and Xenia stays open so that
+// another title can be launched from the window.
+static void ExitToDashboard() {
+  kernel_state()->emulator()->RequestTitleExit(
+      Emulator::TitleExitRequest::kDashboard);
+
+  // This function does not return.
+  kernel_state()->TerminateTitle();
+}
+
 void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
 
@@ -493,73 +503,22 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
     XELOGI("XamLoaderLaunchTitle: Launching {} ({})", loader_data.host_path,
            loader_data.launch_path);
 
-    kernel_state()->emulator()->RequestTitleLaunch();
+    kernel_state()->emulator()->RequestTitleExit(
+        Emulator::TitleExitRequest::kLaunchNext);
 
     // This function does not return.
     kernel_state()->TerminateTitle();
     return;
   }
 
-  const std::string title = "Title terminated";
-  const std::string message = "Game requested exit to dashboard.";
-  assert_always("Game requested exit to dashboard via XamLoaderLaunchTitle");
-
-  auto display_window = kernel_state()->emulator()->display_window();
-  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
-
-  if (display_window && imgui_drawer) {
-    display_window->app_context().CallInUIThreadSynchronous(
-        [imgui_drawer, title, message]() {
-          auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
-              imgui_drawer, title.c_str(), message.c_str());
-
-          std::jthread([dialog]() {
-            while (!dialog->IsClosing()) {
-              std::this_thread::yield();
-            }
-
-            config::SaveConfig();
-            xe::FlushLog();
-
-            std::quick_exit(0);
-          }).detach();
-        });
-  }
-
-  // This function does not return.
-  kernel_state()->TerminateTitle();
+  XELOGI("XamLoaderLaunchTitle: Title exited to the dashboard");
+  ExitToDashboard();
 }
 DECLARE_XAM_EXPORT1(XamLoaderLaunchTitle, kNone, kSketchy);
 
 void XamLoaderTerminateTitle_entry() {
-  std::string title = "Title terminated";
-  std::string message = "Game requested exit to dashboard.";
-  assert_always("Game requested exit to dashboard via XamLoaderTerminateTitle");
-
-  auto display_window = kernel_state()->emulator()->display_window();
-  auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
-
-  if (display_window && imgui_drawer) {
-    display_window->app_context().CallInUIThreadSynchronous(
-        [imgui_drawer, title, message]() {
-          auto dialog = xe::ui::ImGuiDialog::ShowMessageBox(
-              imgui_drawer, title.c_str(), message.c_str());
-
-          std::jthread([dialog]() {
-            while (!dialog->IsClosing()) {
-              std::this_thread::yield();
-            }
-
-            config::SaveConfig();
-            xe::FlushLog();
-
-            std::quick_exit(0);
-          }).detach();
-        });
-  }
-
-  // This function does not return.
-  kernel_state()->TerminateTitle();
+  XELOGI("XamLoaderTerminateTitle: Title exited to the dashboard");
+  ExitToDashboard();
 }
 DECLARE_XAM_EXPORT1(XamLoaderTerminateTitle, kNone, kSketchy);
 

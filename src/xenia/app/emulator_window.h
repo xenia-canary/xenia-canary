@@ -87,6 +87,8 @@ class EmulatorWindow {
   xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
   // Replaces the exited title with the one it requested through XAM.
   xe::X_STATUS LaunchNextTitle();
+  // Cleans up after a title that exited to the dashboard, leaving Xenia open.
+  void ExitToDashboard();
   void UpdateTitle();
   void SetFullscreen(bool fullscreen);
   void ToggleFullscreen();
@@ -270,6 +272,7 @@ class EmulatorWindow {
   void OnMouseUp(const ui::MouseEvent& e);
   void FileOpen();
   void FileClose();
+  void ClearLoaderData();
   void InstallContent();
   void ExtractZarchive();
   void CreateZarchive();
