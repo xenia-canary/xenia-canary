@@ -191,7 +191,8 @@ class Emulator {
       std::function<std::vector<std::unique_ptr<hid::InputDriver>>(ui::Window*)>
           input_driver_factory);
 
-  // Terminates the currently running title.
+  // Terminates the currently running title and releases everything it used,
+  // so that another title can be launched.
   X_STATUS TerminateTitle();
 
   const std::unique_ptr<vfs::Device> CreateVfsDevice(
@@ -372,6 +373,8 @@ class Emulator {
   kernel::object_ref<kernel::XThread> main_thread_;
   kernel::object_ref<kernel::XHostThread> plugin_loader_thread_;
   std::optional<uint32_t> title_id_;  // Currently running title ID
+  // VFS device the running title was mounted from.
+  std::string title_mount_path_;
   std::unique_ptr<kernel::util::GameInfoDatabase> game_info_database_;
 
   bool paused_;

@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/backend/a64/a64_backend.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -17,6 +18,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
+#include "xenia/base/threading.h"
 #if XE_PLATFORM_WIN32
 #include "xenia/base/platform_win.h"
 #endif
@@ -49,6 +51,26 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace a64 {
+
+static std::atomic<uintptr_t> guest_code_begin = 0;
+static std::atomic<uintptr_t> guest_code_end = 0;
+
+// See threading::SetTerminationSafeCodeCheck. The unwind info only describes
+// the prolog, and the stack frame is already released at the ret or br ending
+// an epilog or a tail call.
+static bool IsTerminationSafeGuestCode(uintptr_t host_pc) {
+  if (host_pc < guest_code_begin.load(std::memory_order_relaxed) ||
+      host_pc >= guest_code_end.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  uint32_t instruction;
+  std::memcpy(&instruction, reinterpret_cast<const void*>(host_pc),
+              sizeof(instruction));
+  const uint32_t branch_register = instruction & 0xFFFFFC1F;
+  const bool is_ret = branch_register == 0xD65F0000;
+  const bool is_br = branch_register == 0xD61F0000;
+  return !is_ret && !is_br;
+}
 
 // Resolve a guest function at runtime. Called by the resolve thunk when
 // a guest address has not yet been compiled.
@@ -646,6 +668,13 @@ bool A64Backend::Initialize(Processor* processor) {
 
   // Commit special indirection ranges (force return address, etc.).
   code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
+
+  // Everything placed from now on is guest code, discarded with the title.
+  guest_code_begin = code_cache_->placed_code_end_address();
+  guest_code_end =
+      code_cache_->execute_base_address() + code_cache_->total_size();
+  threading::SetTerminationSafeCodeCheck(IsTerminationSafeGuestCode);
+  code_cache_->MarkGuestCodeStart();
 
   // Register exception handler for MMIO access from JIT code.
   ExceptionHandler::Install(ExceptionCallbackThunk, this);

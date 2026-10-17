@@ -37,6 +37,8 @@ class alignas(4096) xe_global_mutex {
   void lock();
   void unlock();
   bool try_lock();
+  // Only locks if no thread owns the lock or is waiting for it.
+  bool try_lock_uncontended();
 };
 using global_mutex_type = xe_global_mutex;
 
@@ -238,6 +240,11 @@ class global_critical_region {
   static inline global_unique_lock_type TryAcquire() {
     return global_unique_lock_type(mutex(), std::try_to_lock);
   }
+
+  // Like TryAcquire, but also fails while other threads wait for the lock.
+  // Threads must not be terminated while waiting for it, as Windows keeps the
+  // SRW lock wait blocks on the waiting thread's stack.
+  static global_unique_lock_type TryAcquireUncontended();
 };
 
 }  // namespace xe

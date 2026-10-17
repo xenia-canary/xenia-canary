@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_CODE_CACHE_BASE_H_
 #define XENIA_CPU_BACKEND_CODE_CACHE_BASE_H_
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -111,6 +112,13 @@ class CodeCacheBase : public CodeCache {
 
   bool has_indirection_table() { return indirection_table_base_ != nullptr; }
 
+  // Execute address right after the code placed so far.
+  uintptr_t placed_code_end_address() {
+    auto global_lock = global_critical_region_.Acquire();
+    return reinterpret_cast<uintptr_t>(generated_code_execute_base_ +
+                                       generated_code_offset_);
+  }
+
   void set_indirection_default(uint32_t default_value) {
     indirection_default_value_ = default_value;
   }
@@ -128,6 +136,15 @@ class CodeCacheBase : public CodeCache {
     if (!indirection_table_base_) {
       return;
     }
+    {
+      auto global_lock = global_critical_region_.Acquire();
+      const std::pair<uint32_t, uint32_t> range(guest_low, guest_high);
+      if (guest_code_start_marked_ &&
+          std::ranges::find(guest_executable_ranges_, range) ==
+              guest_executable_ranges_.cend()) {
+        guest_executable_ranges_.push_back(range);
+      }
+    }
     xe::memory::AllocFixed(
         indirection_table_base_ + (guest_low - kIndirectionTableBase),
         guest_high - guest_low, xe::memory::AllocationType::kCommit,
@@ -136,6 +153,37 @@ class CodeCacheBase : public CodeCache {
     for (uint32_t address = guest_low; address < guest_high; ++address) {
       p[(address - kIndirectionTableBase) / 4] = indirection_default_value_;
     }
+  }
+
+  // Everything placed from now on is guest code, which ResetGuestCode
+  // discards.
+  void MarkGuestCodeStart() {
+    auto global_lock = global_critical_region_.Acquire();
+    guest_code_start_marked_ = true;
+    guest_code_start_offset_ = generated_code_offset_;
+    guest_code_start_map_size_ = generated_code_map_.size();
+    self().MarkGuestUnwindStart();
+  }
+
+  void ResetGuestCode() override {
+    auto global_lock = global_critical_region_.Acquire();
+    if (!guest_code_start_marked_) {
+      return;
+    }
+    // Calls of the guest functions resolve them again.
+    uint32_t* indirection_table =
+        reinterpret_cast<uint32_t*>(indirection_table_base_);
+    for (const auto& [guest_low, guest_high] : guest_executable_ranges_) {
+      for (uint32_t address = guest_low; address < guest_high; address += 4) {
+        indirection_table[(address - kIndirectionTableBase) / 4] =
+            indirection_default_value_;
+      }
+    }
+    generated_code_map_.resize(guest_code_start_map_size_);
+    self().ResetGuestUnwind();
+    XELOGI("Code cache: Released {} bytes of guest code",
+           generated_code_offset_ - guest_code_start_offset_);
+    generated_code_offset_ = guest_code_start_offset_;
   }
 
   void PlaceHostCode(uint32_t guest_address, void* machine_code,
@@ -366,6 +414,13 @@ class CodeCacheBase : public CodeCache {
   size_t generated_code_offset_ = 0;
   std::atomic<size_t> generated_code_commit_mark_ = {0};
   std::vector<std::pair<uint64_t, GuestFunction*>> generated_code_map_;
+  bool guest_code_start_marked_ = false;
+  size_t guest_code_start_offset_ = 0;
+  size_t guest_code_start_map_size_ = 0;
+  // Guest ranges committed since MarkGuestCodeStart. Kept across resets, the
+  // ranges of modules that outlive titles (kernel trampolines) are committed
+  // only once.
+  std::vector<std::pair<uint32_t, uint32_t>> guest_executable_ranges_;
 
  private:
   Derived& self() { return static_cast<Derived&>(*this); }

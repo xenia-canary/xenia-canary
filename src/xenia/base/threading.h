@@ -140,6 +140,12 @@ SleepResult AlertableSleep(std::chrono::duration<Rep, Period> duration) {
       std::chrono::duration_cast<std::chrono::microseconds>(duration));
 }
 
+// Code a thread can be terminated in: JIT code, which holds no host locks. On
+// Windows it is what Thread::IsAtTerminationSafePoint accepts besides waits and
+// sleeps.
+using TerminationSafeCodeCheck = bool (*)(uintptr_t host_pc);
+void SetTerminationSafeCodeCheck(TerminationSafeCodeCheck check);
+
 typedef uint32_t TlsHandle;
 constexpr TlsHandle kInvalidTlsHandle = UINT_MAX;
 
@@ -486,6 +492,11 @@ class Thread : public WaitHandle {
 
   // Suspends the specified thread.
   virtual bool Suspend(uint32_t* out_previous_suspend_count = nullptr) = 0;
+
+  // Whether the suspended thread can be terminated without leaving host locks
+  // held (a CRT stream lock, the heap lock): it is in a wait, a sleep or code
+  // accepted by the TerminationSafeCodeCheck. Only tracked on Windows.
+  virtual bool IsAtTerminationSafePoint() { return true; }
 
   // Terminates the thread.
   // No destructors are called, and this function does not return.
