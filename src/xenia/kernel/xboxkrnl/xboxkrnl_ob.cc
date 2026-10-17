@@ -8,9 +8,16 @@
  */
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
+
+#include <atomic>
+#include <cstddef>
+
 #include "xenia/base/logging.h"
+#include "xenia/base/mutex.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/util/guest_range.h"
+#include "xenia/kernel/xboxkrnl/guest_object_type.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xthread.h"
@@ -19,6 +26,139 @@
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+
+namespace {
+
+// Whether every byte of a guest range can be read, and whether it can also be
+// written.
+bool IsGuestRangeReadable(uint32_t address, uint32_t length) {
+  return util::IsGuestRangeReadable(kernel_memory(), address, length);
+}
+
+bool IsGuestRangeWritable(uint32_t address, uint32_t length) {
+  return util::IsGuestRangeWritable(kernel_memory(), address, length);
+}
+
+// The ten X_OBJECT_TYPEs xenia defines itself sit together at the start of
+// the kernel's guest globals, from ExThreadObjectType to
+// ObSymbolicLinkObjectType; four of them have no host type of their own.
+constexpr uint32_t kXeniaObjectTypesBegin =
+    static_cast<uint32_t>(offsetof(KernelGuestGlobals, ExThreadObjectType));
+constexpr uint32_t kXeniaObjectTypesEnd = static_cast<uint32_t>(
+    offsetof(KernelGuestGlobals, ObSymbolicLinkObjectType) +
+    sizeof(X_OBJECT_TYPE));
+static_assert(kXeniaObjectTypesEnd - kXeniaObjectTypesBegin ==
+                  10 * sizeof(X_OBJECT_TYPE),
+              "xenia's object types are no longer one block");
+
+// An object type a title defined itself, as read from its guest memory.
+struct TitleObjectType {
+  uint32_t type_ptr;
+  uint32_t close_proc;
+  uint32_t delete_proc;
+};
+
+// Reads a title-defined type recorded by ObOpenObjectByPointer. Dispatch
+// objects created directly in guest memory need not have an Object Manager
+// header; closing them must not speculate about the bytes before their body.
+bool ReadTitleObjectType(const XObject& object, TitleObjectType* out_type) {
+  const uint32_t type_ptr = object.guest_object_type();
+  const auto* type =
+      IsGuestRangeReadable(type_ptr, sizeof(X_OBJECT_TYPE))
+          ? kernel_memory()->TranslateVirtual<const X_OBJECT_TYPE*>(type_ptr)
+          : nullptr;
+  const uint32_t globals = kernel_state()->GetKernelGuestGlobals();
+  if (!IsTitleObjectType(
+          type_ptr, type != nullptr, type ? uint32_t(type->allocate_proc) : 0,
+          globals + kXeniaObjectTypesBegin, globals + kXeniaObjectTypesEnd)) {
+    return false;
+  }
+  *out_type = {type_ptr, type->close_proc, type->delete_proc};
+  return true;
+}
+
+bool HasTitleObjectType(const XObject& object) {
+  TitleObjectType type;
+  return ReadTitleObjectType(object, &type);
+}
+
+// Whether a guest address can be the entry of a guest procedure: aligned,
+// readable, and inside the code of a module the processor has loaded. A
+// header read in front of an object ObCreateObject did not make can name a
+// "type" whose procedures are anything at all.
+bool IsGuestCodeAddress(uint32_t address) {
+  return address && !(address & 3) && IsGuestRangeReadable(address, 4) &&
+         kernel_state()->processor()->LookupModule(address);
+}
+
+// Said once per run, for the first close procedure that is not guest code.
+void NoteCloseProcedureRefused(const TitleObjectType& type) {
+  static std::atomic<bool> noted{false};
+  if (!noted.exchange(true)) {
+    XELOGW(
+        "Object type {:08X} names a close procedure {:08X} that is not guest "
+        "code, so it is not run",
+        type.type_ptr, type.close_proc);
+  }
+}
+
+// xenia keeps no pointer count for a guest object, so it never learns when the
+// last reference to one goes, and a title-defined type's delete procedure (and
+// its free procedure after it) never runs. Said once per run, for the first
+// such type that is closed.
+void NoteDeleteProcedureNotRun(const TitleObjectType& type) {
+  static std::atomic<bool> noted{false};
+  if (type.delete_proc && !noted.exchange(true)) {
+    XELOGD(
+        "Object type {:08X} has a delete procedure {:08X}, which is not run: "
+        "no pointer count is kept for guest objects",
+        type.type_ptr, type.delete_proc);
+  }
+}
+
+// A guest object that xenia wraps carries its wrapper's handle in its dispatch
+// header (XObject::GetNativeObject). Once the last reference on one of its
+// handles has gone, the header is kept, pointed at a handle the object still
+// has, or given back an empty wait list, as DecideStashedHandle says. Callers
+// hold the global lock across the release and this, so that no kernel call
+// on the object can resolve the closed handle in between.
+void ForgetClosedHandle(XObject* object, X_HANDLE handle) {
+  auto global_lock = global_critical_region::AcquireDirect();
+  const uint32_t guest_object = object->guest_object();
+  if (!IsGuestRangeWritable(guest_object, sizeof(X_DISPATCH_HEADER))) {
+    return;
+  }
+  auto* header =
+      kernel_memory()->TranslateVirtual<X_DISPATCH_HEADER*>(guest_object);
+  const bool header_has_stash = header->wait_list.flink_ptr == kXObjSignature;
+  const uint32_t stashed_handle = header->wait_list.blink_ptr;
+  bool stashed_handle_wraps_same_object = false;
+  if (header_has_stash && stashed_handle == handle) {
+    auto holder = kernel_state()->object_table()->LookupObject<XObject>(
+        stashed_handle, true);
+    stashed_handle_wraps_same_object =
+        holder && holder->guest_object() == guest_object;
+  }
+  const auto decision =
+      DecideStashedHandle(handle, object->handles(), header_has_stash,
+                          stashed_handle, stashed_handle_wraps_same_object);
+  switch (decision.action) {
+    case StashedHandleAction::kKeep:
+      break;
+    case StashedHandleAction::kRepoint:
+      header->wait_list.blink_ptr = decision.handle;
+      break;
+    case StashedHandleAction::kReset: {
+      const uint32_t wait_list =
+          guest_object +
+          static_cast<uint32_t>(offsetof(X_DISPATCH_HEADER, wait_list));
+      header->wait_list.flink_ptr = wait_list;
+      header->wait_list.blink_ptr = wait_list;
+    } break;
+  }
+}
+
+}  // namespace
 
 void xeObSplitName(X_ANSI_STRING input_string,
                    X_ANSI_STRING* leading_path_component,
@@ -209,16 +349,25 @@ DECLARE_XBOXKRNL_EXPORT1(ObOpenObjectByName, kNone, kImplemented);
 dword_result_t ObOpenObjectByPointer_entry(lpvoid_t object_ptr,
                                            lpdword_t out_handle_ptr) {
   *out_handle_ptr = 0;
-  auto object = XObject::GetNativeObject<XObject>(kernel_state(), object_ptr);
+  auto global_lock = global_critical_region::AcquireDirect();
+  auto object = XObject::GetNativeObject<XObject>(
+      kernel_state(), object_ptr, X_OBJECT_TYPES::UndefinedObject, true);
   if (!object) {
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  // Keep the guest type for ObReferenceObjectByHandle.
   object->SetNativeType();
 
-  // Retain the handle. Will be released in NtClose.
-  object->RetainHandle();
+  if (HasTitleObjectType(*object)) {
+    const X_STATUS result = kernel_state()->object_table()->OpenGuestHandle(
+        object->handle(), object.get());
+    if (XFAILED(result)) {
+      return result;
+    }
+  } else {
+    // Existing kernel types retain a handle for each open.
+    object->RetainHandle();
+  }
   *out_handle_ptr = object->handle();
   return X_STATUS_SUCCESS;
 }
@@ -255,26 +404,33 @@ dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
   if (!object) {
     return X_STATUS_INVALID_HANDLE;
   }
+  if (HasTitleObjectType(*object) &&
+      !kernel_state()->object_table()->IsGuestHandleOpen(handle,
+                                                         object.get())) {
+    return X_STATUS_INVALID_HANDLE;
+  }
 
   uint32_t native_ptr = object->guest_object();
 
   if (object_type_ptr) {
-    // Use guest type recorded when opening the object,
-    // or host type mapping if none was recorded.
-    uint32_t actual_type_ptr = object->guest_object_type();
-    if (!actual_type_ptr) {
-      auto& object_types =
-          kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
-      auto it = object_types.find(object->type());
-      if (it != object_types.end()) {
-        actual_type_ptr = it->second;
-      } else {
+    const auto& object_types =
+        kernel_state()->host_object_type_enum_to_guest_object_type_ptr_;
+    const auto host_type = object_types.find(object->type());
+    const uint32_t host_type_ptr =
+        host_type != object_types.end() ? host_type->second : 0;
+    // A recorded guest type takes precedence over the wrapper's host type.
+    switch (CheckObjectType(object_type_ptr, host_type_ptr,
+                            object->guest_object_type())) {
+      case ObjectTypeCheck::kHostTypeMatches:
+        break;
+      case ObjectTypeCheck::kGuestTypeMatches:
+        break;
+      case ObjectTypeCheck::kMismatch:
+        return X_STATUS_OBJECT_TYPE_MISMATCH;
+      case ObjectTypeCheck::kUnknown:
         assert_unhandled_case(object->type());
         native_ptr = 0xDEADF00D;
-      }
-    }
-    if (actual_type_ptr && object_type_ptr != actual_type_ptr) {
-      return X_STATUS_OBJECT_TYPE_MISMATCH;
+        break;
     }
   }
 
@@ -325,8 +481,19 @@ void xeObDereferenceObject(PPCContext* context, uint32_t native_ptr) {
   auto object = XObject::GetNativeObject<XObject>(
       kernel_state(), kernel_memory()->TranslateVirtual(native_ptr));
   if (object) {
-    object->ReleaseHandle();
-
+    if (HasTitleObjectType(*object)) {
+      // A reference taken with ObReferenceObjectByHandle counts against the
+      // handle, so for an object of a title-defined type it can be what drops
+      // the last of it, after the title's NtClose.
+      auto global_lock = global_critical_region::AcquireDirect();
+      if (!object->handles().empty()) {
+        const X_HANDLE handle = object->handle();
+        object->ReleaseHandle();
+        ForgetClosedHandle(object.get(), handle);
+      }
+    } else {
+      object->ReleaseHandle();
+    }
   } else {
     if (native_ptr) {
       XELOGW("Unregistered guest object provided to ObDereferenceObject {:08X}",
@@ -412,16 +579,81 @@ dword_result_t NtDuplicateObject_entry(dword_t handle, lpdword_t new_handle_ptr,
   }
 
   if (options == 1 /* DUPLICATE_CLOSE_SOURCE */) {
-    // Always close the source object.
-    kernel_state()->object_table()->RemoveHandle(handle);
+    NtClose(handle);
   }
 
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtDuplicateObject, kNone, kImplemented);
 
+namespace {
+
+// Run a title type's close procedure on the calling guest thread, when present.
+uint32_t CloseTitleObjectHandle(uint32_t handle, XObject* object,
+                                const TitleObjectType& title_type,
+                                PPCContext* context) {
+  auto* object_table = kernel_state()->object_table();
+  // Claim before executing guest code so reentrant closes cannot claim it.
+  int32_t handle_count = 0;
+  uint64_t generation = 0;
+  const X_STATUS claim_result =
+      object_table->ClaimGuestClose(handle, object, &handle_count, &generation);
+  if (XFAILED(claim_result)) {
+    return claim_result;
+  }
+  switch (PlanCloseProcedure(title_type.close_proc,
+                             IsGuestCodeAddress(title_type.close_proc),
+                             handle_count)) {
+    case CloseProcedureAction::kNone:
+      break;
+    case CloseProcedureAction::kRun: {
+      if (!context) {
+        XELOGD(
+            "NtClose({:08X}) on a host thread: close procedure {:08X} of type "
+            "{:08X} is not run",
+            handle, title_type.close_proc, title_type.type_ptr);
+        break;
+      }
+      XELOGD(
+          "NtClose({:08X}): close procedure {:08X}({:08X}, {}) of type {:08X}",
+          handle, title_type.close_proc, object->guest_object(), handle_count,
+          title_type.type_ptr);
+      uint64_t args[] = {object->guest_object(),
+                         static_cast<uint32_t>(handle_count)};
+      context->processor->Execute(context->thread_state, title_type.close_proc,
+                                  args, xe::countof(args));
+    } break;
+    case CloseProcedureAction::kRefuse:
+      NoteCloseProcedureRefused(title_type);
+      break;
+  }
+  NoteDeleteProcedureNotRun(title_type);
+
+  // xenia counts a title's ObDereferenceObject against the handle the object
+  // was found by, so the close procedure may have released it already.
+  auto global_lock = global_critical_region::AcquireDirect();
+  object_table->ReleaseHandleOf(handle, object, generation);
+  ForgetClosedHandle(object, handle);
+  return X_STATUS_SUCCESS;
+}
+
+}  // namespace
+
+// A host close releases the handle even when no guest thread can run its hook.
 uint32_t NtClose(uint32_t handle) {
-  return kernel_state()->object_table()->ReleaseHandle(handle);
+  auto* object_table = kernel_state()->object_table();
+  {
+    auto object = object_table->LookupObject<XObject>(handle);
+    TitleObjectType title_type;
+    if (object && ReadTitleObjectType(*object, &title_type)) {
+      XThread* thread =
+          XThread::IsInThread() ? XThread::GetCurrentThread() : nullptr;
+      return CloseTitleObjectHandle(
+          handle, object.get(), title_type,
+          thread ? thread->thread_state()->context() : nullptr);
+    }
+  }
+  return object_table->ReleaseHandle(handle);
 }
 
 dword_result_t NtClose_entry(dword_t handle) { return NtClose(handle); }

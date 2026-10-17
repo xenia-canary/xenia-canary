@@ -11,6 +11,7 @@
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/util/guest_range.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xenumerator.h"
@@ -133,8 +134,17 @@ void XObject::SetNativeType() {
     return;
   }
 
-  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(
-      guest_object_ptr_ - sizeof(X_OBJECT_HEADER));
+  // ObOpenObjectByPointer takes an Object Manager object, whose body follows
+  // an X_OBJECT_HEADER. Generic dispatch lookups must not inspect this prefix.
+  if (guest_object_ptr_ < sizeof(X_OBJECT_HEADER)) {
+    return;
+  }
+  const uint32_t header_ptr = guest_object_ptr_ - sizeof(X_OBJECT_HEADER);
+  if (!util::IsGuestRangeReadable(memory(), header_ptr,
+                                  sizeof(X_OBJECT_HEADER))) {
+    return;
+  }
+  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(header_ptr);
 
   guest_object_type_ptr_.store(header->object_type_ptr);
 }

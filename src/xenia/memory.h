@@ -213,8 +213,7 @@ class BaseHeap {
   // address.
   bool QueryProtect(uint32_t address, uint32_t* out_protect);
 
-  // Queries the currently strictest readability and writability for the entire
-  // range.
+  // Queries access across committed pages in the range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,
                                           uint32_t high_address);
 
