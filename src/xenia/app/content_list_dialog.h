@@ -34,6 +34,7 @@ struct ContentListEntry {
   bool is_package;
   std::u16string name;
   std::u16string title_name;
+  std::optional<std::string> version;
   std::filesystem::path path;
   std::unique_ptr<ui::ImmediateTexture> icon;
 };
