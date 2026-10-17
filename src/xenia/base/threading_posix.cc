@@ -167,6 +167,9 @@ static void SleepFor(timespec rqtp) {
   } while (ret == -1 && errno == EINTR);
 }
 
+// Not used yet, terminated threads are cancelled where they are.
+void SetTerminationSafeCodeCheck(TerminationSafeCodeCheck check) {}
+
 void Sleep(std::chrono::microseconds duration) {
   SleepFor(DurationToTimeSpec(duration));
 }

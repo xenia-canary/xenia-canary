@@ -274,6 +274,15 @@ void XmaDecoder::ReleaseContext(uint32_t guest_ptr) {
   context_bitmap_.Release(context_id);
 }
 
+void XmaDecoder::ReleaseAllContexts() {
+  for (uint32_t i = 0; i < kContextCount; ++i) {
+    if (contexts_[i]->is_allocated()) {
+      contexts_[i]->Release();
+      context_bitmap_.Release(i);
+    }
+  }
+}
+
 bool XmaDecoder::BlockOnContext(uint32_t guest_ptr, bool poll) {
   auto context_id = GetContextId(guest_ptr);
   assert_true(context_id >= 0);

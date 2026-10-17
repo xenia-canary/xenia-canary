@@ -70,6 +70,9 @@ class GraphicsSystem {
   virtual void SetInterruptCallback(uint32_t callback, uint32_t user_data);
   void DispatchInterruptCallback(uint32_t source, uint32_t cpu);
 
+  // Stops calling into and writing to the memory of a title that is exiting.
+  void DetachTitle();
+
   virtual void ClearCaches();
 
   void InitializeShaderStorage(

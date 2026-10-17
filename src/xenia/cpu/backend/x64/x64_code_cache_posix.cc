@@ -93,6 +93,8 @@ class PosixX64CodeCache : public X64CodeCache {
   void PlaceCode(uint32_t guest_address, void* machine_code,
                  const EmitFunctionInfo& func_info, void* code_execute_address,
                  UnwindReservation unwind_reservation) override;
+  void MarkGuestUnwindStart() override;
+  void ResetGuestUnwind() override;
 
   void InitializeUnwindEntry(uint8_t* unwind_entry_address,
                              void* code_execute_address,
@@ -102,6 +104,8 @@ class PosixX64CodeCache : public X64CodeCache {
   std::vector<void*> registered_frames_;
   // Current number of unwind table entries.
   uint32_t unwind_table_count_ = 0;
+  size_t guest_registered_frames_start_ = 0;
+  uint32_t guest_unwind_table_start_ = 0;
 };
 
 std::unique_ptr<X64CodeCache> X64CodeCache::Create() {
@@ -140,6 +144,20 @@ X64CodeCache::UnwindReservation PosixX64CodeCache::RequestUnwindReservation(
   unwind_reservation.table_slot = unwind_table_count_++;
   unwind_reservation.entry_address = entry_address;
   return unwind_reservation;
+}
+
+void PosixX64CodeCache::MarkGuestUnwindStart() {
+  guest_registered_frames_start_ = registered_frames_.size();
+  guest_unwind_table_start_ = unwind_table_count_;
+}
+
+void PosixX64CodeCache::ResetGuestUnwind() {
+  for (size_t i = guest_registered_frames_start_; i < registered_frames_.size();
+       ++i) {
+    __deregister_frame(registered_frames_[i]);
+  }
+  registered_frames_.resize(guest_registered_frames_start_);
+  unwind_table_count_ = guest_unwind_table_start_;
 }
 
 void PosixX64CodeCache::PlaceCode(uint32_t guest_address, void* machine_code,

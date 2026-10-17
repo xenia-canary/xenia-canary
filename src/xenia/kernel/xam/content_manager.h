@@ -94,6 +94,9 @@ class ContentManager {
                        const uint32_t disc_number = -1);
   X_RESULT CloseContent(const std::string_view root_name);
   X_RESULT CloseContentByDeviceName(const std::string_view device_name);
+  // Closes every package opened for the title, including the one it was
+  // launched from. Packages mounted by the system (profiles) stay mounted.
+  void CloseTitleContent();
   X_RESULT GetContentThumbnail(const uint64_t xuid,
                                const XCONTENT_DATA_INTERNAL& data,
                                std::vector<uint8_t>& buffer);
@@ -123,6 +126,8 @@ class ContentManager {
   ContentPackage* MountPackage(const std::string_view root_name,
                                std::unique_ptr<ContentPackage> package,
                                const std::string_view root_path = "");
+  // Keeps the package mounted when the title exits.
+  ContentPackage* MarkSystemPackage(ContentPackage* package);
 
   std::filesystem::path ResolvePackageRoot(
       const uint64_t xuid, const uint32_t title_id,
@@ -144,6 +149,8 @@ class ContentManager {
   xe::global_critical_region global_critical_region_;
   std::unordered_map<std::string, std::unique_ptr<ContentPackage>>
       mounted_packages_;
+  // Device paths of packages mounted by the system rather than a title.
+  std::unordered_set<std::string> system_packages_;
 };
 
 }  // namespace xam

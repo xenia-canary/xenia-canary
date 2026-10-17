@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_video.h"
 
+#include <cstring>
+
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/graphics_system.h"
@@ -550,29 +552,39 @@ void VdSwap_entry(
 DECLARE_XBOXKRNL_EXPORT3(VdSwap, kVideo, kImplemented, kHighFrequency,
                          kImportant);
 
+static constexpr uint32_t pVdGlobalDevice = 0x801E6FC4;
+static constexpr uint32_t pVdGlobalXamDevice = 0x801E6FC8;
+static constexpr uint32_t kVdGlobalDeviceAllocationSize = 40;
+static uint32_t vd_global_device_allocation = 0;
+
+void ResetVideoVariables(Memory* memory) {
+  std::memset(memory->TranslateVirtual(vd_global_device_allocation), 0,
+              kVdGlobalDeviceAllocationSize);
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice),
+                               vd_global_device_allocation);
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalXamDevice), 0);
+}
+
 void RegisterVideoExports(xe::cpu::ExportResolver* export_resolver,
                           KernelState* kernel_state) {
   auto memory = kernel_state->memory();
 
   // Allocate single page that stores all pointers instead of separate pages.
-  const uint32_t baseAllocation =
-      memory->SystemHeapAlloc(40, 32, kSystemHeapPhysical);  // 40 bytes
+  vd_global_device_allocation = memory->SystemHeapAlloc(
+      kVdGlobalDeviceAllocationSize, 32, kSystemHeapPhysical);
 
   // VdGlobalDevice (4b)
   // Pointer to a global D3D device. Games only seem to set this, so we don't
   // have to do anything. We may want to read it back later, though.
-  const uint32_t pVdGlobalDevice = 0x801E6FC4;
   export_resolver->SetVariableMapping("xboxkrnl.exe", ordinals::VdGlobalDevice,
                                       pVdGlobalDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice),
-                               baseAllocation);
 
   // VdGlobalXamDevice (4b)
   // Pointer to the XAM D3D device, which we don't have.
-  const uint32_t pVdGlobalXamDevice = 0x801E6FC8;
   export_resolver->SetVariableMapping(
       "xboxkrnl.exe", ordinals::VdGlobalXamDevice, pVdGlobalXamDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalXamDevice), 0);
+
+  ResetVideoVariables(memory);
 
   // VdGpuClockInMHz (4b)
   // GPU clock. Xenos is 500MHz. Hope nothing is relying on this timing...

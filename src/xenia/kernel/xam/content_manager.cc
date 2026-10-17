@@ -114,7 +114,8 @@ ContentPackage* ContentManager::OpenAndMountPackage(
     const std::string_view root_path) {
   auto global_lock = global_critical_region_.Acquire();
 
-  return MountPackage(root_name, OpenPackage(host_path), root_path);
+  return MarkSystemPackage(
+      MountPackage(root_name, OpenPackage(host_path), root_path));
 }
 
 ContentPackage* ContentManager::CreateAndMountPackage(
@@ -122,7 +123,15 @@ ContentPackage* ContentManager::CreateAndMountPackage(
     const XCONTENT_DATA_INTERNAL& data) {
   auto global_lock = global_critical_region_.Acquire();
 
-  return MountPackage(root_name, CreatePackage(host_path, data));
+  return MarkSystemPackage(
+      MountPackage(root_name, CreatePackage(host_path, data)));
+}
+
+ContentPackage* ContentManager::MarkSystemPackage(ContentPackage* package) {
+  if (package) {
+    system_packages_.insert(std::string(package->GetDevicePath()));
+  }
+  return package;
 }
 
 ContentPackage* ContentManager::FindPackage(
@@ -442,7 +451,8 @@ X_RESULT ContentManager::CreateContent(const std::string_view root_name,
   // Ensure that parent path exists
   std::filesystem::create_directories(package_path.parent_path());
 
-  if (!CreateAndMountPackage(package_path, root_name, data)) {
+  // Title content, unlike CreateAndMountPackage it is closed with the title.
+  if (!MountPackage(root_name, CreatePackage(package_path, data))) {
     return X_ERROR_ACCESS_DENIED;
   }
 
@@ -471,7 +481,10 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
       disc_number != -1 ? fmt::format("disc{:03}", disc_number) : "";
 
   // Open package.
-  auto package = OpenAndMountPackage(package_path, root_name, root_path);
+  // Title content (including the title update), unlike OpenAndMountPackage it
+  // is closed with the title. Otherwise the next title finds this one's
+  // content still mounted under the same root name.
+  auto package = MountPackage(root_name, OpenPackage(package_path), root_path);
   if (!package) {
     return X_ERROR_FILE_NOT_FOUND;
   }
@@ -530,6 +543,13 @@ X_RESULT ContentManager::CloseContentByDeviceName(
 
   mounted_packages_.erase(it);
   return X_ERROR_SUCCESS;
+}
+
+void ContentManager::CloseTitleContent() {
+  auto global_lock = global_critical_region_.Acquire();
+  std::erase_if(mounted_packages_, [this](const auto& entry) {
+    return !system_packages_.contains(entry.first);
+  });
 }
 
 X_RESULT ContentManager::GetContentThumbnail(const uint64_t xuid,

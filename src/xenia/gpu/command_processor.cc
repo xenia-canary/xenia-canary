@@ -488,11 +488,33 @@ void CommandProcessor::ShutdownContext() {
 
 void CommandProcessor::InitializeRingBuffer(uint32_t ptr, uint32_t size_log2) {
   read_ptr_index_ = 0;
+  // A title launched after another one starts with a fresh ring buffer.
+  write_ptr_index_ = 0;
   primary_buffer_ptr_ = ptr;
   primary_buffer_size_ = uint32_t(1) << (size_log2 + 3);
 
   std::memset(kernel_state_->memory()->TranslatePhysical(primary_buffer_ptr_),
               0, primary_buffer_size_);
+}
+
+void CommandProcessor::ResetRingBuffer() {
+  auto reset = [this]() {
+    read_ptr_index_ = 0;
+    write_ptr_index_ = 0;
+    read_ptr_writeback_ptr_ = 0;
+    abort_ring_buffer_ = false;
+  };
+  if (paused_) {
+    reset();
+    return;
+  }
+  abort_ring_buffer_ = true;
+  threading::Fence fence;
+  CallInThread([&reset, &fence]() {
+    reset();
+    fence.Signal();
+  });
+  fence.Wait();
 }
 
 void CommandProcessor::EnableReadPointerWriteBack(uint32_t ptr,

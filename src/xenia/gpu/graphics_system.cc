@@ -426,6 +426,13 @@ void GraphicsSystem::DispatchInterruptCallback(uint32_t source, uint32_t cpu) {
                                         interrupt_callback_data_, source, cpu);
 }
 
+void GraphicsSystem::DetachTitle() {
+  SetInterruptCallback(0, 0);
+  if (command_processor_) {
+    command_processor_->DisableReadPointerWriteBack();
+  }
+}
+
 void GraphicsSystem::MarkVblank() {
   SCOPE_profile_cpu_f("gpu");
 

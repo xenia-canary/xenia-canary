@@ -269,6 +269,9 @@ class KernelState {
   // Terminates a title: Unloads all modules, and kills all guest threads.
   // This DOES NOT RETURN if called from a guest thread!
   void TerminateTitle();
+  // Guest addresses inside allocations owned by host threads, which must
+  // survive the release of title memory.
+  std::vector<uint32_t> GetHostThreadGuestAddresses();
 
   void RegisterThread(XThread* thread);
   void UnregisterThread(XThread* thread);
@@ -360,6 +363,12 @@ class KernelState {
   X_RESULT ApplyTitleUpdate(const object_ref<UserModule> title_module,
                             const object_ref<UserModule> patch_module);
 
+  // Waits for a guest thread that terminated the title to fully exit.
+  void WaitForTerminatingThread();
+  // Suspends the guest threads and acquires the global lock once none of them
+  // owns or waits for it, so they can be terminated safely.
+  global_unique_lock_type SuspendGuestThreadsAndLock();
+
   Emulator* emulator_;
   Memory* memory_;
   cpu::Processor* processor_;
@@ -386,6 +395,8 @@ class KernelState {
   std::vector<object_ref<KernelModule>> kernel_modules_;
   std::vector<object_ref<UserModule>> user_modules_;
   std::vector<TerminateNotification> terminate_notifications_;
+  // Guest thread that requested title termination, until it has exited.
+  object_ref<XThread> terminating_thread_;
   uint32_t kernel_guest_globals_ = 0;
 
   std::atomic<bool> dispatch_thread_running_;

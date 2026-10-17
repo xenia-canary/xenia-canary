@@ -42,6 +42,8 @@ class XmaDecoder {
 
   uint32_t AllocateContext();
   void ReleaseContext(uint32_t guest_ptr);
+  // Releases every allocated context, used when the title exits.
+  void ReleaseAllContexts();
   bool BlockOnContext(uint32_t guest_ptr, bool poll);
 
   uint32_t ReadRegister(uint32_t addr);
