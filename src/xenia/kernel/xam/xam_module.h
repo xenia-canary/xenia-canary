@@ -40,7 +40,10 @@ class XamModule : public KernelModule {
   };
 
   void LoadLoaderData();
-  void SaveLoaderData();
+  // Turns the guest launch path requested by the title into the host path
+  // to launch (and the module path within it, for containers). Called once per
+  // launch request, resolving the result again would change it.
+  void ResolveNextTitlePath();
 
   void SetLaunchCallback(uint32_t callback) { callback_ = callback; }
 

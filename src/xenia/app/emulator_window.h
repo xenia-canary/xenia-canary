@@ -85,6 +85,8 @@ class EmulatorWindow {
   void OnEmulatorInitialized();
 
   xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
+  // Replaces the exited title with the one it requested through XAM.
+  xe::X_STATUS LaunchNextTitle();
   void UpdateTitle();
   void SetFullscreen(bool fullscreen);
   void ToggleFullscreen();
