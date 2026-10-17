@@ -164,7 +164,7 @@ struct Entry {
 };
 
 // Wraps an XDBF (XboxDataBaseFormat) in-memory database.
-// https://free60project.github.io/wiki/XDBF.html
+// https://free60.org/System-Software/Formats/XDBF/
 class XdbfFile {
  public:
   XdbfFile() = default;

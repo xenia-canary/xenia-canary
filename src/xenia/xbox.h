@@ -301,7 +301,7 @@ enum FIRMWARE_REENTRY {
 
 // Found by dumping the kSectionStringTable sections of various games:
 // and the language list at
-// https://free60project.github.io/wiki/Profile_Account/
+// https://free60.org/System-Software/Profile_Account/
 enum class XLanguage : uint32_t {
   kInvalid = 0,
   kEnglish = 1,

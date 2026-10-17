@@ -20,7 +20,7 @@
 namespace xe {
 namespace vfs {
 
-// https://free60project.github.io/wiki/STFS.html
+// https://free60.org/System-Software/Formats/STFS/
 
 class StfsContainerDevice : public XContentContainerDevice {
  public:
