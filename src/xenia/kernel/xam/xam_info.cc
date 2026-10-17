@@ -485,22 +485,24 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   auto& loader_data = xam->loader_data();
   loader_data.launch_flags = flags;
 
-  std::string title;
-  std::string message;
-
-  // Translate the launch path to a full path.
+  // Launch the requested executable (e.g. a multiplayer xex) once this title
+  // has exited. Launch data set by the title is kept for the next one.
   if (raw_name_ptr && !raw_name_ptr.value().empty()) {
     loader_data.launch_path = xe::path_to_utf8(raw_name_ptr.value());
-    xam->SaveLoaderData();
-    title = "Title was restarted";
-    message =
-        "Title closed with new launch data. \nPlease restart Xenia. "
-        "Game will be loaded automatically.";
-  } else {
-    title = "Title terminated";
-    message = "Game requested exit to dashboard.";
-    assert_always("Game requested exit to dashboard via XamLoaderLaunchTitle");
+    xam->ResolveNextTitlePath();
+    XELOGI("XamLoaderLaunchTitle: Launching {} ({})", loader_data.host_path,
+           loader_data.launch_path);
+
+    kernel_state()->emulator()->RequestTitleLaunch();
+
+    // This function does not return.
+    kernel_state()->TerminateTitle();
+    return;
   }
+
+  const std::string title = "Title terminated";
+  const std::string message = "Game requested exit to dashboard.";
+  assert_always("Game requested exit to dashboard via XamLoaderLaunchTitle");
 
   auto display_window = kernel_state()->emulator()->display_window();
   auto imgui_drawer = kernel_state()->emulator()->imgui_drawer();
