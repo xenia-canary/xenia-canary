@@ -41,6 +41,9 @@ template <>
 std::string ByteStream::Read() {
   std::string str;
   uint32_t len = Read<uint32_t>();
+  if (!len) {
+    return str;
+  }
   str.resize(len);
   Read(reinterpret_cast<uint8_t*>(&str[0]), len);
   return str;
@@ -50,6 +53,9 @@ template <>
 std::u16string ByteStream::Read() {
   std::u16string str;
   size_t len = Read<uint32_t>();
+  if (!len) {
+    return str;
+  }
   str.resize(len);
   Read(reinterpret_cast<uint8_t*>(&str[0]), len * 2);
   return str;

@@ -9,6 +9,8 @@
 
 #include "xenia/app/emulator_window.h"
 
+#include <system_error>
+
 #include "third_party/imgui/imgui.h"
 #include "third_party/stb/stb_image_write.h"
 #if defined(__clang__)
@@ -211,6 +213,14 @@ std::unique_ptr<EmulatorWindow> EmulatorWindow::Create(
 }
 
 EmulatorWindow::~EmulatorWindow() {
+  // Keep the emulator alive until an in-progress state operation has finished.
+  // Pending UI notifications use a weak token so they won't access this window
+  // after destruction.
+  state_operation_lifetime_.reset();
+  if (state_operation_thread_.joinable()) {
+    state_operation_thread_.join();
+  }
+
   // Notify the ImGui drawer that the immediate drawer is being destroyed.
   ShutdownGraphicsSystemPresenterPainting();
 }
@@ -786,6 +796,30 @@ bool EmulatorWindow::Initialize() {
   }
   main_menu->AddChild(std::move(file_menu));
 
+  // Emulation menu.
+  auto emulation_menu =
+      MenuItem::Create(MenuItem::Type::kPopup, "エミュレーション");
+  {
+    auto state_load_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "ステートロード");
+    auto state_save_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "ステートセーブ");
+    for (uint32_t slot = 1; slot <= 10; ++slot) {
+      const std::string slot_name = fmt::format("スロット {}", slot);
+      const std::string load_hotkey = slot == 1 ? "F8" : "";
+      const std::string save_hotkey = slot == 1 ? "F7" : "";
+      state_load_menu->AddChild(
+          MenuItem::Create(MenuItem::Type::kString, slot_name, load_hotkey,
+                           [this, slot]() { HandleStateSlot(false, slot); }));
+      state_save_menu->AddChild(
+          MenuItem::Create(MenuItem::Type::kString, slot_name, save_hotkey,
+                           [this, slot]() { HandleStateSlot(true, slot); }));
+    }
+    emulation_menu->AddChild(std::move(state_load_menu));
+    emulation_menu->AddChild(std::move(state_save_menu));
+  }
+  main_menu->AddChild(std::move(emulation_menu));
+
   // Profile Menu
   auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Profile");
   {
@@ -1090,20 +1124,12 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
       SetFullscreen(false);
     } break;
 
-#ifdef DEBUG
     case ui::VirtualKey::kF7: {
-      // Save to file
-      // TODO: Choose path based on user input, or from options
-      // TODO: Spawn a new thread to do this.
-      emulator()->SaveToFile("test.sav");
+      HandleStateSlot(true, 1);
     } break;
     case ui::VirtualKey::kF8: {
-      // Restore from file
-      // TODO: Choose path from user
-      // TODO: Spawn a new thread to do this.
-      emulator()->RestoreFromFile("test.sav");
+      HandleStateSlot(false, 1);
     } break;
-#endif  // #ifdef DEBUG
 
     case ui::VirtualKey::kPause: {
       CpuBreakIntoDebugger();
@@ -1138,6 +1164,108 @@ void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
 
   if (e.button() == ui::MouseEvent::Button::kLeft) {
     ToggleFullscreenOnDoubleClick();
+  }
+}
+
+void EmulatorWindow::HandleStateSlot(bool save_state, uint32_t slot) {
+  XELOGI("State {} requested for slot {}", save_state ? "save" : "load", slot);
+  const std::string notification_title =
+      save_state ? "ステートセーブ" : "ステートロード";
+  if (slot < 1 || slot > 10) {
+    new xe::ui::HostNotificationWindow(imgui_drawer(), notification_title,
+                                       "スロット番号が正しくありません。", 0);
+    return;
+  }
+  if (!emulator()->is_title_open()) {
+    new xe::ui::HostNotificationWindow(imgui_drawer(), notification_title,
+                                       "先にゲームを起動してください。", 0);
+    return;
+  }
+  if (state_operation_in_progress_.load()) {
+    XELOGW("State operation ignored: another operation is still running");
+    new xe::ui::HostNotificationWindow(
+        imgui_drawer(), notification_title,
+        "別のステート処理が終わるまでお待ちください。", 0);
+    return;
+  }
+
+  if (state_operation_thread_.joinable()) {
+    state_operation_thread_.join();
+  }
+
+  const std::string title_id = fmt::format("{:08X}", emulator()->title_id());
+  const auto state_directory = emulator()->storage_root() / "savestates";
+  const std::string state_filename =
+      slot == 1 ? fmt::format("{}.state", title_id)
+                : fmt::format("{}_slot{}.state", title_id, slot);
+  const auto state_path = state_directory / state_filename;
+
+  state_operation_in_progress_.store(true);
+  new xe::ui::HostNotificationWindow(
+      imgui_drawer(), notification_title,
+      fmt::format("スロット {} を{}しています。完了通知までお待ちください。",
+                  slot, save_state ? "保存" : "読み込み"),
+      0);
+
+  const std::weak_ptr<int> lifetime = state_operation_lifetime_;
+  try {
+    state_operation_thread_ = std::thread([this, lifetime, save_state, slot,
+                                           title_id, state_path,
+                                           notification_title]() {
+      std::string notification_message;
+      bool success = false;
+      std::error_code error;
+
+      if (save_state) {
+        std::filesystem::create_directories(state_path.parent_path(), error);
+      }
+      if (error) {
+        notification_message =
+            fmt::format("保存先を作成できませんでした: {}", error.message());
+      } else if (!save_state && !std::filesystem::exists(state_path, error)) {
+        notification_message = fmt::format("スロット {} は空です。", slot);
+        if (error) {
+          notification_message = fmt::format(
+              "保存データを確認できませんでした: {}", error.message());
+        }
+      } else {
+        success = save_state ? emulator_->SaveToFile(state_path)
+                             : emulator_->RestoreFromFile(state_path);
+        if (success) {
+          notification_message = fmt::format(
+              "スロット {} に{}しました。タイトルID: {}", slot,
+              save_state ? "現在の状態を保存" : "状態を読み込み", title_id);
+        } else {
+          notification_message = save_state
+                                     ? "状態の保存に失敗しました。"
+                                     : "保存データの読み込みに失敗しました。";
+        }
+      }
+
+      if (!success) {
+        XELOGE("{}: {}", notification_title, notification_message);
+      } else {
+        XELOGI("State {} completed for slot {}", save_state ? "save" : "load",
+               slot);
+      }
+
+      app_context_.CallInUIThread(
+          [this, lifetime, notification_title, notification_message]() {
+            if (lifetime.expired()) {
+              return;
+            }
+            state_operation_in_progress_.store(false);
+            new xe::ui::HostNotificationWindow(
+                imgui_drawer(), notification_title, notification_message, 0);
+          });
+    });
+  } catch (const std::system_error& exception) {
+    state_operation_in_progress_.store(false);
+    const std::string message =
+        fmt::format("ステート処理を開始できませんでした: {}", exception.what());
+    XELOGE("{}: {}", notification_title, message);
+    new xe::ui::HostNotificationWindow(imgui_drawer(), notification_title,
+                                       message, 0);
   }
 }
 

@@ -409,6 +409,9 @@ void XmaDecoder::Pause() {
   }
   paused_ = true;
 
+  // The worker may be parked waiting for new XMA work. Wake it so it can
+  // observe the pause request and signal pause_fence_.
+  work_event_->Set();
   pause_fence_.Wait();
 }
 

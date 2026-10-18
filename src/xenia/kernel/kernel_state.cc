@@ -8,6 +8,8 @@
  */
 
 #include <ranges>
+#include <typeinfo>
+#include <unordered_set>
 
 #include "xenia/kernel/kernel_state.h"
 
@@ -1212,6 +1214,75 @@ void KernelState::CompleteOverlappedDeferredEx(
   dispatch_cond_.notify_all();
 }
 
+bool KernelState::PrepareThreadsForSave() {
+  // Safe-point stepping installs temporary breakpoints in translated guest
+  // code. Only let one guest thread run at a time so another thread cannot
+  // consume its breakpoint (or collide with another breakpoint at the same
+  // guest address).
+  std::unordered_set<uint32_t> parked_threads;
+
+  for (size_t pass = 0; pass < 256; ++pass) {
+    auto threads = object_table_.GetObjectsByType<XThread>();
+    for (auto thread : threads) {
+      if (!thread->is_guest_thread() || !thread->is_running() ||
+          thread->is_prepared_for_save()) {
+        continue;
+      }
+      if (parked_threads.insert(thread->thread_id()).second) {
+        thread->thread()->Suspend(nullptr);
+      }
+    }
+
+    for (auto thread : threads) {
+      if (!thread->is_guest_thread() || !thread->is_running() ||
+          thread->is_prepared_for_save()) {
+        continue;
+      }
+
+      // A guest-suspended thread is already parked at its restored context.
+      // Keep the extra suspension added above so Emulator::Resume can remove
+      // only the save-time count without waking the guest-suspended thread.
+      if (thread->suspend_count()) {
+        if (!thread->PrepareForSave()) {
+          XELOGE(
+              "KernelState::PrepareThreadsForSave: thread {:08X} failed to "
+              "park at a safe point",
+              thread->handle());
+          return false;
+        }
+        parked_threads.insert(thread->thread_id());
+        continue;
+      }
+
+      // Release the save-time suspension for this thread only. PrepareForSave
+      // captures it at a safe point and leaves it parked while the remaining
+      // guest threads are prepared.
+      thread->thread()->Resume(nullptr);
+      if (!thread->PrepareForSave()) {
+        XELOGE(
+            "KernelState::PrepareThreadsForSave: thread {:08X} failed to "
+            "park at a safe point",
+            thread->handle());
+        return false;
+      }
+      parked_threads.insert(thread->thread_id());
+    }
+
+    const auto latest_threads = object_table_.GetObjectsByType<XThread>();
+    const bool all_running_threads_prepared = std::ranges::all_of(
+        latest_threads, [](const object_ref<XThread>& thread) {
+          return !thread->is_guest_thread() || !thread->is_running() ||
+                 thread->is_prepared_for_save();
+        });
+    if (all_running_threads_prepared) {
+      return true;
+    }
+  }
+
+  XELOGE("KernelState::PrepareThreadsForSave: thread creation did not settle");
+  return false;
+}
+
 bool KernelState::Save(ByteStream* stream) {
   XELOGD("Serializing the kernel...");
   stream->Write(kKernelSaveSignature);
@@ -1219,7 +1290,11 @@ bool KernelState::Save(ByteStream* stream) {
   // Save the object table
   object_table_.Save(stream);
 
-  // Write the TLS allocation bitmap
+  // The global TLS bitmap now lives in the guest X_KPROCESS structures. Write
+  // a zero count for the legacy bitmap section so Restore remains aligned and
+  // can still read older save files that contain bitmap entries.
+  stream->Write(static_cast<uint32_t>(0));
+
   // We save XThreads absolutely first, as they will execute code upon save
   // (which could modify the kernel state)
   auto threads = object_table_.GetObjectsByType<XThread>();
@@ -1237,8 +1312,8 @@ bool KernelState::Save(ByteStream* stream) {
     }
 
     if (!thread->Save(stream)) {
-      XELOGD("Failed to save thread \"{}\"", thread->name());
-      num_threads--;
+      XELOGE("Failed to save thread \"{}\"", thread->name());
+      return false;
     }
   }
 
@@ -1251,6 +1326,7 @@ bool KernelState::Save(ByteStream* stream) {
   stream->Write(static_cast<uint32_t>(objects.size()));
 
   size_t num_objects = objects.size();
+  bool all_objects_saved = true;
   XELOGD("Serializing {} objects...", num_objects);
   for (auto object : objects) {
     auto prev_offset = stream->offset();
@@ -1263,18 +1339,17 @@ bool KernelState::Save(ByteStream* stream) {
 
     stream->Write<uint32_t>(static_cast<uint32_t>(object->type()));
     if (!object->Save(stream)) {
-      XELOGD("Did not save object of type {}",
-             static_cast<uint32_t>(object->type()));
-      assert_always();
-
-      // Revert backwards and overwrite if a save failed.
+      XELOGE("Cannot save kernel object of type {} ({}, handle {:08X})",
+             static_cast<uint32_t>(object->type()), typeid(*object).name(),
+             object->handle());
       stream->set_offset(prev_offset);
       num_objects--;
+      all_objects_saved = false;
     }
   }
 
   *num_objects_ptr = static_cast<uint32_t>(num_objects);
-  return true;
+  return all_objects_saved;
 }
 
 // this only gets triggered once per ms at most, so fields other than tick count
@@ -1347,34 +1422,63 @@ bool KernelState::Restore(ByteStream* stream) {
   object_table_.Restore(stream);
 
   // TLS bitmap is now stored per-process in X_KPROCESS structures (in guest
-  // memory) Skip reading old global TLS bitmap if present in old save files
-  auto num_bitmap_entries = stream->Read<uint32_t>();
-  for (uint32_t i = 0; i < num_bitmap_entries; i++) {
-    stream->Read<uint64_t>();  // Discard old data
+  // memory). Newer save files write a zero count for this legacy section.
+  // Also accept save files produced while the section was omitted entirely,
+  // and older files that contain bitmap entries.
+  const uint32_t legacy_bitmap_count_or_thread_count = stream->Read<uint32_t>();
+  uint32_t num_threads = legacy_bitmap_count_or_thread_count;
+  if (legacy_bitmap_count_or_thread_count == 0) {
+    // Current format: an empty legacy bitmap followed by the thread count.
+    num_threads = stream->Read<uint32_t>();
+  } else if (legacy_bitmap_count_or_thread_count <= 4096) {
+    // Probe the legacy layout. If the value after its bitmap entries is not a
+    // plausible thread count, rewind and treat the first value as the thread
+    // count (the format used while the bitmap section was omitted).
+    const size_t offset_after_count = stream->offset();
+    for (uint32_t i = 0; i < legacy_bitmap_count_or_thread_count; i++) {
+      stream->Read<uint64_t>();
+    }
+    const uint32_t legacy_num_threads = stream->Read<uint32_t>();
+    if (legacy_num_threads <= 4096) {
+      num_threads = legacy_num_threads;
+    } else {
+      stream->set_offset(offset_after_count);
+    }
   }
-
-  uint32_t num_threads = stream->Read<uint32_t>();
   XELOGD("Loading {} threads...", num_threads);
+  if (num_threads > 4096) {
+    XELOGE("Invalid thread count {} in state file", num_threads);
+    return false;
+  }
   for (uint32_t i = 0; i < num_threads; i++) {
     auto thread = XObject::Restore(this, XObject::Type::Thread, stream);
     if (!thread) {
       // Can't continue the restore or we risk misalignment.
-      assert_always();
+      XELOGE("Failed to restore thread {}/{}", i + 1, num_threads);
       return false;
     }
   }
 
   uint32_t num_objects = stream->Read<uint32_t>();
   XELOGD("Loading {} objects...", num_objects);
+  if (num_objects > 4096) {
+    XELOGE("Invalid kernel object count {} in state file", num_objects);
+    return false;
+  }
   for (uint32_t i = 0; i < num_objects; i++) {
     uint32_t type = stream->Read<uint32_t>();
+    XELOGD("Restoring kernel object {}/{} at offset {} type {}", i + 1,
+           num_objects, stream->offset(), type);
 
     auto obj = XObject::Restore(this, XObject::Type(type), stream);
     if (!obj) {
       // Can't continue the restore or we risk misalignment.
-      assert_always();
+      XELOGE("Failed to restore kernel object {}/{} at offset {} type {}",
+             i + 1, num_objects, stream->offset(), type);
       return false;
     }
+    XELOGD("Restored kernel object {}/{} at offset {} type {}", i + 1,
+           num_objects, stream->offset(), type);
   }
 
   return true;

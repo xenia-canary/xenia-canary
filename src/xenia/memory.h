@@ -279,6 +279,10 @@ class PhysicalHeap : public BaseHeap {
   PhysicalHeap();
   ~PhysicalHeap() override;
 
+  // The contents are saved once through the parent physical heap.
+  void SaveMapping(ByteStream* stream);
+  bool RestoreMapping(ByteStream* stream);
+
   // Initializes the heap properties and allocates the page table.
   void Initialize(Memory* memory, uint8_t* membase, HeapType heap_type,
                   uint32_t heap_base, uint32_t heap_size, uint32_t page_size,

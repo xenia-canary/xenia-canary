@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xthread.h"
 
+#include <string_view>
+
 #if !XE_PLATFORM_WIN32
 #include <signal.h>
 #endif
@@ -83,7 +85,7 @@ XThread::~XThread() {
   kernel_state_->UnregisterThread(this);
 
   // Notify processor of our impending destruction.
-  emulator()->processor()->OnThreadDestroyed(thread_id_);
+  emulator()->processor()->OnThreadDestroyed(thread_id_, this);
 
   thread_.reset();
 
@@ -899,6 +901,9 @@ X_STATUS XThread::Resume(uint32_t* out_suspend_count) {
     *out_suspend_count = previous_suspend_count;
   }
 
+  if (previous_suspend_count <= 1) {
+    saved_context_pc_ = 0;
+  }
   if (thread_->Resume(&unused_host_suspend_count)) {
     return X_STATUS_SUCCESS;
   } else {
@@ -1042,6 +1047,50 @@ struct ThreadSavedState {
   } context;
 };
 
+bool XThread::PrepareForSave() {
+  if (!guest_thread_) {
+    // Host XThreads are expected to be recreated on their own.
+    return false;
+  }
+
+  if (prepared_save_pc_) {
+    return true;
+  }
+  if (!running_) {
+    return true;
+  }
+
+  const uint32_t guest_suspend_count = suspend_count();
+  if (guest_suspend_count && saved_context_pc_) {
+    // A restored guest-suspended thread is parked in its host thread. Do not
+    // try to single-step it; its restored context already has a valid PC.
+    prepared_save_pc_ = saved_context_pc_;
+    XELOGD("XThread {:08X} using saved PC {:08X} for suspended save", handle(),
+           prepared_save_pc_);
+    return true;
+  }
+
+  prepared_save_pc_ =
+      emulator()->processor()->StepToGuestSafePoint(thread_id_, false, true);
+  if (!prepared_save_pc_) {
+    XELOGE("XThread {:08X} failed to save: could not step to a safe point!",
+           handle());
+    return false;
+  }
+
+  // StepToGuestAddress resumes the native thread until it reaches the
+  // temporary breakpoint. Reapply guest-owned suspensions while the thread is
+  // parked so Emulator::Resume removes only the save-time suspension.
+  for (uint32_t i = 0; i < guest_suspend_count; ++i) {
+    thread_->Suspend(nullptr);
+  }
+  if (guest_suspend_count) {
+    XELOGD("XThread {:08X} retained {} guest suspend count(s) for save",
+           handle(), guest_suspend_count);
+  }
+  return true;
+}
+
 bool XThread::Save(ByteStream* stream) {
   if (!guest_thread_) {
     // Host XThreads are expected to be recreated on their own.
@@ -1050,25 +1099,22 @@ bool XThread::Save(ByteStream* stream) {
 
   XELOGD("XThread {:08X} serializing...", handle());
 
-  uint32_t pc = 0;
-  if (running_) {
-    pc = emulator()->processor()->StepToGuestSafePoint(thread_id_);
-    if (!pc) {
-      XELOGE("XThread {:08X} failed to save: could not step to a safe point!",
-             handle());
+  uint32_t pc = prepared_save_pc_;
+  if (running_ && !pc) {
+    if (!PrepareForSave()) {
       assert_always();
       return false;
     }
+    pc = prepared_save_pc_;
   }
 
   if (!SaveObject(stream)) {
     return false;
   }
-
   stream->Write(kThreadSaveSignature);
-  stream->Write(thread_name_);
+  stream->Write(std::string_view(thread_name_));
 
-  ThreadSavedState state;
+  ThreadSavedState state{};
   state.thread_id = thread_id_;
   state.is_main_thread = main_thread_;
   state.is_running = running_;
@@ -1106,6 +1152,7 @@ bool XThread::Save(ByteStream* stream) {
   }
 
   stream->Write(&state, sizeof(ThreadSavedState));
+  prepared_save_pc_ = 0;
   return true;
 }
 
@@ -1134,6 +1181,9 @@ object_ref<XThread> XThread::Restore(KernelState* kernel_state,
   thread->thread_id_ = state.thread_id;
   thread->main_thread_ = state.is_main_thread;
   thread->running_ = state.is_running;
+  if (state.is_running) {
+    thread->saved_context_pc_ = state.context.pc;
+  }
   thread->tls_static_address_ = state.tls_static_address;
   thread->tls_dynamic_address_ = state.tls_dynamic_address;
   thread->tls_total_size_ = state.tls_total_size;
