@@ -265,6 +265,10 @@ class EmulatorWindow {
 
   void OnKeyDown(ui::KeyEvent& e);
   void HandleStateSlot(bool save_state, uint32_t slot);
+  void HandleStateOperation(bool save_state, uint32_t slot,
+                            const std::filesystem::path& state_path);
+  void HandleStateFilePicker(bool save_state);
+  void RefreshStateSlotMenu(ui::MenuItem* menu, bool save_state);
   void OnMouseDown(const ui::MouseEvent& e);
   void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);

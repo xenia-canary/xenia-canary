@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xenia/ui/ui_event.h"
@@ -46,7 +47,16 @@ class MenuItem {
   MenuItem* parent_item() const { return parent_item_; }
   Type type() { return type_; }
   const std::string& text() { return text_; }
+  virtual void SetText(std::string text) { text_ = std::move(text); }
   const std::string& hotkey() { return hotkey_; }
+  void SetOnOpening(std::function<void()> callback) {
+    on_opening_ = std::move(callback);
+  }
+  void OnOpening() {
+    if (on_opening_) {
+      on_opening_();
+    }
+  }
 
   // If the menu is currently attached to a Window, changes to it (such as the
   // elements and the enabled / disabled state) may be not reflected
@@ -77,6 +87,7 @@ class MenuItem {
   std::vector<MenuItemPtr> children_;
   std::string text_;
   std::string hotkey_;
+  std::function<void()> on_opening_;
 
  private:
   std::function<void()> callback_;

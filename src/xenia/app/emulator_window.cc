@@ -9,6 +9,10 @@
 
 #include "xenia/app/emulator_window.h"
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 #include <system_error>
 
 #include "third_party/imgui/imgui.h"
@@ -804,17 +808,74 @@ bool EmulatorWindow::Initialize() {
         MenuItem::Create(MenuItem::Type::kPopup, "ステートロード");
     auto state_save_menu =
         MenuItem::Create(MenuItem::Type::kPopup, "ステートセーブ");
+    state_load_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "ファイルからロード...", "",
+                         [this]() { HandleStateFilePicker(false); }));
+    state_load_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+    auto load_slots_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "次のスロットからロード");
+    auto* load_slots_menu_ptr = load_slots_menu.get();
     for (uint32_t slot = 1; slot <= 10; ++slot) {
-      const std::string slot_name = fmt::format("スロット {}", slot);
+      const std::string slot_name = fmt::format("スロット {} - 空き", slot);
       const std::string load_hotkey = slot == 1 ? "F8" : "";
-      const std::string save_hotkey = slot == 1 ? "F7" : "";
-      state_load_menu->AddChild(
+      load_slots_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, slot_name, load_hotkey,
                            [this, slot]() { HandleStateSlot(false, slot); }));
-      state_save_menu->AddChild(
+    }
+    load_slots_menu->SetOnOpening([this, load_slots_menu_ptr]() {
+      RefreshStateSlotMenu(load_slots_menu_ptr, false);
+    });
+    state_load_menu->AddChild(std::move(load_slots_menu));
+
+    state_save_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "ファイルとして保存...", "",
+                         [this]() { HandleStateFilePicker(true); }));
+    state_save_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+    state_save_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, "最古のステートに上書き保存", "", [this]() {
+          if (!emulator()->is_title_open()) {
+            HandleStateSlot(true, 0);
+            return;
+          }
+          uint32_t selected_slot = 1;
+          const auto directory = emulator()->storage_root() / "savestates";
+          std::error_code error;
+          auto oldest_time = std::filesystem::file_time_type::max();
+          for (uint32_t slot = 1; slot <= 10; ++slot) {
+            const auto path =
+                directory /
+                (slot == 1 ? fmt::format("{:08X}.state", emulator()->title_id())
+                           : fmt::format("{:08X}_slot{}.state",
+                                         emulator()->title_id(), slot));
+            if (!std::filesystem::exists(path, error)) {
+              selected_slot = slot;
+              break;
+            }
+            const auto write_time =
+                std::filesystem::last_write_time(path, error);
+            if (!error && write_time < oldest_time) {
+              oldest_time = write_time;
+              selected_slot = slot;
+            }
+            error.clear();
+          }
+          HandleStateSlot(true, selected_slot);
+        }));
+    state_save_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+    auto save_slots_menu =
+        MenuItem::Create(MenuItem::Type::kPopup, "次のスロットに保存");
+    auto* save_slots_menu_ptr = save_slots_menu.get();
+    for (uint32_t slot = 1; slot <= 10; ++slot) {
+      const std::string slot_name = fmt::format("スロット {} - 空き", slot);
+      const std::string save_hotkey = slot == 1 ? "F7" : "";
+      save_slots_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, slot_name, save_hotkey,
                            [this, slot]() { HandleStateSlot(true, slot); }));
     }
+    save_slots_menu->SetOnOpening([this, save_slots_menu_ptr]() {
+      RefreshStateSlotMenu(save_slots_menu_ptr, true);
+    });
+    state_save_menu->AddChild(std::move(save_slots_menu));
     emulation_menu->AddChild(std::move(state_load_menu));
     emulation_menu->AddChild(std::move(state_save_menu));
   }
@@ -1168,14 +1229,90 @@ void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
 }
 
 void EmulatorWindow::HandleStateSlot(bool save_state, uint32_t slot) {
-  XELOGI("State {} requested for slot {}", save_state ? "save" : "load", slot);
-  const std::string notification_title =
-      save_state ? "ステートセーブ" : "ステートロード";
-  if (slot < 1 || slot > 10) {
-    new xe::ui::HostNotificationWindow(imgui_drawer(), notification_title,
-                                       "スロット番号が正しくありません。", 0);
+  if (slot == 0 || slot > 10 || !emulator()->is_title_open()) {
+    const std::string title = save_state ? "ステートセーブ" : "ステートロード";
+    new xe::ui::HostNotificationWindow(imgui_drawer(), title,
+                                       slot == 0
+                                           ? "先にゲームを起動してください。"
+                                           : "スロット番号が正しくありません。",
+                                       0);
     return;
   }
+  const std::string title_id = fmt::format("{:08X}", emulator()->title_id());
+  const auto directory = emulator()->storage_root() / "savestates";
+  const auto filename = slot == 1
+                            ? fmt::format("{}.state", title_id)
+                            : fmt::format("{}_slot{}.state", title_id, slot);
+  HandleStateOperation(save_state, slot, directory / filename);
+}
+
+void EmulatorWindow::HandleStateFilePicker(bool save_state) {
+  if (!emulator()->is_title_open()) {
+    HandleStateSlot(save_state, 0);
+    return;
+  }
+  auto picker = ui::FilePicker::Create();
+  picker->set_mode(save_state ? ui::FilePicker::Mode::kSave
+                              : ui::FilePicker::Mode::kOpen);
+  picker->set_type(ui::FilePicker::Type::kFile);
+  picker->set_title(save_state ? "ステートをファイルに保存"
+                               : "ステートファイルを開く");
+  picker->set_default_extension("state");
+  picker->set_file_name("state.state");
+  picker->set_extensions(
+      {{"Xenia State (*.state)", "*.state"}, {"All Files (*.*)", "*.*"}});
+  if (picker->Show(window_.get()) && !picker->selected_files().empty()) {
+    HandleStateOperation(save_state, 0, picker->selected_files()[0]);
+  }
+}
+
+void EmulatorWindow::RefreshStateSlotMenu(ui::MenuItem* menu, bool save_state) {
+  (void)save_state;
+  if (!emulator()->is_title_open()) {
+    for (uint32_t slot = 1; slot <= 10; ++slot) {
+      menu->child(slot - 1)->SetText(
+          fmt::format("スロット {} - ゲーム未起動", slot));
+    }
+    window_->CompleteMainMenuItemsUpdate();
+    return;
+  }
+  const auto directory = emulator()->storage_root() / "savestates";
+  const auto title_id = fmt::format("{:08X}", emulator()->title_id());
+  for (uint32_t slot = 1; slot <= 10; ++slot) {
+    const auto filename = slot == 1
+                              ? fmt::format("{}.state", title_id)
+                              : fmt::format("{}_slot{}.state", title_id, slot);
+    const auto path = directory / filename;
+    std::error_code error;
+    std::string label = fmt::format("スロット {} - 空き", slot);
+    if (std::filesystem::is_regular_file(path, error) && !error) {
+      const auto write_time = std::filesystem::last_write_time(path, error);
+      if (!error) {
+        const auto system_time =
+            std::chrono::system_clock::now() +
+            (write_time - std::filesystem::file_time_type::clock::now());
+        const auto time_t = std::chrono::system_clock::to_time_t(system_time);
+        const auto local_time = std::localtime(&time_t);
+        if (local_time) {
+          std::ostringstream timestamp;
+          timestamp << std::put_time(local_time, "%m/%d/%y %H:%M:%S");
+          label = fmt::format("スロット {} - {}", slot, timestamp.str());
+        }
+      } else {
+        label = fmt::format("スロット {} - 保存データあり", slot);
+      }
+    }
+    menu->child(slot - 1)->SetText(label);
+  }
+  window_->CompleteMainMenuItemsUpdate();
+}
+
+void EmulatorWindow::HandleStateOperation(
+    bool save_state, uint32_t slot, const std::filesystem::path& state_path) {
+  XELOGI("State {} requested for {}", save_state ? "save" : "load",
+         slot ? fmt::format("slot {}", slot) : state_path.string());
+  const std::string notification_title =
+      save_state ? "ステートセーブ" : "ステートロード";
   if (!emulator()->is_title_open()) {
     new xe::ui::HostNotificationWindow(imgui_drawer(), notification_title,
                                        "先にゲームを起動してください。", 0);
@@ -1194,17 +1331,15 @@ void EmulatorWindow::HandleStateSlot(bool save_state, uint32_t slot) {
   }
 
   const std::string title_id = fmt::format("{:08X}", emulator()->title_id());
-  const auto state_directory = emulator()->storage_root() / "savestates";
-  const std::string state_filename =
-      slot == 1 ? fmt::format("{}.state", title_id)
-                : fmt::format("{}_slot{}.state", title_id, slot);
-  const auto state_path = state_directory / state_filename;
 
   state_operation_in_progress_.store(true);
   new xe::ui::HostNotificationWindow(
       imgui_drawer(), notification_title,
-      fmt::format("スロット {} を{}しています。完了通知までお待ちください。",
-                  slot, save_state ? "保存" : "読み込み"),
+      slot ? fmt::format(
+                 "スロット {} を{}しています。完了通知までお待ちください。",
+                 slot, save_state ? "保存" : "読み込み")
+           : fmt::format("{}を実行しています。完了通知までお待ちください。",
+                         save_state ? "ファイル保存" : "ファイル読み込み"),
       0);
 
   const std::weak_ptr<int> lifetime = state_operation_lifetime_;
@@ -1223,7 +1358,9 @@ void EmulatorWindow::HandleStateSlot(bool save_state, uint32_t slot) {
         notification_message =
             fmt::format("保存先を作成できませんでした: {}", error.message());
       } else if (!save_state && !std::filesystem::exists(state_path, error)) {
-        notification_message = fmt::format("スロット {} は空です。", slot);
+        notification_message = slot
+                                   ? fmt::format("スロット {} は空です。", slot)
+                                   : "指定したステートファイルがありません。";
         if (error) {
           notification_message = fmt::format(
               "保存データを確認できませんでした: {}", error.message());
@@ -1232,9 +1369,14 @@ void EmulatorWindow::HandleStateSlot(bool save_state, uint32_t slot) {
         success = save_state ? emulator_->SaveToFile(state_path)
                              : emulator_->RestoreFromFile(state_path);
         if (success) {
-          notification_message = fmt::format(
-              "スロット {} に{}しました。タイトルID: {}", slot,
-              save_state ? "現在の状態を保存" : "状態を読み込み", title_id);
+          notification_message =
+              slot ? fmt::format(
+                         "スロット {} に{}しました。タイトルID: {}", slot,
+                         save_state ? "現在の状態を保存" : "状態を読み込み",
+                         title_id)
+                   : fmt::format("{}しました: {}",
+                                 save_state ? "保存" : "読み込み",
+                                 state_path.filename().string());
         } else {
           notification_message = save_state
                                      ? "状態の保存に失敗しました。"

@@ -1252,6 +1252,15 @@ LRESULT Win32Window::WndProc(HWND hWnd, UINT message, WPARAM wParam,
       // The menu item might have been destroyed by its OnSelected, don't do
       // anything with it here from now on.
     } break;
+
+    case WM_INITMENUPOPUP: {
+      MENUINFO menu_info = {};
+      menu_info.cbSize = sizeof(menu_info);
+      menu_info.fMask = MIM_MENUDATA;
+      if (GetMenuInfo(HMENU(wParam), &menu_info) && menu_info.dwMenuData) {
+        reinterpret_cast<Win32MenuItem*>(menu_info.dwMenuData)->OnOpening();
+      }
+    } break;
   }
 
   // The window might have been destroyed by the handlers, don't interact with
@@ -1350,6 +1359,33 @@ void Win32MenuItem::SetEnabled(bool enabled) {
   for (auto iter = children_.begin(); iter != children_.end(); ++iter, ++i) {
     EnableMenuItem(handle_, i, enable_flags);
   }
+}
+
+void Win32MenuItem::SetText(std::string text) {
+  text_ = std::move(text);
+  auto parent = static_cast<Win32MenuItem*>(parent_item_);
+  if (!parent || type_ == Type::kSeparator || type_ == Type::kNormal) {
+    return;
+  }
+  size_t position = 0;
+  while (position < parent->children_.size() &&
+         parent->children_[position].get() != this) {
+    ++position;
+  }
+  if (position == parent->children_.size()) {
+    return;
+  }
+  std::string full_text = text_;
+  if (type_ == Type::kString && !hotkey_.empty()) {
+    full_text += "\t" + hotkey_;
+  }
+  auto wide_text = xe::to_utf16(full_text);
+  MENUITEMINFOW item_info = {};
+  item_info.cbSize = sizeof(item_info);
+  item_info.fMask = MIIM_STRING;
+  item_info.dwTypeData =
+      reinterpret_cast<LPWSTR>(const_cast<char16_t*>(wide_text.c_str()));
+  SetMenuItemInfoW(parent->handle_, UINT(position), TRUE, &item_info);
 }
 
 void Win32MenuItem::OnChildAdded(MenuItem* generic_child_item) {
