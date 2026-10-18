@@ -690,7 +690,8 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             : instr.dimension;
 
     // Texel center snap instead of the epsilon (see CanSnapToTexelCenter).
-    bool point_snap = instr.CanSnapToTexelCenter(use_computed_lod);
+    bool point_snap = cvars::texture_point_snap &&
+                      instr.CanSnapToTexelCenter(use_computed_lod);
 
     spv::Id sampler = spv::NoResult;
     spv::Id image_2d_array_or_cube_unsigned = spv::NoResult;

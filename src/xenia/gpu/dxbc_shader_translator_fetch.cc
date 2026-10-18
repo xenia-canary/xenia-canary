@@ -760,7 +760,8 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
   }
 
   // Texel center snap instead of the epsilon, see CanSnapToTexelCenter.
-  bool point_snap = instr.CanSnapToTexelCenter(use_computed_lod);
+  bool point_snap =
+      cvars::texture_point_snap && instr.CanSnapToTexelCenter(use_computed_lod);
 
   // Get offsets applied to the coordinates before sampling.
   // `offsets` is used for float4 literal construction,

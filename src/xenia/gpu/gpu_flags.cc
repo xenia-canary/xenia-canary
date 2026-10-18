@@ -133,3 +133,9 @@ DEFINE_bool(xenos_sample_positions, false,
             "positions since they safely map coverage and calculate depth "
             "in-shader.",
             "GPU");
+
+DEFINE_bool(texture_point_snap, false,
+            "Snap normalized point sampled 2D texture coordinates to texel "
+            "centers. Fixes texture seams in titles that use virtual textures, "
+            "e.g. idTech 5, but may cause rendering issues in other titles.",
+            "GPU");
