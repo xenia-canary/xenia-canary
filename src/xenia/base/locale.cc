@@ -92,6 +92,7 @@ const std::unordered_map<std::string, std::string>& LanguageNames() {
   static const std::unordered_map<std::string, std::string> kNames = {
       {"en", "English"},
       {"it", "Italiano"},
+      {"sv", "Svenska"},
   };
   return kNames;
 }
