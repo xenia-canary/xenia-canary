@@ -73,6 +73,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_INVALID_PARAMETER_1                    ((X_STATUS)0xC00000EFL)
 #define X_STATUS_INVALID_PARAMETER_2                    ((X_STATUS)0xC00000F0L)
 #define X_STATUS_INVALID_PARAMETER_3                    ((X_STATUS)0xC00000F1L)
+#define X_STATUS_FILE_CORRUPT_ERROR                     ((X_STATUS)0xC0000102L)
 #define X_STATUS_NOT_A_DIRECTORY                        ((X_STATUS)0xC0000103L)
 #define X_STATUS_PROCESS_IS_TERMINATING                 ((X_STATUS)0xC000010AL)
 #define X_STATUS_DLL_NOT_FOUND                          ((X_STATUS)0xC0000135L)
@@ -111,6 +112,7 @@ typedef uint32_t X_RESULT;
 #define X_ERROR_ABORTED                         X_RESULT_FROM_WIN32(0x000004D3L)
 #define X_ERROR_NOT_LOGGED_ON                   X_RESULT_FROM_WIN32(0x000004DDL)
 #define X_ERROR_NO_SUCH_USER                    X_RESULT_FROM_WIN32(0x00000525L)
+#define X_ERROR_FILE_CORRUPT                    X_RESULT_FROM_WIN32(0x00000570L)
 #define X_ERROR_FUNCTION_FAILED                 X_RESULT_FROM_WIN32(0x0000065BL)
 #define X_ERROR_EMPTY                           X_RESULT_FROM_WIN32(0x000010D2L)
 

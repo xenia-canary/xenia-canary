@@ -83,6 +83,8 @@ class ContentPackage {
   virtual X_RESULT Flush() = 0;
 
  protected:
+  void ComputePackageLicenseMask();
+
   vfs::VirtualFileSystem* file_system_;
   // NtPath for device. Example: \\DEVICE\\<Something>
   std::string device_path_;
@@ -103,7 +105,6 @@ class ContentPackage {
   void InitializePackageHeader(const XCONTENT_DATA_INTERNAL& metadata,
                                const xex2_opt_execution_info* execution_info,
                                const SpaInfo* spa_info);
-  void ComputePackageLicenseMask();
 };
 
 }  // namespace xam
