@@ -99,11 +99,12 @@ class ContentPackage {
   // Separate entry for license for backward compatibility
   uint32_t license_mask_ = 0;
 
+  void ComputePackageLicenseMask();
+
  private:
   void InitializePackageHeader(const XCONTENT_DATA_INTERNAL& metadata,
                                const xex2_opt_execution_info* execution_info,
                                const SpaInfo* spa_info);
-  void ComputePackageLicenseMask();
 };
 
 }  // namespace xam

@@ -158,11 +158,8 @@ XCONTENT_DATA_INTERNAL ContentPackage::GetContentMetadata() const {
 void ContentPackage::ComputePackageLicenseMask() {
   uint32_t final_license = 0;
   for (uint8_t i = 0; i < license_count; i++) {
-    if (header_.content_header.licenses[i].license_flags) {
-      final_license |= header_.content_header.licenses[i].license_bits;
-    }
+    final_license |= header_.content_header.licenses[i].license_bits;
   }
-
   license_mask_ = final_license;
 }
 

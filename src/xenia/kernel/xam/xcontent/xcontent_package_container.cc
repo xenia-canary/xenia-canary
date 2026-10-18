@@ -100,6 +100,8 @@ bool ContentPackageContainer::LoadPackage(
     return false;
   }
 
+  ComputePackageLicenseMask();
+
   return true;
 }
 
