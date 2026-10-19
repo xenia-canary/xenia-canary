@@ -312,22 +312,36 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
     return X_ERROR_INVALID_NAME;
   }
 
-  // Check if we have something under provided symlink.
-  std::string symlink_path = root_name.value();
-  if (!symlink_path.ends_with(':')) {
-    symlink_path += ':';
-  }
-
-  if (kernel_state()->file_system()->IsSymbolicLinkRegistered(symlink_path)) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
   XCONTENT_DATA_INTERNAL content_data{};
   X_RESULT result =
       ReadContentData(content_data_ptr, content_data_size, content_data);
   if (result != X_ERROR_SUCCESS) {
     return result;
   };
+
+  // Check if we have something under provided symlink.
+  std::string symlink_path = root_name.value();
+  if (!symlink_path.ends_with(':')) {
+    symlink_path += ':';
+  }
+
+  // Check if the same package isn't already mounted under the same name.
+  if (kernel_state()->file_system()->IsSymbolicLinkRegistered(symlink_path)) {
+    const auto package =
+        kernel_state()->content_manager()->FindPackage(root_name.value());
+
+    if (!package) {
+      return X_ERROR_INVALID_PARAMETER;
+    }
+
+    // Title can provide -1 as a title_id, so before comparation we need to
+    // modify content_data.
+    content_data.title_id = kernel_state()->title_id();
+
+    return package->GetContentMetadata() == content_data
+               ? X_ERROR_SUCCESS
+               : X_ERROR_INVALID_PARAMETER;
+  }
 
   if (content_data.content_type == XContentType::kMarketplaceContent) {
     xuid = 0;
