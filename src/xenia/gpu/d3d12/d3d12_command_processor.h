@@ -223,9 +223,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
   // target sample count, or the default pattern at 1x. Submits pending
   // barriers under the old pattern first.
   void UpdateSamplePositions(xenos::MsaaSamples msaa_samples);
-  bool xenos_sample_positions_used() const {
-    return xenos_sample_positions_used_;
-  }
+  bool xenos_sample_positions_used() const;
 
   // Returns the text to display in the GPU backend name in the window title.
   std::string GetWindowTitleText() const;
@@ -618,7 +616,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   // SetSamplePositions and ResolveSubresourceRegion remove the device
   // without tier 1 support.
-  bool xenos_sample_positions_used_ = false;
+  bool xenos_sample_positions_supported_ = false;
 
   std::unique_ptr<D3D12SharedMemory> shared_memory_;
 
