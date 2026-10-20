@@ -93,12 +93,13 @@ void D3D12CommandProcessor::TracePlaybackWroteMemory(uint32_t base_ptr,
   primitive_processor_->MemoryInvalidationCallback(base_ptr, length, true);
 }
 
-void D3D12CommandProcessor::RestoreEdramSnapshot(const void* snapshot) {
+void D3D12CommandProcessor::RestoreEdramSnapshot(const void* snapshot,
+                                                 size_t size_bytes) {
   // Starting a new frame because descriptors may be needed.
   if (!BeginSubmission(true)) {
     return;
   }
-  render_target_cache_->RestoreEdramSnapshot(snapshot);
+  render_target_cache_->RestoreEdramSnapshot(snapshot, size_bytes);
 }
 
 void D3D12CommandProcessor::PollCompletedSubmission() {
@@ -4238,7 +4239,8 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
                                normalized_depth_control.z_enable;
   if (edram_rov_used && depth_stencil_enabled) {
     for (uint32_t i = 0; i < 4; ++i) {
-      if (rb_depth_info.depth_base == color_infos[i].color_base &&
+      if (render_target_cache_->WrapEdramBase(rb_depth_info.depth_base) ==
+              render_target_cache_->WrapEdramBase(color_infos[i].color_base) &&
           RenderTargetCache::ColorOverlapsDepthStencil(
               color_infos[i].color_format, rt_keep_masks[i][0],
               rt_keep_masks[i][1], normalized_depth_control)) {
@@ -4610,8 +4612,8 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
         uint32_t rt_base_dwords_scaled =
             draw_util::AddWindowOffsetToEdramBase(
                 color_info.color_base, window_offset_tiles,
-                xenos::IsColorRenderTargetFormat64bpp(
-                    color_info.color_format)) *
+                xenos::IsColorRenderTargetFormat64bpp(color_info.color_format),
+                render_target_cache_->edram_tile_count()) *
             edram_tile_dwords_scaled;
         update_dirty_uint32_cmp(
             system_constants_.edram_rt_base_dwords_scaled[i],
@@ -4699,8 +4701,9 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
 
   if constexpr (edram_rov_used) {
     uint32_t depth_base_dwords_scaled =
-        draw_util::AddWindowOffsetToEdramBase(rb_depth_info.depth_base,
-                                              window_offset_tiles, false) *
+        draw_util::AddWindowOffsetToEdramBase(
+            rb_depth_info.depth_base, window_offset_tiles, false,
+            render_target_cache_->edram_tile_count()) *
         edram_tile_dwords_scaled;
     update_dirty_uint32_cmp(system_constants_.edram_depth_base_dwords_scaled,
                             depth_base_dwords_scaled);

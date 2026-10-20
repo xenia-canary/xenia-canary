@@ -78,7 +78,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void TracePlaybackWroteMemory(uint32_t base_ptr, uint32_t length) override;
 
-  void RestoreEdramSnapshot(const void* snapshot) override;
+  void RestoreEdramSnapshot(const void* snapshot, size_t size_bytes) override;
 
   void PollCompletedSubmission() override;
 

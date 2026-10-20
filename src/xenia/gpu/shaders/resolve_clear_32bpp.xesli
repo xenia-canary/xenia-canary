@@ -37,7 +37,8 @@ entry_inputs_end_code_begin_compute_xe
   uint address = XeEdramOffsetBytes(
       (in_global_thread_id_xe.xy << uint2_xe(3u, 0u)) +
           (resolve_info.edram_offset_scaled << extent_scale),
-      resolve_info.edram_base_tiles, true, resolve_info.edram_pitch_tiles,
+      resolve_info.edram_base_tiles, resolve_info.edram_tile_count,
+      resolve_info.edram_pitch_tiles,
       kXenosMsaaSamples_1X, resolve_info.edram_is_depth, 0u, 0u,
       resolve_info.resolution_scale);
   byte_buffer_align16_store16_xe(xe_resolve_edram, address,

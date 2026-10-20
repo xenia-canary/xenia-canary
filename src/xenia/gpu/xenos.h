@@ -451,15 +451,19 @@ constexpr uint32_t kRenderTargetFormatBits =
 
 constexpr uint32_t kEdramTileWidthSamples = 80;
 constexpr uint32_t kEdramTileHeightSamples = 16;
+constexpr uint32_t kEdramTileSizeBytes =
+    kEdramTileHeightSamples * kEdramTileWidthSamples * sizeof(uint32_t);
+// Xenos has 2048 tiles with periodic 11 bit addressing.
+// The optional extended edram_tile_count emulates four times that for
+// title-specific patches that render past 10 MB, RB_COLOR_INFO::color_base and
+// RB_DEPTH_INFO::depth_base have room for 13 bit bases. Everything sized at
+// runtime takes the count from the render target cache.
 constexpr uint32_t kEdramTileCount = 2048;
-constexpr uint32_t kEdramSizeBytes = kEdramTileCount * kEdramTileHeightSamples *
-                                     kEdramTileWidthSamples * sizeof(uint32_t);
+constexpr uint32_t kEdramBaseTilesBits = 13;
+constexpr uint32_t kEdramTileCountMax = uint32_t(1) << kEdramBaseTilesBits;
 
 // RB_SURFACE_INFO::surface_pitch width.
 constexpr uint32_t kEdramPitchPixelsBits = 14;
-// The part of RB_COLOR_INFO::color_base and RB_DEPTH_INFO::depth_base width
-// usable on the Xenos, which has periodic 11-bit EDRAM tile addressing.
-constexpr uint32_t kEdramBaseTilesBits = 11;
 
 constexpr uint32_t GetSurfacePitchTiles(uint32_t pitch_pixels,
                                         MsaaSamples msaa_samples,

@@ -737,11 +737,12 @@ union alignas(uint32_t) RB_COLOR_INFO {
   uint32_t value;
   struct {
     // The original R400 structure has 12-bit color_base, however the Xenos has
-    // periodic 11-bit EDRAM tile addressing, so this field was split in Xenia
-    // for convenience and to avoid mistakes.
-    uint32_t color_base : 11;                         // +0 in tiles.
-    uint32_t color_base_bit_11 : 1;                   // +11
-    uint32_t _pad_12 : 4;                             // +12
+    // periodic 11-bit EDRAM tile addressing, so in the past we split this field
+    // for convenience and to avoid mistakes. Now we can emulate an extended
+    // 40MB, 8192 tile EDRAM mode that reads 13 bit and wraps to the tile count
+    // before use.
+    uint32_t color_base : 13;                         // +0 in tiles.
+    uint32_t _pad_13 : 3;                             // +13
     xenos::ColorRenderTargetFormat color_format : 4;  // +16
     int32_t color_exp_bias : 6;                       // +20
     uint32_t _pad_26 : 6;                             // +26
@@ -847,11 +848,12 @@ union alignas(uint32_t) RB_DEPTH_INFO {
   uint32_t value;
   struct {
     // The original R400 structure has 12-bit depth_base, however the Xenos has
-    // periodic 11-bit EDRAM tile addressing, so this field was split in Xenia
-    // for convenience and to avoid mistakes.
-    uint32_t depth_base : 11;                         // +0 in tiles.
-    uint32_t depth_base_bit_11 : 1;                   // +11
-    uint32_t _pad_12 : 4;                             // +12
+    // periodic 11-bit EDRAM tile addressing, so in the past we split this field
+    // for convenience and to avoid mistakes. Now we can emulate an extended
+    // 40MB, 8192 tile EDRAM mode that reads 13 bit and wraps to the tile count
+    // before use.
+    uint32_t depth_base : 13;                         // +0 in tiles.
+    uint32_t _pad_13 : 3;                             // +13
     xenos::DepthRenderTargetFormat depth_format : 1;  // +16
     uint32_t _pad_17 : 15;                            // +17
   };
