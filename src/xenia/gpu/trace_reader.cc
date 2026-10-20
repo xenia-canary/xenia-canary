@@ -235,6 +235,24 @@ void TraceReader::ParseTrace() {
   }
 }
 
+size_t TraceReader::GetDecodedLength(MemoryEncodingFormat encoding_format,
+                                     const void* src, size_t src_size) {
+  switch (encoding_format) {
+    case MemoryEncodingFormat::kNone:
+      return src_size;
+    case MemoryEncodingFormat::kSnappy: {
+      size_t decoded_length;
+      return snappy::GetUncompressedLength(reinterpret_cast<const char*>(src),
+                                           src_size, &decoded_length)
+                 ? decoded_length
+                 : 0;
+    }
+    default:
+      assert_unhandled_case(encoding_format);
+      return 0;
+  }
+}
+
 bool TraceReader::DecompressMemory(MemoryEncodingFormat encoding_format,
                                    const void* src, size_t src_size, void* dest,
                                    size_t dest_size) {

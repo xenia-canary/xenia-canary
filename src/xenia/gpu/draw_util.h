@@ -527,15 +527,17 @@ int32_t GetWindowOffsetTiles(const RegisterFile& XE_RESTRICT regs,
                              reg::RB_DEPTHCONTROL normalized_depth_control,
                              uint32_t normalized_color_mask,
                              bool host_render_targets_used,
+                             uint32_t edram_tile_count,
                              bool& kept_in_viewport_out);
 
 // The base with the GetWindowOffsetTiles offset added and wrapped.
 inline uint32_t AddWindowOffsetToEdramBase(uint32_t base_tiles,
                                            int32_t window_offset_tiles,
-                                           bool is_64bpp) {
+                                           bool is_64bpp,
+                                           uint32_t edram_tile_count) {
   return uint32_t(int32_t(base_tiles) +
                   window_offset_tiles * (is_64bpp ? 2 : 1)) &
-         (xenos::kEdramTileCount - 1);
+         (edram_tile_count - 1);
 }
 
 // Returns the color component write mask for the draw command taking into
@@ -603,10 +605,6 @@ union ResolveEdramInfo {
     uint32_t base_tiles : xenos::kEdramBaseTilesBits;
     uint32_t format : xenos::kRenderTargetFormatBits;
     uint32_t format_is_64bpp : 1;
-    // Whether to fill the half-pixel offset gap on the left and the top sides
-    // of the resolve region with the contents of the first surely covered
-    // column / row with resolution scaling.
-    uint32_t fill_half_pixel_offset : 1;
     // Some games appear overexposed unless full 8_8_8_8_GAMMA resolves decode
     // PWL gamma to linear before MSAA averaging / conversion, then write gamma
     // bytes again for gamma dests. Kept as a constant in the resolve shader.
@@ -633,6 +631,14 @@ union ResolveCoordinateInfo {
     // 1 to 7.
     uint32_t draw_resolution_scale_x : 3;
     uint32_t draw_resolution_scale_y : 3;
+
+    // Whether to fill the half-pixel offset gap on the left and the top sides
+    // of the resolve region with the contents of the first surely covered
+    // column / row with resolution scaling.
+    uint32_t fill_half_pixel_offset : 1;
+
+    // EDRAM addresses wrap at 1 << this.
+    uint32_t edram_tile_count_log2 : 4;
   };
   ResolveCoordinateInfo() : packed(0) {
     static_assert_size(*this, sizeof(packed));
@@ -866,7 +872,7 @@ struct ResolveInfo {
 // within that range.
 bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
                     TraceWriter& trace_writer, uint32_t draw_resolution_scale_x,
-                    uint32_t draw_resolution_scale_y,
+                    uint32_t draw_resolution_scale_y, uint32_t edram_tile_count,
                     bool fixed_rg16_truncated_to_minus_1_to_1,
                     bool fixed_rgba16_truncated_to_minus_1_to_1,
                     ResolveInfo& info_out);
