@@ -741,7 +741,7 @@ uint32_t TextureCache::GetIntegerScaleBits(
       }
       carries_width = false;
     } else if (!fetch.num_format && sign == xenos::TextureSign::kUnsigned) {
-      carries_width = point_sampled && width >= 4 && width <= 7;
+      carries_width = point_sampled && width >= 4 && width <= 6;
     }
 
     uint32_t component_scale = uint32_t(sign) << 4;

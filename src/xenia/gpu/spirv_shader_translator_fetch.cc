@@ -2663,7 +2663,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
                 normalized, spv::SelectionControlMaskNone, *builder_);
             spv::Id normalized_result = integer_scale_result;
             if (instr.AllowsPointSampling(use_computed_lod)) {
-              // Reconstruct point sampled 4 to 7 bit unsigned components
+              // Reconstruct point sampled 4 to 6 bit unsigned components
               // using the guest conversion (see GetIntegerScaleBits).
               spv::Id has_grid = builder_->createBinOp(
                   spv::OpINotEqual, type_bool_,

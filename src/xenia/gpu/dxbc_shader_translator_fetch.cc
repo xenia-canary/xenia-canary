@@ -2411,7 +2411,7 @@ void DxbcShaderTranslator::ProcessTextureFetchInstruction(
                dxbc::Src::LU(UINT32_C(1) << 24));
       a_.OpIf(true, dxbc::Src::R(signs_temp, dxbc::Src::kXXXX));
       if (instr.AllowsPointSampling(use_computed_lod)) {
-        // Reconstruct point sampled 4 to 7 bit unsigned components
+        // Reconstruct point sampled 4 to 6 bit unsigned components
         // using the guest conversion (see GetIntegerScaleBits).
         a_.OpAnd(dxbc::Dest::R(signs_temp, 0b0001), integer_scale_bits_packed,
                  dxbc::Src::LU((UINT32_C(1) << 24) - 1));
