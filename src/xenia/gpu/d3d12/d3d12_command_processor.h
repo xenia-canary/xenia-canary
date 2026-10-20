@@ -33,6 +33,7 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/dxbc_shader.h"
 #include "xenia/gpu/dxbc_shader_translator.h"
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
@@ -224,7 +225,13 @@ class D3D12CommandProcessor final : public CommandProcessor {
   // barriers under the old pattern first.
   void UpdateSamplePositions(xenos::MsaaSamples msaa_samples);
   bool xenos_sample_positions_used() const {
-    return xenos_sample_positions_used_;
+    // ROV always uses Xenos' MSAA sample positions.
+    // xenos_sample_positions targets host RTs with programmable position
+    // support.
+    return xenos_sample_positions_supported_ &&
+           (render_target_cache_->GetPath() ==
+                RenderTargetCache::Path::kPixelShaderInterlock ||
+            cvars::xenos_sample_positions);
   }
 
   // Returns the text to display in the GPU backend name in the window title.
@@ -618,7 +625,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   // SetSamplePositions and ResolveSubresourceRegion remove the device
   // without tier 1 support.
-  bool xenos_sample_positions_used_ = false;
+  bool xenos_sample_positions_supported_ = false;
 
   std::unique_ptr<D3D12SharedMemory> shared_memory_;
 
