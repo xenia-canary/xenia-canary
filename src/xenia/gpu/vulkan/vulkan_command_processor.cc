@@ -2990,6 +2990,41 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                  memexport_range_base_bytes + memexport_range.size_bytes);
   }
 
+  // Snapshot the export ranges before the draw so the readback after it only
+  // copies the bytes the shaders actually changed. Copying the whole range
+  // back would overwrite anything the CPU wrote there while the draw was in
+  // flight, since the ranges are usually much larger than what gets exported.
+  // The first half of the readback buffer holds the snapshot, the second half
+  // the result.
+  uint32_t memexport_total_size = 0;
+  bool memexport_snapshot_taken = false;
+  if (GetGPUSetting(GPUSetting::ReadbackMemexport)) {
+    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+      memexport_total_size += memexport_range.size_bytes;
+    }
+    if (memexport_total_size != 0) {
+      VkBuffer readback_buffer =
+          RequestReadbackBuffer(memexport_total_size * 2);
+      if (readback_buffer != VK_NULL_HANDLE) {
+        shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+        SubmitBarriers(true);
+        VkBuffer shared_memory_buffer = shared_memory_->buffer();
+        uint32_t readback_buffer_offset = 0;
+        for (const draw_util::MemExportRange& memexport_range :
+             memexport_ranges_) {
+          VkBufferCopy copy_region = {};
+          copy_region.srcOffset = memexport_range.base_address_dwords << 2;
+          copy_region.dstOffset = readback_buffer_offset;
+          copy_region.size = memexport_range.size_bytes;
+          deferred_command_buffer_.CmdVkCopyBuffer(
+              shared_memory_buffer, readback_buffer, 1, &copy_region);
+          readback_buffer_offset += memexport_range.size_bytes;
+        }
+        memexport_snapshot_taken = true;
+      }
+    }
+  }
+
   // Insert the shared memory barrier if needed.
   // TODO(Triang3l): Find some PM4 command that can be used for indication of
   // when memexports should be awaited instead of inserting the barrier in Use
@@ -3084,75 +3119,75 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   }
 
   // CPU readback for memexport data (if enabled).
-  if (GetGPUSetting(GPUSetting::ReadbackMemexport) &&
-      !memexport_ranges_.empty()) {
-    // Calculate total size of all memexport ranges.
-    uint32_t memexport_total_size = 0;
-    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
-      memexport_total_size += memexport_range.size_bytes;
-    }
+  if (memexport_snapshot_taken) {
+    VkBuffer readback_buffer = RequestReadbackBuffer(memexport_total_size * 2);
+    if (readback_buffer != VK_NULL_HANDLE) {
+      const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
+      const ui::vulkan::VulkanDevice::Functions& dfn =
+          vulkan_device->functions();
+      const VkDevice device = vulkan_device->device();
 
-    if (memexport_total_size > 0) {
-      VkBuffer readback_buffer = RequestReadbackBuffer(memexport_total_size);
-      if (readback_buffer != VK_NULL_HANDLE) {
-        const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
-        const ui::vulkan::VulkanDevice::Functions& dfn =
-            vulkan_device->functions();
-        const VkDevice device = vulkan_device->device();
+      VkBuffer shared_memory_buffer = shared_memory_->buffer();
 
-        VkBuffer shared_memory_buffer = shared_memory_->buffer();
+      // Ensure shared memory is ready for transfer, outside the render pass.
+      shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+      SubmitBarriers(true);
 
-        // Ensure shared memory is ready for transfer.
-        shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+      // Copy each memexport range to the second half of the readback buffer.
+      uint32_t readback_buffer_offset = memexport_total_size;
+      for (const draw_util::MemExportRange& memexport_range :
+           memexport_ranges_) {
+        VkBufferCopy copy_region = {};
+        copy_region.srcOffset = memexport_range.base_address_dwords << 2;
+        copy_region.dstOffset = readback_buffer_offset;
+        copy_region.size = memexport_range.size_bytes;
 
-        // Copy each memexport range to the readback buffer.
-        uint32_t readback_buffer_offset = 0;
-        for (const draw_util::MemExportRange& memexport_range :
-             memexport_ranges_) {
-          VkBufferCopy copy_region = {};
-          copy_region.srcOffset = memexport_range.base_address_dwords << 2;
-          copy_region.dstOffset = readback_buffer_offset;
-          copy_region.size = memexport_range.size_bytes;
+        deferred_command_buffer_.CmdVkCopyBuffer(
+            shared_memory_buffer, readback_buffer, 1, &copy_region);
 
-          deferred_command_buffer_.CmdVkCopyBuffer(
-              shared_memory_buffer, readback_buffer, 1, &copy_region);
+        readback_buffer_offset += memexport_range.size_bytes;
+      }
 
-          readback_buffer_offset += memexport_range.size_bytes;
-        }
-
-        // Wait for GPU to finish (SYNCHRONIZATION STALL)
-        if (AwaitAllQueueOperationsCompletion()) {
-          // Map staging buffer and copy to guest memory.
-          void* mapped_data;
-          if (dfn.vkMapMemory(device, memexport_readback_buffer_memory_, 0,
-                              memexport_total_size, 0,
-                              &mapped_data) == VK_SUCCESS) {
-            if (mapped_data) {
-              const uint8_t* readback_bytes =
-                  static_cast<const uint8_t*>(mapped_data);
-              for (const draw_util::MemExportRange& memexport_range :
-                   memexport_ranges_) {
-                std::memcpy(memory_->TranslatePhysical(
-                                memexport_range.base_address_dwords << 2),
-                            readback_bytes, memexport_range.size_bytes);
-                readback_bytes += memexport_range.size_bytes;
+      // Wait for GPU to finish (SYNCHRONIZATION STALL)
+      if (AwaitAllQueueOperationsCompletion()) {
+        // Map staging buffer and copy to guest memory.
+        void* mapped_data;
+        if (dfn.vkMapMemory(device, memexport_readback_buffer_memory_, 0,
+                            VkDeviceSize(memexport_total_size) * 2, 0,
+                            &mapped_data) == VK_SUCCESS) {
+          if (mapped_data) {
+            // Compared per byte as exports of 8 and 16 bit formats give
+            // ranges that aren't a multiple of 4 bytes.
+            const uint8_t* before_bytes =
+                static_cast<const uint8_t*>(mapped_data);
+            const uint8_t* after_bytes = before_bytes + memexport_total_size;
+            for (const draw_util::MemExportRange& memexport_range :
+                 memexport_ranges_) {
+              uint8_t* guest_bytes = memory_->TranslatePhysical(
+                  memexport_range.base_address_dwords << 2);
+              for (uint32_t i = 0; i < memexport_range.size_bytes; ++i) {
+                if (after_bytes[i] != before_bytes[i]) {
+                  guest_bytes[i] = after_bytes[i];
+                }
               }
-            } else {
-              XELOGE(
-                  "VulkanCommandProcessor: Failed to map readback buffer "
-                  "(mapped_data is null)");
+              before_bytes += memexport_range.size_bytes;
+              after_bytes += memexport_range.size_bytes;
             }
-            dfn.vkUnmapMemory(device, memexport_readback_buffer_memory_);
           } else {
             XELOGE(
-                "VulkanCommandProcessor: Failed to map readback buffer memory "
-                "for memexport");
+                "VulkanCommandProcessor: Failed to map readback buffer "
+                "(mapped_data is null)");
           }
+          dfn.vkUnmapMemory(device, memexport_readback_buffer_memory_);
         } else {
           XELOGE(
-              "VulkanCommandProcessor: Failed to complete queue operations for "
-              "memexport readback");
+              "VulkanCommandProcessor: Failed to map readback buffer memory "
+              "for memexport");
         }
+      } else {
+        XELOGE(
+            "VulkanCommandProcessor: Failed to complete queue operations for "
+            "memexport readback");
       }
     }
   }
