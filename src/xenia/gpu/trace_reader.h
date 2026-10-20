@@ -105,6 +105,8 @@ class TraceReader {
 
  protected:
   void ParseTrace();
+  size_t GetDecodedLength(MemoryEncodingFormat encoding_format, const void* src,
+                          size_t src_size);
   bool DecompressMemory(MemoryEncodingFormat encoding_format, const void* src,
                         size_t src_size, void* dest, size_t dest_size);
 

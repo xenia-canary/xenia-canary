@@ -175,7 +175,8 @@ class CommandProcessor {
       const reg::DC_LUT_30_COLOR* new_gamma_ramp_256_entry_table,
       const reg::DC_LUT_PWL_DATA* new_gamma_ramp_pwl_rgb,
       uint32_t new_gamma_ramp_rw_component);
-  virtual void RestoreEdramSnapshot(const void* snapshot) = 0;
+  virtual void RestoreEdramSnapshot(const void* snapshot,
+                                    size_t size_bytes) = 0;
 
   void InitializeRingBuffer(uint32_t ptr, uint32_t size_log2);
   void EnableReadPointerWriteBack(uint32_t ptr, uint32_t block_size_log2);

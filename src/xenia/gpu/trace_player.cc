@@ -188,12 +188,15 @@ void TracePlayer::PlayTraceOnThread(const uint8_t* trace_data,
       case TraceCommandType::kEdramSnapshot: {
         auto cmd = reinterpret_cast<const EdramSnapshotCommand*>(trace_ptr);
         trace_ptr += sizeof(*cmd);
+        size_t edram_snapshot_size = GetDecodedLength(
+            cmd->encoding_format, trace_ptr, cmd->encoded_length);
         std::unique_ptr<uint8_t[]> edram_snapshot(
-            new uint8_t[xenos::kEdramSizeBytes]);
+            new uint8_t[edram_snapshot_size]);
         DecompressMemory(cmd->encoding_format, trace_ptr, cmd->encoded_length,
-                         edram_snapshot.get(), xenos::kEdramSizeBytes);
+                         edram_snapshot.get(), edram_snapshot_size);
         trace_ptr += cmd->encoded_length;
-        command_processor->RestoreEdramSnapshot(edram_snapshot.get());
+        command_processor->RestoreEdramSnapshot(edram_snapshot.get(),
+                                                edram_snapshot_size);
         break;
       }
       case TraceCommandType::kEvent: {

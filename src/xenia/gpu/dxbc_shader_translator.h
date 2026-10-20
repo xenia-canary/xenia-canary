@@ -53,6 +53,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
                        bool msaa_2x_supported = true,
                        uint32_t draw_resolution_scale_x = 1,
                        uint32_t draw_resolution_scale_y = 1,
+                       uint32_t edram_tile_count = xenos::kEdramTileCount,
                        bool force_emit_source_map = false);
   ~DxbcShaderTranslator() override;
 
@@ -1100,6 +1101,8 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // CompleteTranslation.
   bool is_depth_only_pixel_shader_ = false;
   bool is_viz_survey_pixel_shader_ = false;
+
+  uint32_t edram_tile_count_;
 
   // Data types used in constants buffers. Listed in dependency order.
   enum class ShaderRdefTypeIndex {

@@ -46,7 +46,7 @@ entry_inputs_end_code_begin_compute_xe
   uint edram_address =
       XeEdramOffsetBytes((uint2_xe(pixel_index) << 1u) |
                              uint2_xe(0u, in_global_thread_id_xe.y & 1u),
-                         0u, false, XeHostDepthStoreRTPitchTiles(rt_constant),
+                         0u, 0u, XeHostDepthStoreRTPitchTiles(rt_constant),
                          kXenosMsaaSamples_1X, false, 0u, 0u, resolution_scale);
   // Render target horizontal sample in bit 0, vertical sample in bit 1.
   int source_sample_left = int((in_global_thread_id_xe.y & 1u) << 1u);

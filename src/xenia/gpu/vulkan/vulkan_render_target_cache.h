@@ -476,14 +476,14 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
     // Same as RenderTargetKey::pitch_tiles_at_32bpp.
     uint32_t pitch_tiles_at_32bpp : 8;  // 8
-    // [0, 2047].
-    uint32_t depth_base_tiles : xenos::kEdramBaseTilesBits;    // 19
-    uint32_t color_0_base_tiles : xenos::kEdramBaseTilesBits;  // 30
+    // Below the EDRAM tile count.
+    uint32_t depth_base_tiles : xenos::kEdramBaseTilesBits;  // 21
 
-    uint32_t color_1_base_tiles : xenos::kEdramBaseTilesBits;  // 43
-    uint32_t color_2_base_tiles : xenos::kEdramBaseTilesBits;  // 54
+    uint32_t color_0_base_tiles : xenos::kEdramBaseTilesBits;  // 45
+    uint32_t color_1_base_tiles : xenos::kEdramBaseTilesBits;  // 58
 
-    uint32_t color_3_base_tiles : xenos::kEdramBaseTilesBits;  // 75
+    uint32_t color_2_base_tiles : xenos::kEdramBaseTilesBits;  // 77
+    uint32_t color_3_base_tiles : xenos::kEdramBaseTilesBits;  // 90
 
     // Including all the padding, for a stable hash.
     FramebufferKey() { Reset(); }
@@ -686,8 +686,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     uint32_t constant;
     struct {
       // All in tiles.
-      uint32_t dest_pitch : xenos::kEdramPitchTilesBits;
-      uint32_t source_pitch : xenos::kEdramPitchTilesBits;
+      uint32_t dest_pitch : RenderTargetKey::kPitchTilesBits;
+      uint32_t source_pitch : RenderTargetKey::kPitchTilesBits;
       // Destination base in tiles minus source base in tiles (not vice versa
       // because this is a transform of the coordinate system, not addresses
       // themselves), wrapped, the shader wraps the sum anyway.

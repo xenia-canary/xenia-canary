@@ -55,7 +55,7 @@ class TraceWriter {
   void WriteMemoryReadCachedNop(uint32_t base_ptr, size_t length);
   void WriteMemoryWrite(uint32_t base_ptr, size_t length,
                         const void* host_ptr = nullptr);
-  void WriteEdramSnapshot(const void* snapshot);
+  void WriteEdramSnapshot(const void* snapshot, size_t size_bytes);
   void WriteEvent(EventCommand::Type event_type);
   void WriteRegisters(uint32_t first_register, const uint32_t* register_values,
                       uint32_t register_count, bool execute_callbacks_on_play);
@@ -104,7 +104,8 @@ class TraceWriter {
                                                  size_t length) {}
   static constexpr void WriteMemoryWrite(uint32_t base_ptr, size_t length,
                                          const void* host_ptr = nullptr) {}
-  static constexpr void WriteEdramSnapshot(const void* snapshot) {}
+  static constexpr void WriteEdramSnapshot(const void* snapshot,
+                                           size_t size_bytes) {}
   static constexpr void WriteEvent(EventCommand::Type event_type) {}
   static constexpr void WriteRegisters(uint32_t first_register,
                                        const uint32_t* register_values,
