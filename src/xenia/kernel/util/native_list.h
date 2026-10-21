@@ -40,6 +40,7 @@ class NativeList {
 
   uint32_t head() const { return head_; }
   void set_head(uint32_t head) { head_ = head; }
+  void Reset() { head_ = kInvalidPointer; }
 
   void set_memory(Memory* mem) { memory_ = mem; }
 
