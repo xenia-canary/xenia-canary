@@ -284,8 +284,6 @@ void DxbcShaderTranslator::ExportToMemory(uint8_t export_eM) {
     };
 
     a_.OpCase(dxbc::Src::LU(uint32_t(xenos::ColorFormat::k_8)));
-    // TODO(Triang3l): Investigate how input should be treated for k_8_A, k_8_B,
-    // k_8_8_8_8_A.
     a_.OpCase(dxbc::Src::LU(uint32_t(xenos::ColorFormat::k_8_A)));
     a_.OpCase(dxbc::Src::LU(uint32_t(xenos::ColorFormat::k_8_B)));
     {

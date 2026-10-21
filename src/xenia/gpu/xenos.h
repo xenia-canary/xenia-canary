@@ -494,18 +494,11 @@ enum class TextureFormat : uint32_t {
   k_6_5_5 = 5,
   k_8_8_8_8 = 6,
   k_2_10_10_10 = 7,
-  // Possibly similar to k_8, but may be storing alpha instead of red when
-  // resolving/memexporting, though not exactly known. From the point of view of
-  // sampling, it should be treated the same as k_8 (given that textures have
-  // the last - and single-component textures have the only - component
-  // replicated into all the remaining ones before the swizzle).
+  // Aliases of k_8.
   // Used as:
   // - Texture in 4B4E083C - text, starting from the "Loading..." and the "This
   //   game saves data automatically" messages. The swizzle in the fetch
-  //   constant is 111W (suggesting that internally the only component may be
-  //   the alpha one, not red).
-  // TODO(Triang3l): Investigate how k_8_A and k_8_B work in resolves and
-  // memexports, whether they store alpha/blue of the input or red.
+  //   constant is 111W.
   k_8_A = 8,
   k_8_B = 9,
   k_8_8 = 10,
@@ -519,7 +512,7 @@ enum class TextureFormat : uint32_t {
   // Used for videos in 54540829.
   k_Y1_Cr_Y0_Cb_REP = 12,
   k_16_16_EDRAM = 13,
-  // Likely same as k_8_8_8_8.
+  // Alias of k_8_8_8_8.
   // Used as:
   // - Memexport destination in 4D5308BC - multiple small draws when looking
   //   back at the door behind the player in the first room of gameplay.
@@ -620,7 +613,6 @@ constexpr bool IsColorResolveFormatBitwiseEquivalent(
     // title that keeps the encoding to fetch it back with kGamma re-aliases the
     // surface as k_8_8_8_8.
     case ColorRenderTargetFormat::k_8_8_8_8_GAMMA:
-      // TODO(Triang3l): Investigate k_8_8_8_8_A.
       return color_format == ColorFormat::k_8_8_8_8 ||
              color_format == ColorFormat::k_8_8_8_8_A ||
              color_format == ColorFormat::k_8_8_8_8_AS_16_16_16_16;

@@ -938,7 +938,6 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
         out_param_xe(float4_xe, pixels_0123),
         out_param_xe(float4_xe, pixels_4567)) {
       // D3D maps A8 to k_8 with LOW_BLUE.
-      // k_8_A and k_8_B are still unknown, so keep the red/blue swap behavior.
       bool source_alpha =
           resolve_info.dest_swap && resolve_info.dest_format == kXenosFormat_8;
       bool source_blue = resolve_info.dest_swap && !source_alpha;
