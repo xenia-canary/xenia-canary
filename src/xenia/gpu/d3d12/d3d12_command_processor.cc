@@ -4581,19 +4581,20 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     reg::RB_COLOR_INFO color_info = color_infos[i];
     // Exponent bias is in bits 20:25 of RB_COLOR_INFO.
     int32_t color_exp_bias = color_info.color_exp_bias;
+    auto color_exp_bias_scale = xe::memory::Reinterpret<float>(
+        int32_t(0x3F800000 + (color_exp_bias << 23)));
     if (color_info.color_format == xenos::ColorRenderTargetFormat::k_16_16 ||
         color_info.color_format ==
             xenos::ColorRenderTargetFormat::k_16_16_16_16) {
       if (render_target_cache_->GetPath() ==
               RenderTargetCache::Path::kHostRenderTargets &&
           !render_target_cache_->IsFixed16TruncatedToMinus1To1()) {
-        // Remap from -32...32 to -1...1 by dividing the output values by 32,
-        // losing blending correctness, but getting the full range.
-        color_exp_bias -= 5;
+        // Remap to -1...1 by scaling the output values by 1024/32767, losing
+        // blending correctness, but getting the full range apart from -32,
+        // which SNORM folds into -32767/1024.
+        color_exp_bias_scale *= 1024.0f / 32767.0f;
       }
     }
-    auto color_exp_bias_scale = xe::memory::Reinterpret<float>(
-        int32_t(0x3F800000 + (color_exp_bias << 23)));
 
     update_dirty_floatmask(system_constants_.color_exp_bias[i],
                            color_exp_bias_scale);

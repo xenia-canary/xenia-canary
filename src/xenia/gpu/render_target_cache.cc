@@ -267,9 +267,9 @@ void RenderTargetCache::GetPSIColorFormatInfo(
       // k_16_16 (the render target is fixed-point). There's one deviation from
       // how Direct3D 11.3 functional specification defines SNorm conversion
       // (NaN should be 0, not the lowest negative number), and that needs to be
-      // handled separately.
+      // handled separately. -32 is 0x8000 on real hardware.
       clamp_rgb_low = clamp_alpha_low = -32.0f;
-      clamp_rgb_high = clamp_alpha_high = 32.0f;
+      clamp_rgb_high = clamp_alpha_high = 32767.0f / 1024.0f;
       if (!(write_mask & 0b0001)) {
         keep_mask_low |= 0xFFFFu;
       }
