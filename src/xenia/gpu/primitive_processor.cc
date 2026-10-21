@@ -313,6 +313,8 @@ bool PrimitiveProcessor::Process(ProcessingResult& result_out) {
             // - 415607E1 - nets above barrels in the beginning of the first
             //   mission (turn right after the end of the intro) -
             //   kTriangleList.
+            // - 4D53085B - faces of the characters in the campaign cinematics -
+            //   indexed kTriangleStrip.
             host_vertex_shader_type =
                 Shader::HostVertexShaderType::kTriangleDomainCPIndexed;
             break;
@@ -752,6 +754,11 @@ bool PrimitiveProcessor::Process(ProcessingResult& result_out) {
         switch (guest_primitive_type) {
           case xenos::PrimitiveType::kTriangleFan:
             host_index_count_getter = GetTriangleFanListIndexCount;
+            break;
+          case xenos::PrimitiveType::kTriangleStrip:
+            // Only reached via the tessellation path above, which forces
+            // host_primitive_type to kTriangleList.
+            host_index_count_getter = GetTriangleStripListIndexCount;
             break;
           case xenos::PrimitiveType::kLineLoop:
             host_index_count_getter = GetLineLoopStripIndexCount;
@@ -1364,6 +1371,7 @@ PrimitiveProcessor::ReplaceResetIndex32To24<xenos::Endian::k16in32>(
   XE_GPU_PRIMITIVE_PROCESSOR_INSTANTIATE_CONVERSION_NO_PASSTHROUGH(        \
       ConverterName)
 XE_GPU_PRIMITIVE_PROCESSOR_INSTANTIATE_CONVERSION(TriangleFanToList)
+XE_GPU_PRIMITIVE_PROCESSOR_INSTANTIATE_CONVERSION(TriangleStripToList)
 XE_GPU_PRIMITIVE_PROCESSOR_INSTANTIATE_CONVERSION_NO_PASSTHROUGH(
     LineLoopToStrip)
 // TODO(Triang3l): SIMD quad conversion maybe - 2 vectors to 3 vectors (though
