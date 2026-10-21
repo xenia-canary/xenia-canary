@@ -1443,9 +1443,9 @@ void DxbcShaderTranslator::ROV_UnpackColor(
                            0b01010000 + packed_temp_components * 0b01010101));
     // Convert from fixed-point.
     a_.OpIToF(color_components_dest, dxbc::Src::R(color_temp));
-    // Normalize.
+    // 10 fractional bits.
     a_.OpMul(color_components_dest, dxbc::Src::R(color_temp),
-             dxbc::Src::LF(32.0f / 32767.0f));
+             dxbc::Src::LF(1.0f / 1024.0f));
     a_.OpBreak();
   }
 
@@ -1605,14 +1605,10 @@ void DxbcShaderTranslator::ROV_PackPreClampedColor(
         i ? xenos::ColorRenderTargetFormat::k_16_16_16_16
           : xenos::ColorRenderTargetFormat::k_16_16)));
     for (uint32_t j = 0; j < (uint32_t(2) << i); ++j) {
-      // Denormalize and convert to fixed-point, making 0.5 with the proper sign
-      // in temp2.
-      a_.OpGE(temp2_dest, dxbc::Src::R(color_temp).Select(j),
-              dxbc::Src::LF(0.0f));
-      a_.OpMovC(temp2_dest, temp2_src, dxbc::Src::LF(0.5f),
-                dxbc::Src::LF(-0.5f));
+      // 10 fractional bits, rounded up half (-0.5 packs to 0, -32 to 0x8000).
       a_.OpMAd(temp1_dest, dxbc::Src::R(color_temp).Select(j),
-               dxbc::Src::LF(32767.0f / 32.0f), temp2_src);
+               dxbc::Src::LF(1024.0f), dxbc::Src::LF(0.5f));
+      a_.OpRoundNI(temp1_dest, temp1_src);
       dxbc::Dest packed_dest_half(
           dxbc::Dest::R(packed_temp, 1 << (packed_temp_components + (j >> 1))));
       // Convert to fixed-point.
