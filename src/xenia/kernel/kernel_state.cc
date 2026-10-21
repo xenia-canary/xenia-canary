@@ -960,11 +960,13 @@ void KernelState::TerminateTitle() {
   */
 
   // Kill all guest threads.
+  std::vector<object_ref<XThread>> terminated_threads;
   for (auto it = threads_by_id_.begin(); it != threads_by_id_.end();) {
     if (!XThread::IsInThread(it->second) && it->second->is_guest_thread()) {
       auto thread = it->second;
 
       if (thread->is_running()) {
+        terminated_threads.push_back(retain_object(thread));
         // The title state is discarded, so the thread isn't stepped to a guest
         // safe point (that resumes it and waits for a breakpoint, which never
         // happens for threads suspended by the guest or blocked in a host
@@ -983,21 +985,25 @@ void KernelState::TerminateTitle() {
     }
   }
 
+  global_lock.unlock();
+
+  // On POSIX terminated threads unwind from the safe point they were suspended
+  // at rather than being killed, they may need the global lock on the way.
+  WaitForTerminatedThreads(terminated_threads);
+
   // XMA contexts reference title buffers, release them once nothing can use
   // them anymore.
   if (auto audio_system = emulator_->audio_system()) {
-    global_lock.unlock();
     audio_system->xma_decoder()->ReleaseAllContexts();
-    global_lock.lock();
   }
 
   // The GPU may be stuck executing a wait for memory the terminated threads
   // would have written, drop the commands the title left.
   if (auto graphics_system = emulator_->graphics_system()) {
-    global_lock.unlock();
     graphics_system->command_processor()->ResetRingBuffer();
-    global_lock.lock();
   }
+
+  global_lock.lock();
 
   // Drop deferred work and DPCs queued by the title.
   dispatch_queue_.clear();
@@ -1048,7 +1054,8 @@ global_unique_lock_type KernelState::SuspendGuestThreadsAndLock() {
   // also be at a safe point. A thread found at one stays suspended, the others
   // run on and are retried, as guest threads leave host code quickly.
   // A paused emulator suspended the threads anywhere and they must not run,
-  // they are terminated where they are.
+  // they are terminated where they are (on POSIX the ones not at a safe point
+  // stay suspended instead).
   const bool paused = emulator_->is_paused();
   std::vector<object_ref<XThread>> parked_threads;
   auto is_parked = [&parked_threads](const XThread* thread) {
@@ -1110,6 +1117,32 @@ global_unique_lock_type KernelState::SuspendGuestThreadsAndLock() {
       "KernelState::TerminateTitle: Guest threads never all reached a safe "
       "point with the global lock uncontended, terminating them anyway");
   return global_critical_region_.Acquire();
+}
+
+void KernelState::WaitForTerminatedThreads(
+    const std::vector<object_ref<XThread>>& threads) {
+  // Shared by all threads, so threads that can't exit don't add up.
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  for (const auto& thread : threads) {
+    while (xe::threading::Wait(thread->thread(), false,
+                               std::chrono::milliseconds(1)) ==
+           xe::threading::WaitResult::kTimeout) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        // Suspended where it can't exit, it stays suspended and never runs
+        // title code again. Its host thread still uses the object, so never
+        // destroy it.
+        XELOGE(
+            "KernelState::TerminateTitle: Thread {:08X} (id {}) didn't exit, "
+            "leaking it suspended",
+            thread->handle(), thread->thread_id());
+        thread->Retain();
+        break;
+      }
+      // Wake it again, in case the wait it is in couldn't be woken before.
+      thread->thread()->Terminate(0);
+    }
+  }
 }
 
 void KernelState::WaitForTerminatingThread() {
