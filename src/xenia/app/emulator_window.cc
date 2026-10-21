@@ -286,6 +286,8 @@ void EmulatorWindow::OnEmulatorInitialized() {
 
   emulator_initialized_ = true;
   window_->SetMainMenuEnabled(true);
+  UpdateTitle();
+
   // When the user can see that the emulator isn't initializing anymore (the
   // menu isn't disabled), enter fullscreen if requested.
   if (cvars::fullscreen) {
@@ -792,6 +794,9 @@ bool EmulatorWindow::Initialize() {
         MenuItem::Create(MenuItem::Type::kString, "&Open...", "Ctrl+O",
                          std::bind(&EmulatorWindow::FileOpen, this)));
     file_menu->AddChild(std::move(recent_menu));
+    file_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "&Stop Game",
+                         std::bind(&EmulatorWindow::FileClose, this)));
     file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     zar_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "Create",
@@ -800,13 +805,6 @@ bool EmulatorWindow::Initialize() {
         MenuItem::Create(MenuItem::Type::kString, "Extract",
                          std::bind(&EmulatorWindow::ExtractZarchive, this)));
     file_menu->AddChild(std::move(zar_menu));
-#ifdef DEBUG
-    file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-    file_menu->AddChild(
-        MenuItem::Create(MenuItem::Type::kString, "Close",
-                         std::bind(&EmulatorWindow::FileClose, this)));
-#endif  // #ifdef DEBUG
-    file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     file_menu->AddChild(MenuItem::Create(
         MenuItem::Type::kString, "Show content directory...",
         std::bind(&EmulatorWindow::ShowContentDirectory, this)));
@@ -1321,7 +1319,28 @@ void EmulatorWindow::FileOpen() {
   }
 }
 
-void EmulatorWindow::FileClose() { emulator_->TerminateTitle(); }
+void EmulatorWindow::FileClose() {
+  emulator_->TerminateTitle();
+  ClearLoaderData();
+  UpdateTitle();
+}
+
+void EmulatorWindow::ExitToDashboard() {
+  FileClose();
+
+  new xe::ui::HostNotificationWindow(imgui_drawer(), "Title Exited",
+                                     "The title exited to the dashboard.", 0);
+}
+
+void EmulatorWindow::ClearLoaderData() {
+  // A swap's launch path and data must not apply to the next title opened.
+  auto xam = emulator_->kernel_state()->GetKernelModule<kernel::xam::XamModule>(
+      "xam.xex");
+
+  if (xam) {
+    xam->loader_data() = {};
+  }
+}
 
 void EmulatorWindow::InstallContent() {
   std::vector<std::filesystem::path> paths;
@@ -2399,10 +2418,22 @@ xe::X_STATUS EmulatorWindow::LaunchNextTitle() {
 
   const std::filesystem::path host_path = xam->loader_data().host_path;
 
-  // The title already terminated itself, release what it left behind.
   emulator_->TerminateTitle();
 
-  return RunTitle(host_path);
+  const xe::X_STATUS result = RunTitle(host_path);
+
+  if (result != X_STATUS_SUCCESS) {
+    ClearLoaderData();
+    UpdateTitle();
+    XELOGE("Failed to launch {} requested by the title: {:08X}",
+           xe::path_to_utf8(host_path), result);
+    new xe::ui::HostNotificationWindow(
+        imgui_drawer(), "Launch Failed",
+        "The title requested another executable that could not be launched.",
+        0);
+  }
+
+  return result;
 }
 
 void EmulatorWindow::RunPreviouslyPlayedTitle() {
