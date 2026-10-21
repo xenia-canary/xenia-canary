@@ -80,6 +80,21 @@ KernelState::KernelState(Emulator* emulator)
   xenia_assert(fixed_alloc_worked);
 }
 
+KernelState::KernelState(Memory* memory, cpu::Processor* processor,
+                         vfs::VirtualFileSystem* file_system)
+    : emulator_(nullptr),
+      memory_(memory),
+      processor_(processor),
+      file_system_(file_system),
+      dispatch_thread_running_(false),
+      dpc_list_(memory),
+      kernel_trampoline_group_(processor->backend()) {
+  assert_null(shared_kernel_state_);
+  shared_kernel_state_ = this;
+  InitializeKernelGuestGlobals();
+  kernel_version_ = KernelVersion(cvars::kernel_build_version);
+}
+
 KernelState::~KernelState() {
   SetExecutableModule(nullptr);
 
@@ -1344,8 +1359,10 @@ bool KernelState::Restore(ByteStream* stream) {
     return false;
   }
 
-  // Restore the object table
-  object_table_.Restore(stream);
+  // Restore the object table.
+  if (!object_table_.Restore(stream)) {
+    return false;
+  }
 
   // TLS bitmap is now stored per-process in X_KPROCESS structures (in guest
   // memory) Skip reading old global TLS bitmap if present in old save files

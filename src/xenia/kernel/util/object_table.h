@@ -36,10 +36,24 @@ class ObjectTable {
 
   X_STATUS AddHandle(XObject* object, X_HANDLE* out_handle);
   X_STATUS DuplicateHandle(X_HANDLE orig, X_HANDLE* out_handle);
-  X_STATUS RetainHandle(X_HANDLE handle);
+  // Optionally capture the slot generation for a later checked release.
+  X_STATUS RetainHandle(X_HANDLE handle, uint64_t* out_generation = nullptr);
   X_STATUS ReleaseHandle(X_HANDLE handle);
   X_STATUS ReleaseHandleInLock(X_HANDLE handle);
   X_STATUS RemoveHandle(X_HANDLE handle);
+
+  // Track guest opens separately from pointer references held on the slot.
+  // The optional generation rejects a slot recycled during a close callback.
+  X_STATUS OpenGuestHandle(X_HANDLE handle, const XObject* object,
+                           bool track_guest_opens = true,
+                           uint64_t expected_generation = 0);
+  // Claim an open before running guest code; report the prior total. Untracked
+  // and legacy slots report -1 and must be released without a guest callback.
+  X_STATUS ClaimGuestClose(X_HANDLE handle, const XObject* object,
+                           int32_t* out_handle_count, uint64_t* out_generation);
+  // The generation prevents a close callback from releasing a recycled slot.
+  X_STATUS ReleaseHandleOf(X_HANDLE handle, const XObject* object,
+                           uint64_t generation);
 
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
@@ -84,13 +98,23 @@ class ObjectTable {
   void PurgeAllObjects();  // Purges the object table of all guest objects
 
  private:
+  friend class xe::kernel::XObject;
+
+  static constexpr int32_t kUntrackedGuestOpens = -1;
+  static constexpr int32_t kUnknownGuestOpens = -2;
   struct ObjectTableEntry {
     int handle_ref_count = 0;
+    // Unknown legacy counts stay unknown across opens, duplicates and saves.
+    int32_t guest_open_count = kUntrackedGuestOpens;
+    uint64_t generation = 0;
     XObject* object = nullptr;
   };
   ObjectTableEntry* LookupTableInLock(X_HANDLE handle);
   ObjectTableEntry* LookupTable(X_HANDLE handle);
   XObject* LookupObject(X_HANDLE handle, bool already_locked);
+  // For native-pointer resolution only, with the global lock held. Closed
+  // handles may still own pointer references to the object at this address.
+  XObject* LookupNativeObject(X_HANDLE handle, uint32_t guest_object);
   void GetObjectsByType(XObject::Type type,
                         std::vector<object_ref<XObject>>* results);
 
@@ -109,6 +133,7 @@ class ObjectTable {
   ObjectTableEntry* host_table_ = nullptr;
   uint32_t last_free_entry_ = 0;
   uint32_t last_free_host_entry_ = 0;
+  uint64_t next_handle_generation_ = 0;
   std::unordered_map<string_key_case, X_HANDLE> name_table_;
 };
 
