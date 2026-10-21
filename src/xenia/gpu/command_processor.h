@@ -180,6 +180,11 @@ class CommandProcessor {
 
   void InitializeRingBuffer(uint32_t ptr, uint32_t size_log2);
   void EnableReadPointerWriteBack(uint32_t ptr, uint32_t block_size_log2);
+  void DisableReadPointerWriteBack() { read_ptr_writeback_ptr_ = 0; }
+  // Stops executing the ring buffer of a terminated title, which may be stuck
+  // waiting for memory its threads would have written, and resets it for the
+  // next title.
+  void ResetRingBuffer();
 
   void UpdateWritePointer(uint32_t value);
 
@@ -602,6 +607,9 @@ class CommandProcessor {
   uint32_t trace_swap_count_ = 0;
 
   std::atomic<bool> worker_running_;
+  // Set by ResetRingBuffer until the worker thread has dropped the commands of
+  // the terminated title.
+  std::atomic<bool> abort_ring_buffer_ = false;
   kernel::object_ref<kernel::XHostThread> worker_thread_;
 
   std::queue<std::function<void()>> pending_fns_;
