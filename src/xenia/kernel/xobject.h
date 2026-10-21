@@ -30,6 +30,9 @@ namespace kernel {
 constexpr fourcc_t kXObjSignature = make_fourcc('X', 'E', 'N', '\0');
 
 class KernelState;
+namespace util {
+class ObjectTable;
+}  // namespace util
 
 template <typename T>
 class object_ref;
@@ -272,6 +275,10 @@ class XObject {
   bool host_object_ = false;
 
  private:
+  friend class util::ObjectTable;
+  // Called under the object-table lock after a slot loses its last reference.
+  void UpdateNativeHandle(X_HANDLE removed_handle);
+
   std::atomic<int32_t> pointer_ref_count_;
 
   Type type_;
@@ -282,7 +289,7 @@ class XObject {
   // if we allocated it!
   uint32_t guest_object_ptr_ = 0;
   bool allocated_guest_object_ = false;
-
+  // Guest type recorded by ObOpenObjectByPointer.
   std::atomic<uint32_t> guest_object_type_ptr_{0};
 };
 
