@@ -462,6 +462,19 @@ const BaseHeap* Memory::LookupHeap(uint32_t address) const {
   }
 }
 #endif
+
+xe::memory::PageAccess Memory::QueryRangeAccess(uint32_t address,
+                                                uint32_t length) {
+  if (!length || length - 1 > UINT32_MAX - address) {
+    return xe::memory::PageAccess::kNoAccess;
+  }
+  auto* heap = LookupHeap(address);
+  if (!heap) {
+    return xe::memory::PageAccess::kNoAccess;
+  }
+  return heap->QueryRangeAccess(address, address + length - 1);
+}
+
 BaseHeap* Memory::LookupHeapByType(bool physical, uint32_t page_size) {
   if (physical) {
     if (page_size <= 4096) {
@@ -1736,6 +1749,9 @@ xe::memory::PageAccess BaseHeap::QueryRangeAccess(uint32_t low_address,
   {
     auto global_lock = global_critical_region_.Acquire();
     for (uint32_t i = low_page_number; i <= high_page_number; ++i) {
+      if (!(page_table_[i].state & kMemoryAllocationCommit)) {
+        return xe::memory::PageAccess::kNoAccess;
+      }
       uint32_t page_protect = page_table_[i].current_protect;
       if (!(page_protect & kMemoryProtectRead)) {
         all_readable = false;
