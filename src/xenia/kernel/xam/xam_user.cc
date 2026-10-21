@@ -411,6 +411,80 @@ dword_result_t XamUserWriteProfileSettings_entry(
 }
 DECLARE_XAM_EXPORT1(XamUserWriteProfileSettings, kUserProfiles, kImplemented);
 
+dword_result_t XamUserReadUserPreference_entry(
+    dword_t user_index, dword_t preference_mask, lpdword_t value_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (user_index >= XUserMaxUserCount || !value_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    length = 0;
+
+    const auto user_profile =
+        kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (!user_profile) {
+      extended_error = X_E_NO_SUCH_USER;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    uint32_t value = 0;
+    extended_error =
+        kernel_state()->xam_state()->user_tracker()->ReadUserPreference(
+            user_profile->xuid(), preference_mask, value);
+
+    if (XFAILED(extended_error)) {
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    *value_ptr = value;
+    return X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  }
+
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+  return X_ERROR_IO_PENDING;
+}
+DECLARE_XAM_EXPORT1(XamUserReadUserPreference, kUserProfiles, kImplemented);
+
+dword_result_t XamUserWriteUserPreference_entry(
+    dword_t user_index, dword_t preference_mask, dword_t value,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [=](uint32_t& extended_error, uint32_t& length) {
+    length = 0;
+
+    const auto user_profile =
+        kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (!user_profile) {
+      extended_error = X_E_NO_SUCH_USER;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    extended_error =
+        kernel_state()->xam_state()->user_tracker()->WriteUserPreference(
+            user_profile->xuid(), preference_mask, value);
+
+    return XFAILED(extended_error) ? X_ERROR_FUNCTION_FAILED : X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  }
+
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+  return X_ERROR_IO_PENDING;
+}
+DECLARE_XAM_EXPORT1(XamUserWriteUserPreference, kUserProfiles, kImplemented);
+
 dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
                                            lpdword_t out_value) {
   if (user_index == XUserIndexAny) {
@@ -444,6 +518,64 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kStub);
+
+dword_result_t XamNetworkStorageUserHasPrivilege_entry(dword_t user_index) {
+  uint32_t result = 0;
+  if (user_index < XUserMaxUserCount) {
+    XamUserCheckPrivilege_entry(user_index, 0xD1, &result);
+  } else if (user_index == XUserIndexAny) {
+    for (uint32_t i = 0; i < XUserMaxUserCount; i++) {
+      XamUserCheckPrivilege_entry(i, 0xD1, &result);
+      if (result) {
+        break;
+      }
+    }
+  }
+
+  return result != 0;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageUserHasPrivilege, kUserProfiles,
+                    kImplemented);
+
+dword_result_t XamNetworkStorageHasUserEnabledStorage_entry(
+    dword_t user_index) {
+  constexpr uint32_t kNetworkStoragePreference = 0x20;
+
+  if (user_index >= XUserMaxUserCount) {
+    return false;
+  }
+
+  const auto user_profile =
+      kernel_state()->xam_state()->GetUserProfile(user_index);
+  if (!user_profile) {
+    return false;
+  }
+
+  auto user_tracker = kernel_state()->xam_state()->user_tracker();
+
+  uint32_t value = 0;
+  const X_HRESULT result = user_tracker->ReadUserPreference(
+      user_profile->xuid(), kNetworkStoragePreference, value);
+  if (XSUCCEEDED(result) && value & kNetworkStoragePreference) {
+    return true;
+  }
+
+  // TODO: XAM also requires XamNetworkStorageGetStatus to report status 2
+  // before enabling storage, which isn't implemented yet.
+  if (!XamNetworkStorageUserHasPrivilege_entry(user_index)) {
+    return false;
+  }
+
+  if (XSUCCEEDED(result)) {
+    user_tracker->WriteUserPreference(user_profile->xuid(),
+                                      kNetworkStoragePreference,
+                                      kNetworkStoragePreference);
+  }
+
+  return true;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageHasUserEnabledStorage, kUserProfiles,
+                    kSketchy);
 
 dword_result_t XamUserContentRestrictionGetFlags_entry(dword_t user_index,
                                                        lpdword_t out_flags) {
