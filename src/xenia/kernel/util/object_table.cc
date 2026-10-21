@@ -133,6 +133,8 @@ X_STATUS ObjectTable::AddHandle(XObject* object, X_HANDLE* out_handle) {
       ObjectTableEntry& entry = host_object ? host_table_[slot] : table_[slot];
       entry.object = object;
       entry.handle_ref_count = 1;
+      entry.guest_open_count = kUntrackedGuestOpens;
+      entry.generation = ++next_handle_generation_;
       handle = slot << 2;
       if (!host_object) {
         if (object->type() != XObject::Type::Socket) {
@@ -160,29 +162,36 @@ X_STATUS ObjectTable::AddHandle(XObject* object, X_HANDLE* out_handle) {
 }
 
 X_STATUS ObjectTable::DuplicateHandle(X_HANDLE handle, X_HANDLE* out_handle) {
-  X_STATUS result = X_STATUS_SUCCESS;
-  handle = TranslateHandle(handle);
-
-  XObject* object = LookupObject(handle, false);
-  if (object) {
-    result = AddHandle(object, out_handle);
-    object->Release();  // Release the ref that LookupObject took
-  } else {
-    result = X_STATUS_INVALID_HANDLE;
+  auto global_lock = global_critical_region_.Acquire();
+  auto* source = LookupTableInLock(handle);
+  if (!source || !source->object || source->guest_open_count == 0) {
+    return X_STATUS_INVALID_HANDLE;
   }
-
+  const int32_t guest_open_count = source->guest_open_count;
+  X_HANDLE new_handle = 0;
+  X_STATUS result = AddHandle(source->object, &new_handle);
+  if (XSUCCEEDED(result)) {
+    LookupTableInLock(new_handle)->guest_open_count =
+        guest_open_count >= 0 ? 1 : guest_open_count;
+  }
+  if (XSUCCEEDED(result) && out_handle) {
+    *out_handle = new_handle;
+  }
   return result;
 }
 
-X_STATUS ObjectTable::RetainHandle(X_HANDLE handle) {
+X_STATUS ObjectTable::RetainHandle(X_HANDLE handle, uint64_t* out_generation) {
   auto global_lock = global_critical_region_.Acquire();
 
   ObjectTableEntry* entry = LookupTableInLock(handle);
-  if (!entry) {
+  if (!entry || !entry->object) {
     return X_STATUS_INVALID_HANDLE;
   }
 
   entry->handle_ref_count++;
+  if (out_generation) {
+    *out_generation = entry->generation;
+  }
   return X_STATUS_SUCCESS;
 }
 
@@ -193,7 +202,7 @@ X_STATUS ObjectTable::ReleaseHandle(X_HANDLE handle) {
 }
 X_STATUS ObjectTable::ReleaseHandleInLock(X_HANDLE handle) {
   ObjectTableEntry* entry = LookupTableInLock(handle);
-  if (!entry) {
+  if (!entry || !entry->object || entry->handle_ref_count <= 0) {
     return X_STATUS_INVALID_HANDLE;
   }
 
@@ -225,12 +234,14 @@ X_STATUS ObjectTable::RemoveHandle(X_HANDLE handle) {
     entry->object = nullptr;
     assert_zero(entry->handle_ref_count);
     entry->handle_ref_count = 0;
+    entry->guest_open_count = kUntrackedGuestOpens;
 
     // Walk the object's handles and remove this one.
     auto handle_entry = std::ranges::find(object->handles(), handle);
     if (handle_entry != object->handles().end()) {
       object->handles().erase(handle_entry);
     }
+    object->UpdateNativeHandle(handle);
 
     XELOGD("Removed handle:{:08X} for {}", handle, typeid(*object).name());
 
@@ -243,6 +254,66 @@ X_STATUS ObjectTable::RemoveHandle(X_HANDLE handle) {
   }
 
   return X_STATUS_SUCCESS;
+}
+
+X_STATUS ObjectTable::OpenGuestHandle(X_HANDLE handle, const XObject* object,
+                                      bool track_guest_opens,
+                                      uint64_t expected_generation) {
+  auto global_lock = global_critical_region_.Acquire();
+  ObjectTableEntry* entry = LookupTableInLock(handle);
+  if (!entry || !object || entry->object != object ||
+      (expected_generation && entry->generation != expected_generation)) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  // Once tracked, an object stays tracked even if its type becomes unreadable.
+  // Legacy unknown counts must never be normalized into known counts.
+  if (entry->guest_open_count == kUntrackedGuestOpens && track_guest_opens) {
+    entry->guest_open_count = 0;
+  }
+  ++entry->handle_ref_count;
+  if (entry->guest_open_count >= 0) {
+    ++entry->guest_open_count;
+  }
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS ObjectTable::ClaimGuestClose(X_HANDLE handle, const XObject* object,
+                                      int32_t* out_handle_count,
+                                      uint64_t* out_generation) {
+  auto global_lock = global_critical_region_.Acquire();
+  ObjectTableEntry* entry = LookupTableInLock(handle);
+  if (!entry || !object || entry->object != object ||
+      entry->guest_open_count == 0) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  *out_generation = entry->generation;
+  if (entry->guest_open_count < 0) {
+    *out_handle_count = -1;
+    return X_STATUS_SUCCESS;
+  }
+  int32_t count = 0;
+  for (X_HANDLE open_handle : object->handles_) {
+    const ObjectTableEntry* open_entry = LookupTableInLock(open_handle);
+    if (open_entry && open_entry->object == object &&
+        open_entry->guest_open_count > 0) {
+      count += open_entry->guest_open_count;
+    }
+  }
+  *out_handle_count = count;
+  --entry->guest_open_count;
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS ObjectTable::ReleaseHandleOf(X_HANDLE handle, const XObject* object,
+                                      uint64_t generation) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  const ObjectTableEntry* entry = LookupTableInLock(handle);
+  if (!entry || !object || entry->object != object ||
+      entry->generation != generation) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  return ReleaseHandleInLock(handle);
 }
 
 std::vector<object_ref<XObject>> ObjectTable::GetAllObjects() {
@@ -296,10 +367,10 @@ ObjectTable::ObjectTableEntry* ObjectTable::LookupTableInLock(X_HANDLE handle) {
   const bool is_host_object = XObject::is_handle_host_object(handle);
   uint32_t slot = GetHandleSlot(handle, is_host_object);
   if (is_host_object) {
-    if (slot <= host_table_capacity_) {
+    if (slot < host_table_capacity_) {
       return &host_table_[slot];
     }
-  } else if (slot <= table_capacity_) {
+  } else if (slot < table_capacity_) {
     return &table_[slot];
   }
 
@@ -333,13 +404,13 @@ XObject* ObjectTable::LookupObject(X_HANDLE handle, bool already_locked) {
   if (is_host_object) {
     if (slot < host_table_capacity_) {
       ObjectTableEntry& entry = host_table_[slot];
-      if (entry.object) {
+      if (entry.object && entry.guest_open_count != 0) {
         object = entry.object;
       }
     }
   } else if (slot < table_capacity_) {
     ObjectTableEntry& entry = table_[slot];
-    if (entry.object) {
+    if (entry.object && entry.guest_open_count != 0) {
       object = entry.object;
     }
   }
@@ -354,6 +425,17 @@ XObject* ObjectTable::LookupObject(X_HANDLE handle, bool already_locked) {
   }
 
   return object;
+}
+
+XObject* ObjectTable::LookupNativeObject(X_HANDLE handle,
+                                         uint32_t guest_object) {
+  const auto* entry = LookupTableInLock(handle);
+  if (!entry || !entry->object ||
+      entry->object->guest_object() != guest_object) {
+    return nullptr;
+  }
+  entry->object->Retain();
+  return entry->object;
 }
 
 void ObjectTable::GetObjectsByType(XObject::Type type,
@@ -432,27 +514,49 @@ X_STATUS ObjectTable::GetObjectByName(const std::string_view name,
 }
 
 bool ObjectTable::Save(ByteStream* stream) {
+  // Version 2 preserves unknown legacy counts without older readers mistaking
+  // them for fresh objects whose opens have not been tracked yet.
+  stream->Write<uint32_t>(UINT32_MAX);
+  stream->Write<uint32_t>(2);
   stream->Write<uint32_t>(host_table_capacity_);
   for (uint32_t i = 0; i < host_table_capacity_; i++) {
     auto& entry = host_table_[i];
     stream->Write<int32_t>(entry.handle_ref_count);
+    stream->Write<int32_t>(entry.guest_open_count);
   }
 
   stream->Write<uint32_t>(table_capacity_);
   for (uint32_t i = 0; i < table_capacity_; i++) {
     auto& entry = table_[i];
     stream->Write<int32_t>(entry.handle_ref_count);
+    stream->Write<int32_t>(entry.guest_open_count);
   }
 
   return true;
 }
 
 bool ObjectTable::Restore(ByteStream* stream) {
-  Resize(stream->Read<uint32_t>(), true);
+  uint32_t host_capacity = stream->Read<uint32_t>();
+  const bool has_guest_open_counts = host_capacity == UINT32_MAX;
+  if (has_guest_open_counts) {
+    const uint32_t version = stream->Read<uint32_t>();
+    if (version != 1 && version != 2) {
+      return false;
+    }
+    host_capacity = stream->Read<uint32_t>();
+  }
+  if (!has_guest_open_counts) {
+    XELOGW(
+        "Legacy object table has no guest-open counts; restored objects "
+        "retain legacy close behavior without guest close callbacks");
+  }
+  Resize(host_capacity, true);
   for (uint32_t i = 0; i < host_table_capacity_; i++) {
     auto& entry = host_table_[i];
     // entry.object = nullptr;
     entry.handle_ref_count = stream->Read<int32_t>();
+    entry.guest_open_count =
+        has_guest_open_counts ? stream->Read<int32_t>() : kUnknownGuestOpens;
   }
 
   Resize(stream->Read<uint32_t>(), false);
@@ -460,6 +564,8 @@ bool ObjectTable::Restore(ByteStream* stream) {
     auto& entry = table_[i];
     // entry.object = nullptr;
     entry.handle_ref_count = stream->Read<int32_t>();
+    entry.guest_open_count =
+        has_guest_open_counts ? stream->Read<int32_t>() : kUnknownGuestOpens;
   }
 
   return true;
@@ -469,11 +575,12 @@ X_STATUS ObjectTable::RestoreHandle(X_HANDLE handle, XObject* object) {
   const bool is_host_object = XObject::is_handle_host_object(handle);
   uint32_t slot = GetHandleSlot(handle, is_host_object);
   uint32_t capacity = is_host_object ? host_table_capacity_ : table_capacity_;
-  assert_true(capacity >= slot);
+  assert_true(capacity > slot);
 
-  if (capacity >= slot) {
+  if (capacity > slot) {
     auto& entry = is_host_object ? host_table_[slot] : table_[slot];
     entry.object = object;
+    entry.generation = ++next_handle_generation_;
     object->Retain();
   }
 

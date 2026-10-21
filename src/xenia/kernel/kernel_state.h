@@ -47,6 +47,10 @@ class Processor;
 namespace xe {
 namespace kernel {
 
+namespace test {
+class KernelStateTest;
+}  // namespace test
+
 constexpr fourcc_t kKernelSaveSignature = make_fourcc("KRNL");
 
 static constexpr const uint16_t kBaseKernelBuildVersion = 1888;
@@ -332,6 +336,11 @@ class KernelState {
   std::array<uint32_t, 0x11> xbdm_counters_address = {};
 
  private:
+  // Object Manager tests use the real kernel without Emulator UI or storage.
+  KernelState(Memory* memory, cpu::Processor* processor,
+              vfs::VirtualFileSystem* file_system);
+  friend class test::KernelStateTest;
+
   void LoadKernelModule(object_ref<KernelModule> kernel_module);
   void InitializeProcess(X_KPROCESS* process, uint32_t type,
                          char priority_class, char default_priority,

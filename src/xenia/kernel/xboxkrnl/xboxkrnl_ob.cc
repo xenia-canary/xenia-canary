@@ -8,7 +8,11 @@
  */
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
+
+#include <cstddef>
+
 #include "xenia/base/logging.h"
+#include "xenia/base/mutex.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
@@ -19,6 +23,64 @@
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+
+namespace {
+
+// The ten X_OBJECT_TYPEs xenia defines itself sit together at the start of
+// the kernel's guest globals, from ExThreadObjectType to
+// ObSymbolicLinkObjectType; four of them have no host type of their own.
+constexpr uint32_t kXeniaObjectTypesBegin =
+    static_cast<uint32_t>(offsetof(KernelGuestGlobals, ExThreadObjectType));
+constexpr uint32_t kXeniaObjectTypesEnd = static_cast<uint32_t>(
+    offsetof(KernelGuestGlobals, ObSymbolicLinkObjectType) +
+    sizeof(X_OBJECT_TYPE));
+static_assert(kXeniaObjectTypesEnd - kXeniaObjectTypesBegin ==
+                  10 * sizeof(X_OBJECT_TYPE),
+              "xenia's object types are no longer one block");
+
+// An object type a title defined itself, as read from its guest memory.
+struct TitleObjectType {
+  uint32_t type_ptr;
+  uint32_t close_proc;
+  uint32_t delete_proc;
+};
+
+// Reads a title-defined type recorded by ObOpenObjectByPointer. Dispatch
+// objects created directly in guest memory need not have an Object Manager
+// header; closing them must not speculate about the bytes before their body.
+bool ReadTitleObjectType(const XObject& object, TitleObjectType* out_type) {
+  const uint32_t type_ptr = object.guest_object_type();
+  if (!type_ptr ||
+      kernel_memory()->QueryRangeAccess(type_ptr, sizeof(X_OBJECT_TYPE)) ==
+          memory::PageAccess::kNoAccess) {
+    return false;
+  }
+  const auto* type =
+      kernel_memory()->TranslateVirtual<const X_OBJECT_TYPE*>(type_ptr);
+  const uint32_t globals = kernel_state()->GetKernelGuestGlobals();
+  if (!type->allocate_proc || (type_ptr >= globals + kXeniaObjectTypesBegin &&
+                               type_ptr < globals + kXeniaObjectTypesEnd)) {
+    return false;
+  }
+  *out_type = {type_ptr, type->close_proc, type->delete_proc};
+  return true;
+}
+
+bool HasTitleObjectType(const XObject& object) {
+  TitleObjectType type;
+  return ReadTitleObjectType(object, &type);
+}
+
+// Only call aligned, readable addresses within a loaded module. The type
+// metadata may remain readable after its callback address becomes invalid.
+bool IsGuestCodeAddress(uint32_t address) {
+  return address && !(address & 3) &&
+         kernel_memory()->QueryRangeAccess(address, 4) !=
+             memory::PageAccess::kNoAccess &&
+         kernel_state()->processor()->LookupModule(address);
+}
+
+}  // namespace
 
 void xeObSplitName(X_ANSI_STRING input_string,
                    X_ANSI_STRING* leading_path_component,
@@ -209,16 +271,20 @@ DECLARE_XBOXKRNL_EXPORT1(ObOpenObjectByName, kNone, kImplemented);
 dword_result_t ObOpenObjectByPointer_entry(lpvoid_t object_ptr,
                                            lpdword_t out_handle_ptr) {
   *out_handle_ptr = 0;
-  auto object = XObject::GetNativeObject<XObject>(kernel_state(), object_ptr);
+  auto global_lock = global_critical_region::AcquireDirect();
+  auto object = XObject::GetNativeObject<XObject>(
+      kernel_state(), object_ptr, X_OBJECT_TYPES::UndefinedObject, true);
   if (!object) {
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  // Keep the guest type for ObReferenceObjectByHandle.
   object->SetNativeType();
 
-  // Retain the handle. Will be released in NtClose.
-  object->RetainHandle();
+  const X_STATUS result = kernel_state()->object_table()->OpenGuestHandle(
+      object->handle(), object.get(), HasTitleObjectType(*object));
+  if (XFAILED(result)) {
+    return result;
+  }
   *out_handle_ptr = object->handle();
   return X_STATUS_SUCCESS;
 }
@@ -251,7 +317,9 @@ dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
   // chrispy: gotta preinit this to 0, kernel is expected to do that
   *out_object_ptr = 0;
 
-  auto object = kernel_state()->object_table()->LookupObject<XObject>(handle);
+  auto global_lock = global_critical_region::AcquireDirect();
+  auto object =
+      kernel_state()->object_table()->LookupObject<XObject>(handle, true);
   if (!object) {
     return X_STATUS_INVALID_HANDLE;
   }
@@ -259,8 +327,7 @@ dword_result_t ObReferenceObjectByHandle_entry(dword_t handle,
   uint32_t native_ptr = object->guest_object();
 
   if (object_type_ptr) {
-    // Use guest type recorded when opening the object,
-    // or host type mapping if none was recorded.
+    // Use the recorded guest type, or the host mapping if none was recorded.
     uint32_t actual_type_ptr = object->guest_object_type();
     if (!actual_type_ptr) {
       auto& object_types =
@@ -322,11 +389,12 @@ void xeObDereferenceObject(PPCContext* context, uint32_t native_ptr) {
     return;
   }
 
+  auto global_lock = global_critical_region::AcquireDirect();
   auto object = XObject::GetNativeObject<XObject>(
-      kernel_state(), kernel_memory()->TranslateVirtual(native_ptr));
+      kernel_state(), kernel_memory()->TranslateVirtual(native_ptr),
+      X_OBJECT_TYPES::UndefinedObject, true);
   if (object) {
     object->ReleaseHandle();
-
   } else {
     if (native_ptr) {
       XELOGW("Unregistered guest object provided to ObDereferenceObject {:08X}",
@@ -343,8 +411,10 @@ DECLARE_XBOXKRNL_EXPORT1(ObDereferenceObject, kNone, kImplemented);
 
 void ObReferenceObject_entry(dword_t native_ptr) {
   // Check if a dummy value from ObReferenceObjectByHandle.
+  auto global_lock = global_critical_region::AcquireDirect();
   auto object = XObject::GetNativeObject<XObject>(
-      kernel_state(), kernel_memory()->TranslateVirtual(native_ptr));
+      kernel_state(), kernel_memory()->TranslateVirtual(native_ptr),
+      X_OBJECT_TYPES::UndefinedObject, true);
   if (object) {
     object->RetainHandle();
   } else {
@@ -397,31 +467,119 @@ DECLARE_XBOXKRNL_EXPORT1(ObDeleteSymbolicLink, kNone, kImplemented);
 
 dword_result_t NtDuplicateObject_entry(dword_t handle, lpdword_t new_handle_ptr,
                                        dword_t options) {
-  // NOTE: new_handle_ptr can be zero to just close a handle.
+  // NOTE: new_handle_ptr may be zero.
   // NOTE: this function seems to be used to get the current thread handle
   //       (passed handle=-2).
-  // This function actually just creates a new handle to the same object.
+  // A close-source request reopens the source slot after closing its guest
+  // open. Other requests create a separate handle to the same object.
   // Most games use it to get real handles to the current thread or whatever.
 
   X_HANDLE new_handle = X_INVALID_HANDLE_VALUE;
-  X_STATUS result =
-      kernel_state()->object_table()->DuplicateHandle(handle, &new_handle);
-
+  auto* object_table = kernel_state()->object_table();
+  X_STATUS result;
+  if (options & 1 /* DUPLICATE_CLOSE_SOURCE */) {
+    const X_HANDLE source_handle = handle == 0xFFFFFFFE
+                                       ? XThread::GetCurrentThreadHandle()
+                                       : handle.value();
+    object_ref<XObject> object;
+    uint64_t generation = 0;
+    {
+      auto global_lock = global_critical_region::AcquireDirect();
+      object = object_table->LookupObject<XObject>(source_handle, true);
+      // A slot reference keeps the native stash alive across NtClose, but
+      // does not add a guest open to the close callback's count. See
+      // Goldislead's RGH observation: PR #1295 comment 4369007160.
+      result = object ? object_table->RetainHandle(source_handle, &generation)
+                      : X_STATUS_INVALID_HANDLE;
+    }
+    if (XSUCCEEDED(result)) {
+      struct RetainedSource {
+        util::ObjectTable* table;
+        X_HANDLE handle;
+        XObject* object;
+        uint64_t generation;
+        ~RetainedSource() {
+          table->ReleaseHandleOf(handle, object, generation);
+        }
+      } retained_source{object_table, source_handle, object.get(), generation};
+      result = NtClose(source_handle);
+      auto global_lock = global_critical_region::AcquireDirect();
+      if (XSUCCEEDED(result)) {
+        result = object_table->OpenGuestHandle(source_handle, object.get(),
+                                               HasTitleObjectType(*object),
+                                               generation);
+        if (XSUCCEEDED(result)) {
+          new_handle = source_handle;
+        }
+      }
+    }
+  } else {
+    result = object_table->DuplicateHandle(handle, &new_handle);
+  }
   if (new_handle_ptr) {
     *new_handle_ptr = new_handle;
   }
-
-  if (options == 1 /* DUPLICATE_CLOSE_SOURCE */) {
-    // Always close the source object.
-    kernel_state()->object_table()->RemoveHandle(handle);
-  }
-
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtDuplicateObject, kNone, kImplemented);
 
 uint32_t NtClose(uint32_t handle) {
-  return kernel_state()->object_table()->ReleaseHandle(handle);
+  auto* object_table = kernel_state()->object_table();
+  object_ref<XObject> object;
+  TitleObjectType title_type = {};
+  int32_t handle_count = 0;
+  uint64_t generation = 0;
+  {
+    auto global_lock = global_critical_region::AcquireDirect();
+    object = object_table->LookupObject<XObject>(handle, true);
+    if (!object) {
+      return X_STATUS_INVALID_HANDLE;
+    }
+    const X_STATUS result = object_table->ClaimGuestClose(
+        handle, object.get(), &handle_count, &generation);
+    if (XFAILED(result)) {
+      return result;
+    }
+    // Native types and legacy snapshots retain reference-based closure. A
+    // missing legacy open count must not be invented for a guest callback.
+    if (handle_count < 0) {
+      return object_table->ReleaseHandleOf(handle, object.get(), generation);
+    }
+    // The open has been consumed even if its callback metadata is now
+    // unreadable.
+    if (!ReadTitleObjectType(*object, &title_type)) {
+      XELOGD("NtClose({:08X}): guest object type is unavailable", handle);
+    }
+  }
+
+  if (title_type.close_proc) {
+    if (!IsGuestCodeAddress(title_type.close_proc)) {
+      XELOGD("Object type {:08X}: close procedure {:08X} is not guest code",
+             title_type.type_ptr, title_type.close_proc);
+    } else if (XThread::IsInThread()) {
+      auto* thread = XThread::GetCurrentThread();
+      thread->EnterCriticalRegion();
+      struct CriticalRegionScope {
+        XThread* thread;
+        ~CriticalRegionScope() { thread->LeaveCriticalRegion(); }
+      } critical_region{thread};
+      uint64_t args[] = {object->guest_object(),
+                         static_cast<uint32_t>(handle_count)};
+      kernel_state()->processor()->Execute(thread->thread_state(),
+                                           title_type.close_proc, args,
+                                           xe::countof(args));
+    } else {
+      XELOGD("NtClose({:08X}): guest close procedure skipped on a host thread",
+             handle);
+    }
+  }
+  if (title_type.delete_proc) {
+    XELOGD("Object type {:08X}: delete procedure {:08X} is not implemented",
+           title_type.type_ptr, title_type.delete_proc);
+  }
+  // A reentrant callback may have released the slot or caused it to be reused.
+  object_table->ReleaseHandleOf(handle, object.get(), generation);
+  return X_STATUS_SUCCESS;
 }
 
 dword_result_t NtClose_entry(dword_t handle) { return NtClose(handle); }
