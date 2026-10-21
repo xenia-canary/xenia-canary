@@ -632,6 +632,80 @@ std::pair<uint32_t, uint32_t> UserTracker::GetUserSubscriptionData(
   return data;
 }
 
+uint32_t UserTracker::GetUserPreferenceData(UserProfile* user) const {
+  uint32_t data;
+  if (const auto setting = GetSetting(
+          user, kDashboardID,
+          static_cast<uint32_t>(UserSettingId::XPROFILE_USER_PREFERENCES))) {
+    data = std::get<int32_t>(setting->get_host_data());
+  } else {
+    data = 0;
+  }
+
+  return data;
+}
+
+X_HRESULT UserTracker::ReadUserPreference(uint64_t xuid, uint32_t mask,
+                                          uint32_t& value) const {
+  const auto written_bit = GetUserPreferenceWrittenBit(mask);
+  if (!written_bit) {
+    return X_E_INVALIDARG;
+  }
+
+  auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  if (!user) {
+    return X_E_NO_SUCH_USER;
+  }
+
+  value = GetUserPreferenceData(user) & mask;
+
+  if (*written_bit) {
+    if ((value & *written_bit) != *written_bit) {
+      return static_cast<X_HRESULT>(1);  // S_FALSE
+    }
+    value &= ~*written_bit;
+  }
+
+  return X_E_SUCCESS;
+}
+
+X_HRESULT UserTracker::WriteUserPreference(uint64_t xuid, uint32_t mask,
+                                           uint32_t value) {
+  const auto written_bit = GetUserPreferenceWrittenBit(mask);
+  if (!written_bit) {
+    return X_E_INVALIDARG;
+  }
+
+  if ((mask | value) != mask || (value & *written_bit)) {
+    return X_E_INVALIDARG;
+  }
+
+  auto user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  if (!user) {
+    return X_E_NO_SUCH_USER;
+  }
+
+  const uint32_t preferences = GetUserPreferenceData(user);
+  const uint32_t new_preferences = (preferences & ~mask) | value | *written_bit;
+
+  const UserSetting setting(UserSettingId::XPROFILE_USER_PREFERENCES,
+                            static_cast<int32_t>(new_preferences));
+
+  UpsertSetting(xuid, kDashboardID, &setting);
+
+  const uint8_t user_index = kernel_state()
+                                 ->xam_state()
+                                 ->profile_manager()
+                                 ->GetUserIndexAssignedToProfile(xuid);
+
+  if (user_index < XUserMaxUserCount) {
+    kernel_state()->BroadcastNotification(
+        kXNotificationSystemProfileSettingChanged, 1 << user_index);
+  }
+
+  return X_E_SUCCESS;
+}
+
 void UserTracker::UpdateContext(uint64_t xuid, uint32_t id, uint32_t value) {
   if (!IsUserTracked(xuid)) {
     return;
