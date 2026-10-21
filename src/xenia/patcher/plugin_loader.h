@@ -42,6 +42,9 @@ class PluginLoader {
   bool IsAnyPluginForTitleAvailable(const uint32_t title_id,
                                     const uint64_t module_hash) const;
   bool IsAnyPluginLoaded() { return is_any_plugin_loaded_; }
+  // Called when the title exits. Plugin modules are unloaded with the title,
+  // this removes their device so the next title can mount its own.
+  void UnloadTitlePlugins();
 
  private:
   void LoadConfigs();
