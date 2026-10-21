@@ -1707,6 +1707,12 @@ void KernelState::InitializeKernelGuestGlobals() {
        kernel_guest_globals_ +
            offsetof32(KernelGuestGlobals, IoDeviceObjectType)}};
   xboxkrnl::xeKeSetEvent(&block->UsbdBootEnumerationDoneEvent, 1, 0);
+
+  // Unsignalled synchronization events
+  block->UsbdDriverLoadRequiredEvent.header.type =
+      X_OBJECT_TYPES::EventSynchronizationObject;
+  block->StfsDeviceErrorEvent.header.type =
+      X_OBJECT_TYPES::EventSynchronizationObject;
 }
 
 void KernelState::InitializeXbdmCpuCounters() {
