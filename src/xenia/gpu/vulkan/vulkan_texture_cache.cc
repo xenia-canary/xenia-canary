@@ -141,9 +141,10 @@ constexpr VulkanTextureCache::HostFormatPair
          xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR,
          true},
         // k_8_B
-        {{kLoadShaderIndexUnknown},
-         {kLoadShaderIndexUnknown},
-         xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR},
+        {{kLoadShaderIndex8bpb, VK_FORMAT_R8_UNORM},
+         {kLoadShaderIndex8bpb, VK_FORMAT_R8_SNORM},
+         xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR,
+         true},
         // k_8_8
         {{kLoadShaderIndex16bpb, VK_FORMAT_R8G8_UNORM},
          {kLoadShaderIndex16bpb, VK_FORMAT_R8G8_SNORM},
@@ -169,9 +170,10 @@ constexpr VulkanTextureCache::HostFormatPair
          {kLoadShaderIndexUnknown},
          xenos::XE_GPU_TEXTURE_SWIZZLE_RGGG},
         // k_8_8_8_8_A
-        {{kLoadShaderIndexUnknown},
-         {kLoadShaderIndexUnknown},
-         xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA},
+        {{kLoadShaderIndex32bpb, VK_FORMAT_R8G8B8A8_UNORM},
+         {kLoadShaderIndex32bpb, VK_FORMAT_R8G8B8A8_SNORM},
+         xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA,
+         true},
         // k_4_4_4_4
         // Components swapped in the load shader for simplicity.
         {{kLoadShaderIndexRGBA4ToARGB4, VK_FORMAT_B4G4R4A4_UNORM_PACK16},

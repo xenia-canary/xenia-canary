@@ -27,6 +27,9 @@ struct GetBaseFormatHelper {
 constexpr GetBaseFormatHelper PrecomputeGetBaseFormatTable() {
 #define R(x, y) xenos::TextureFormat::x, xenos::TextureFormat::y
   constexpr xenos::TextureFormat entries[] = {
+      R(k_8_A, k_8),
+      R(k_8_B, k_8),
+      R(k_8_8_8_8_A, k_8_8_8_8),
       R(k_16_EXPAND, k_16_FLOAT),
       R(k_16_16_EXPAND, k_16_16_FLOAT),
       R(k_16_16_16_16_EXPAND, k_16_16_16_16_FLOAT),
@@ -74,7 +77,7 @@ inline xenos::TextureFormat GetBaseFormat(xenos::TextureFormat texture_format) {
     __m128i new_format_low = _mm_shuffle_epi8(
         _mm_setr_epi8(table[0], table[1], table[2], table[3], table[4],
                       table[5], table[6], table[7], table[8], table[9],
-                      table[10], table[11], table[12], 0, 0, 0),
+                      table[10], table[11], table[12], table[13], 0, 0),
         index_in_low);
 
     uint32_t prelaundered =
@@ -87,9 +90,14 @@ inline xenos::TextureFormat GetBaseFormat(xenos::TextureFormat texture_format) {
 }
 #else
 inline xenos::TextureFormat GetBaseFormat(xenos::TextureFormat texture_format) {
-  // These formats are used for resampling textures / gamma control.
-  // 11 entries
+  // These formats are used for resampling, aliasing, and gamma control.
+  // 14 entries
   switch (texture_format) {
+    case xenos::TextureFormat::k_8_A:
+    case xenos::TextureFormat::k_8_B:
+      return xenos::TextureFormat::k_8;
+    case xenos::TextureFormat::k_8_8_8_8_A:
+      return xenos::TextureFormat::k_8_8_8_8;
     case xenos::TextureFormat::k_16_EXPAND:
       return xenos::TextureFormat::k_16_FLOAT;
     case xenos::TextureFormat::k_16_16_EXPAND:

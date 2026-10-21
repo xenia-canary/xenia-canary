@@ -1111,21 +1111,6 @@ void AddMemExportRanges(const RegisterFile& regs, const Shader& shader,
       // format, the draw can still be performed.
       continue;
     }
-    // TODO(Triang3l): Remove the unresearched format logging when it's known
-    // how exactly these formats need to be handled (most importantly what
-    // components need to be stored and in which order).
-    switch (stream.format) {
-      case xenos::ColorFormat::k_8_A:
-      case xenos::ColorFormat::k_8_B:
-      case xenos::ColorFormat::k_8_8_8_8_A:
-        XELOGW(
-            "Memexport done to an unresearched format {}, report the game to "
-            "Xenia developers!",
-            FormatInfo::GetName(format_info.format));
-        break;
-      default:
-        break;
-    }
     uint32_t stream_size_bytes =
         stream.index_count * (format_info.bits_per_pixel >> 3);
     // Try to reduce the number of shared memory operations when writing
@@ -1423,25 +1408,16 @@ bool GetResolveInfo(const RegisterFile& regs, const Memory& memory,
     dest_format = DepthRenderTargetToTextureFormat(rb_depth_info.depth_format);
   } else {
     dest_format = xenos::TextureFormat(rb_copy_dest_info.copy_dest_format);
-    // For development feedback - not much known about these formats currently.
-    xenos::TextureFormat dest_closest_format;
     switch (dest_format) {
       case xenos::TextureFormat::k_8_A:
       case xenos::TextureFormat::k_8_B:
-        dest_closest_format = xenos::TextureFormat::k_8;
+        dest_format = xenos::TextureFormat::k_8;
         break;
       case xenos::TextureFormat::k_8_8_8_8_A:
-        dest_closest_format = xenos::TextureFormat::k_8_8_8_8;
+        dest_format = xenos::TextureFormat::k_8_8_8_8;
         break;
       default:
-        dest_closest_format = dest_format;
-    }
-    if (dest_format != dest_closest_format) {
-      XELOGW(
-          "Resolving to format {}, which is untested - treating like {}. "
-          "Report the game to Xenia developers!",
-          FormatInfo::GetName(dest_format),
-          FormatInfo::GetName(dest_closest_format));
+        break;
     }
   }
 
