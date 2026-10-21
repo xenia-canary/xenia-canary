@@ -365,6 +365,10 @@ class KernelState {
 
   // Waits for a guest thread that terminated the title to fully exit.
   void WaitForTerminatingThread();
+  // Waits for threads terminated with the title to exit, leaking the ones that
+  // don't (on POSIX they exit at their next safe point).
+  void WaitForTerminatedThreads(
+      const std::vector<object_ref<XThread>>& threads);
   // Suspends the guest threads and acquires the global lock once none of them
   // owns or waits for it, so they can be terminated safely.
   global_unique_lock_type SuspendGuestThreadsAndLock();
