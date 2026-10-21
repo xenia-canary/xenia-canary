@@ -228,6 +228,8 @@ XboxkrnlModule::XboxkrnlModule(Emulator* emulator, KernelState* kernel_state)
   EXPORT_KVAR(ObDirectoryObjectType);
   EXPORT_KVAR(ObSymbolicLinkObjectType);
   EXPORT_KVAR(UsbdBootEnumerationDoneEvent);
+  EXPORT_KVAR(UsbdDriverLoadRequiredEvent);
+  EXPORT_KVAR(StfsDeviceErrorEvent);
 #undef EXPORT_KVAR
 }
 
