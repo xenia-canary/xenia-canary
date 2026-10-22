@@ -132,6 +132,7 @@
 "Unlocked: Offline" = "Upplåst: offline"
 "Post-processing" = "Efterbehandling"
 "All effects can be used on GPUs of any brand." = "Alla effekter kan användas på GPU:er från alla tillverkare."
+"Anti-aliasing" = "Kantutjämning"
 "None" = "Ingen"
 "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Normal Quality]" = "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [normal kvalitet]"
 "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Extreme Quality]" = "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [högsta kvalitet]"
