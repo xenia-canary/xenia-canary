@@ -10,6 +10,7 @@
 #include "xenia/base/locale.h"
 
 #include <algorithm>
+#include <cctype>
 #include <unordered_map>
 
 #include "third_party/tomlplusplus/include/toml++/toml.hpp"
@@ -40,18 +41,38 @@ std::string active_language_ = "en";
 // actually needed to fully apply the user's choice.
 std::string startup_language_ = "en";
 
+// Language codes are used to construct a file name below. Keep them limited to
+// locale-like identifiers so a value from xenia.config.toml cannot escape the
+// locale directory.
+bool IsValidLanguageCode(std::string_view language_code) {
+  return !language_code.empty() && language_code.size() <= 32 &&
+         std::all_of(language_code.begin(), language_code.end(),
+                     [](unsigned char character) {
+                       return std::isalnum(character) || character == '-' ||
+                              character == '_';
+                     });
+}
+
 // Loads (or clears, for "en") the translation table for `language_code`.
 // Shared by Initialize() (startup) and SwitchLanguage() (runtime change from
 // the settings UI).
 void LoadLanguage(std::string_view language_code) {
   translations_.clear();
-  active_language_ = std::string(language_code);
-
-  if (active_language_.empty() || active_language_ == "en") {
+  if (language_code.empty() || language_code == "en") {
+    active_language_ = "en";
     // Nothing to load - English strings are used as their own translation.
     return;
   }
 
+  if (!IsValidLanguageCode(language_code)) {
+    XELOGW("locale: rejected invalid language code \"{}\"; falling back "
+           "to English.",
+           language_code);
+    active_language_ = "en";
+    return;
+  }
+
+  active_language_ = std::string(language_code);
   auto locale_path = xe::filesystem::GetExecutableFolder() / "locale" /
                      (active_language_ + ".toml");
   if (!std::filesystem::exists(locale_path)) {
@@ -167,7 +188,10 @@ std::string DisplayName(std::string_view language_code) {
     return it->second;
   }
   std::string upper(language_code);
-  std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+  std::transform(upper.begin(), upper.end(), upper.begin(),
+                 [](unsigned char character) {
+                   return static_cast<char>(std::toupper(character));
+                 });
   return upper;
 }
 
