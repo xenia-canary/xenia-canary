@@ -76,9 +76,9 @@ void GetSubresourcesFromFetchConstant(
   uint32_t base_page = fetch.base_address & 0x1FFFF;
   uint32_t mip_page = fetch.mip_address & 0x1FFFF;
 
-  // If level 0 is already the packed tail, D3D leaves mip_address at 0.
-  // The rest of the tail is stored at the base address too.
-  if (mip_page == 0 && base_page != 0 && fetch.packed_mips &&
+  // If level 0 is packed, the whole tail uses base_address, even if
+  // mip_address is nonzero.
+  if (base_page != 0 && fetch.packed_mips &&
       fetch.dimension != xenos::DataDimension::k1D &&
       GetPackedMipLevel(width_minus_1 + 1, height_minus_1 + 1) == 0) {
     mip_page = base_page;
@@ -170,9 +170,11 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
   uint32_t packed_mip_base = (log2_size > 4) ? (log2_size - 4) : 0;
   uint32_t packed_mip = mip - packed_mip_base;
 
+  // A 2x1 texture is packed along X, like a square texture.
+  bool is_wide = log2_width > std::max(log2_height, uint32_t(1));
   // Find the block offset of the mip.
   if (packed_mip < 3) {
-    if (log2_width > log2_height) {
+    if (is_wide) {
       // Wider than tall. Laid out vertically.
       x_blocks = 0;
       y_blocks = 16 >> packed_mip;
@@ -184,7 +186,7 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
     z_blocks = 0;
   } else {
     uint32_t offset;
-    if (log2_width > log2_height) {
+    if (is_wide) {
       // Wider than tall. Laid out horizontally.
       offset = (1 << (log2_width - packed_mip_base)) >> (packed_mip - 2);
       x_blocks = offset;
@@ -295,8 +297,8 @@ TextureGuestLayout GetGuestTextureLayout(
 
   // The loop counter can mean two things depending on whether the packed mip
   // tail is stored as mip 0, because in this case, it would be ambiguous since
-  // both the base and the mips would be on "level 0", but stored separately and
-  // possibly with a different layout.
+  // both the base and the mips would be on "level 0", but use separate layout
+  // entries for the base pitch and the mip strides.
   uint32_t loop_level_last;
   if (layout.packed_level == 0) {
     // Packed mip tail is the level 0 - may need to load mip tails for the base,

@@ -84,18 +84,11 @@ bool GetPackedMipOffset(uint32_t width, uint32_t height, uint32_t depth,
 //
 // Note that the mip tail can be used both for the base level and mips (1...) if
 // the entire texture has width or height of 16 or smaller. Therefore, both the
-// base and the mips would be loaded from a mip tail that would be stored like
-// the level 0 of the texture. But, in this case, under base_address and
-// mip_address there are two separate mip tails, and the former likely uses the
-// pitch from the fetch constant and no power of two size rounding, while for
-// the latter the strides are likely calculated like for usual mips. The same
-// applies to 17...32 texture sizes, though in this case the base is not packed
-// tail, but the mips are still packed within an image that's stored like the
-// level 0 of the texture. So, "storage level 0" is an ambiguous concept - host
-// texture loading code should distinguish between "base level 0" and "mip tail
-// for the mips 1... stored like level 0" and load the actual host level 0 from
-// base_address, with all the base addressing properties, and host levels 1...
-// from mip_address, with all the mips addressing properties. The base level
+// base and the mips are loaded from the same tail at base_address, even if
+// mip_address is nonzero. Host texture loading code still needs separate
+// layouts for the base pitch and the mip strides. For 17...32 texture sizes,
+// the base is not packed, but the mips are still packed within an image that's
+// stored like level 0, at mip_address rather than base_address. The base level
 // being packed is evident from the function that tiles textures in game
 // disassembly, which only checks the flag whether the data is packed passed to
 // it, not the level, to see if it needs to calculate the offset in the mip
