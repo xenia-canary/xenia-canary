@@ -246,6 +246,13 @@ uint32_t XamUserReadProfileSettingsEx(
     extended_error = 0;
     length = 0;
 
+    // An XUID array with no XUIDs or more than 16 fails after the buffer size
+    // check.
+    if (xuids && (!xuid_count || xuid_count > 16)) {
+      extended_error = X_E_INVALIDARG;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
     auto user_profile = kernel_state()->xam_state()->GetUserProfile(user_index);
 
     if (!user_profile && !xuids) {
