@@ -30,8 +30,6 @@ namespace xam {
 
 X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
                                         lpqword_t xuid_ptr) {
-  assert_true(type_mask == 1 || type_mask == 2 || type_mask == 3 ||
-              type_mask == 4 || type_mask == 7);
   if (!xuid_ptr) {
     return X_E_INVALIDARG;
   }
@@ -53,12 +51,10 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
   uint64_t xuid = 0;
 
   auto type = user_profile->type() & type_mask;
-  if (type & (2 | 4)) {
-    // maybe online profile?
-    xuid = user_profile->xuid();
+  if (type & (xuid_online | xuid_guest)) {
+    xuid = user_profile->GetOnlineXUID();
     result = X_E_SUCCESS;
-  } else if (type & 1) {
-    // maybe offline profile?
+  } else if (type & xuid_offline) {
     xuid = user_profile->xuid();
     result = X_E_SUCCESS;
   }
@@ -1055,7 +1051,7 @@ dword_result_t XamUserGetUserFlags_entry(dword_t user_index) {
   const auto& user_profile =
       kernel_state()->xam_state()->GetUserProfile(user_index);
 
-  return user_profile->GetCachedFlags();
+  return user_profile->GetUserFlags();
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserFlags, kUserProfiles, kImplemented);
 
@@ -1065,7 +1061,7 @@ dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
     return 0;
   }
 
-  return user_profile->GetCachedFlags();
+  return user_profile->GetUserFlags();
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 
@@ -1104,6 +1100,16 @@ dword_result_t XamUserIsParentalControlled_entry(dword_t user_index) {
   return true;
 }
 DECLARE_XAM_EXPORT1(XamUserIsParentalControlled, kUserProfiles, kImplemented);
+
+dword_result_t XamUserIsGuest_entry(dword_t user_index) {
+  const auto& user_profile =
+      kernel_state()->xam_state()->GetUserProfile(user_index);
+  if (user_index < XUserMaxUserCount) {
+    return user_profile->type() & xuid_guest;
+  }
+  return false;
+}
+DECLARE_XAM_EXPORT1(XamUserIsGuest, kUserProfiles, kImplemented);
 
 dword_result_t XamUserCreateStatsEnumerator_entry(
     dword_t title_id, dword_t user_index, dword_t count, dword_t flags,
