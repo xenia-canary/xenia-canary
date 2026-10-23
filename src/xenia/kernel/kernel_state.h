@@ -138,6 +138,8 @@ struct KernelGuestGlobals {
 
   // if LLE emulating Xam, this is needed or you get an immediate freeze
   X_KEVENT UsbdBootEnumerationDoneEvent;
+  X_KEVENT UsbdDriverLoadRequiredEvent;
+  X_KEVENT StfsDeviceErrorEvent;
 };
 struct DPCImpersonationScope {
   uint8_t previous_irql_;
