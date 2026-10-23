@@ -27,6 +27,7 @@
 
 extern "C" {
 #include "third_party/FFmpeg/libavutil/md5.h"
+#include "third_party/FFmpeg/libavutil/mem.h"
 #include "third_party/FFmpeg/libavutil/sha512.h"
 #include "third_party/aes_128/aes.h"
 }
@@ -1094,6 +1095,53 @@ dword_result_t XeCryptHmacShaVerify_entry(lpvoid_t key, dword_t key_size,
   return std::memcmp(digest, ver, compare_size) == 0;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaVerify, kNone, kImplemented);
+
+void XeCryptHmacMd5_entry(lpvoid_t key, dword_t key_size_in, lpvoid_t inp_1,
+                          dword_t inp_1_size, lpvoid_t inp_2,
+                          dword_t inp_2_size, lpvoid_t inp_3,
+                          dword_t inp_3_size, lpvoid_t out, dword_t out_size) {
+  uint8_t kpad_i[0x40];
+  uint8_t kpad_o[0x40];
+  std::memset(kpad_i, 0x36, 0x40);
+  std::memset(kpad_o, 0x5C, 0x40);
+
+  // Assumed to truncate long keys like XeCryptHmacSha.
+  const uint32_t key_size = std::min<uint32_t>(key_size_in, 0x40);
+  const uint8_t* key_data = key.as<const uint8_t*>();
+  for (uint32_t i = 0; i < key_size; i++) {
+    kpad_i[i] ^= key_data[i];
+    kpad_o[i] ^= key_data[i];
+  }
+
+  AVMD5* md5 = av_md5_alloc();
+
+  // Inner
+  av_md5_init(md5);
+  av_md5_update(md5, kpad_i, sizeof(kpad_i));
+  if (inp_1 && inp_1_size) {
+    av_md5_update(md5, inp_1, inp_1_size);
+  }
+  if (inp_2 && inp_2_size) {
+    av_md5_update(md5, inp_2, inp_2_size);
+  }
+  if (inp_3 && inp_3_size) {
+    av_md5_update(md5, inp_3, inp_3_size);
+  }
+
+  uint8_t digest[16];
+  av_md5_final(md5, digest);
+
+  // Outer
+  av_md5_init(md5);
+  av_md5_update(md5, kpad_o, sizeof(kpad_o));
+  av_md5_update(md5, digest, sizeof(digest));
+  av_md5_final(md5, digest);
+  av_free(md5);
+
+  std::copy_n(digest, std::min<size_t>(xe::countof(digest), out_size),
+              out.as<uint8_t*>());
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacMd5, kNone, kImplemented);
 
 dword_result_t XeKeysGetKeyProperties_entry(dword_t key) {
   if (X_Key_Properties.contains(key)) {
