@@ -639,78 +639,51 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
       }
     }
 
-    // Gamma RTs store linear 10 bit color through an 8 bit PWL curve.
-    // Host sRGB is not a substitute. Some titles appear overexposed if full
-    // 8_8_8_8_GAMMA resolves average the encoded bytes directly (5345085D,
-    // 45410934), so we decode before MSAA averaging and encode again only
-    // for compatible 8_8_8_8 destinations.
-    float XePWLGammaToLinear(float gamma) {
-      gamma = saturate_xe(gamma);
-      float scale;
-      float offset;
-      if (gamma >= 96.0f / 255.0f) {
-        if (gamma >= 192.0f / 255.0f) {
-          scale = 8.0f / 1024.0f;
-          offset = -1024.0f;
-        } else {
-          scale = 4.0f / 1024.0f;
-          offset = -256.0f;
-        }
-      } else {
-        if (gamma >= 64.0f / 255.0f) {
-          scale = 2.0f / 1024.0f;
-          offset = -64.0f;
-        } else {
-          scale = 1.0f / 1024.0f;
-          offset = 0.0f;
-        }
-      }
-      float linear_value = gamma * (255.0f * 1024.0f) * scale + offset;
-      linear_value += trunc(linear_value * scale);
-      return linear_value * (1.0f / 1023.0f);
+    // Keep samples as 10 bit codes until MSAA averaging is done.
+    uint XePWLGammaToLinearCode(uint c) {
+      uint scale = c < 64u ? 1u : c < 96u ? 2u : c < 192u ? 4u : 8u;
+      uint offset = c < 64u ? 0u : c < 96u ? 64u : c < 192u ? 256u : 1024u;
+      uint linear_code = c * scale - offset;
+      return linear_code + ((linear_code * scale) >> 10u);
     }
 
-    float3_xe XePWLGammaToLinear3(float3_xe gamma) {
-      return float3_xe(XePWLGammaToLinear(gamma.x),
-                       XePWLGammaToLinear(gamma.y),
-                       XePWLGammaToLinear(gamma.z));
+    float3_xe XePWLGammaToLinearCode3(float3_xe gamma) {
+      return float3_xe(XePWLGammaToLinearCode(uint(gamma.x * 255.0f + 0.5f)),
+                       XePWLGammaToLinearCode(uint(gamma.y * 255.0f + 0.5f)),
+                       XePWLGammaToLinearCode(uint(gamma.z * 255.0f + 0.5f)));
     }
 
-    float4_xe XePWLGammaToLinear4(float4_xe gamma) {
-      return float4_xe(XePWLGammaToLinear(gamma.x),
-                       XePWLGammaToLinear(gamma.y),
-                       XePWLGammaToLinear(gamma.z),
-                       XePWLGammaToLinear(gamma.w));
+    float4_xe XePWLGammaToLinearCode4(float4_xe gamma) {
+      return float4_xe(XePWLGammaToLinearCode(uint(gamma.x * 255.0f + 0.5f)),
+                       XePWLGammaToLinearCode(uint(gamma.y * 255.0f + 0.5f)),
+                       XePWLGammaToLinearCode(uint(gamma.z * 255.0f + 0.5f)),
+                       XePWLGammaToLinearCode(uint(gamma.w * 255.0f + 0.5f)));
     }
 
-    float XeLinearToPWLGamma(float linear_value) {
-      linear_value = saturate_xe(linear_value);
-      float scale;
-      float offset;
-      if (linear_value >= 128.0f / 1023.0f) {
-        if (linear_value >= 512.0f / 1023.0f) {
-          scale = 1023.0f / 8.0f;
-          offset = 128.0f / 255.0f;
-        } else {
-          scale = 1023.0f / 4.0f;
-          offset = 64.0f / 255.0f;
-        }
-      } else {
-        if (linear_value >= 64.0f / 1023.0f) {
-          scale = 1023.0f / 2.0f;
-          offset = 32.0f / 255.0f;
-        } else {
-          scale = 1023.0f;
-          offset = 0.0f;
-        }
-      }
-      return trunc(linear_value * scale) * (1.0f / 255.0f) + offset;
+    float XeResolveAveragePWLGamma(float sum, float sample_weight) {
+      // The averaged code goes through the PWL curve again, even when the
+      // destination has more precision than the source.
+      uint m = uint(sum * sample_weight);
+      uint c = m < 64u ? m : m < 128u ? (m + 64u) >> 1u :
+               m < 512u ? (m + 256u) >> 2u : (m + 1024u) >> 3u;
+      c = min(c, 255u);
+      uint n = XePWLGammaToLinearCode(c);
+      // Normalization replicates into 24 fractional bits.
+      return n == 1023u ? 1.0f :
+          float((n << 14u) | (n << 4u) | (n >> 6u)) * (1.0f / 16777216.0f);
     }
 
-    float3_xe XeLinearToPWLGamma3(float3_xe linear_value) {
-      return float3_xe(XeLinearToPWLGamma(linear_value.x),
-                       XeLinearToPWLGamma(linear_value.y),
-                       XeLinearToPWLGamma(linear_value.z));
+    float3_xe XeResolveAveragePWLGamma3(float3_xe sum, float sample_weight) {
+      return float3_xe(XeResolveAveragePWLGamma(sum.x, sample_weight),
+                       XeResolveAveragePWLGamma(sum.y, sample_weight),
+                       XeResolveAveragePWLGamma(sum.z, sample_weight));
+    }
+
+    float4_xe XeResolveAveragePWLGamma4(float4_xe sum, float sample_weight) {
+      return float4_xe(XeResolveAveragePWLGamma(sum.x, sample_weight),
+                       XeResolveAveragePWLGamma(sum.y, sample_weight),
+                       XeResolveAveragePWLGamma(sum.z, sample_weight),
+                       XeResolveAveragePWLGamma(sum.w, sample_weight));
     }
 
     bool XeResolveSourceUsesPWLGamma(XeResolveInfo resolve_info) {
@@ -721,16 +694,9 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
 
     void XeResolveDecodePWLGammaSource(
         XeResolveInfo resolve_info, inout_param_xe(float4_xe, pixel)) {
-      // Source gamma is RGB only. 8_8_8_8_GAMMA still stores alpha as ordinary
-      // fixed data, so alpha needs to stay with normal resolve.
-      // A gamma render target is decoded to linear by resolve and doesn't have
-      // an encoding stage, so it can be inferred that linear values are what
-      // every destination stores. Keeping the bytes is done on the render
-      // target side, by re-aliasing the surface as 8_8_8_8 before resolving,
-      // the same model that maintains float 2_10_10_10 bits, which makes it
-      // not a gamma source here either.
+      // Alpha stays on the normal fixed path.
       dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
-        pixel.rgb = XePWLGammaToLinear3(pixel.rgb);
+        pixel.rgb = XePWLGammaToLinearCode3(pixel.rgb);
       }
     }
 
@@ -806,8 +772,20 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           pixel_1 += msaa_resolve_pixel_1;
         }
       }
-      pixel_0 *= exp_bias;
-      pixel_1 *= exp_bias;
+      dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+        float sample_weight = resolve_info.sample_select >=
+            kXenosCopySampleSelect_0123 ? 0.25f :
+            resolve_info.sample_select >= kXenosCopySampleSelect_01 ? 0.5f : 1.0f;
+        pixel_0.rgb = XeResolveAveragePWLGamma3(pixel_0.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_0.a *= exp_bias;
+        pixel_1.rgb = XeResolveAveragePWLGamma3(pixel_1.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_1.a *= exp_bias;
+      } else {
+        pixel_0 *= exp_bias;
+        pixel_1 *= exp_bias;
+      }
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
@@ -903,10 +881,28 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           pixel_3 += msaa_resolve_pixel_3;
         }
       }
-      pixel_0 *= exp_bias;
-      pixel_1 *= exp_bias;
-      pixel_2 *= exp_bias;
-      pixel_3 *= exp_bias;
+      dont_flatten_xe if (XeResolveSourceUsesPWLGamma(resolve_info)) {
+        float sample_weight = resolve_info.sample_select >=
+            kXenosCopySampleSelect_0123 ? 0.25f :
+            resolve_info.sample_select >= kXenosCopySampleSelect_01 ? 0.5f : 1.0f;
+        pixel_0.rgb = XeResolveAveragePWLGamma3(pixel_0.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_0.a *= exp_bias;
+        pixel_1.rgb = XeResolveAveragePWLGamma3(pixel_1.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_1.a *= exp_bias;
+        pixel_2.rgb = XeResolveAveragePWLGamma3(pixel_2.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_2.a *= exp_bias;
+        pixel_3.rgb = XeResolveAveragePWLGamma3(pixel_3.rgb, sample_weight) *
+                        resolve_info.dest_exp_bias_factor;
+        pixel_3.a *= exp_bias;
+      } else {
+        pixel_0 *= exp_bias;
+        pixel_1 *= exp_bias;
+        pixel_2 *= exp_bias;
+        pixel_3 *= exp_bias;
+      }
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
@@ -927,8 +923,8 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           resolve_info.edram_format_ints_log2, resolve_info.edram_format,
           source_blue, source_alpha, pixels_0123, pixels_4567);
       dont_flatten_xe if (decode_pwl_gamma) {
-        pixels_0123 = XePWLGammaToLinear4(pixels_0123);
-        pixels_4567 = XePWLGammaToLinear4(pixels_4567);
+        pixels_0123 = XePWLGammaToLinearCode4(pixels_0123);
+        pixels_4567 = XePWLGammaToLinearCode4(pixels_4567);
       }
     }
 
@@ -1002,8 +998,18 @@ XeResolveInfo XeResolveGetInfo(param_push_consts_xe) {
           pixels_4567 += msaa_resolve_pixels_4567;
         }
       }
-      pixels_0123 *= exp_bias;
-      pixels_4567 *= exp_bias;
+      dont_flatten_xe if (decode_pwl_gamma) {
+        float sample_weight = resolve_info.sample_select >=
+            kXenosCopySampleSelect_0123 ? 0.25f :
+            resolve_info.sample_select >= kXenosCopySampleSelect_01 ? 0.5f : 1.0f;
+        pixels_0123 = XeResolveAveragePWLGamma4(pixels_0123, sample_weight) *
+                      resolve_info.dest_exp_bias_factor;
+        pixels_4567 = XeResolveAveragePWLGamma4(pixels_4567, sample_weight) *
+                      resolve_info.dest_exp_bias_factor;
+      } else {
+        pixels_0123 *= exp_bias;
+        pixels_4567 *= exp_bias;
+      }
     }
   #endif  // XE_RESOLVE_COPY_EDRAM_BYTE_BUFFER_ALIGNMENT == 4
 
