@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <random>
 
+#include "xenia/kernel/xboxkrnl/xboxkrnl_crypt.h"
+
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/kernel/kernel_state.h"
@@ -132,6 +134,19 @@ static constexpr uint8_t key14[] = {'0', '1', '2', '3', '4', '5',
 static constexpr uint8_t key19[] = {0xE1, 0xBC, 0x15, 0x9C, 0x73, 0xB1,
                                     0xEA, 0xE9, 0xAB, 0x31, 0x70, 0xF3,
                                     0xAD, 0x47, 0xEB, 0xF3};
+
+// Devkit key 0x19
+static constexpr uint8_t key19_devkit[] = {0xDA, 0xB6, 0x9A, 0xD9, 0x8E, 0x28,
+                                           0x76, 0x4F, 0x97, 0x7E, 0xE2, 0x48,
+                                           0x7E, 0x4F, 0x3F, 0x68};
+
+const uint8_t* XeKeysGetKeyData(uint32_t idx, bool devkit) {
+  if (idx != 0x19) {
+    return nullptr;
+  }
+
+  return devkit ? key19_devkit : key19;
+}
 
 // Pirs Public Key
 struct XECRYPT_RSAPUB_2048 {
