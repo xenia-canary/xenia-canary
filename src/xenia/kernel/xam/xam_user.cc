@@ -1158,7 +1158,7 @@ dword_result_t XamUserGetUserTenure_entry(
     dword_t user_index, lpdword_t tenure_level_ptr, lpdword_t milestone_ptr,
     lpqword_t milestone_date_ptr, pointer_t<XAM_OVERLAPPED> overlap_ptr) {
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
-    return X_E_INVALIDARG;
+    return X_E_NO_SUCH_USER;
   }
 
   const auto& user_profile =
