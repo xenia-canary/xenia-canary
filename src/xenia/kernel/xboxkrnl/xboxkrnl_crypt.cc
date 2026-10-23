@@ -654,7 +654,7 @@ void XeCryptSha512Update_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Update, kNone, kImplemented);
 
-void XeCryptSha512Final_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state,
+void XeCryptSha512Final_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
                               pointer_t<uint8_t> out, dword_t out_size) {
   AVSHA512* sha = av_sha512_alloc();
   av_sha512_init(sha, 512);
