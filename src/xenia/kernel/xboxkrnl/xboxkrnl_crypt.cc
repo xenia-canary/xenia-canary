@@ -1081,6 +1081,20 @@ void XeCryptHmacSha_entry(lpvoid_t key, dword_t key_size_in, lpvoid_t inp_1,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacSha, kNone, kImplemented);
 
+dword_result_t XeCryptHmacShaVerify_entry(lpvoid_t key, dword_t key_size,
+                                          lpvoid_t inp_1, dword_t inp_1_size,
+                                          lpvoid_t inp_2, dword_t inp_2_size,
+                                          lpvoid_t inp_3, dword_t inp_3_size,
+                                          lpvoid_t ver, dword_t ver_size) {
+  uint8_t digest[0x14];
+  XeCryptHmacSha_entry(key, key_size, inp_1, inp_1_size, inp_2, inp_2_size,
+                       inp_3, inp_3_size, digest, sizeof(digest));
+
+  const size_t compare_size = std::min<size_t>(sizeof(digest), ver_size);
+  return std::memcmp(digest, ver, compare_size) == 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaVerify, kNone, kImplemented);
+
 dword_result_t XeKeysGetKeyProperties_entry(dword_t key) {
   if (X_Key_Properties.contains(key)) {
     auto& key_info = X_Key_Properties.at(key);
