@@ -1080,9 +1080,11 @@ dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 
+// A profile without a language or country, like an offline one, gets the
+// console's setting.
 dword_result_t XamUserGetOnlineLanguageFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
-  if (!user) {
+  if (!user || !user->GetLanguage()) {
     return kernel_state()->xconfig()->ReadSetting<uint32_t>(
         XCONFIG_USER_CATEGORY, XCONFIG_USER_LANGUAGE);
   }
@@ -1093,7 +1095,7 @@ DECLARE_XAM_EXPORT1(XamUserGetOnlineLanguageFromXUID, kUserProfiles,
 
 dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
   const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
-  if (!user) {
+  if (!user || !user->GetCountry()) {
     return kernel_state()->xconfig()->ReadSetting<uint8_t>(
         XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);
   }
