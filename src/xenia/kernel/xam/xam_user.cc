@@ -440,6 +440,10 @@ DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kStub);
 
 dword_result_t XamUserContentRestrictionGetFlags_entry(dword_t user_index,
                                                        lpdword_t out_flags) {
+  if (user_index >= XUserMaxUserCount && user_index != XUserIndexAny) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
