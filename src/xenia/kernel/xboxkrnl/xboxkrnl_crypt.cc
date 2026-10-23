@@ -977,16 +977,9 @@ void XeCryptHmacSha_entry(lpvoid_t key, dword_t key_size_in, lpvoid_t inp_1,
   std::memset(kpad_o, 0x5C, 0x40);
 
   // Setup HMAC key
-  // If > block size, use its hash
-  if (key_size > 0x40) {
-    sha1::SHA1 sha_key;
-    sha_key.processBytes(key, key_size);
-    sha_key.finalize((uint8_t*)tmp_key);
-
-    key_size = 0x14u;
-  } else {
-    std::memcpy(tmp_key, key, key_size);
-  }
+  // Console uses only the first block of a longer key instead of hashing it.
+  key_size = std::min(key_size, 0x40u);
+  std::memcpy(tmp_key, key, key_size);
 
   for (uint32_t i = 0; i < key_size; i++) {
     kpad_i[i] = tmp_key[i] ^ 0x36;
