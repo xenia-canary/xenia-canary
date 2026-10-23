@@ -516,13 +516,16 @@ void XeCryptHmacShaInit_entry(pointer_t<XECRYPT_HMACSHA_STATE> sha_state_ptr,
   std::copy_n(key_data_ptr, key_size_, key_1.begin());
   std::copy_n(key_data_ptr, key_size_, key_2.begin());
 
-  for (uint8_t i = 0; i < key_size_; i += 1) {
-    key_1[i] ^= 0x5C5C5C5Cu;
-    key_2[i] ^= 0x36363636u;
+  // The pads cover the whole block, not just the key.
+  for (size_t i = 0; i < key_1.size(); i++) {
+    key_1[i] ^= 0x5C;
+    key_2[i] ^= 0x36;
   }
 
-  XeCryptShaUpdate_entry(sha_state_ptr->sha_state, key_2.data(), key_size_);
-  XeCryptShaUpdate_entry(&sha_state_ptr->sha_state[1], key_1.data(), key_size_);
+  XeCryptShaUpdate_entry(sha_state_ptr->sha_state, key_2.data(),
+                         static_cast<uint32_t>(key_2.size()));
+  XeCryptShaUpdate_entry(&sha_state_ptr->sha_state[1], key_1.data(),
+                         static_cast<uint32_t>(key_1.size()));
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacShaInit, kNone, kImplemented);
 
