@@ -620,6 +620,29 @@ void XeCryptSha256Final_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256Final, kNone, kImplemented);
 
+void XeCryptSha256_entry(lpvoid_t input_1, dword_t input_1_size,
+                         lpvoid_t input_2, dword_t input_2_size,
+                         lpvoid_t input_3, dword_t input_3_size,
+                         lpvoid_t output, dword_t output_size) {
+  sha256::SHA256 sha;
+
+  if (input_1 && input_1_size) {
+    sha.add(input_1, input_1_size);
+  }
+  if (input_2 && input_2_size) {
+    sha.add(input_2, input_2_size);
+  }
+  if (input_3 && input_3_size) {
+    sha.add(input_3, input_3_size);
+  }
+
+  uint8_t hash[32];
+  sha.getHash(hash);
+  std::copy_n(hash, std::min<size_t>(xe::countof(hash), output_size),
+              output.as<uint8_t*>());
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256, kNone, kImplemented);
+
 void XeCryptSha512Init_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state) {
   sha_state.Zero();
 
