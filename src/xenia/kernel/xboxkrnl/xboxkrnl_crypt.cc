@@ -796,6 +796,31 @@ dword_result_t XeCryptBnQwNeRsaPubCrypt_entry(pointer_t<uint64_t> qw_a,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeRsaPubCrypt, kNone, kImplemented);
 
+// Builds the signature block that XeCryptBnQwBeSigVerify compares against, as a
+// XeCryptBnQwNe number. Based on ExCrypt (github.com/emoose/ExCrypt).
+void XeCryptBnQwBeSigFormat_entry(pointer_t<XECRYPT_SIG> sig, lpvoid_t hash,
+                                  lpvoid_t salt) {
+  // Built as a big-endian number: zero padding, 1, the salt, a hash of the
+  // inputs, then 0xBC
+  uint8_t block[sizeof(XECRYPT_SIG)] = {};
+  block[0xE0] = 1;
+  std::memcpy(&block[0xE1], salt, 0xA);
+  block[0xFF] = 0xBC;
+
+  XeCryptSha_entry(block, 8, hash, 0x14, salt, 0xA, &block[0xEB], 0x14);
+
+  // Everything before the hash is encrypted with it
+  XeCryptRc4_entry(&block[0xEB], 0x14, block, 0xEB);
+  block[0] &= 0x7F;
+
+  // Reverse the qword order
+  uint8_t* out = reinterpret_cast<uint8_t*>(sig.host_address());
+  for (size_t i = 0; i < sizeof(block) / 8; i++) {
+    std::memcpy(out + i * 8, block + sizeof(block) - (i + 1) * 8, 8);
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwBeSigFormat, kNone, kImplemented);
+
 dword_result_t XeCryptBnQwBeSigVerify_entry(pointer_t<XECRYPT_SIG> sig,
                                             lpvoid_t hash, lpstring_t salt,
                                             pointer_t<XECRYPT_RSA> rsa) {
