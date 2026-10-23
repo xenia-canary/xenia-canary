@@ -868,15 +868,10 @@ bool D3D12CommandProcessor::SetupContext() {
     return false;
   }
 
-  // ROV always uses Xenos' MSAA sample positions.
-  // xenos_sample_positions targets host RTs with programmable position support.
-  xenos_sample_positions_used_ =
+  xenos_sample_positions_supported_ =
       command_list_1_ != nullptr &&
       provider.GetProgrammableSamplePositionsTier() !=
-          D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED &&
-      (render_target_cache_->GetPath() ==
-           RenderTargetCache::Path::kPixelShaderInterlock ||
-       cvars::xenos_sample_positions);
+          D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED;
 
   // Hybrid RTV queries count pre-test coverage in the pixel shader and clear
   // their counter slot with WriteBufferImmediate, so they need CommandList2.
@@ -2892,7 +2887,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       host_render_targets_used &&
           render_target_cache_->depth_float24_convert_in_pixel_shader(),
       host_render_targets_used, pixel_shader && pixel_shader->writes_depth(),
-      !host_render_targets_used || xenos_sample_positions_used_);
+      !host_render_targets_used || xenos_sample_positions_used());
   gviargs.SetupRegisterValues(regs, window_offset_tiles != 0);
 
   if (gviargs == previous_viewport_info_args_) {
@@ -4036,9 +4031,19 @@ void D3D12CommandProcessor::ClearCommandAllocatorCache() {
   command_allocator_writable_last_ = nullptr;
 }
 
+bool D3D12CommandProcessor::xenos_sample_positions_used() const {
+  // ROV always uses Xenos' MSAA sample positions.
+  // xenos_sample_positions targets host RTs with programmable position support.
+  // The cvar is read here rather than at setup so a per-game config can set it.
+  return xenos_sample_positions_supported_ &&
+         (render_target_cache_->GetPath() ==
+              RenderTargetCache::Path::kPixelShaderInterlock ||
+          cvars::xenos_sample_positions);
+}
+
 void D3D12CommandProcessor::UpdateSamplePositions(
     xenos::MsaaSamples msaa_samples) {
-  if (!xenos_sample_positions_used_ ||
+  if (!xenos_sample_positions_used() ||
       current_sample_positions_ == msaa_samples) {
     return;
   }
