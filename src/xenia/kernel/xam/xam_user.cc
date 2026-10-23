@@ -462,9 +462,14 @@ dword_result_t XamUserContentRestrictionGetFlags_entry(dword_t user_index,
 DECLARE_XAM_EXPORT1(XamUserContentRestrictionGetFlags, kUserProfiles, kStub);
 
 dword_result_t XamUserContentRestrictionGetRating_entry(dword_t user_index,
-                                                        dword_t unk1,
+                                                        dword_t content_type,
                                                         lpdword_t out_unk2,
                                                         lpdword_t out_unk3) {
+  // Content type 0 has no rating, even for an empty slot
+  if (!content_type) {
+    return X_ERROR_NOT_FOUND;
+  }
+
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
