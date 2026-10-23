@@ -1256,9 +1256,25 @@ DECLARE_XBOXKRNL_EXPORT1(XeKeysGetKeyProperties, kNone, kImplemented);
 
 dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
                                   lpdword_t key_length) {
+  // The console private key can't be read and indices past the key table
+  // fail. The exact status codes aren't verified.
+  if (key == CONSOLE_PRIVATE_KEY) {
+    return X_STATUS_ACCESS_DENIED;
+  }
+
+  if (key >= SECURED_DATA_LIMIT) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
   if (key_vault.contains(key)) {
     std::span<const uint8_t> key_needed = key_vault.at(key);
-    std::memcpy(key_buffer, key_needed.data(), *key_length);
+
+    if (*key_length < key_needed.size()) {
+      return X_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    std::memcpy(key_buffer, key_needed.data(), key_needed.size());
+    *key_length = static_cast<uint32_t>(key_needed.size());
   } else {
     XELOGW("Key 0x{:04X} not implemented", static_cast<uint16_t>(key));
   }
