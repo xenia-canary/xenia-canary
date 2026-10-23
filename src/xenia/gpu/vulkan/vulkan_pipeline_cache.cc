@@ -100,7 +100,8 @@ bool VulkanPipelineCache::Initialize() {
       render_target_cache_.msaa_2x_no_attachments_supported(),
       edram_fragment_shader_interlock,
       render_target_cache_.draw_resolution_scale_x(),
-      render_target_cache_.draw_resolution_scale_y());
+      render_target_cache_.draw_resolution_scale_y(),
+      render_target_cache_.edram_tile_count());
 
   {
     std::vector<uint8_t> depth_only_fragment_shader_code =
@@ -1099,15 +1100,14 @@ void VulkanPipelineCache::TranslateShadersForStorage(
       render_target_cache_.msaa_2x_no_attachments_supported();
   uint32_t draw_res_x = render_target_cache_.draw_resolution_scale_x();
   uint32_t draw_res_y = render_target_cache_.draw_resolution_scale_y();
+  uint32_t edram_tile_count = render_target_cache_.edram_tile_count();
 
-  auto translate_function = [this, &translations_to_do, &translation_index,
-                             &translations_completed, vulkan_device,
-                             msaa_2x_attachments, msaa_2x_no_attachments,
-                             edram_fsi_used, draw_res_x, draw_res_y]() {
+  auto translate_function = [&]() {
     // Each thread needs its own translator.
     SpirvShaderTranslator translator(
         SpirvShaderTranslator::Features(vulkan_device), msaa_2x_attachments,
-        msaa_2x_no_attachments, edram_fsi_used, draw_res_x, draw_res_y);
+        msaa_2x_no_attachments, edram_fsi_used, draw_res_x, draw_res_y,
+        edram_tile_count);
 
     while (true) {
       size_t index = translation_index.fetch_add(1);

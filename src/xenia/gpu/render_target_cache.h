@@ -29,6 +29,7 @@
 #include "xenia/gpu/xenos.h"
 
 DECLARE_bool(debug_msaa_2x_as_4x);
+DECLARE_string(edram_tile_count);
 DECLARE_bool(depth_transfer_not_equal_test);
 DECLARE_bool(depth_float24_round);
 DECLARE_bool(depth_float24_convert_in_pixel_shader);
@@ -187,6 +188,19 @@ class RenderTargetCache {
   // to be discarded.
   uint32_t draw_resolution_scale_x() const { return draw_resolution_scale_x_; }
   uint32_t draw_resolution_scale_y() const { return draw_resolution_scale_y_; }
+
+  // 2048 on real hardware.
+  // kEdramTileCountMax (8192) with extended edram_tile_count.
+  uint32_t edram_tile_count() const { return edram_tile_count_; }
+  uint32_t edram_size_bytes() const {
+    return edram_tile_count_ * xenos::kEdramTileSizeBytes;
+  }
+  // Bases wrap at the tile count.
+  // Real hardware only reads 11 bits.
+  uint32_t WrapEdramBase(uint32_t base_tiles) const {
+    return base_tiles & (edram_tile_count_ - 1);
+  }
+
   bool IsDrawResolutionScaled() const {
     return draw_resolution_scale_x() > 1 || draw_resolution_scale_y() > 1;
   }
@@ -243,6 +257,9 @@ class RenderTargetCache {
       : register_file_(register_file),
         draw_resolution_scale_x_(draw_resolution_scale_x),
         draw_resolution_scale_y_(draw_resolution_scale_y),
+        edram_tile_count_(cvars::edram_tile_count == "extended"
+                              ? xenos::kEdramTileCountMax
+                              : xenos::kEdramTileCount),
         draw_extent_estimator_(register_file, memory, trace_writer) {
     assert_not_zero(draw_resolution_scale_x);
     assert_not_zero(draw_resolution_scale_y);
@@ -282,24 +299,24 @@ class RenderTargetCache {
   union RenderTargetKey {
     uint32_t key;
     struct {
-      uint32_t base_tiles : xenos::kEdramBaseTilesBits;  // 11
+      uint32_t base_tiles : xenos::kEdramBaseTilesBits;  // 13
       // At 4x MSAA (2 horizontal samples), max. align(8192 * 2, 80) / 80 = 205.
       // For pitch at 64bpp, multiply by 2 (or use GetPitchTiles).
-      uint32_t pitch_tiles_at_32bpp : 8;                          // 19
-      xenos::MsaaSamples msaa_samples : xenos::kMsaaSamplesBits;  // 21
-      uint32_t is_depth : 1;                                      // 22
+      uint32_t pitch_tiles_at_32bpp : 8;                          // 21
+      xenos::MsaaSamples msaa_samples : xenos::kMsaaSamplesBits;  // 23
+      uint32_t is_depth : 1;                                      // 24
       // Ignoring the blending precision.
-      uint32_t resource_format : xenos::kRenderTargetFormatBits;  // 26
+      uint32_t resource_format : xenos::kRenderTargetFormatBits;  // 28
       // 1 if this render target is kept at native guest resolution because of
       // draw_resolution_scale_threshold. Native and scaled targets at the same
       // base are distinct objects and ownership can be transferred. One bit is
       // enough. The only classes are the global scale and 1x1. Keys never
       // carry arbitrary scales.
-      uint32_t scale_native : 1;  // 27
+      uint32_t scale_native : 1;  // 29
       // The render target's rows are in the next EDRAM addressing period past
       // its base, 64bpp color rows span two. The rows in the first period at
       // the same base are another render target.
-      uint32_t next_period : 1;  // 28
+      uint32_t next_period : 1;  // 30
     };
 
     RenderTargetKey() : key(0) { static_assert_size(*this, sizeof(key)); }
@@ -341,16 +358,17 @@ class RenderTargetCache {
                       : xenos::GetColorRenderTargetFormatName(GetColorFormat());
     }
 
+    static constexpr uint32_t kPitchTilesBits = 9;
     uint32_t GetPitchTiles() const {
       return pitch_tiles_at_32bpp << uint32_t(Is64bpp());
     }
     // The tile index, past the tile count for the tail wrapped around the end
     // of EDRAM and again for the next period, minus the base it's the offset
     // into the render target's rows.
-    uint32_t GetNonWrappedTileIndex(uint32_t tile_index) const {
-      return tile_index +
-             (tile_index < base_tiles ? xenos::kEdramTileCount : 0) +
-             (uint32_t(next_period) << xenos::kEdramBaseTilesBits);
+    uint32_t GetNonWrappedTileIndex(uint32_t tile_index,
+                                    uint32_t edram_tile_count) const {
+      return tile_index + (tile_index < base_tiles ? edram_tile_count : 0) +
+             uint32_t(next_period) * edram_tile_count;
     }
     static constexpr uint32_t GetWidth(uint32_t pitch_tiles_at_32bpp,
                                        xenos::MsaaSamples msaa_samples) {
@@ -422,12 +440,14 @@ class RenderTargetCache {
     // will be cleared to a single value anyway.
     static uint32_t GetRangeRectangles(uint32_t start_tiles, uint32_t end_tiles,
                                        RenderTargetKey key,
+                                       uint32_t edram_tile_count,
                                        Rectangle* rectangles_out,
                                        const Rectangle* cutout = nullptr);
-    uint32_t GetRectangles(RenderTargetKey key, Rectangle* rectangles_out,
+    uint32_t GetRectangles(RenderTargetKey key, uint32_t edram_tile_count,
+                           Rectangle* rectangles_out,
                            const Rectangle* cutout = nullptr) const {
-      return GetRangeRectangles(start_tiles, end_tiles, key, rectangles_out,
-                                cutout);
+      return GetRangeRectangles(start_tiles, end_tiles, key, edram_tile_count,
+                                rectangles_out, cutout);
     }
     bool AreSourcesSame(const Transfer& other_transfer) const {
       return source == other_transfer.source &&
@@ -661,6 +681,7 @@ class RenderTargetCache {
   const RegisterFile& register_file_;
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
+  uint32_t edram_tile_count_;
 
   DrawExtentEstimator draw_extent_estimator_;
 

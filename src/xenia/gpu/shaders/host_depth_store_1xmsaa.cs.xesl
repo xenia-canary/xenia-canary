@@ -41,7 +41,7 @@ entry_inputs_end_code_begin_compute_xe
       XeHostDepthStoreRectUnscaledOrigin(rect_constant) * resolution_scale +
       (in_global_thread_id_xe.xy << uint2_xe(3u, 0u)));
   uint edram_address = XeEdramOffsetBytes(
-      uint2_xe(pixel_index), 0u, false,
+      uint2_xe(pixel_index), 0u, 0u,
       XeHostDepthStoreRTPitchTiles(rt_constant), kXenosMsaaSamples_1X, false,
       0u, 0u, resolution_scale);
   byte_buffer_align16_store16_xe(

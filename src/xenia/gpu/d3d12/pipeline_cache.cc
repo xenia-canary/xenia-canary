@@ -103,6 +103,7 @@ PipelineCache::PipelineCache(D3D12CommandProcessor& command_processor,
       render_target_cache_.msaa_2x_supported(),
       render_target_cache_.draw_resolution_scale_x(),
       render_target_cache_.draw_resolution_scale_y(),
+      render_target_cache_.edram_tile_count(),
       provider.GetGraphicsAnalysis() != nullptr);
 
   depth_only_pixel_shader_ =
@@ -1169,6 +1170,7 @@ void PipelineCache::TranslateShadersForStorage(
         render_target_cache_.msaa_2x_supported(),
         render_target_cache_.draw_resolution_scale_x(),
         render_target_cache_.draw_resolution_scale_y(),
+        render_target_cache_.edram_tile_count(),
         provider.GetGraphicsAnalysis() != nullptr);
     // DXIL conversion objects.
     IDxbcConverter* dxbc_converter = nullptr;
@@ -3347,6 +3349,7 @@ void PipelineCache::CreationThread(size_t thread_index) {
       render_target_cache_.msaa_2x_supported(),
       render_target_cache_.draw_resolution_scale_x(),
       render_target_cache_.draw_resolution_scale_y(),
+      render_target_cache_.edram_tile_count(),
       provider.GetGraphicsAnalysis() != nullptr);
   // Create thread-local DXIL conversion objects if needed.
   IDxbcConverter* dxbc_converter = nullptr;

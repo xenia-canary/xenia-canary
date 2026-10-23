@@ -68,7 +68,8 @@ DxbcShaderTranslator::DxbcShaderTranslator(
     ui::GraphicsProvider::GpuVendorID vendor_id, bool bindless_resources_used,
     bool edram_rov_used, bool gamma_render_target_as_unorm8,
     bool msaa_2x_supported, uint32_t draw_resolution_scale_x,
-    uint32_t draw_resolution_scale_y, bool force_emit_source_map)
+    uint32_t draw_resolution_scale_y, uint32_t edram_tile_count,
+    bool force_emit_source_map)
     : a_(shader_code_, statistics_),
       ao_(shader_object_, statistics_),
       vendor_id_(vendor_id),
@@ -79,9 +80,11 @@ DxbcShaderTranslator::DxbcShaderTranslator(
       msaa_2x_supported_(msaa_2x_supported),
       draw_resolution_scale_x_(draw_resolution_scale_x),
       draw_resolution_scale_y_(draw_resolution_scale_y),
+      edram_tile_count_(edram_tile_count),
       emit_source_map_(force_emit_source_map || cvars::dxbc_source_map) {
   assert_not_zero(draw_resolution_scale_x);
   assert_not_zero(draw_resolution_scale_y);
+  assert_true(xe::is_pow2(edram_tile_count));
   // Don't allocate again and again for the first shader.
   shader_code_.reserve(8192);
   shader_object_.reserve(16384);

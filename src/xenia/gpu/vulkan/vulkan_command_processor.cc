@@ -128,7 +128,8 @@ void VulkanCommandProcessor::InitializeShaderStorage(
                                            std::move(completion_callback));
 }
 
-void VulkanCommandProcessor::RestoreEdramSnapshot(const void* snapshot) {}
+void VulkanCommandProcessor::RestoreEdramSnapshot(const void* snapshot,
+                                                  size_t size_bytes) {}
 
 std::string VulkanCommandProcessor::GetWindowTitleText() const {
   std::ostringstream title;
@@ -5117,7 +5118,8 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
                                normalized_depth_control.z_enable;
   if (edram_fragment_shader_interlock && depth_stencil_enabled) {
     for (uint32_t i = 0; i < 4; ++i) {
-      if (rb_depth_info.depth_base == color_infos[i].color_base &&
+      if (render_target_cache_->WrapEdramBase(rb_depth_info.depth_base) ==
+              render_target_cache_->WrapEdramBase(color_infos[i].color_base) &&
           RenderTargetCache::ColorOverlapsDepthStencil(
               color_infos[i].color_format, rt_keep_masks[i][0],
               rt_keep_masks[i][1], normalized_depth_control)) {
@@ -5473,8 +5475,8 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
         uint32_t rt_base_dwords_scaled =
             draw_util::AddWindowOffsetToEdramBase(
                 color_info.color_base, window_offset_tiles,
-                xenos::IsColorRenderTargetFormat64bpp(
-                    color_info.color_format)) *
+                xenos::IsColorRenderTargetFormat64bpp(color_info.color_format),
+                render_target_cache_->edram_tile_count()) *
             edram_tile_dwords_scaled;
         dirty |= system_constants_.edram_rt_base_dwords_scaled[i] !=
                  rt_base_dwords_scaled;
@@ -5525,8 +5527,9 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
 
   if (edram_fragment_shader_interlock) {
     uint32_t depth_base_dwords_scaled =
-        draw_util::AddWindowOffsetToEdramBase(rb_depth_info.depth_base,
-                                              window_offset_tiles, false) *
+        draw_util::AddWindowOffsetToEdramBase(
+            rb_depth_info.depth_base, window_offset_tiles, false,
+            render_target_cache_->edram_tile_count()) *
         edram_tile_dwords_scaled;
     dirty |= system_constants_.edram_depth_base_dwords_scaled !=
              depth_base_dwords_scaled;

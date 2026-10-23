@@ -98,7 +98,7 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
   // Returns true if any downloads were submitted to the command processor.
   bool InitializeTraceSubmitDownloads();
   void InitializeTraceCompleteDownloads();
-  void RestoreEdramSnapshot(const void* snapshot);
+  void RestoreEdramSnapshot(const void* snapshot, size_t size_bytes);
 
   // For host render targets.
 
@@ -487,8 +487,8 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
     uint32_t constant;
     struct {
       // All in tiles.
-      uint32_t dest_pitch : xenos::kEdramPitchTilesBits;
-      uint32_t source_pitch : xenos::kEdramPitchTilesBits;
+      uint32_t dest_pitch : RenderTargetKey::kPitchTilesBits;
+      uint32_t source_pitch : RenderTargetKey::kPitchTilesBits;
       // Destination base in tiles minus source base in tiles (not vice versa
       // because this is a transform of the coordinate system, not addresses
       // themselves), wrapped, the shader wraps the sum anyway.

@@ -793,7 +793,7 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       fsi_const_edram_size_dwords = builder_->makeUintConstant(
           xenos::kEdramTileWidthSamples * draw_resolution_scale_x_ *
           xenos::kEdramTileHeightSamples * draw_resolution_scale_y_ *
-          xenos::kEdramTileCount);
+          edram_tile_count_);
       for (uint32_t i = 0; i < 4; ++i) {
         fsi_samples_covered[i] = builder_->createBinOp(
             spv::OpINotEqual, type_bool_,
@@ -1976,7 +1976,7 @@ void SpirvShaderTranslator::FSI_LoadEdramOffsets(spv::Id msaa_samples) {
               builder_->createTriOp(spv::OpSelect, type_uint_,
                                     is_second_tile_half, const_uint_0_,
                                     const_tile_half_width))),
-      builder_->makeUintConstant(tile_size * xenos::kEdramTileCount));
+      builder_->makeUintConstant(tile_size * edram_tile_count_));
 
   if (current_shader().writes_color_targets()) {
     // Get the offset of the sample 0 within a 32bpp surface, with samples
