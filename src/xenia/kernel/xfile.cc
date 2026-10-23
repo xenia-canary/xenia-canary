@@ -8,6 +8,8 @@
  */
 
 #include "xenia/kernel/xfile.h"
+
+#include <string_view>
 #include "xenia/vfs/virtual_file_system.h"
 
 #include "xenia/base/byte_stream.h"

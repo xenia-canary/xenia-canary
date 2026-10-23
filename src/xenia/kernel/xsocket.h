@@ -131,6 +131,10 @@ class XSocket : public XObject {
 
   uint32_t GetLastWSAError() const;
 
+  bool Save(ByteStream* stream) override;
+  static object_ref<XSocket> Restore(KernelState* kernel_state,
+                                     ByteStream* stream);
+
   struct packet {
     // These values are in network byte order.
     xe::be<uint16_t> src_port;
@@ -145,6 +149,7 @@ class XSocket : public XObject {
                    size_t len);
 
  private:
+  XSocket();
   XSocket(KernelState* kernel_state, uint64_t native_handle);
   uint64_t native_handle_ = -1;
 
@@ -155,6 +160,7 @@ class XSocket : public XObject {
 
   bool bound_ = false;  // Explicitly bound to an IP address?
   uint16_t bound_port_ = 0;
+  uint32_t bound_address_ = 0;
 
   bool broadcast_socket_ = false;
 

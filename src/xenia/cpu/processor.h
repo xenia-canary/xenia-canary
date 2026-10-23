@@ -37,6 +37,7 @@ namespace cpu {
 constexpr fourcc_t kProcessorSaveSignature = make_fourcc("PROC");
 
 class Breakpoint;
+class TransientStepGate;
 class StackWalker;
 class XexModule;
 
@@ -170,19 +171,17 @@ class Processor {
 
   // Steps the given thread until the guest address is hit.
   // Returns false if the step could not be completed (invalid target address).
-  bool StepToGuestAddress(uint32_t thread_id, uint32_t pc);
-
-  // Steps the given thread to the target of the branch at the specified guest
-  // address. The address must specify a branch instruction.
-  // Returns the new PC guest address.
-  uint32_t StepIntoGuestBranchTarget(uint32_t thread_id, uint32_t pc);
+  bool StepToGuestAddress(uint32_t thread_id, uint32_t pc,
+                          bool* thread_suspended = nullptr);
 
   // Steps the thread to a point where it's safe to terminate or read its
   // context. Returns the PC after we've finished stepping.
   // Pass true for ignore_host if you've stopped the thread yourself
   // in host code you want to ignore.
   // Returns the new PC guest address.
-  uint32_t StepToGuestSafePoint(uint32_t thread_id, bool ignore_host = false);
+  uint32_t StepToGuestSafePoint(uint32_t thread_id, bool ignore_host = false,
+                                bool park_thread = false,
+                                bool thread_suspended = false);
 
   uint32_t GuestAtomicIncrement32(ppc::PPCContext* context,
                                   uint32_t guest_address);
@@ -202,7 +201,7 @@ class Processor {
   void OnThreadCreated(uint32_t handle, ThreadState* thread_state,
                        Thread* thread);
   void OnThreadExit(uint32_t thread_id);
-  void OnThreadDestroyed(uint32_t thread_id);
+  void OnThreadDestroyed(uint32_t thread_id, Thread* thread);
   void OnThreadEnteringWait(uint32_t thread_id);
   void OnThreadLeavingWait(uint32_t thread_id);
 

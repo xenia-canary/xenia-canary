@@ -167,7 +167,11 @@ class Win32StackWalker : public StackWalker {
       // This gets the state of the thread exactly where it was when suspended.
       thread_context.ContextFlags = CONTEXT_FULL;
       if (!GetThreadContext(thread_handle, &thread_context)) {
-        XELOGE("Unable to read thread context for stack walk");
+        const DWORD error = GetLastError();
+        XELOGE(
+            "Unable to read thread context for stack walk (handle={:016X}, "
+            "error={})",
+            reinterpret_cast<uintptr_t>(thread_handle), error);
         return 0;
       }
     } else {

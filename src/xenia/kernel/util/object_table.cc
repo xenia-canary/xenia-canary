@@ -469,13 +469,15 @@ X_STATUS ObjectTable::RestoreHandle(X_HANDLE handle, XObject* object) {
   const bool is_host_object = XObject::is_handle_host_object(handle);
   uint32_t slot = GetHandleSlot(handle, is_host_object);
   uint32_t capacity = is_host_object ? host_table_capacity_ : table_capacity_;
-  assert_true(capacity >= slot);
-
-  if (capacity >= slot) {
-    auto& entry = is_host_object ? host_table_[slot] : table_[slot];
-    entry.object = object;
-    object->Retain();
+  if (slot >= capacity) {
+    XELOGE("ObjectTable::RestoreHandle: handle {:08X} exceeds capacity {}",
+           handle, capacity);
+    return X_STATUS_INVALID_HANDLE;
   }
+
+  auto& entry = is_host_object ? host_table_[slot] : table_[slot];
+  entry.object = object;
+  object->Retain();
 
   return X_STATUS_SUCCESS;
 }

@@ -90,11 +90,14 @@ bool XNotifyListener::DequeueNotification(XNotificationID id,
 }
 
 bool XNotifyListener::Save(ByteStream* stream) {
-  SaveObject(stream);
+  if (!SaveObject(stream)) {
+    return false;
+  }
 
   stream->Write(mask_);
+  stream->Write(is_system_);
   stream->Write(max_version_);
-  stream->Write(notifications_.size());
+  stream->Write(static_cast<uint32_t>(notifications_.size()));
   for (auto pair : notifications_) {
     stream->Write<uint32_t>(pair.first);
     stream->Write<uint32_t>(pair.second);
@@ -108,14 +111,17 @@ object_ref<XNotifyListener> XNotifyListener::Restore(KernelState* kernel_state,
   auto notify = new XNotifyListener(nullptr);
   notify->kernel_state_ = kernel_state;
 
-  notify->RestoreObject(stream);
+  if (!notify->RestoreObject(stream)) {
+    notify->Release();
+    return nullptr;
+  }
 
   auto mask = stream->Read<uint64_t>();
   auto is_system = stream->Read<uint32_t>();
   auto max_version = stream->Read<uint32_t>();
   notify->Initialize(mask, is_system, max_version);
 
-  auto notification_count_ = stream->Read<size_t>();
+  auto notification_count_ = stream->Read<uint32_t>();
   for (size_t i = 0; i < notification_count_; i++) {
     std::pair<XNotificationID, uint32_t> pair;
     pair.first = stream->Read<uint32_t>();

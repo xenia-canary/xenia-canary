@@ -9,8 +9,189 @@
 
 #include "xenia/kernel/xenumerator.h"
 
+#include <limits>
+#include <typeinfo>
+
+#include "xenia/base/byte_stream.h"
+#include "xenia/base/logging.h"
+#include "xenia/kernel/kernel_state.h"
+
 namespace xe {
 namespace kernel {
+
+namespace {
+
+constexpr uint32_t kXEnumeratorSaveSignature = make_fourcc('X', 'E', 'N', 'U');
+
+enum class SavedEnumeratorType : uint32_t {
+  StaticUntyped = 1,
+  Profile = 2,
+  Content = 3,
+};
+
+bool HasRemainingBytes(ByteStream* stream, size_t count) {
+  return stream->data_length() >= stream->offset() &&
+         count <= stream->data_length() - stream->offset();
+}
+
+}  // namespace
+
+bool XEnumerator::Save(ByteStream*) {
+  XELOGE("No save handler exists for XEnumerator type {}",
+         typeid(*this).name());
+  return false;
+}
+
+bool XEnumerator::SaveCommon(ByteStream* stream) {
+  if (!SaveObject(stream)) {
+    return false;
+  }
+
+  stream->Write(kXEnumeratorSaveSignature);
+  stream->Write<uint64_t>(items_per_enumerate_);
+  stream->Write<uint64_t>(item_size_);
+  stream->Write<uint64_t>(extra_size_);
+  return true;
+}
+
+bool XEnumerator::RestoreCommon(ByteStream* stream) {
+  if (!RestoreObject(stream)) {
+    return false;
+  }
+  if (stream->Read<uint32_t>() != kXEnumeratorSaveSignature) {
+    XELOGE("Could not restore XEnumerator {:08X} - invalid magic!", handle());
+    return false;
+  }
+
+  const uint64_t items_per_enumerate = stream->Read<uint64_t>();
+  const uint64_t item_size = stream->Read<uint64_t>();
+  const uint64_t extra_size = stream->Read<uint64_t>();
+  if (items_per_enumerate > std::numeric_limits<size_t>::max() ||
+      item_size > std::numeric_limits<size_t>::max() ||
+      extra_size > std::numeric_limits<size_t>::max()) {
+    XELOGE("Invalid XEnumerator dimensions while restoring {:08X}", handle());
+    return false;
+  }
+
+  items_per_enumerate_ = static_cast<size_t>(items_per_enumerate);
+  item_size_ = static_cast<size_t>(item_size);
+  extra_size_ = static_cast<size_t>(extra_size);
+  return true;
+}
+
+object_ref<XEnumerator> XEnumerator::Restore(KernelState* kernel_state,
+                                             ByteStream* stream) {
+  const auto saved_type =
+      static_cast<SavedEnumeratorType>(stream->Read<uint32_t>());
+  XEnumerator* enumerator = nullptr;
+  switch (saved_type) {
+    case SavedEnumeratorType::StaticUntyped:
+      enumerator = new XStaticUntypedEnumerator(kernel_state, 0, 0);
+      break;
+    case SavedEnumeratorType::Profile:
+      enumerator = new ProfileEnumerator(kernel_state, 0);
+      break;
+    case SavedEnumeratorType::Content:
+      enumerator = new ContentEnumerator(kernel_state, 0, 0);
+      break;
+    default:
+      XELOGE("No restore handler exists for XEnumerator type {}",
+             static_cast<uint32_t>(saved_type));
+      return nullptr;
+  }
+
+  auto discard_enumerator = [&]() {
+    const auto handles = enumerator->handles();
+    for (X_HANDLE handle : handles) {
+      kernel_state->object_table()->RemoveHandle(handle);
+    }
+    enumerator->Release();
+  };
+
+  if (!enumerator->RestoreCommon(stream)) {
+    discard_enumerator();
+    return nullptr;
+  }
+
+  if (saved_type == SavedEnumeratorType::StaticUntyped) {
+    auto static_enumerator = static_cast<XStaticUntypedEnumerator*>(enumerator);
+    const uint64_t item_count = stream->Read<uint64_t>();
+    const uint64_t current_item = stream->Read<uint64_t>();
+    const uint64_t buffer_size = stream->Read<uint64_t>();
+    if (item_count > std::numeric_limits<size_t>::max() ||
+        current_item > item_count ||
+        (static_enumerator->item_size() &&
+         item_count > std::numeric_limits<size_t>::max() /
+                          static_enumerator->item_size()) ||
+        buffer_size != item_count * static_enumerator->item_size() ||
+        buffer_size > std::numeric_limits<size_t>::max() ||
+        !HasRemainingBytes(stream, static_cast<size_t>(buffer_size))) {
+      XELOGE("Invalid static XEnumerator data while restoring {:08X}",
+             enumerator->handle());
+      discard_enumerator();
+      return nullptr;
+    }
+
+    static_enumerator->item_count_ = static_cast<size_t>(item_count);
+    static_enumerator->current_item_ = static_cast<size_t>(current_item);
+    static_enumerator->buffer_.resize(static_cast<size_t>(buffer_size));
+    if (buffer_size) {
+      stream->Read(static_enumerator->buffer_.data(),
+                   static_cast<size_t>(buffer_size));
+    }
+  } else if (saved_type == SavedEnumeratorType::Profile) {
+    auto profile_enumerator = static_cast<ProfileEnumerator*>(enumerator);
+    const uint64_t item_count = stream->Read<uint64_t>();
+    const uint64_t current_item = stream->Read<uint64_t>();
+    if (profile_enumerator->item_size() != sizeof(xam::X_PROFILEENUMRESULT) ||
+        item_count > std::numeric_limits<size_t>::max() ||
+        current_item > item_count ||
+        item_count > std::numeric_limits<size_t>::max() /
+                         sizeof(xam::X_PROFILEENUMRESULT) ||
+        item_count * sizeof(xam::X_PROFILEENUMRESULT) >
+            std::numeric_limits<size_t>::max() ||
+        !HasRemainingBytes(stream, static_cast<size_t>(item_count) *
+                                       sizeof(xam::X_PROFILEENUMRESULT))) {
+      XELOGE("Invalid profile XEnumerator data while restoring {:08X}",
+             enumerator->handle());
+      discard_enumerator();
+      return nullptr;
+    }
+
+    profile_enumerator->items_.resize(static_cast<size_t>(item_count));
+    profile_enumerator->current_item_ = static_cast<size_t>(current_item);
+    if (item_count) {
+      stream->Read(
+          profile_enumerator->items_.data(),
+          static_cast<size_t>(item_count) * sizeof(xam::X_PROFILEENUMRESULT));
+    }
+  } else {
+    auto content_enumerator = static_cast<ContentEnumerator*>(enumerator);
+    const uint64_t item_count = stream->Read<uint64_t>();
+    const uint64_t current_item = stream->Read<uint64_t>();
+    if (item_count > std::numeric_limits<size_t>::max() ||
+        current_item > item_count ||
+        item_count > std::numeric_limits<size_t>::max() /
+                         sizeof(xam::XCONTENT_DATA_INTERNAL) ||
+        !HasRemainingBytes(stream, static_cast<size_t>(item_count) *
+                                       sizeof(xam::XCONTENT_DATA_INTERNAL))) {
+      XELOGE("Invalid content XEnumerator data while restoring {:08X}",
+             enumerator->handle());
+      discard_enumerator();
+      return nullptr;
+    }
+
+    content_enumerator->items_.resize(static_cast<size_t>(item_count));
+    content_enumerator->current_item_ = static_cast<size_t>(current_item);
+    if (item_count) {
+      stream->Read(content_enumerator->items_.data(),
+                   static_cast<size_t>(item_count) *
+                       sizeof(xam::XCONTENT_DATA_INTERNAL));
+    }
+  }
+
+  return object_ref<XEnumerator>(enumerator);
+}
 
 XEnumerator::XEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
                          size_t item_size)
@@ -86,6 +267,22 @@ uint32_t XStaticUntypedEnumerator::WriteItems(uint8_t* buffer_data,
   }
 
   return X_ERROR_SUCCESS;
+}
+
+bool XStaticUntypedEnumerator::Save(ByteStream* stream) {
+  stream->Write<uint32_t>(
+      static_cast<uint32_t>(SavedEnumeratorType::StaticUntyped));
+  if (!SaveCommon(stream)) {
+    return false;
+  }
+
+  stream->Write<uint64_t>(item_count_);
+  stream->Write<uint64_t>(current_item_);
+  stream->Write<uint64_t>(buffer_.size());
+  if (!buffer_.empty()) {
+    stream->Write(buffer_.data(), buffer_.size());
+  }
+  return true;
 }
 
 uint32_t XAchievementEnumerator::WriteItems(uint8_t* buffer_data,
@@ -248,6 +445,20 @@ uint32_t ProfileEnumerator::WriteItems(uint8_t* buffer_data,
   return X_ERROR_SUCCESS;
 }
 
+bool ProfileEnumerator::Save(ByteStream* stream) {
+  stream->Write<uint32_t>(static_cast<uint32_t>(SavedEnumeratorType::Profile));
+  if (!SaveCommon(stream)) {
+    return false;
+  }
+
+  stream->Write<uint64_t>(items_.size());
+  stream->Write<uint64_t>(current_item_);
+  if (!items_.empty()) {
+    stream->Write(items_.data(), items_.size() * sizeof(items_[0]));
+  }
+  return true;
+}
+
 uint32_t ContentEnumerator::WriteItems(uint8_t* buffer_data,
                                        uint32_t buffer_size,
                                        uint32_t* written_count) {
@@ -292,6 +503,20 @@ uint32_t ContentEnumerator::WriteItems(uint8_t* buffer_data,
   }
 
   return X_ERROR_SUCCESS;
+}
+
+bool ContentEnumerator::Save(ByteStream* stream) {
+  stream->Write<uint32_t>(static_cast<uint32_t>(SavedEnumeratorType::Content));
+  if (!SaveCommon(stream)) {
+    return false;
+  }
+
+  stream->Write<uint64_t>(items_.size());
+  stream->Write<uint64_t>(current_item_);
+  if (!items_.empty()) {
+    stream->Write(items_.data(), items_.size() * sizeof(items_[0]));
+  }
+  return true;
 }
 
 }  // namespace kernel

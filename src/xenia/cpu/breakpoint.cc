@@ -17,11 +17,16 @@ namespace xe {
 namespace cpu {
 
 Breakpoint::Breakpoint(Processor* processor, AddressType address_type,
-                       uint64_t address, HitCallback hit_callback)
+                       uint64_t address, HitCallback hit_callback,
+                       bool is_transient_step)
     : processor_(processor),
       address_type_(address_type),
       address_(address),
-      hit_callback_(hit_callback) {}
+      hit_callback_(hit_callback),
+      is_transient_step_(is_transient_step),
+      transient_step_gate_(
+          is_transient_step ? std::make_shared<TransientStepGate>() : nullptr) {
+}
 
 Breakpoint::~Breakpoint() { assert_false(installed_); }
 

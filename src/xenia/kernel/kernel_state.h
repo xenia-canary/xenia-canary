@@ -306,6 +306,9 @@ class KernelState {
       uint32_t overlapped_ptr, std::function<void()> pre_callback = nullptr,
       std::function<void()> post_callback = nullptr);
 
+  // Advances all guest threads concurrently and parks them before snapshotting
+  // shared kernel and guest-memory state.
+  bool PrepareThreadsForSave();
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
 

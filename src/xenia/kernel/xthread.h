@@ -495,6 +495,10 @@ class XThread : public XObject, public cpu::Thread {
 
   xe::threading::Thread* thread() { return thread_.get(); }
 
+  // Advances and parks this guest thread at a state-save safe point.
+  bool PrepareForSave();
+  bool is_prepared_for_save() const { return prepared_save_pc_ != 0; }
+  void ResetPreparedForSave() { prepared_save_pc_ = 0; }
   virtual bool Save(ByteStream* stream) override;
   static object_ref<XThread> Restore(KernelState* kernel_state,
                                      ByteStream* stream);
@@ -531,6 +535,8 @@ class XThread : public XObject, public cpu::Thread {
   bool guest_thread_ = false;
   bool main_thread_ = false;  // Entry-point thread
   bool running_ = false;
+  uint32_t prepared_save_pc_ = 0;
+  uint32_t saved_context_pc_ = 0;
 
   int32_t priority_ = 0;       // current effective priority (may be decayed)
   int32_t base_priority_ = 0;  // priority floor — decay never goes below this

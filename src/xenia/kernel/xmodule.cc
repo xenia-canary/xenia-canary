@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xmodule.h"
 
+#include <string_view>
+
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
@@ -78,7 +80,7 @@ bool XModule::Save(ByteStream* stream) {
 
   stream->Write(kModuleSaveSignature);
 
-  stream->Write(path());
+  stream->Write(std::string_view(path()));
   stream->Write(hmodule_ptr_);
 
   if (!SaveObject(stream)) {
@@ -106,6 +108,9 @@ object_ref<XModule> XModule::Restore(KernelState* kernel_state,
 
   XELOGD("XModule {:08X} ({})", module->handle(), module->path());
 
+  if (module->hmodule_ptr_ != hmodule_ptr) {
+    kernel_state->memory()->SystemHeapFree(module->hmodule_ptr_);
+  }
   module->hmodule_ptr_ = hmodule_ptr;
   return module;
 }

@@ -603,7 +603,11 @@ class CommandProcessor {
   std::atomic<bool> worker_running_;
   kernel::object_ref<kernel::XHostThread> worker_thread_;
 
+  // CallInThread may be called from the UI and state-save worker threads.
+  // Protect the queue and publish pending_fns_pending_ for the worker loop.
+  std::mutex pending_fns_mutex_;
   std::queue<std::function<void()>> pending_fns_;
+  std::atomic<bool> pending_fns_pending_{false};
 
   // MicroEngine binary from PM4_ME_INIT
   std::vector<uint32_t> me_bin_;

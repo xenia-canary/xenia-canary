@@ -143,7 +143,9 @@ void XEvent::Clear() { event_->Reset(); }
 
 bool XEvent::Save(ByteStream* stream) {
   XELOGD("XEvent {:08X} ({})", handle(), manual_reset_ ? "manual" : "auto");
-  SaveObject(stream);
+  if (!SaveObject(stream)) {
+    return false;
+  }
 
   bool signaled = true;
   auto result =
@@ -172,7 +174,10 @@ object_ref<XEvent> XEvent::Restore(KernelState* kernel_state,
   auto evt = new XEvent(nullptr);
   evt->kernel_state_ = kernel_state;
 
-  evt->RestoreObject(stream);
+  if (!evt->RestoreObject(stream)) {
+    evt->Release();
+    return nullptr;
+  }
   bool signaled = stream->Read<bool>();
   evt->manual_reset_ = stream->Read<bool>();
 

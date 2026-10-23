@@ -12,6 +12,8 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <type_traits>
 
 namespace xe {
 
@@ -48,8 +50,13 @@ class ByteStream {
 
   template <typename T>
   void Write(T data) {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "Serialize non-trivial objects explicitly");
     Write(reinterpret_cast<uint8_t*>(&data), sizeof(T));
   }
+
+  void Write(const std::string& str) { Write(std::string_view(str)); }
+  void Write(const std::u16string& str) { Write(std::u16string_view(str)); }
 
   void Write(const std::string_view str) {
     Write(uint32_t(str.length()));
