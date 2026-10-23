@@ -805,12 +805,67 @@ dword_result_t XeCryptBnQwBeSigVerify_entry(pointer_t<XECRYPT_SIG> sig,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwBeSigVerify, kNone, kStub);
 
+// Builds a PKCS #1 v1.5 signature block for a SHA-1 hash, stored as a
+// little-endian number. format selects the DigestInfo: 0 is the standard
+// one, 1 omits the NULL parameters and 2 leaves it out.
+// Based on ExCrypt (github.com/emoose/ExCrypt).
+static void XeCryptPkcs1Format(const uint8_t* hash, uint32_t format,
+                               uint8_t* sig, uint32_t sig_size) {
+  // Reversed DigestInfo prefixes, each ending with the 0x00 separator
+  static constexpr uint8_t kDigestInfo0[] = {0x14, 0x04, 0x00, 0x05, 0x1A, 0x02,
+                                             0x03, 0x0E, 0x2B, 0x05, 0x06, 0x09,
+                                             0x30, 0x21, 0x30, 0x00};
+  static constexpr uint8_t kDigestInfo1[] = {0x14, 0x04, 0x1A, 0x02, 0x03,
+                                             0x0E, 0x2B, 0x05, 0x06, 0x07,
+                                             0x30, 0x1F, 0x30, 0x00};
+
+  std::memset(sig, 0xFF, sig_size);
+
+  if (sig_size < 39 || sig_size > 512) {
+    return;
+  }
+
+  sig[sig_size - 1] = 0;
+  sig[sig_size - 2] = 1;
+  std::reverse_copy(hash, hash + 0x14, sig);
+
+  switch (format) {
+    case 0:
+      std::ranges::copy(kDigestInfo0, sig + 0x14);
+      break;
+    case 1:
+      std::ranges::copy(kDigestInfo1, sig + 0x14);
+      break;
+    case 2:
+      sig[0x14] = 0;
+      break;
+  }
+}
+
+void XeCryptBnDwLePkcs1Format_entry(lpvoid_t hash, dword_t format, lpvoid_t sig,
+                                    dword_t sig_size) {
+  XeCryptPkcs1Format(hash, format, sig, sig_size);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDwLePkcs1Format, kNone, kImplemented);
+
 dword_result_t XeCryptBnDwLePkcs1Verify_entry(lpvoid_t hash, lpvoid_t sig,
                                               dword_t size) {
-  // BOOL return value
-  return 1;
+  if (size < 39 || size > 512) {
+    return false;
+  }
+
+  // Byte 0x16 is 0x00 in type 0 and 0x1A in type 1.
+  const uint8_t* sig_data = sig.as<const uint8_t*>();
+  uint32_t format = 0;
+  if (sig_data[0x16] != 0) {
+    format = sig_data[0x16] == 0x1A ? 1 : 2;
+  }
+
+  std::vector<uint8_t> expected(size);
+  XeCryptPkcs1Format(hash, format, expected.data(), size);
+  return std::memcmp(expected.data(), sig_data, size) == 0;
 }
-DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDwLePkcs1Verify, kNone, kStub);
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDwLePkcs1Verify, kNone, kImplemented);
 
 void XeCryptRandom_entry(lpvoid_t buf, dword_t buf_size) {
   uint8_t* buf_data = buf.as<uint8_t*>();
