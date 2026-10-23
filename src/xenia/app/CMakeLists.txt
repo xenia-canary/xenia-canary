@@ -108,6 +108,7 @@ endif()
 if(WIN32)
   target_link_libraries(xenia-app PRIVATE
     xenia-apu-xaudio2
+    xenia-debug-gdb
     xenia-gpu-d3d12
     xenia-hid-xinput
     xenia-ui-d3d12
