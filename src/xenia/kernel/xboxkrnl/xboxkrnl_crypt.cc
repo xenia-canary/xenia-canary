@@ -821,6 +821,30 @@ void XeCryptDesEcb_entry(pointer_t<XECRYPT_DES_STATE> state_ptr, lpqword_t inp,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptDesEcb, kNone, kImplemented);
 
+void XeCryptDesCbc_entry(pointer_t<XECRYPT_DES_STATE> state_ptr, lpqword_t inp,
+                         dword_t inp_size, lpqword_t out, lpqword_t feed,
+                         dword_t encrypt) {
+  DES des(reinterpret_cast<uint64_t*>(state_ptr->keytab));
+
+  // DES can only do 8-byte chunks at a time!
+  assert_true(inp_size % 8 == 0);
+
+  uint64_t last_block = *feed;
+  for (uint32_t i = 0; i < inp_size / 8; i++) {
+    uint64_t block = inp[i];
+    if (encrypt) {
+      last_block = des.encrypt(block ^ last_block);
+      out[i] = last_block;
+    } else {
+      out[i] = des.decrypt(block) ^ last_block;
+      last_block = block;
+    }
+  }
+
+  *feed = last_block;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptDesCbc, kNone, kImplemented);
+
 // Sets bit 0 to make the parity odd
 void XeCryptDesParity_entry(lpvoid_t inp, dword_t inp_size, lpvoid_t out_ptr) {
   const uint8_t* in = inp.as<const uint8_t*>();
