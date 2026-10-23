@@ -792,7 +792,19 @@ DECLARE_XBOXKRNL_EXPORT1(XeCryptDesEcb, kNone, kImplemented);
 
 // Sets bit 0 to make the parity odd
 void XeCryptDesParity_entry(lpvoid_t inp, dword_t inp_size, lpvoid_t out_ptr) {
-  DES::set_parity(inp, inp_size, out_ptr);
+  const uint8_t* in = inp.as<const uint8_t*>();
+  uint8_t* out = out_ptr.as<uint8_t*>();
+
+  // DES::set_parity counts the parity bit itself, so compute it from the
+  // upper 7 bits only.
+  for (uint32_t i = 0; i < inp_size; i++) {
+    uint8_t parity = in[i] & 0xFE;
+    parity ^= parity >> 4;
+    parity ^= parity >> 2;
+    parity ^= parity >> 1;
+
+    out[i] = (in[i] & 0xFE) | (~parity & 1);
+  }
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptDesParity, kNone, kImplemented);
 
