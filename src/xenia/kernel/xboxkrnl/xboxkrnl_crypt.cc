@@ -8,6 +8,7 @@
 */
 
 #include <algorithm>
+#include <bit>
 #include <random>
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_crypt.h"
@@ -56,6 +57,11 @@ struct XECRYPT_HMACSHA_STATE {
   XECRYPT_SHA_STATE sha_state[2];
 };
 static_assert_size(XECRYPT_HMACSHA_STATE, 0xB0);
+
+struct XECRYPT_ROTSUM_STATE {
+  xe::be<uint64_t> data[4];
+};
+static_assert_size(XECRYPT_ROTSUM_STATE, 0x20);
 
 // TODO: Size of this struct hasn't been confirmed yet.
 struct XECRYPT_SHA256_STATE {
@@ -1202,12 +1208,57 @@ dword_result_t XeKeysHmacSha_entry(dword_t key_num, lpvoid_t inp_1,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysHmacSha, kNone, kImplemented);
 
+// Adds and subtracts each big-endian qword into a 256-bit rotating checksum.
+// Based on ExCrypt (github.com/emoose/ExCrypt).
+static void XeCryptRotSum(XECRYPT_ROTSUM_STATE* rotsum, const uint8_t* data,
+                          uint32_t size) {
+  uint64_t sum[4];
+  std::ranges::copy(rotsum->data, sum);
+
+  for (uint32_t i = 0; i < size / 8; i++) {
+    const uint64_t value = xe::load_and_swap<uint64_t>(data + i * 8);
+
+    sum[1] += value;
+    sum[3] -= value;
+    if (sum[1] < value) {
+      sum[0]++;
+    }
+    if (sum[3] > value) {
+      sum[2]--;
+    }
+
+    sum[1] = std::rotl(sum[1], 29);
+    sum[3] = std::rotl(sum[3], 31);
+  }
+
+  std::ranges::copy(sum, rotsum->data);
+}
+
 void XeCryptRotSumSha_entry(lpvoid_t inp_1, dword_t inp_1_size, lpvoid_t inp_2,
                             dword_t inp_2_size, lpvoid_t out,
                             dword_t out_size) {
-  // out used by XeCryptBnQwBeSigVerify
+  XECRYPT_ROTSUM_STATE rotsum = {};
+  XeCryptRotSum(&rotsum, inp_1, inp_1_size);
+  XeCryptRotSum(&rotsum, inp_2, inp_2_size);
+
+  XECRYPT_SHA_STATE sha;
+  XeCryptShaInit_entry(&sha);
+
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(rotsum));
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(rotsum));
+  XeCryptShaUpdate_entry(&sha, inp_1, inp_1_size);
+  XeCryptShaUpdate_entry(&sha, inp_2, inp_2_size);
+
+  for (auto& value : rotsum.data) {
+    value = ~value.get();
+  }
+
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(rotsum));
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(rotsum));
+
+  XeCryptShaFinal_entry(&sha, out.as<uint8_t*>(), out_size);
 }
-DECLARE_XBOXKRNL_EXPORT1(XeCryptRotSumSha, kNone, kStub);
+DECLARE_XBOXKRNL_EXPORT1(XeCryptRotSumSha, kNone, kImplemented);
 
 dword_result_t XeKeysAesCbcUsingKey_entry(lpvoid_t obscured_key,
                                           lpvoid_t inp_ptr, dword_t inp_size,
