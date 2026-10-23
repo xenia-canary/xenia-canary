@@ -98,6 +98,12 @@ enum class SignInState : uint32_t {
   SignedInToLive,   // Online
 };
 
+enum X_XUID_TYPE_MASK : uint32_t {
+  xuid_offline = 0x00000001,
+  xuid_online = 0x00000002,
+  xuid_guest = 0x00000004
+};
+
 class UserProfile {
  public:
   UserProfile(const uint64_t xuid, const X_XAMACCOUNTINFO* account_info);
@@ -112,12 +118,16 @@ class UserProfile {
   uint32_t signin_state() const {
     return static_cast<uint32_t>(SignInState::SignedInLocally);
   };
-  uint32_t type() const { return 1 | 2; /* local | online profile? */ }
+  uint32_t type() const { return xuid_offline | xuid_online; }
 
   uint32_t GetReservedFlags() const {
     return account_info_.GetReservedFlags();
   };
   uint32_t GetCachedFlags() const { return account_info_.GetCachedFlags(); };
+  uint32_t GetUserFlags() const {
+    return account_info_.GetCachedFlags() | account_info_.GetReservedFlags();
+  };
+
   uint32_t GetCountry() const {
     return static_cast<uint32_t>(account_info_.GetCountry());
   };

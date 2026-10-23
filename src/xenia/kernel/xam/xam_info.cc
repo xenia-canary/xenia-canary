@@ -68,7 +68,7 @@ dword_result_t XamFeatureEnabled_entry(qword_t feature_bit) {
 DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kImplemented);
 
 dword_result_t XamGetStagingMode_entry() { return cvars::staging_mode; }
-DECLARE_XAM_EXPORT1(XamGetStagingMode, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamGetStagingMode, kNone, kImplemented);
 
 // Empty stub schema binary.
 uint8_t schema_bin[] = {
