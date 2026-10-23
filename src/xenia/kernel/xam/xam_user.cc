@@ -483,11 +483,13 @@ dword_result_t XamUserContentRestrictionGetRating_entry(dword_t user_index,
 DECLARE_XAM_EXPORT1(XamUserContentRestrictionGetRating, kUserProfiles, kStub);
 
 dword_result_t XamUserContentRestrictionCheckAccess_entry(
-    dword_t user_index, dword_t unk1, dword_t unk2, dword_t unk3, dword_t unk4,
-    lpdword_t out_unk5, dword_t overlapped_ptr) {
+    dword_t user_index, dword_t unk1, dword_t content_type, dword_t unk3,
+    dword_t unk4, lpdword_t out_unk5, dword_t overlapped_ptr) {
   *out_unk5 = 1;
 
-  if (overlapped_ptr) {
+  // Content type 0 completes synchronously even with an overlapped, which is
+  // left untouched
+  if (overlapped_ptr && content_type) {
     // TODO(benvanik): does this need the access arg on it?
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
                                                 X_ERROR_SUCCESS);
