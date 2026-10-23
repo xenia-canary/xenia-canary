@@ -81,7 +81,8 @@ static inline u128 u128_mul64(uint64_t a, uint64_t b) {
   return r;
 }
 
-// 128 / 64 -> quotient and remainder
+// 128 / 64 -> quotient and remainder. The quotient must fit in 64 bits
+// (num.hi < den).
 static inline uint64_t u128_div64(u128 num, uint64_t den, uint64_t* rem) {
   if (num.hi == 0) {
     *rem = num.lo % den;
@@ -91,13 +92,15 @@ static inline uint64_t u128_div64(u128 num, uint64_t den, uint64_t* rem) {
   uint64_t q = 0;
   uint64_t r = 0;
   for (int i = 127; i >= 0; i--) {
+    // The shift can carry out of r, in which case r is larger than den.
+    const bool carry = (r >> 63) != 0;
     r = (r << 1);
     if (i >= 64) {
       r |= (num.hi >> (i - 64)) & 1;
     } else {
       r |= (num.lo >> i) & 1;
     }
-    if (r >= den) {
+    if (carry || r >= den) {
       r -= den;
       if (i < 64) {
         q |= (1ULL << i);
@@ -317,12 +320,22 @@ class BigNum {
     uint64_t vn_2 = (n >= 2) ? v.limbs[n - 2] : 0;
 
     for (size_t j = total; j >= n; j--) {
-      u128 num_top =
-          u128_or64(u128_shl(u128_from(u.limbs[j]), 64), u.limbs[j - 1]);
+      uint64_t qhat_val;
       uint64_t rhat_val;
-      uint64_t qhat_val = u128_div64(num_top, vn_1, &rhat_val);
+      bool check_qhat = true;
+      if (u.limbs[j] >= vn_1) {
+        // The quotient digit would overflow, so start from the largest one.
+        qhat_val = ~0ULL;
+        rhat_val = u.limbs[j - 1] + vn_1;
+        // rhat no longer fits in 64 bits, so qhat can't be too large.
+        check_qhat = rhat_val >= vn_1;
+      } else {
+        u128 num_top =
+            u128_or64(u128_shl(u128_from(u.limbs[j]), 64), u.limbs[j - 1]);
+        qhat_val = u128_div64(num_top, vn_1, &rhat_val);
+      }
 
-      while (true) {
+      while (check_qhat) {
         u128 qv2 = u128_mul64(qhat_val, vn_2);
         u128 rhs = u128_or64(u128_shl(u128_from(rhat_val), 64), u.limbs[j - 2]);
         bool gt = (qv2.hi > rhs.hi) || (qv2.hi == rhs.hi && qv2.lo > rhs.lo);
@@ -349,11 +362,11 @@ class BigNum {
           carry++;
         }
       }
-      int64_t final_diff =
-          static_cast<int64_t>(u.limbs[j]) - static_cast<int64_t>(carry);
-      u.limbs[j] = static_cast<uint64_t>(final_diff);
+      // Unsigned borrow: the top limb can have its high bit set.
+      const bool borrow = u.limbs[j] < carry;
+      u.limbs[j] -= carry;
 
-      if (final_diff < 0) {
+      if (borrow) {
         uint64_t c = 0;
         for (size_t i = 0; i < n; i++) {
           u128 sum = u128_add(u128_from(u.limbs[j - n + i]), v.limbs[i]);
