@@ -8,6 +8,7 @@
 */
 
 #include <algorithm>
+#include <random>
 
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
@@ -767,9 +768,16 @@ dword_result_t XeCryptBnDwLePkcs1Verify_entry(lpvoid_t hash, lpvoid_t sig,
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDwLePkcs1Verify, kNone, kStub);
 
 void XeCryptRandom_entry(lpvoid_t buf, dword_t buf_size) {
-  std::memset(buf, 0xFD, buf_size);
+  uint8_t* buf_data = buf.as<uint8_t*>();
+
+  thread_local std::mt19937_64 gen(std::random_device{}());
+  std::uniform_int_distribution<uint16_t> dist(
+      0, std::numeric_limits<uint8_t>::max());
+
+  std::generate(buf_data, buf_data + buf_size,
+                [&]() { return static_cast<uint8_t>(dist(gen)); });
 }
-DECLARE_XBOXKRNL_EXPORT1(XeCryptRandom, kNone, kStub);
+DECLARE_XBOXKRNL_EXPORT1(XeCryptRandom, kNone, kImplemented);
 
 void XeCryptDesKey_entry(pointer_t<XECRYPT_DES_STATE> state_ptr,
                          lpqword_t key) {
