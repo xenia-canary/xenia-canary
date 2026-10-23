@@ -3041,6 +3041,38 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       return false;
     }
   }
+  // Snapshot the export ranges before the draw so the readback after it only
+  // copies the bytes the shaders actually changed. Copying the whole range
+  // back would overwrite anything the CPU wrote there while the draw was in
+  // flight, since the ranges are usually much larger than what gets exported.
+  // The first half of the readback buffer holds the snapshot, the second half
+  // the result.
+  uint32_t memexport_total_size = 0;
+  bool memexport_snapshot_taken = false;
+  if (memexport_used && GetGPUSetting(GPUSetting::ReadbackMemexport)) {
+    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+      memexport_total_size += memexport_range.size_bytes;
+    }
+    if (memexport_total_size != 0) {
+      ID3D12Resource* readback_buffer =
+          RequestReadbackBuffer(memexport_total_size * 2);
+      if (readback_buffer != nullptr) {
+        shared_memory_->UseAsCopySource();
+        SubmitBarriers();
+        ID3D12Resource* shared_memory_buffer = shared_memory_->GetBuffer();
+        uint32_t readback_buffer_offset = 0;
+        for (const draw_util::MemExportRange& memexport_range :
+             memexport_ranges_) {
+          deferred_command_list_.D3DCopyBufferRegion(
+              readback_buffer, readback_buffer_offset, shared_memory_buffer,
+              memexport_range.base_address_dwords << 2,
+              memexport_range.size_bytes);
+          readback_buffer_offset += memexport_range.size_bytes;
+        }
+        memexport_snapshot_taken = true;
+      }
+    }
+  }
   // Primitive topology.
   D3D_PRIMITIVE_TOPOLOGY primitive_topology;
   if (primitive_processing_result.IsTessellated()) {
@@ -3232,48 +3264,49 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       shared_memory_->RangeWrittenByGpu(
           memexport_range.base_address_dwords << 2, memexport_range.size_bytes);
     }
-    if (GetGPUSetting(GPUSetting::ReadbackMemexport)) {
+    if (memexport_snapshot_taken) {
       // Read the exported data on the CPU.
-      uint32_t memexport_total_size = 0;
-      for (const draw_util::MemExportRange& memexport_range :
-           memexport_ranges_) {
-        memexport_total_size += memexport_range.size_bytes;
-      }
-      if (memexport_total_size != 0) {
-        ID3D12Resource* readback_buffer =
-            RequestReadbackBuffer(memexport_total_size);
-        if (readback_buffer != nullptr) {
-          shared_memory_->UseAsCopySource();
-          SubmitBarriers();
-          ID3D12Resource* shared_memory_buffer = shared_memory_->GetBuffer();
-          uint32_t readback_buffer_offset = 0;
-          for (const draw_util::MemExportRange& memexport_range :
-               memexport_ranges_) {
-            uint32_t memexport_range_size = memexport_range.size_bytes;
-            deferred_command_list_.D3DCopyBufferRegion(
-                readback_buffer, readback_buffer_offset, shared_memory_buffer,
-                memexport_range.base_address_dwords << 2, memexport_range_size);
-            readback_buffer_offset += memexport_range_size;
-          }
-          if (AwaitAllQueueOperationsCompletion()) {
-            D3D12_RANGE readback_range;
-            readback_range.Begin = 0;
-            readback_range.End = memexport_total_size;
-            void* readback_mapping;
-            if (SUCCEEDED(readback_buffer->Map(0, &readback_range,
-                                               &readback_mapping))) {
-              const uint8_t* readback_bytes =
-                  reinterpret_cast<const uint8_t*>(readback_mapping);
-              for (const draw_util::MemExportRange& memexport_range :
-                   memexport_ranges_) {
-                std::memcpy(memory_->TranslatePhysical(
-                                memexport_range.base_address_dwords << 2),
-                            readback_bytes, memexport_range.size_bytes);
-                readback_bytes += memexport_range.size_bytes;
+      ID3D12Resource* readback_buffer =
+          RequestReadbackBuffer(memexport_total_size * 2);
+      if (readback_buffer != nullptr) {
+        shared_memory_->UseAsCopySource();
+        SubmitBarriers();
+        ID3D12Resource* shared_memory_buffer = shared_memory_->GetBuffer();
+        uint32_t readback_buffer_offset = memexport_total_size;
+        for (const draw_util::MemExportRange& memexport_range :
+             memexport_ranges_) {
+          uint32_t memexport_range_size = memexport_range.size_bytes;
+          deferred_command_list_.D3DCopyBufferRegion(
+              readback_buffer, readback_buffer_offset, shared_memory_buffer,
+              memexport_range.base_address_dwords << 2, memexport_range_size);
+          readback_buffer_offset += memexport_range_size;
+        }
+        if (AwaitAllQueueOperationsCompletion()) {
+          D3D12_RANGE readback_range;
+          readback_range.Begin = 0;
+          readback_range.End = memexport_total_size * 2;
+          void* readback_mapping;
+          if (SUCCEEDED(readback_buffer->Map(0, &readback_range,
+                                             &readback_mapping))) {
+            // Compared per byte as exports of 8 and 16 bit formats give
+            // ranges that aren't a multiple of 4 bytes.
+            const uint8_t* before_bytes =
+                reinterpret_cast<const uint8_t*>(readback_mapping);
+            const uint8_t* after_bytes = before_bytes + memexport_total_size;
+            for (const draw_util::MemExportRange& memexport_range :
+                 memexport_ranges_) {
+              uint8_t* guest_bytes = memory_->TranslatePhysical(
+                  memexport_range.base_address_dwords << 2);
+              for (uint32_t i = 0; i < memexport_range.size_bytes; ++i) {
+                if (after_bytes[i] != before_bytes[i]) {
+                  guest_bytes[i] = after_bytes[i];
+                }
               }
-              D3D12_RANGE readback_write_range = {};
-              readback_buffer->Unmap(0, &readback_write_range);
+              before_bytes += memexport_range.size_bytes;
+              after_bytes += memexport_range.size_bytes;
             }
+            D3D12_RANGE readback_write_range = {};
+            readback_buffer->Unmap(0, &readback_write_range);
           }
         }
       }
