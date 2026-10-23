@@ -48,6 +48,11 @@ struct XECRYPT_SHA_STATE {
 };
 static_assert_size(XECRYPT_SHA_STATE, 0x58);
 
+struct XECRYPT_ROTSUM_STATE {
+  xe::be<uint64_t> data[4];
+};
+static_assert_size(XECRYPT_ROTSUM_STATE, 0x20);
+
 struct XECRYPT_HMACSHA_STATE {
   XECRYPT_SHA_STATE sha_state[2];
 };
@@ -98,10 +103,10 @@ static_assert_size(XECRYPT_RSA, 0x10);
 
 struct XECRYPT_SIG {
   xe::be<uint64_t> aqwPad[0x1C];
-  xe::be<uint8_t> One;
-  uint8_t Salt[0xA];
-  uint8_t Hash[0x14];
-  xe::be<uint8_t> End;
+  xe::be<uint8_t> one;
+  uint8_t salt[0xA];
+  uint8_t hash[0x14];
+  xe::be<uint8_t> end;
 };
 static_assert_size(XECRYPT_SIG, 0x100);  // size 256
 
@@ -732,6 +737,12 @@ void XeCryptBnQw_SwapDwQwLeBe_entry(pointer_t<uint64_t> qw_inp,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQw_SwapDwQwLeBe, kNone, kImplemented);
 
+void XeCryptBnQw_Copy_entry(lpqword_t source, lpqword_t dest,
+                            dword_t num_qwords) {
+  std::memcpy(source, dest, 8 * num_qwords);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQw_Copy, kNone, kImplemented);
+
 dword_result_t XeCryptBnQwNeRsaPubCrypt_entry(pointer_t<uint64_t> qw_a,
                                               pointer_t<uint64_t> qw_b,
                                               pointer_t<XECRYPT_RSA> rsa) {
@@ -747,6 +758,183 @@ dword_result_t XeCryptBnQwNeRsaPubCrypt_entry(pointer_t<uint64_t> qw_a,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeRsaPubCrypt, kNone, kImplemented);
 
+#define ROTL64(data, bits) (((data) << (bits)) | ((data) >> (64 - (bits))))
+
+#define CAT_MUL128(r_hi, r_lo, x, y) r_lo = _umul128(x, y, &(r_hi));
+
+dword_result_t XeCryptBnQwNeModInv_entry(qword_t input) {
+  uint64_t intermediate = input;
+  // Compute the 2-adic of qw such that: result = -1 + input^2
+  uint64_t result = (intermediate * 3) ^ 2;
+  intermediate = 1 - (result * intermediate);
+
+  // Raise it to another 32 such that: result = -1 + input^64
+  for (uint32_t i = 5; i < 32; i <<= 1) {
+    result = result * (intermediate + 1);
+    intermediate = intermediate * intermediate;
+  }
+
+  // Done
+  result = result * (intermediate + 1);
+  return result;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeModInv, kNone, kImplemented);
+
+void XeCryptBnQwNeModMul_entry(lpqword_t input_1, lpqword_t input_2,
+                               lpqword_t output, qword_t inverse,
+                               lpqword_t modulus, dword_t modulus_size) {
+  uint64_t buffer[0x42];
+  memset(buffer, 0, 0x210);
+  uint64_t data[11];
+  memset(data, 0, 88);
+  data[0] = inverse * input_1[0];
+  int index = 1;  // "0x58" ??
+
+  for (uint32_t a = 0; a < modulus_size; a++) {
+    // reset index
+    index = 1;
+    data[1] = input_2[a];
+    data[2] = data[0] * data[1];
+    data[5] = buffer[index];
+    data[6] = buffer[index + 0x21];
+    data[5] = data[5] - data[6];
+    data[5] = data[5] * inverse;
+    data[2] = data[2] + data[5];
+
+    data[3] = 0;
+    data[4] = 0;
+
+    for (uint32_t b = 0; b < modulus_size; b++) {
+      data[5] = input_1[b];
+      CAT_MUL128(data[6], data[10], data[1], data[5]);
+      data[7] = data[1] * data[5];
+      data[5] = buffer[index];
+      data[7] = data[7] + data[5];
+      if (data[7] < data[5]) {
+        data[6]++;
+      }
+
+      data[7] = data[7] + data[3];
+      if (data[7] < data[3]) {
+        data[6]++;
+      }
+
+      data[3] = data[6];
+      buffer[index - 1] = data[7];
+      data[5] = modulus[b];
+      CAT_MUL128(data[6], data[10], data[2], data[5]);
+      data[7] = data[2] * data[5];
+      data[5] = buffer[index + 0x21];
+      data[7] = data[7] + data[5];
+      if (data[7] < data[5]) {
+        data[6] = data[6] + 0x01;
+      }
+
+      data[7] = data[7] + data[4];
+      if (data[7] < data[4]) {
+        data[6] = data[6] + 0x01;
+      }
+
+      data[4] = data[6];
+      buffer[index + 0x20] = data[7];
+      index += 8;
+    }
+
+    buffer[index - 1] = data[3];
+    buffer[index + 0x20] = data[4];
+  }
+
+  data[3] = 0;
+  data[4] = 0;
+
+  // Loop that updates data[5] & data[6] for later use..
+  uint64_t big_modulus_size = modulus_size;
+  index = ROTL64(big_modulus_size, 3) & 0xFFFFFFFFFFFFFFF8;
+  for (uint32_t c = 0; c < modulus_size; c++) {
+    data[5] = buffer[index];
+    data[6] = buffer[index + 0x21];
+    if (data[5] != data[6]) {
+      break;
+    }
+
+    index -= 8;
+  }
+
+  index = 8;
+
+  if (data[5] > data[6]) {
+    for (uint32_t c = 0; c < modulus_size; c++) {
+      data[5] = buffer[index];
+      data[6] = buffer[index + 0x21];
+      data[7] = data[5] - data[6];
+      data[7] = data[7] - data[3];
+      output[c] = data[7];
+
+      data[6] = data[6] ^ data[5];
+      data[7] = data[7] ^ data[5];
+      data[7] = data[7] | data[6];
+      data[5] = data[5] ^ data[7];
+      data[3] = ((data[5] >> 63) & 1);
+
+      index += 8;
+    }
+  } else {
+    for (uint32_t c = 0; c < modulus_size; c++) {
+      data[5] = buffer[index];
+      data[6] = buffer[index + 0x21];
+      data[7] = modulus[c];
+      data[8] = data[5] + data[7];
+      data[8] = data[8] + data[3];
+      data[9] = data[8] - data[6];
+      data[9] = data[9] - data[4];
+      output[c] = data[9];
+
+      data[7] = data[7] ^ data[8];
+      data[5] = data[5] ^ data[8];
+      data[5] = data[5] | data[7];
+      data[5] = data[5] ^ data[8];
+      data[3] = ((data[5] >> 63) & 1);
+      data[9] = data[9] ^ data[8];
+      data[6] = data[6] ^ data[8];
+      data[6] = data[6] | data[9];
+      data[6] = data[6] ^ data[8];
+      data[4] = ((data[6] >> 63) & 1);
+
+      index += 8;
+    }
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwNeModMul, kNone, kImplemented);
+
+void XeCryptBnQwBeSigFormat_entry(pointer_t<XECRYPT_SIG> sig, lpvoid_t hash,
+                                  lpstring_t salt) {
+  XECRYPT_SIG output;
+  XECRYPT_SIG input = *sig;
+
+  std::memset(output.aqwPad, 0, 28 * sizeof(uint64_t));
+  output.one = 1;
+  memcpy(output.salt, salt, 10);
+  output.end = 0xBC;
+
+  // Create hash value inside signature
+  XeCryptSha_entry(&output, 8, hash, 20, static_cast<void*>(salt), 10,
+                   output.hash, 20);
+
+  // RC4 encrypt signature contents
+  XeCryptRc4_entry(output.hash, 20, &output, 0xEB);
+
+  // Clear high bit of signature
+  *(uint8_t*)&output = (*(uint8_t*)&output) & 0x7F;
+
+  // Swap signature, every 8 bytes
+  uint64_t* in64 = (uint64_t*)&output;
+  uint64_t* out64 = (uint64_t*)&input;
+  for (int c = 0; c < 0x20; c++) {
+    out64[0x1F - c] = in64[c];
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwBeSigFormat, kNone, kImplemented);
+
 dword_result_t XeCryptBnQwBeSigVerify_entry(pointer_t<XECRYPT_SIG> sig,
                                             lpvoid_t hash, lpstring_t salt,
                                             pointer_t<XECRYPT_RSA> rsa) {
@@ -756,7 +944,8 @@ dword_result_t XeCryptBnQwBeSigVerify_entry(pointer_t<XECRYPT_SIG> sig,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnQwBeSigVerify, kNone, kStub);
 
-dword_result_t XeCryptBnDwLePkcs1Verify_entry(lpvoid_t hash, lpvoid_t sig,
+dword_result_t XeCryptBnDwLePkcs1Verify_entry(lpvoid_t hash,
+                                              pointer_t<XECRYPT_SIG> sig,
                                               dword_t size) {
   // BOOL return value
   return 1;
@@ -1062,12 +1251,68 @@ dword_result_t XeKeysHmacSha_entry(dword_t key_num, lpvoid_t inp_1,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysHmacSha, kNone, kImplemented);
 
-void XeCryptRotSumSha_entry(lpvoid_t inp_1, dword_t inp_1_size, lpvoid_t inp_2,
-                            dword_t inp_2_size, lpvoid_t out,
-                            dword_t out_size) {
-  // out used by XeCryptBnQwBeSigVerify
+#define ROTL64(data, bits) (((data) << (bits)) | ((data) >> (64 - (bits))))
+
+void RotSum(XECRYPT_ROTSUM_STATE* rotsum, uint64_t* inp, uint32_t num_qwords) {
+  xe::byte_swap(rotsum->data[0]);
+  xe::byte_swap(rotsum->data[1]);
+  xe::byte_swap(rotsum->data[2]);
+  xe::byte_swap(rotsum->data[3]);
+
+  for (uint32_t i = 0; i < num_qwords; i++) {
+    uint64_t data;
+    xe::copy_and_swap<uint64_t>(&data, inp, 1);
+
+    rotsum->data[1] += data;
+    rotsum->data[3] -= data;
+
+    if (rotsum->data[1] < data) {
+      rotsum->data[0]++;  // adding must have overflowed, increment counter
+    }
+    if (rotsum->data[3] > data) {
+      rotsum
+          ->data[2]--;  // subtracting must have underflowed, decrement counter
+    }
+
+    rotsum->data[1] = ROTL64(rotsum->data[1], 29);
+    rotsum->data[3] = ROTL64(rotsum->data[3], 31);
+  }
+
+  xe::byte_swap(rotsum->data[0]);
+  xe::byte_swap(rotsum->data[1]);
+  xe::byte_swap(rotsum->data[2]);
+  xe::byte_swap(rotsum->data[3]);
 }
-DECLARE_XBOXKRNL_EXPORT1(XeCryptRotSumSha, kNone, kStub);
+
+void XeCryptRotSumSha_entry(pointer_t<uint64_t> inp_1, dword_t inp_1_size,
+                            pointer_t<uint64_t> inp_2, dword_t inp_2_size,
+                            lpvoid_t out_ptr, dword_t out_size) {
+  XECRYPT_ROTSUM_STATE rotsum;
+  memset(&rotsum, 0, sizeof(XECRYPT_ROTSUM_STATE));
+
+  RotSum(&rotsum, inp_1, inp_1_size / 8);
+  RotSum(&rotsum, inp_2, inp_2_size / 8);
+
+  XECRYPT_SHA_STATE sha;
+  XeCryptShaInit_entry(&sha);
+
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(XECRYPT_ROTSUM_STATE));
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(XECRYPT_ROTSUM_STATE));
+
+  XeCryptShaUpdate_entry(&sha, static_cast<void*>(inp_1), inp_1_size);
+  XeCryptShaUpdate_entry(&sha, static_cast<void*>(inp_2), inp_2_size);
+
+  rotsum.data[0] = ~rotsum.data[0];
+  rotsum.data[1] = ~rotsum.data[1];
+  rotsum.data[2] = ~rotsum.data[2];
+  rotsum.data[3] = ~rotsum.data[3];
+
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(XECRYPT_ROTSUM_STATE));
+  XeCryptShaUpdate_entry(&sha, &rotsum, sizeof(XECRYPT_ROTSUM_STATE));
+
+  XeCryptShaFinal_entry(&sha, static_cast<uint8_t*>(out_ptr), out_size);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptRotSumSha, kNone, kImplemented);
 
 dword_result_t XeKeysAesCbcUsingKey_entry(lpvoid_t obscured_key,
                                           lpvoid_t inp_ptr, dword_t inp_size,
