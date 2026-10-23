@@ -94,6 +94,18 @@ class Backend {
   * */
   virtual void PrepareForReentry(void* ctx) {}
 
+  /*
+        Drops any lwarx/ldarx reservation held by the thread that owns ctx.
+  The stopped/suspended thread must relinquish this or noone else can grab it
+  and thus we hit deadlock.
+  The next stwcx/stdcx fails as it does on real hardware.
+  Called after guest thread is suspended.
+  */
+  virtual void ReleaseReservation(void* ctx) {}
+  // true if a stopped thread at host_pc is partway through acquiring or
+  // releasing a reservation.
+  virtual bool IsInReservationHelper(uint64_t host_pc) { return false; }
+
   // returns true if populated st
   virtual bool PopulatePseudoStacktrace(GuestPseudoStackTrace* st) {
     return false;
