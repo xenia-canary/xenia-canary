@@ -771,8 +771,9 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
     return X_ERROR_INVALID_PARAMETER;
   }
 
+  // A key that isn't a string, or isn't hex, succeeds without being parsed
   if (key_ptr->type != X_USER_DATA_TYPE::WSTRING) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_ERROR_SUCCESS;
   }
 
   if (key_ptr->data.unicode.size > 0x64) {
@@ -795,7 +796,7 @@ dword_result_t XamParseGamerTileKey_entry(pointer_t<X_USER_DATA> key_ptr,
       tile_key, [](unsigned char c) { return std::isxdigit(c); });
 
   if (!is_valid_hex_string) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_ERROR_SUCCESS;
   }
 
   const GamerPictureKey* gamer_picture_key =
