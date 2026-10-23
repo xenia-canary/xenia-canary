@@ -1021,18 +1021,18 @@ dword_result_t XamUserGetSubscriptionType_entry(
     dword_t user_index, lpdword_t subscription_length_ptr,
     lpdword_t subscription_payment_ptr) {
   if (user_index >= XUserMaxUserCount) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_E_INVALIDARG;
   }
 
   if (!subscription_length_ptr || !subscription_payment_ptr) {
-    return X_ERROR_INVALID_PARAMETER;
+    return X_E_INVALIDARG;
   }
 
   const auto user_profile =
       kernel_state()->xam_state()->GetUserProfile(user_index);
 
   if (!user_profile) {
-    return X_ERROR_FUNCTION_FAILED;
+    return X_E_NO_SUCH_USER;
   }
 
   const auto [subscription_period, subscription_payment] =
