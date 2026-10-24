@@ -1337,13 +1337,11 @@ void D3D12RenderTargetCache::WriteEdramUintPow2UAVDescriptor(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-bool D3D12RenderTargetCache::Resolve(const Memory& memory,
-                                     D3D12SharedMemory& shared_memory,
-                                     D3D12TextureCache& texture_cache,
-                                     uint32_t& written_address_out,
-                                     uint32_t& written_length_out,
-                                     reg::RB_COPY_DEST_INFO* copy_dest_info_out,
-                                     bool* written_scaled_out) {
+bool D3D12RenderTargetCache::Resolve(
+    const Memory& memory, D3D12SharedMemory& shared_memory,
+    D3D12TextureCache& texture_cache, uint32_t& written_address_out,
+    uint32_t& written_length_out, reg::RB_COPY_DEST_INFO* copy_dest_info_out,
+    bool* written_scaled_out, const draw_util::ResolveRectangle* rectangle) {
   written_address_out = 0;
   written_length_out = 0;
   if (written_scaled_out) {
@@ -1357,7 +1355,7 @@ bool D3D12RenderTargetCache::Resolve(const Memory& memory,
   if (!draw_util::GetResolveInfo(
           register_file(), memory, trace_writer_, draw_resolution_scale_x(),
           draw_resolution_scale_y(), fixed_16_truncated_to_minus_1_to_1,
-          fixed_16_truncated_to_minus_1_to_1, resolve_info)) {
+          fixed_16_truncated_to_minus_1_to_1, resolve_info, rectangle)) {
     return false;
   }
 
@@ -1394,7 +1392,7 @@ bool D3D12RenderTargetCache::Resolve(const Memory& memory,
       if (!draw_util::GetResolveInfo(register_file(), memory, trace_writer_, 1,
                                      1, fixed_16_truncated_to_minus_1_to_1,
                                      fixed_16_truncated_to_minus_1_to_1,
-                                     resolve_info)) {
+                                     resolve_info, rectangle)) {
         return false;
       }
     }

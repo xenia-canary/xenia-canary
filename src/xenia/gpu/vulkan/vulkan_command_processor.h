@@ -439,6 +439,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
            GetCompletedSubmission() + 1u >= GetCurrentSubmission();
   }
 
+  bool IssueCopy(const draw_util::ResolveRectangle* rectangle);
+  bool IssueCopyWithVertexShader();
+
   // Requests a readback buffer for CPU access to GPU data.
   VkBuffer RequestReadbackBuffer(uint32_t size);
 

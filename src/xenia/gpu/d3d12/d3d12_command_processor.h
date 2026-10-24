@@ -328,7 +328,9 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   bool IssueCopy() override;
   XE_NOINLINE
-  bool IssueCopy_ReadbackResolvePath();
+  bool IssueCopy_ReadbackResolvePath(
+      const draw_util::ResolveRectangle* rectangle = nullptr);
+  bool IssueCopy_VertexShaderPath();
   void InitializeTrace() override;
 
  private:

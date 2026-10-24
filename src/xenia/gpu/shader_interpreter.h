@@ -48,12 +48,17 @@ class ShaderInterpreter {
   const float* temp_registers() const { return &temp_registers_[0][0]; }
   float* temp_registers() { return &temp_registers_[0][0]; }
 
-  static bool CanInterpretShader(const Shader& shader) {
+  // Rejects shaders with texture fetch results unless explicitly allowed.
+  // That (admittedly rare) path only supports point sampled unsigned integer
+  // 16_16_16_16 data from the base level of a 2D texture.
+  // Allowing texture fetches doesn't confirm that the shader can execute, and
+  // support also depends on bound constants checked during Execute.
+  // Other formats and sampling modes might need support in the future.
+  static bool CanInterpretShader(const Shader& shader,
+                                 bool allow_basic_texture_fetches = false) {
     assert_true(shader.is_ucode_analyzed());
-    // Texture instructions are not very common in vertex shaders (and not used
-    // in Direct3D 9's internal rectangles such as clears) and are extremely
-    // complex, not implemented.
-    if (shader.uses_texture_fetch_instruction_results()) {
+    if (!allow_basic_texture_fetches &&
+        shader.uses_texture_fetch_instruction_results()) {
       return false;
     }
     return true;
@@ -62,12 +67,18 @@ class ShaderInterpreter {
     shader_type_ = shader_type;
     ucode_ = ucode;
   }
-  void SetShader(const Shader& shader) {
-    assert_true(CanInterpretShader(shader));
+  void SetShader(const Shader& shader,
+                 bool allow_basic_texture_fetches = false) {
+    assert_true(CanInterpretShader(shader, allow_basic_texture_fetches));
     SetShader(shader.type(), shader.ucode_dwords());
   }
 
   void Execute();
+
+  // Reset at the start of each Execute.
+  bool was_texture_fetch_unsupported() const {
+    return texture_fetch_unsupported_;
+  }
 
  private:
   struct State {
@@ -126,6 +137,11 @@ class ShaderInterpreter {
   void StoreFetchResult(uint32_t dest, bool is_dest_relative, uint32_t swizzle,
                         const float* value);
   void ExecuteVertexFetchInstruction(ucode::VertexFetchInstruction instr);
+  // Reads a point sampled texel and applies the texture swizzle.
+  // StoreFetchResult applies the instruction destination swizzle afterwards.
+  bool FetchTexture(ucode::TextureFetchInstruction instr,
+                    float* result_out) const;
+  void ExecuteTextureFetchInstruction(ucode::TextureFetchInstruction instr);
 
   const RegisterFile& register_file_;
   const Memory& memory_;
@@ -141,6 +157,7 @@ class ShaderInterpreter {
   float temp_registers_[xenos::kMaxShaderTempRegisters][4];
 
   State state_;
+  bool texture_fetch_unsupported_ = false;
 };
 
 }  // namespace gpu
