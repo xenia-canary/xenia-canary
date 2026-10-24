@@ -31,25 +31,52 @@ namespace xam {
 // they incorrectly only look at the lower 32-bits of free_bytes,
 // when it is a 64-bit value. Which means any size above ~4GB
 // will not be recognized properly.
-#define ONE_GB (1024ull * 1024ull * 1024ull)
+#define ONE_MB (1024ull * 1024ull)
+#define ONE_GB (ONE_MB * 1024ull)
 
 static constexpr DummyDeviceInfo dummy_hdd_device_info_ = {
-    DummyDeviceId::HDD, DeviceType::HDD,
+    "\\Device\\Harddisk0",  // double check
+    u"Dummy HDD",
+    DummyDeviceId::HDD,
+    DeviceType::HDD,
     20ull * ONE_GB,  // 20GB
     10ull * ONE_GB,  // 10GB.
-    u"Dummy HDD",
+    0,
+    0,
+    0,
+    "0123456789876543210",
 };
 static constexpr DummyDeviceInfo dummy_odd_device_info_ = {
-    DummyDeviceId::ODD, DeviceType::ODD,
+    "\\Device\\Cdrom",
+    u"Dummy ODD",
+    DummyDeviceId::ODD,
+    DeviceType::ODD,
     7ull * ONE_GB,  // 7GB (rough maximum)
     0ull * ONE_GB,  // read-only FS, so no free space
-    u"Dummy ODD",
+    0,
+    0,
+    0,
+    "0123456789876543210",
+};
+static constexpr DummyDeviceInfo dummy_mu_device_info_ = {
+    "\\Device\\Mu0",
+    u"Dummy MU",
+    DummyDeviceId::MU,
+    DeviceType::MU,
+    512ull * ONE_MB,  // 512MB
+    512ull * ONE_MB,  // 512MB
+    0,
+    0,
+    0,
+    "0123456789876543210",
 };
 static const DummyDeviceInfo* dummy_device_infos_[] = {
     &dummy_hdd_device_info_,
     &dummy_odd_device_info_,
+    &dummy_mu_device_info_,
 };
 #undef ONE_GB
+#undef ONE_MB
 
 const DummyDeviceInfo* GetDummyDeviceInfo(uint32_t device_id) {
   const auto& begin = std::begin(dummy_device_infos_);
@@ -137,7 +164,13 @@ dword_result_t XamContentGetDeviceData_entry(
   }
   device_data.Zero();
   device_data->device_id = static_cast<uint32_t>(device_info->device_id);
-  device_data->device_type = static_cast<uint32_t>(device_info->device_type);
+  // Console uses volume path or device_data->unk1 to add flags
+  if (device_info->device_type == MU) {
+    device_data->device_type = static_cast<uint32_t>(device_info->device_type ||
+                                                     DeviceTypeExtended::MU0);
+  } else {
+    device_data->device_type = static_cast<uint32_t>(device_info->device_type);
+  }
   device_data->total_bytes =
       device_info->device_type == DeviceType::HDD
           ? kernel_state()->content_manager()->GetContentTotalSpace()
@@ -153,7 +186,25 @@ dword_result_t XamContentGetDeviceData_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceData, kContent, kImplemented);
 
-const std::map<DeviceType, std::u16string_view> XDeviceTypeMap = {
+dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
+                                                   lpvoid_t path_ptr,
+                                                   dword_t path_size,
+                                                   dword_t append_backslash) {
+  auto device_info = GetDummyDeviceInfo(device_id);
+  if (device_info == nullptr) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+
+  char* path =
+      kernel_memory()->TranslateVirtual<char*>(path_ptr.guest_address());
+
+  string_util::copy_truncating(path, device_info->volume_path, path_size);
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
+const std::map<uint32_t, std::u16string_view> XDeviceTypeMap = {
     {DeviceType::HDD, u"Hard Drive"},
     {DeviceType::MU, u"Memory Unit"},
     {DeviceType::System, u"System"},
