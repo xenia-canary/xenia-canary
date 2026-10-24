@@ -153,6 +153,34 @@ dword_result_t XamContentGetDeviceData_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceData, kContent, kImplemented);
 
+const std::map<DeviceType, std::string_view> XDeviceVolumePathMap = {
+    {DeviceType::MU | DeviceType::MU0, "\\Device\\Mu0"},
+    {DeviceType::MU | DeviceType::MU1, "\\Device\\Mu1"},
+    {DeviceType::MU | DeviceType::MUSFC, "\\Device\\BuiltInMuSfc"},
+    {DeviceType::MU | DeviceType::MUUSB, "\\Device\\BuiltInMuUsb"},
+    {DeviceType::MU | DeviceType::MUMMC, "\\Device\\BuiltInMuMmc"},
+    {DeviceType::MU | DeviceType::NetworkStorageCache, "\\Device\\NetworkStorageCache"},
+    //{DeviceType::MU | DeviceType::MUunk, "\\Device\\"}, Find what this one is
+};
+
+dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
+                                                   lpvoid_t path_ptr,
+                                                   dword_t path_size,
+                                                   dword_t append_backslash) {
+  std::string volume_path = "hdd0\\";
+  if (device_id != static_cast<uint32_t>(DummyDeviceId::HDD)) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
+  char* path =
+      kernel_memory()->TranslateVirtual<char*>(path_ptr.guest_address());
+
+  string_util::copy_truncating(path, volume_path, path_size);
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
 const std::map<DeviceType, std::u16string_view> XDeviceTypeMap = {
     {DeviceType::HDD, u"Hard Drive"},
     {DeviceType::MU, u"Memory Unit"},

@@ -949,24 +949,6 @@ void XamContentRegisterChangeCallback_entry(dword_t callback) {
 }
 DECLARE_XAM_EXPORT1(XamContentRegisterChangeCallback, kContent, kImplemented);
 
-dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
-                                                   lpvoid_t path_ptr,
-                                                   dword_t path_size,
-                                                   dword_t append_backslash) {
-  std::string volume_path = "hdd0\\";
-  if (device_id != static_cast<uint32_t>(DummyDeviceId::HDD)) {
-    return X_ERROR_FUNCTION_FAILED;
-  }
-
-  char* path =
-      kernel_memory()->TranslateVirtual<char*>(path_ptr.guest_address());
-
-  string_util::copy_truncating(path, volume_path, path_size);
-
-  return X_ERROR_SUCCESS;
-}
-DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
-
 dword_result_t XamContentGetMetaDataInternal_entry(
     pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr,
     lpdword_t content_metadata_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
