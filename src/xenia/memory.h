@@ -213,8 +213,7 @@ class BaseHeap {
   // address.
   bool QueryProtect(uint32_t address, uint32_t* out_protect);
 
-  // Queries the currently strictest readability and writability for the entire
-  // range.
+  // Queries access across committed pages in the inclusive address range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,
                                           uint32_t high_address);
 
@@ -602,6 +601,12 @@ class Memory {
     return const_cast<BaseHeap*>(
         const_cast<const Memory*>(this)->LookupHeap(address));
   }
+
+  // Queries access across committed pages in a guest virtual address range.
+  // Empty, overflowing, unmapped, or cross-heap ranges return kNoAccess.
+  // Returns kReadWrite if all pages are readable and writable, kReadOnly if
+  // all are readable, and kNoAccess otherwise.
+  xe::memory::PageAccess QueryRangeAccess(uint32_t address, uint32_t length);
 
   // Gets the heap with the given properties.
   BaseHeap* LookupHeapByType(bool physical, uint32_t page_size);
