@@ -100,8 +100,8 @@ dword_result_t XamContentGetDeviceState_entry(dword_t device_id,
   if (device_info == nullptr) {
     if (overlapped_ptr) {
       kernel_state()->CompleteOverlappedImmediateEx(
-          overlapped_ptr, X_ERROR_FUNCTION_FAILED, X_ERROR_DEVICE_NOT_CONNECTED,
-          0);
+          overlapped_ptr, X_ERROR_FUNCTION_FAILED,
+          X_HRESULT_FROM_WIN32(X_ERROR_DEVICE_NOT_CONNECTED), 0);
       return X_ERROR_IO_PENDING;
     } else {
       return X_ERROR_DEVICE_NOT_CONNECTED;
