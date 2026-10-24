@@ -681,7 +681,7 @@ void EmulatorApp::EmulatorThread() {
 
   if (cvars::mount_memory_unit) {
     auto mu_device =
-        std::make_unique<xe::vfs::HostPathDevice>("\\MU", "MU", false);
+        std::make_unique<xe::vfs::HostPathDevice>("\\MU0", "MU0", false);
 
     if (!mu_device->Initialize()) {
       XELOGE("Unable to scan MU path");
@@ -691,7 +691,7 @@ void EmulatorApp::EmulatorThread() {
       XELOGE("Unable to register MU path");
     }
 
-    fs->RegisterSymbolicLink("MU:", "\\MU");
+    fs->RegisterSymbolicLink("MU0:", "\\MU0");
   }
 
   // Set a debug handler.

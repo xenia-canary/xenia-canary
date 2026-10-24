@@ -87,6 +87,18 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
 
       return result;
     }
+    case 0x0002000D: {
+      X_DEVICE_RENAME* args = reinterpret_cast<X_DEVICE_RENAME*>(buffer);
+      auto device_info = GetDummyDeviceInfo(args->device_id);
+      if (device_info == nullptr) {
+        return X_ERROR_DEVICE_NOT_CONNECTED;
+      }
+      auto new_name = xe::load_and_swap<std::u16string>(
+          memory_->TranslateVirtual(args->name_ptr));
+      XELOGD("XDeviceRename({:08X}, {}, {:08X}) Stubbed", args->device_id.get(),
+             to_utf8(new_name), args->name_size.get());
+      return X_E_SUCCESS;
+    }
     case 0x00020021: {
       struct XContentQueryVolumeDeviceType {
         char root_name[64];
