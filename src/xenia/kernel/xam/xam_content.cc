@@ -536,7 +536,8 @@ dword_result_t XamContentClose_entry(lpstring_t root_name,
       kernel_state()->content_manager()->CloseContent(root_name.value());
 
   if (overlapped_ptr) {
-    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped_ptr, result, X_HRESULT_FROM_WIN32(result), 0);
     return X_ERROR_IO_PENDING;
   } else {
     return result;
