@@ -1104,8 +1104,9 @@ void KernelState::CompleteOverlappedEx(uint32_t overlapped_ptr, X_RESULT result,
   XOverlappedSetResult(ptr, result);
   XOverlappedSetExtendedError(ptr, extended_error);
   XOverlappedSetLength(ptr, length);
+  // The event is left unsignaled when there is a completion routine.
   X_HANDLE event_handle = XOverlappedGetEvent(ptr);
-  if (event_handle) {
+  if (event_handle && !XOverlappedGetCompletionRoutine(ptr)) {
     auto ev = object_table()->LookupObject<XEvent>(event_handle);
     assert_not_null(ev);
     if (ev) {
