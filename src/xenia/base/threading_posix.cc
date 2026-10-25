@@ -24,7 +24,9 @@
 #include <linux/futex.h>
 #endif
 #include <unistd.h>
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <climits>
 #include <cstddef>
 #include <ctime>
@@ -213,11 +215,81 @@ void NanoSleepPrecise(int64_t ns) {
 
 // TODO(bwrsandman) Implement by allowing alert interrupts from IO operations
 thread_local bool alertable_state_ = false;
-SleepResult AlertableSleep(std::chrono::microseconds duration) {
+thread_local bool user_callback_ran_ = false;
+
+bool RunPendingUserCallback();
+
+// A signal handler can't wake a condition wait, so an alertable wait waits in
+// slices and ends once a user callback has run, like on Windows.
+constexpr std::chrono::milliseconds kAlertableWaitSlice{5};
+
+template <typename WaitFunction>
+std::pair<WaitResult, size_t> AlertableWait(std::chrono::milliseconds timeout,
+                                            WaitFunction wait) {
+  if (RunPendingUserCallback()) {
+    return std::make_pair(WaitResult::kUserCallback, size_t(0));
+  }
+
+  const bool infinite = timeout == std::chrono::milliseconds::max();
+  const auto end_time = infinite ? std::chrono::steady_clock::time_point::max()
+                                 : std::chrono::steady_clock::now() + timeout;
+
+  user_callback_ran_ = false;
   alertable_state_ = true;
-  Sleep(duration);
+
+  std::pair<WaitResult, size_t> result;
+
+  while (true) {
+    auto slice = kAlertableWaitSlice;
+
+    if (!infinite) {
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              end_time - std::chrono::steady_clock::now());
+      slice = std::clamp(remaining, std::chrono::milliseconds(0), slice);
+    }
+
+    result = wait(slice);
+
+    if (result.first != WaitResult::kTimeout) {
+      break;
+    }
+
+    if (user_callback_ran_) {
+      result = std::make_pair(WaitResult::kUserCallback, size_t(0));
+      break;
+    }
+
+    // A callback queued just before the wait became alertable was left
+    // pending by the signal handler. Run it here, not alertable, so the
+    // handler can't run it at the same time.
+    alertable_state_ = false;
+    const bool ran_pending = RunPendingUserCallback();
+    alertable_state_ = true;
+    if (ran_pending) {
+      result = std::make_pair(WaitResult::kUserCallback, size_t(0));
+      break;
+    }
+
+    if (!infinite && std::chrono::steady_clock::now() >= end_time) {
+      break;
+    }
+  }
+
   alertable_state_ = false;
-  return SleepResult::kSuccess;
+  return result;
+}
+
+SleepResult AlertableSleep(std::chrono::microseconds duration) {
+  auto result =
+      AlertableWait(std::chrono::ceil<std::chrono::milliseconds>(duration),
+                    [](std::chrono::milliseconds slice) {
+                      Sleep(slice);
+                      return std::make_pair(WaitResult::kTimeout, size_t(0));
+                    });
+
+  return result.first == WaitResult::kUserCallback ? SleepResult::kAlerted
+                                                   : SleepResult::kSuccess;
 }
 
 TlsHandle AllocateTlsHandle() {
@@ -906,6 +978,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     WaitStarted();
     std::unique_lock lock(callback_mutex_);
     user_callback_ = std::move(callback);
+    callback_pending_ = true;
     sigval value{};
     value.sival_ptr = this;
 #if XE_PLATFORM_ANDROID
@@ -917,9 +990,22 @@ class PosixCondition<Thread> final : public PosixConditionBase {
 #endif
   }
 
-  void CallUserCallback() const {
+  void CallUserCallback() {
     std::unique_lock lock(callback_mutex_);
-    user_callback_();
+    if (callback_pending_.exchange(false)) {
+      user_callback_();
+    }
+  }
+
+  // Runs a callback that was queued while the thread wasn't alertable, and
+  // so wasn't run by the signal handler.
+  bool RunPendingUserCallback() {
+    if (!callback_pending_) {
+      return false;
+    }
+
+    CallUserCallback();
+    return true;
   }
 
   bool Resume(uint32_t* out_previous_suspend_count = nullptr) {
@@ -1092,6 +1178,7 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   mutable std::mutex callback_mutex_;
   mutable std::condition_variable state_signal_;
   std::function<void()> user_callback_;
+  std::atomic<bool> callback_pending_ = false;
 #if XE_PLATFORM_ANDROID
   // Name accessible via name() on Android before API 26 which added
   // pthread_getname_np.
@@ -1159,14 +1246,17 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
   if (posix_wait_handle == nullptr) {
     return WaitResult::kFailed;
   }
-  if (is_alertable) {
-    alertable_state_ = true;
+  if (!is_alertable) {
+    return posix_wait_handle->condition().Wait(timeout);
   }
-  auto result = posix_wait_handle->condition().Wait(timeout);
-  if (is_alertable) {
-    alertable_state_ = false;
-  }
-  return result;
+
+  return AlertableWait(timeout,
+                       [&](std::chrono::milliseconds slice) {
+                         return std::make_pair(
+                             posix_wait_handle->condition().Wait(slice),
+                             size_t(0));
+                       })
+      .first;
 }
 
 WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
@@ -1181,16 +1271,22 @@ WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
       posix_wait_handle_to_wait_on == nullptr) {
     return WaitResult::kFailed;
   }
-  if (is_alertable) {
-    alertable_state_ = true;
+  if (!posix_wait_handle_to_signal->condition().Signal()) {
+    return result;
   }
-  if (posix_wait_handle_to_signal->condition().Signal()) {
-    result = posix_wait_handle_to_wait_on->condition().Wait(timeout);
+
+  if (!is_alertable) {
+    return posix_wait_handle_to_wait_on->condition().Wait(timeout);
   }
-  if (is_alertable) {
-    alertable_state_ = false;
-  }
-  return result;
+
+  return AlertableWait(
+             timeout,
+             [&](std::chrono::milliseconds slice) {
+               return std::make_pair(
+                   posix_wait_handle_to_wait_on->condition().Wait(slice),
+                   size_t(0));
+             })
+      .first;
 }
 
 std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
@@ -1206,15 +1302,15 @@ std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
     }
     conditions.push_back(&handle->condition());
   }
-  if (is_alertable) {
-    alertable_state_ = true;
+  if (!is_alertable) {
+    return PosixConditionBase::WaitMultiple(std::move(conditions), wait_all,
+                                            timeout);
   }
-  auto result = PosixConditionBase::WaitMultiple(std::move(conditions),
-                                                 wait_all, timeout);
-  if (is_alertable) {
-    alertable_state_ = false;
-  }
-  return result;
+
+  return AlertableWait(timeout, [&](std::chrono::milliseconds slice) {
+    return PosixConditionBase::WaitMultiple(
+        std::vector<PosixConditionBase*>(conditions), wait_all, slice);
+  });
 }
 
 class PosixEvent final : public PosixConditionHandle<Event> {
@@ -1371,6 +1467,8 @@ class PosixThread final : public PosixConditionHandle<Thread> {
     handle_.QueueUserCallback(std::move(callback));
   }
 
+  bool RunPendingUserCallback() { return handle_.RunPendingUserCallback(); }
+
   bool Resume(uint32_t* out_previous_suspend_count) override {
     return handle_.Resume(out_previous_suspend_count);
   }
@@ -1385,6 +1483,10 @@ class PosixThread final : public PosixConditionHandle<Thread> {
 };
 
 thread_local PosixThread* current_thread_ = nullptr;
+
+bool RunPendingUserCallback() {
+  return current_thread_ && current_thread_->RunPendingUserCallback();
+}
 
 void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
 #if !XE_PLATFORM_ANDROID
@@ -1509,6 +1611,7 @@ static void signal_handler(int signal, siginfo_t* info, void* context) {
           static_cast<PosixCondition<Thread>*>(info->si_value.sival_ptr);
       if (alertable_state_) {
         p_thread->CallUserCallback();
+        user_callback_ran_ = true;
       }
     } break;
 #if XE_PLATFORM_ANDROID
