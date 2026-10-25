@@ -1169,11 +1169,18 @@ X_STATUS Emulator::CreateZarchivePackage(
   return X_STATUS_SUCCESS;
 }
 
-void Emulator::Pause() {
+void Emulator::Pause(bool pause_guest_threads) {
   if (paused_) {
     return;
   }
   paused_ = true;
+
+  if (!pause_guest_threads) {
+    // Keep GPU and audio workers progressing while guest threads reach their
+    // save-safe points. They are paused after the kernel snapshot is complete.
+    XELOGD("! EMULATOR PREPARING STATE SAVE !");
+    return;
+  }
 
   // Don't hold the lock on this (so any waits follow through)
   graphics_system_->Pause();
@@ -1219,18 +1226,51 @@ void Emulator::Resume() {
       continue;
     }
 
-    if (!thread->is_running()) {
+    if (thread->is_running()) {
       thread->thread()->Resume(nullptr);
     }
   }
 }
 
 bool Emulator::SaveToFile(const std::filesystem::path& path) {
-  Pause();
+  const bool was_paused = paused_;
+  const bool processor_was_running =
+      processor_->execution_state() == cpu::ExecutionState::kRunning;
+  // Mark the operation as a save without pausing guest dependencies. Guest
+  // threads will be advanced to safe points one at a time below.
+  Pause(false);
 
-  filesystem::CreateEmptyFile(path);
-  auto map = MappedMemory::Open(path, MappedMemory::Mode::kReadWrite, 0, 2_GiB);
+  // A user-paused title also has paused GPU/audio workers. Let them finish
+  // outstanding work while guest threads are advanced to safe points.
+  if (was_paused) {
+    graphics_system_->Resume();
+    audio_system_->Resume();
+  }
+
+  // Let any in-flight audio guest callback finish before the guest threads
+  // are parked. Otherwise AudioSystem::Pause can wait on a callback that
+  // itself needs one of those parked guest threads.
+  XELOGD("Emulator::SaveToFile: pausing audio worker before guest snapshot");
+  audio_system_->Pause();
+
+  auto temp_path = path;
+  temp_path += ".tmp";
+  filesystem::CreateEmptyFile(temp_path);
+  auto map =
+      MappedMemory::Open(temp_path, MappedMemory::Mode::kReadWrite, 0, 2_GiB);
   if (!map) {
+    std::error_code error;
+    std::filesystem::remove(temp_path, error);
+    if (processor_was_running &&
+        processor_->execution_state() == cpu::ExecutionState::kPaused) {
+      processor_->Continue();
+    }
+    if (was_paused) {
+      graphics_system_->Pause();
+      audio_system_->Pause();
+    } else {
+      Resume();
+    }
     return false;
   }
 
@@ -1244,15 +1284,120 @@ bool Emulator::SaveToFile(const std::filesystem::path& path) {
 
   // It's important we don't hold the global lock here! XThreads need to step
   // forward (possibly through guarded regions) without worry!
-  processor_->Save(&stream);
-  graphics_system_->Save(&stream);
-  audio_system_->Save(&stream);
-  kernel_state_->Save(&stream);
-  memory_->Save(&stream);
-  map->Close(stream.offset());
+  auto threads =
+      kernel_state_->object_table()->GetObjectsByType<kernel::XThread>(
+          kernel::XObject::Type::Thread);
+  if (was_paused) {
+    for (auto thread : threads) {
+      if (thread->can_debugger_suspend() && thread->is_running()) {
+        // A title paused by the user has one suspend count on each running
+        // guest thread. Release only those counts so the threads can reach
+        // their serialization safe points.
+        thread->thread()->Resume(nullptr);
+      }
+    }
+  }
 
-  Resume();
-  return true;
+  bool saved = processor_->Save(&stream);
+  bool threads_prepared = false;
+  if (saved) {
+    XELOGD("Emulator::SaveToFile: preparing guest threads sequentially");
+    threads_prepared = kernel_state_->PrepareThreadsForSave();
+    saved = threads_prepared;
+  }
+  if (saved) {
+    // All guest threads have now been captured and parked. Stop graphics
+    // before serializing the shared kernel and guest-memory state.
+    XELOGD("Emulator::SaveToFile: pausing graphics worker");
+    graphics_system_->Pause();
+    XELOGD("Emulator::SaveToFile: graphics worker paused");
+    saved = kernel_state_->Save(&stream);
+  }
+  if (saved) {
+    saved = graphics_system_->Save(&stream);
+  }
+  if (saved) {
+    XELOGD("Emulator::SaveToFile: saving audio state");
+    saved = audio_system_->Save(&stream);
+  }
+  if (saved) {
+    XELOGD("Emulator::SaveToFile: saving guest memory");
+    saved = memory_->Save(&stream);
+  }
+  XELOGD("Emulator::SaveToFile: component serialization {}",
+         saved ? "completed" : "failed");
+  map->Close(stream.offset());
+  map.reset();
+
+  std::error_code error;
+  bool committed = false;
+  if (saved) {
+    auto backup_path = path;
+    backup_path += ".bak";
+    const bool had_previous_state = std::filesystem::exists(path, error);
+    if (!error && had_previous_state) {
+      std::filesystem::remove(backup_path, error);
+      if (!error) {
+        std::filesystem::rename(path, backup_path, error);
+      }
+    }
+    if (!error) {
+      std::filesystem::rename(temp_path, path, error);
+      committed = !error;
+    }
+    if (error && had_previous_state) {
+      std::error_code restore_error;
+      if (!std::filesystem::exists(path, restore_error)) {
+        std::filesystem::rename(backup_path, path, restore_error);
+      }
+    } else if (committed && had_previous_state) {
+      std::error_code cleanup_error;
+      std::filesystem::remove(backup_path, cleanup_error);
+      if (cleanup_error) {
+        XELOGW("Emulator::SaveToFile: could not remove backup {}: {}",
+               backup_path, cleanup_error.message());
+      }
+    }
+  }
+  if (!committed) {
+    XELOGE("Emulator::SaveToFile: failed to save state to {}: {}", path,
+           error.message());
+    std::error_code cleanup_error;
+    std::filesystem::remove(temp_path, cleanup_error);
+    for (auto thread :
+         kernel_state_->object_table()->GetObjectsByType<kernel::XThread>(
+             kernel::XObject::Type::Thread)) {
+      thread->ResetPreparedForSave();
+    }
+  }
+
+  // Safe-point stepping uses the processor's temporary breakpoint machinery,
+  // which pauses its debugger state when a breakpoint is reached. Restore the
+  // running state after all guest memory has been serialized.
+  if (processor_was_running &&
+      processor_->execution_state() == cpu::ExecutionState::kPaused) {
+    processor_->Continue();
+  }
+
+  if (was_paused && !threads_prepared) {
+    // Some threads may have reached safe points before preparation failed.
+    // Release those temporary suspends, then restore the user's paused state.
+    for (auto thread : threads) {
+      if (thread->can_debugger_suspend() && thread->is_running()) {
+        thread->thread()->Resume(nullptr);
+      }
+    }
+    paused_ = false;
+    Pause();
+  } else if (was_paused) {
+    // A title that was paused before the save must still be paused when the
+    // operation finishes, including when kernel serialization fails early.
+    graphics_system_->Pause();
+    audio_system_->Pause();
+  } else {
+    Resume();
+  }
+  return saved && committed;
 }
 
 bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
@@ -1262,15 +1407,9 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
     return false;
   }
 
-  restoring_ = true;
-
-  // Terminate any loaded titles.
-  Pause();
-  kernel_state_->TerminateTitle();
-
-  auto lock = global_critical_region::AcquireDirect();
   ByteStream stream(map->data(), map->size());
   if (stream.Read<uint32_t>() != kEmulatorSaveSignature) {
+    XELOGE("RestoreFromFile: unsupported or invalid state file {}", path);
     return false;
   }
 
@@ -1282,14 +1421,28 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
     title_id = stream.Read<uint32_t>();
   }
   if (title_id_.has_value() != title_id.has_value() ||
-      title_id_.value() != title_id.value()) {
+      (title_id_.has_value() && title_id_.value() != title_id.value())) {
     // Swapping between titles is unsupported at the moment.
     assert_always();
     return false;
   }
 
+  restoring_ = true;
+
+  // Terminate any loaded titles only after the state header is known to be
+  // compatible. Older experimental XSV2 files contain incompatible object
+  // records and must not tear down a running game when rejected.
+  Pause();
+  kernel_state_->TerminateTitle();
+
+  auto lock = global_critical_region::AcquireDirect();
+
   if (!processor_->Restore(&stream)) {
     XELOGE("Could not restore processor!");
+    return false;
+  }
+  if (!kernel_state_->Restore(&stream)) {
+    XELOGE("Could not restore kernel state!");
     return false;
   }
   if (!graphics_system_->Restore(&stream)) {
@@ -1300,22 +1453,33 @@ bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
     XELOGE("Could not restore audio system!");
     return false;
   }
-  if (!kernel_state_->Restore(&stream)) {
-    XELOGE("Could not restore kernel state!");
-    return false;
-  }
   if (!memory_->Restore(&stream)) {
     XELOGE("Could not restore memory!");
     return false;
   }
+  graphics_system_->ClearCaches();
 
   // Update the main thread.
   auto threads =
       kernel_state_->object_table()->GetObjectsByType<kernel::XThread>();
   for (auto thread : threads) {
+    if (thread->is_guest_thread() && thread->is_running()) {
+      // Restored guest memory contains the Xbox kernel suspend counts. The
+      // newly created native threads are already suspended once; mirror the
+      // guest-owned counts before Resume releases that initial suspension.
+      const uint32_t guest_suspend_count = thread->suspend_count();
+      for (uint32_t i = 0; i < guest_suspend_count; ++i) {
+        thread->thread()->Suspend(nullptr);
+      }
+      if (guest_suspend_count) {
+        XELOGD(
+            "RestoreFromFile: retained {} guest suspend count(s) for "
+            "thread {:08X}",
+            guest_suspend_count, thread->handle());
+      }
+    }
     if (thread->main_thread()) {
       main_thread_ = thread;
-      break;
     }
   }
 

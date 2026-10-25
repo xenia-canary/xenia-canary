@@ -89,14 +89,22 @@ class XEnumerator : public XObject {
   virtual uint32_t WriteItems(uint8_t* buffer_data, uint32_t buffer_size,
                               uint32_t* written_count) = 0;
 
+  bool Save(ByteStream* stream) override;
+  static object_ref<XEnumerator> Restore(KernelState* kernel_state,
+                                         ByteStream* stream);
+
   size_t item_size() const { return item_size_; }
   size_t items_per_enumerate() const { return items_per_enumerate_; }
   size_t extra_size() const { return extra_size_; }
 
+ protected:
+  bool SaveCommon(ByteStream* stream);
+  bool RestoreCommon(ByteStream* stream);
+
  private:
   size_t items_per_enumerate_;
   size_t item_size_;
-  size_t extra_size_;
+  size_t extra_size_ = 0;
 };
 
 class XStaticUntypedEnumerator : public XEnumerator {
@@ -114,7 +122,10 @@ class XStaticUntypedEnumerator : public XEnumerator {
   uint32_t WriteItems(uint8_t* buffer_data, uint32_t buffer_size,
                       uint32_t* written_count) override;
 
+  bool Save(ByteStream* stream) override;
+
  private:
+  friend class XEnumerator;
   size_t item_count_;
   size_t current_item_;
   std::vector<uint8_t> buffer_;
@@ -259,7 +270,10 @@ class ProfileEnumerator : public XEnumerator {
   uint32_t WriteItems(uint8_t* buffer_data, uint32_t buffer_size,
                       uint32_t* written_count) override;
 
+  bool Save(ByteStream* stream) override;
+
  private:
+  friend class XEnumerator;
   std::vector<xam::X_PROFILEENUMRESULT> items_;
   size_t current_item_ = 0;
 };
@@ -279,7 +293,10 @@ class ContentEnumerator : public XEnumerator {
   uint32_t WriteItems(uint8_t* buffer_data, uint32_t buffer_size,
                       uint32_t* written_count) override;
 
+  bool Save(ByteStream* stream) override;
+
  private:
+  friend class XEnumerator;
   std::vector<xam::XCONTENT_DATA_INTERNAL> items_;
   size_t current_item_ = 0;
 };

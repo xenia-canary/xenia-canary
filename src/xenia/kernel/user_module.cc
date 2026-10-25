@@ -395,6 +395,14 @@ object_ref<UserModule> UserModule::Restore(KernelState* kernel_state,
   }
 
   auto result = module->LoadFromFile(path);
+  if (result == X_STATUS_PENDING) {
+    // Loading an XEX from memory normally returns pending so the caller can
+    // apply title patches before finishing module setup. During state restore
+    // the guest memory image is restored afterwards, so finish loading now to
+    // rebuild the processor's code ranges and function metadata without
+    // applying patches a second time.
+    result = module->LoadContinue();
+  }
   if (XFAILED(result)) {
     XELOGD("UserModule::Restore LoadFromFile({}) FAILED - code {:08X}", path,
            result);

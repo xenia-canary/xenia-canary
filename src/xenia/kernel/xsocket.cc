@@ -11,6 +11,7 @@
 
 #include <cstring>
 
+#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/kernel/kernel_state.h"
@@ -34,6 +35,12 @@
 
 namespace xe {
 namespace kernel {
+
+namespace {
+
+constexpr uint32_t kXSocketSaveSignature = make_fourcc('X', 'S', 'O', 'C');
+
+}  // namespace
 
 // Translate socket options to native
 // Note:
@@ -60,6 +67,8 @@ const std::map<uint32_t, uint32_t> supported_controls = {
 XSocket::XSocket(KernelState* kernel_state)
     : XObject(kernel_state, kObjectType) {}
 
+XSocket::XSocket() : XObject(kObjectType) {}
+
 XSocket::XSocket(KernelState* kernel_state, uint64_t native_handle)
     : XObject(kernel_state, kObjectType), native_handle_(native_handle) {}
 
@@ -84,11 +93,16 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
 }
 
 X_STATUS XSocket::Close() {
+  if (native_handle_ == static_cast<uint64_t>(-1)) {
+    return X_STATUS_SUCCESS;
+  }
+
 #if XE_PLATFORM_WIN32
   int ret = closesocket(native_handle_);
 #else
   int ret = close(native_handle_);
 #endif
+  native_handle_ = static_cast<uint64_t>(-1);
 
   if (ret != 0) {
     return X_STATUS_UNSUCCESSFUL;
@@ -215,6 +229,7 @@ X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
 
   bound_ = true;
   bound_port_ = name->sin_port;
+  bound_address_ = name->sin_addr;
 
   return X_STATUS_SUCCESS;
 }
@@ -372,6 +387,114 @@ uint32_t XSocket::GetLastWSAError() const {
     default:
       return error_no;
   }
+}
+
+bool XSocket::Save(ByteStream* stream) {
+  if (!SaveObject(stream)) {
+    return false;
+  }
+
+  stream->Write(kXSocketSaveSignature);
+  stream->Write<bool>(native_handle_ != static_cast<uint64_t>(-1));
+  stream->Write<int32_t>(static_cast<int32_t>(af_));
+  stream->Write<int32_t>(static_cast<int32_t>(type_));
+  stream->Write<int32_t>(static_cast<int32_t>(proto_));
+  stream->Write<bool>(secure_);
+  stream->Write<bool>(bound_);
+  stream->Write<uint16_t>(bound_port_);
+  stream->Write<uint32_t>(bound_address_);
+  stream->Write<bool>(broadcast_socket_);
+  return true;
+}
+
+object_ref<XSocket> XSocket::Restore(KernelState* kernel_state,
+                                     ByteStream* stream) {
+  auto socket = new XSocket();
+  socket->kernel_state_ = kernel_state;
+
+  auto discard_socket = [&]() {
+    const auto handles = socket->handles();
+    for (X_HANDLE handle : handles) {
+      kernel_state->object_table()->RemoveHandle(handle);
+    }
+    socket->Release();
+  };
+
+  if (!socket->RestoreObject(stream)) {
+    discard_socket();
+    return nullptr;
+  }
+  if (stream->Read<uint32_t>() != kXSocketSaveSignature) {
+    XELOGE("Could not restore XSocket {:08X} - invalid magic!",
+           socket->handle());
+    discard_socket();
+    return nullptr;
+  }
+
+  const bool was_initialized = stream->Read<bool>();
+  const auto af = static_cast<AddressFamily>(stream->Read<int32_t>());
+  const auto type = static_cast<Type>(stream->Read<int32_t>());
+  const auto proto = static_cast<Protocol>(stream->Read<int32_t>());
+  const bool secure = stream->Read<bool>();
+  const bool was_bound = stream->Read<bool>();
+  const uint16_t bound_port = stream->Read<uint16_t>();
+  const uint32_t bound_address = stream->Read<uint32_t>();
+  const bool broadcast_socket = stream->Read<bool>();
+
+  if (!was_initialized) {
+    socket->af_ = af;
+    socket->type_ = type;
+    socket->proto_ = proto;
+    socket->secure_ = secure;
+    socket->bound_ = was_bound;
+    socket->bound_port_ = bound_port;
+    socket->bound_address_ = bound_address;
+    socket->broadcast_socket_ = broadcast_socket;
+    return object_ref<XSocket>(socket);
+  }
+
+  if (XFAILED(socket->Initialize(af, type, proto))) {
+    XELOGW(
+        "XSocket {:08X}: could not recreate the host socket; "
+        "restoring an inactive socket",
+        socket->handle());
+    socket->secure_ = secure;
+    socket->bound_ = false;
+    socket->bound_port_ = 0;
+    socket->bound_address_ = 0;
+    socket->broadcast_socket_ = false;
+    return object_ref<XSocket>(socket);
+  }
+
+  socket->secure_ = secure;
+  if (broadcast_socket) {
+    int enabled = 1;
+    if (setsockopt(socket->native_handle_, SOL_SOCKET, SO_BROADCAST,
+                   reinterpret_cast<const char*>(&enabled),
+                   sizeof(enabled)) != 0) {
+      XELOGW("XSocket {:08X}: could not restore broadcast option",
+             socket->handle());
+    } else {
+      socket->broadcast_socket_ = true;
+    }
+  }
+
+  if (was_bound) {
+    N_XSOCKADDR_IN address{};
+    address.sin_family = af;
+    address.sin_port = bound_port;
+    address.sin_addr = bound_address;
+    if (XFAILED(socket->Bind(&address, sizeof(address)))) {
+      XELOGW("XSocket {:08X}: could not restore bind on port {}",
+             socket->handle(), bound_port);
+      socket->Close();
+      socket->bound_ = false;
+      socket->bound_port_ = 0;
+      socket->bound_address_ = 0;
+    }
+  }
+
+  return object_ref<XSocket>(socket);
 }
 
 }  // namespace kernel

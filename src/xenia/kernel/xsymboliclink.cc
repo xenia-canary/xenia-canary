@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xsymboliclink.h"
 
+#include <string_view>
+
 #include "xenia/base/byte_stream.h"
 #include "xenia/kernel/kernel_state.h"
 
@@ -33,8 +35,8 @@ bool XSymbolicLink::Save(ByteStream* stream) {
   if (!SaveObject(stream)) {
     return false;
   }
-  stream->Write(path_);
-  stream->Write(target_);
+  stream->Write(std::string_view(path_));
+  stream->Write(std::string_view(target_));
   return true;
 }
 

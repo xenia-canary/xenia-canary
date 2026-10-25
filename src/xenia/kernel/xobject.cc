@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xobject.h"
 
+#include <string_view>
+
 #include "xenia/base/byte_stream.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -20,6 +22,7 @@
 #include "xenia/kernel/xmutant.h"
 #include "xenia/kernel/xnotifylistener.h"
 #include "xenia/kernel/xsemaphore.h"
+#include "xenia/kernel/xsocket.h"
 #include "xenia/kernel/xsymboliclink.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
@@ -106,7 +109,11 @@ bool XObject::SaveObject(ByteStream* stream) {
   stream->Write<uint32_t>(guest_object_type_ptr_.load());
 
   stream->Write(uint32_t(handles_.size()));
-  stream->Write(&handles_[0], handles_.size() * sizeof(X_HANDLE));
+  if (!handles_.empty()) {
+    stream->Write(handles_.data(), handles_.size() * sizeof(X_HANDLE));
+  }
+  stream->Write(priority_increment_);
+  stream->Write(std::string_view(name_));
 
   return true;
 }
@@ -116,12 +123,39 @@ bool XObject::RestoreObject(ByteStream* stream) {
   guest_object_ptr_ = stream->Read<uint32_t>();
   guest_object_type_ptr_.store(stream->Read<uint32_t>());
 
-  handles_.resize(stream->Read<uint32_t>());
-  stream->Read(&handles_[0], handles_.size() * sizeof(X_HANDLE));
+  // XModule::Restore currently constructs its UserModule through the regular
+  // constructor, which registers a temporary handle. Remove that handle before
+  // attaching the saved handle list so it cannot remain as a stale table entry.
+  if (!handles_.empty()) {
+    const auto temporary_handles = handles_;
+    for (X_HANDLE handle : temporary_handles) {
+      kernel_state_->object_table()->RemoveHandle(handle);
+    }
+  }
+
+  const uint32_t handle_count = stream->Read<uint32_t>();
+  const size_t remaining_bytes = stream->data_length() >= stream->offset()
+                                     ? stream->data_length() - stream->offset()
+                                     : 0;
+  if (!handle_count || handle_count > remaining_bytes / sizeof(X_HANDLE)) {
+    XELOGE("Invalid handle count {} while restoring object", handle_count);
+    return false;
+  }
+  handles_.resize(handle_count);
+  stream->Read(handles_.data(), handles_.size() * sizeof(X_HANDLE));
+  priority_increment_ = stream->Read<uint32_t>();
+  name_ = stream->Read<std::string>();
 
   // Restore our pointer to our handles in the object table.
   for (size_t i = 0; i < handles_.size(); i++) {
-    kernel_state_->object_table()->RestoreHandle(handles_[i], this);
+    if (XFAILED(
+            kernel_state_->object_table()->RestoreHandle(handles_[i], this))) {
+      XELOGE("Failed to restore object handle {:08X}", handles_[i]);
+      return false;
+    }
+  }
+  if (!name_.empty()) {
+    kernel_state_->object_table()->AddNameMapping(name_, handles_[0]);
   }
 
   return true;
@@ -143,7 +177,7 @@ object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,
                                      ByteStream* stream) {
   switch (type) {
     case Type::Enumerator:
-      break;
+      return XEnumerator::Restore(kernel_state, stream);
     case Type::Event:
       return XEvent::Restore(kernel_state, stream);
     case Type::File:
@@ -161,7 +195,7 @@ object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,
     case Type::Session:
       break;
     case Type::Socket:
-      break;
+      return XSocket::Restore(kernel_state, stream);
     case Type::SymbolicLink:
       return XSymbolicLink::Restore(kernel_state, stream);
     case Type::Thread:
@@ -172,7 +206,8 @@ object_ref<XObject> XObject::Restore(KernelState* kernel_state, Type type,
       break;
   }
 
-  assert_always("No restore handler exists for this object!");
+  XELOGE("No restore handler exists for kernel object type {}",
+         static_cast<uint32_t>(type));
   return nullptr;
 }
 

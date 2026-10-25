@@ -10,8 +10,10 @@
 #ifndef XENIA_APP_EMULATOR_WINDOW_H_
 #define XENIA_APP_EMULATOR_WINDOW_H_
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "xenia/app/profile_dialogs.h"
 #include "xenia/emulator.h"
@@ -262,6 +264,11 @@ class EmulatorWindow {
   void ApplyDisplayConfigForCvars();
 
   void OnKeyDown(ui::KeyEvent& e);
+  void HandleStateSlot(bool save_state, uint32_t slot);
+  void HandleStateOperation(bool save_state, uint32_t slot,
+                            const std::filesystem::path& state_path);
+  void HandleStateFilePicker(bool save_state);
+  void RefreshStateSlotMenu(ui::MenuItem* menu, bool save_state);
   void OnMouseDown(const ui::MouseEvent& e);
   void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);
@@ -316,6 +323,9 @@ class EmulatorWindow {
 
   bool emulator_initialized_ = false;
   std::atomic<bool> disable_hotkeys_ = false;
+  std::atomic<bool> state_operation_in_progress_ = false;
+  std::shared_ptr<int> state_operation_lifetime_ = std::make_shared<int>(0);
+  std::thread state_operation_thread_;
 
   std::string base_title_;
   bool initializing_shader_storage_ = false;

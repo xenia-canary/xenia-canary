@@ -10,10 +10,34 @@
 #ifndef XENIA_CPU_BREAKPOINT_H_
 #define XENIA_CPU_BREAKPOINT_H_
 
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+
 #include "xenia/cpu/processor.h"
 
 namespace xe {
 namespace cpu {
+
+class TransientStepGate {
+ public:
+  void WaitForRelease() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait(lock, [this]() { return released_; });
+  }
+  void Release() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      released_ = true;
+    }
+    condition_.notify_one();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  bool released_ = false;
+};
 
 class Breakpoint {
  public:
@@ -25,7 +49,7 @@ class Breakpoint {
       HitCallback;
 
   Breakpoint(Processor* processor, AddressType address_type, uint64_t address,
-             HitCallback hit_callback);
+             HitCallback hit_callback, bool is_transient_step = false);
   ~Breakpoint();
 
   AddressType address_type() const { return address_type_; }
@@ -55,6 +79,10 @@ class Breakpoint {
 
   // Whether the breakpoint is currently installed and active.
   bool is_installed() const { return installed_; }
+  bool is_transient_step() const { return is_transient_step_; }
+  std::shared_ptr<TransientStepGate> transient_step_gate() const {
+    return transient_step_gate_;
+  }
 
   std::string to_string() const;
 
@@ -125,6 +153,8 @@ class Breakpoint {
   uint64_t address_ = 0;
 
   HitCallback hit_callback_;
+  bool is_transient_step_ = false;
+  std::shared_ptr<TransientStepGate> transient_step_gate_;
 
   // Opaque backend data. Don't touch this.
   std::vector<std::pair<uint64_t, uint64_t>> backend_data_;

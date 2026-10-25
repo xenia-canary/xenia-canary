@@ -774,6 +774,12 @@ bool Memory::Save(ByteStream* stream) {
   heaps_.v90000000.Save(stream);
   heaps_.physical.Save(stream);
 
+  stream->Write(uint32_t(0x504D4150));
+  heaps_.v7F000000.SaveMapping(stream);
+  heaps_.vA0000000.SaveMapping(stream);
+  heaps_.vC0000000.SaveMapping(stream);
+  heaps_.vE0000000.SaveMapping(stream);
+
   return true;
 }
 
@@ -784,6 +790,20 @@ bool Memory::Restore(ByteStream* stream) {
   heaps_.v80000000.Restore(stream);
   heaps_.v90000000.Restore(stream);
   heaps_.physical.Restore(stream);
+
+  if (stream->offset() == stream->data_length()) {
+    XELOGE("State file is missing physical mapping metadata");
+    return false;
+  }
+  if (stream->Read<uint32_t>() != 0x504D4150) {
+    return false;
+  }
+  if (!heaps_.v7F000000.RestoreMapping(stream) ||
+      !heaps_.vA0000000.RestoreMapping(stream) ||
+      !heaps_.vC0000000.RestoreMapping(stream) ||
+      !heaps_.vE0000000.RestoreMapping(stream)) {
+    return false;
+  }
 
   return true;
 }
@@ -897,6 +917,39 @@ void BaseHeap::DumpMap() {
            heap_base_ + (heap_size_ - 1),
            page_table_.size() - empty_span_start);
   }
+}
+
+void PhysicalHeap::SaveMapping(ByteStream* stream) {
+  stream->Write(uint32_t(page_table_.size()));
+  for (const auto& page : page_table_) {
+    stream->Write(page.qword);
+  }
+}
+
+bool PhysicalHeap::RestoreMapping(ByteStream* stream) {
+  if (stream->Read<uint32_t>() != page_table_.size()) {
+    return false;
+  }
+  for (auto& page : page_table_) {
+    page.qword = stream->Read<uint64_t>();
+  }
+  // Watches belong to the previous timeline. Re-arm them when caches refill.
+  std::fill(system_page_flags_.begin(), system_page_flags_.end(),
+            SystemPageFlagsBlock{});
+  for (size_t i = 0; i < page_table_.size(); ++i) {
+    const auto& page = page_table_[i];
+    auto access = (page.state & kMemoryAllocationCommit)
+                      ? ToPageAccess(page.current_protect)
+                      : memory::PageAccess::kNoAccess;
+    if (!memory::Protect(TranslateRelative(uint32_t(i * page_size_)),
+                         page_size_, access, nullptr)) {
+      XELOGE("Failed to restore physical mapping {:08X}",
+             heap_base_ + uint32_t(i * page_size_));
+      return false;
+    }
+  }
+  RebuildFreeBlocks();
+  return true;
 }
 
 bool BaseHeap::Save(ByteStream* stream) {

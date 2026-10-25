@@ -490,7 +490,16 @@ void Processor::OnThreadCreated(uint32_t thread_handle,
   thread_info->state = ThreadDebugInfo::State::kAlive;
   thread_info->suspended = false;
   thread_info->thread_handle = thread_handle;
-  thread_debug_infos_.emplace(thread_info->thread_id, std::move(thread_info));
+  auto it = thread_debug_infos_.find(thread_info->thread_id);
+  if (it != thread_debug_infos_.end()) {
+    XELOGW(
+        "Processor::OnThreadCreated: replacing stale record for reused "
+        "thread ID {} (state {})",
+        thread_info->thread_id, static_cast<uint32_t>(it->second->state));
+    it->second = std::move(thread_info);
+  } else {
+    thread_debug_infos_.emplace(thread_info->thread_id, std::move(thread_info));
+  }
 }
 
 void Processor::OnThreadExit(uint32_t thread_id) {
@@ -501,10 +510,15 @@ void Processor::OnThreadExit(uint32_t thread_id) {
   thread_info->state = ThreadDebugInfo::State::kExited;
 }
 
-void Processor::OnThreadDestroyed(uint32_t thread_id) {
+void Processor::OnThreadDestroyed(uint32_t thread_id, Thread* thread) {
   auto global_lock = global_critical_region_.Acquire();
   auto it = thread_debug_infos_.find(thread_id);
   assert_true(it != thread_debug_infos_.end());
+  if (it->second->thread != thread) {
+    XELOGD("Processor::OnThreadDestroyed: ignoring stale thread ID {}",
+           thread_id);
+    return;
+  }
   it->second->thread_handle = 0;
   thread_debug_infos_.erase(it);
 }
@@ -559,8 +573,9 @@ void Processor::AddBreakpoint(Breakpoint* breakpoint) {
 void Processor::RemoveBreakpoint(Breakpoint* breakpoint) {
   auto global_lock = global_critical_region_.Acquire();
 
-  // Uninstall (if needed).
-  if (execution_state_ == ExecutionState::kRunning) {
+  // Uninstall an active breakpoint even if the processor has moved to the
+  // paused state after the breakpoint was hit.
+  if (breakpoint->is_installed()) {
     breakpoint->Suspend();
   }
 
@@ -615,9 +630,6 @@ void Processor::DemandDebugListener() {
 bool Processor::OnThreadBreakpointHit(Exception* ex) {
   auto global_lock = global_critical_region_.Acquire();
 
-  // Suspend all threads (but ourselves).
-  SuspendAllThreads();
-
   // Lookup thread info block.
   auto it = thread_debug_infos_.find(ThreadState::GetThreadID());
   if (it == thread_debug_infos_.end()) {
@@ -626,6 +638,43 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
     return false;
   }
   auto thread_info = it->second.get();
+
+  // Savestate safe-point breakpoints run while Emulator::Pause has already
+  // suspended the other guest threads. Route these directly to their callback
+  // instead of entering debugger pause/resume handling, which would resume
+  // threads already serialized by the save operation.
+  Breakpoint* transient_step_breakpoint = nullptr;
+  for (auto candidate : breakpoints_) {
+    if (!candidate->is_transient_step()) {
+      continue;
+    }
+    for (const auto& backend_location : candidate->backend_data()) {
+      if (backend_location.first == ex->pc()) {
+        transient_step_breakpoint = candidate;
+        break;
+      }
+    }
+    if (transient_step_breakpoint) {
+      break;
+    }
+  }
+  if (transient_step_breakpoint) {
+    auto step_gate = transient_step_breakpoint->transient_step_gate();
+    UpdateThreadExecutionStates(thread_info->thread_id, ex->thread_context());
+
+    // This is a patched instruction, not an extra marker in the code stream.
+    // StepToGuestAddress restores its original bytes before releasing the gate.
+    // Retry that instruction; skipping two bytes can enter its middle.
+    ex->set_resume_pc(ex->pc());
+
+    transient_step_breakpoint->OnHit(thread_info, ex->pc());
+    global_lock.unlock();
+    step_gate->WaitForRelease();
+    return true;
+  }
+
+  // Suspend all threads (but ourselves) for a regular debugger breakpoint.
+  SuspendAllThreads();
 
   // Run through and uninstall all breakpoint UD2s to get us back to a clean
   // state.
@@ -979,7 +1028,8 @@ void Processor::StepGuestInstruction(uint32_t thread_id) {
   ResumeThread(thread_id);
 }
 
-bool Processor::StepToGuestAddress(uint32_t thread_id, uint32_t pc) {
+bool Processor::StepToGuestAddress(uint32_t thread_id, uint32_t pc,
+                                   bool* thread_suspended) {
   auto functions = FindFunctionsWithAddress(pc);
   if (functions.empty()) {
     // Function hasn't been generated yet. Generate it.
@@ -996,8 +1046,12 @@ bool Processor::StepToGuestAddress(uint32_t thread_id, uint32_t pc) {
   cpu::Breakpoint bp(
       this, Breakpoint::AddressType::kGuest, pc,
       [&fence](Breakpoint* breakpoint, ThreadDebugInfo* thread_info,
-               uint64_t host_address) { fence.Signal(); });
-  bp.Resume();
+               uint64_t host_address) { fence.Signal(); },
+      true);
+  AddBreakpoint(&bp);
+  if (!bp.is_installed()) {
+    bp.Resume();
+  }
 
   // HACK
   auto thread_info = QueryThreadDebugInfo(thread_id);
@@ -1007,84 +1061,22 @@ bool Processor::StepToGuestAddress(uint32_t thread_id, uint32_t pc) {
   }
 
   fence.Wait();
-  bp.Suspend();
+  RemoveBreakpoint(&bp);
+  // The breakpoint handler is waiting on this gate. Suspend the native
+  // thread before releasing it so the caller can safely inspect its PPC
+  // context while the emulator remains paused.
+  thread_info->thread->thread()->Suspend(nullptr);
+  if (thread_suspended) {
+    *thread_suspended = true;
+  }
+  bp.transient_step_gate()->Release();
 
   return true;
 }
 
-uint32_t Processor::StepIntoGuestBranchTarget(uint32_t thread_id, uint32_t pc) {
-  xe::cpu::ppc::PPCDecodeData d;
-  d.address = pc;
-  d.code = xe::load_and_swap<uint32_t>(memory()->TranslateVirtual(d.address));
-  auto opcode = xe::cpu::ppc::LookupOpcode(d.code);
-
-  // Must be on a branch.
-  assert_true(xe::cpu::ppc::GetOpcodeInfo(opcode).group ==
-              xe::cpu::ppc::PPCOpcodeGroup::kB);
-
-  auto thread_info = QueryThreadDebugInfo(thread_id);
-  auto thread = thread_info->thread;
-  auto context = thread->thread_state()->context();
-
-  if (d.code == 0x4E800020) {
-    // blr
-    uint32_t nia = uint32_t(context->lr);
-    StepToGuestAddress(thread_id, nia);
-    pc = nia;
-  } else if (d.code == 0x4E800420) {
-    // bctr
-    uint32_t nia = uint32_t(context->ctr);
-    StepToGuestAddress(thread_id, nia);
-    pc = nia;
-  } else if (opcode == PPCOpcode::bx) {
-    // bx
-    uint32_t nia = d.I.ADDR();
-    StepToGuestAddress(thread_id, nia);
-    pc = nia;
-  } else if (opcode == PPCOpcode::bcx || opcode == PPCOpcode::bcctrx ||
-             opcode == PPCOpcode::bclrx) {
-    threading::Fence fence;
-    auto callback = [&fence, &pc](Breakpoint* breakpoint,
-                                  ThreadDebugInfo* thread_info,
-                                  uint64_t host_address) {
-      pc = breakpoint->guest_address();
-      fence.Signal();
-    };
-
-    cpu::Breakpoint bpf(this, Breakpoint::AddressType::kGuest, pc + 4,
-                        callback);
-    bpf.Resume();
-
-    uint32_t nia = 0;
-    if (opcode == PPCOpcode::bcx) {
-      // bcx
-      nia = d.B.ADDR();
-    } else if (opcode == PPCOpcode::bcctrx) {
-      // bcctrx
-      nia = uint32_t(context->ctr);
-    } else if (opcode == PPCOpcode::bclrx) {
-      // bclrx
-      nia = uint32_t(context->lr);
-    }
-
-    cpu::Breakpoint bpt(this, Breakpoint::AddressType::kGuest, nia, callback);
-    bpt.Resume();
-
-    // HACK
-    uint32_t suspend_count = 1;
-    while (suspend_count) {
-      thread->thread()->Resume(&suspend_count);
-    }
-
-    fence.Wait();
-    bpt.Suspend();
-    bpf.Suspend();
-  }
-
-  return pc;
-}
-
-uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
+uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host,
+                                         bool park_thread,
+                                         bool thread_suspended) {
   // This cannot be done if we're the calling thread!
   if (thread_id == ThreadState::GetThreadID()) {
     assert_always(
@@ -1093,6 +1085,15 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
   }
   auto thread_info = QueryThreadDebugInfo(thread_id);
   auto thread = thread_info->thread;
+
+  // CaptureStackTrace needs a stable host context. During state saving the
+  // other guest threads remain active, so briefly suspend only this target
+  // thread while sampling its stack. StepToGuestAddress releases this suspend
+  // count when it resumes the thread toward the safe point.
+  if (park_thread && !thread_suspended) {
+    thread->thread()->Suspend(nullptr);
+    thread_suspended = true;
+  }
 
   // Now the fun part begins: Registers are only guaranteed to be synchronized
   // with the PPC context at a basic block boundary. Unfortunately, we most
@@ -1105,6 +1106,8 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
       xe::countof(frame_host_pcs), nullptr, nullptr);
   stack_walker_->ResolveStack(frame_host_pcs, cpu_frames, count);
   if (count == 0) {
+    XELOGE("StepToGuestSafePoint: could not capture thread {} stack",
+           thread_id);
     return 0;
   }
 
@@ -1133,31 +1136,45 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
     // We're in guest code.
     // First: Find a synchronizing instruction and go to it.
     xe::cpu::ppc::PPCDecodeData d;
-    const xe::cpu::ppc::PPCOpcodeInfo* sync_info = nullptr;
+    bool branch_found = false;
     d.address = cpu_frames[0].guest_pc - 4;
+    uint32_t instructions_scanned = 0;
     do {
       d.address += 4;
       d.code =
           xe::load_and_swap<uint32_t>(memory()->TranslateVirtual(d.address));
+      auto opcode = xe::cpu::ppc::LookupOpcode(d.code);
       auto& opcode_info = xe::cpu::ppc::LookupOpcodeInfo(d.code);
-      if (opcode_info.type == cpu::ppc::PPCOpcodeType::kSync) {
-        sync_info = &opcode_info;
+      if (opcode == PPCOpcode::bx || opcode == PPCOpcode::bcx ||
+          opcode == PPCOpcode::bcctrx || opcode == PPCOpcode::bclrx) {
+        branch_found = true;
         break;
       }
+      if (opcode_info.type == cpu::ppc::PPCOpcodeType::kSync) {
+        break;
+      }
+      if (++instructions_scanned == 262144) {
+        XELOGE(
+            "StepToGuestSafePoint: thread {} scanned 1 MiB from {:08X} "
+            "without finding a synchronizing instruction",
+            thread_id, cpu_frames[0].guest_pc);
+        return 0;
+      }
     } while (true);
-
     if (d.address != pc) {
-      StepToGuestAddress(thread_id, d.address);
+      if (!StepToGuestAddress(thread_id, d.address, &thread_suspended)) {
+        return 0;
+      }
       pc = d.address;
     }
 
-    // Okay. Now we're on a synchronizing instruction but we need to step
-    // past it in order to get a synchronized context.
-    // If we're on a branching instruction, it's guaranteed only going to have
-    // two possible targets. For non-branching instructions, we can just step
-    // over them.
-    if (sync_info->group == xe::cpu::ppc::PPCOpcodeGroup::kB) {
-      pc = StepIntoGuestBranchTarget(thread_id, d.address);
+    // kSync instructions place a PPC context barrier before the instruction.
+    // When the safe point is a branch, save with the branch still pending so
+    // it executes normally after restore. Following it here would run game
+    // code while the rest of the guest threads remain paused.
+    if (branch_found) {
+      XELOGD("StepToGuestSafePoint: thread {} stopped before branch {:08X}",
+             thread_id, d.address);
     }
   } else {
     // We're in host code. Search backwards til we can get an idea of where
@@ -1191,7 +1208,9 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
     } else if (export_data) {
       // Non-blocking. Run until we return from the thunk.
       pc = static_cast<uint32_t>(thread->thread_state()->context()->lr);
-      StepToGuestAddress(thread_id, pc);
+      if (!StepToGuestAddress(thread_id, pc, &thread_suspended)) {
+        return 0;
+      }
     } else if (first_pc) {
       // We're in the MMIO handler/mfmsr/something calling out of the guest
       // that doesn't use an export. If the current instruction is
@@ -1205,8 +1224,11 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
         pc = first_pc;
       } else {
         // Step forward and run this logic again.
-        StepToGuestAddress(thread_id, first_pc + 4);
-        return StepToGuestSafePoint(thread_id, true);
+        if (!StepToGuestAddress(thread_id, first_pc + 4, &thread_suspended)) {
+          return 0;
+        }
+        return StepToGuestSafePoint(thread_id, true, park_thread,
+                                    thread_suspended);
       }
     } else {
       // We've managed to catch a thread before it called into the guest.
@@ -1221,6 +1243,10 @@ uint32_t Processor::StepToGuestSafePoint(uint32_t thread_id, bool ignore_host) {
       StepToGuestAddress(thread_id, pc);
       */
     }
+  }
+
+  if (park_thread && !thread_suspended) {
+    thread->thread()->Suspend(nullptr);
   }
 
   return pc;

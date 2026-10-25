@@ -55,7 +55,7 @@ class Window;
 
 namespace xe {
 
-constexpr fourcc_t kEmulatorSaveSignature = make_fourcc("XSAV");
+constexpr fourcc_t kEmulatorSaveSignature = make_fourcc("XSV4");
 static constexpr std::string_view kDefaultGameSymbolicLink = "GAME:";
 static constexpr std::string_view kDefaultPartitionSymbolicLink = "D:";
 static constexpr std::string_view kDefaultUpdateSymbolicLink = "UPDATE:";
@@ -299,7 +299,7 @@ class Emulator {
     bool hasError{false};
   };
 
-  void Pause();
+  void Pause(bool pause_guest_threads = true);
   void Resume();
   bool is_paused() const { return paused_; }
   bool SaveToFile(const std::filesystem::path& path);
