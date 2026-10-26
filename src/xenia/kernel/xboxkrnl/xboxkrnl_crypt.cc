@@ -589,6 +589,7 @@ void XeCryptMd5_entry(lpvoid_t input_1, dword_t input_1_size, lpvoid_t input_2,
 
   uint8_t digest[16];
   av_md5_final(md5, digest);
+  av_free(md5);
 
   std::copy_n(digest, std::min<size_t>(xe::countof(digest), output_size),
               output.as<uint8_t*>());
@@ -751,6 +752,8 @@ void XeCryptMd5Update_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
   std::copy_n(md5InternalState->block, xe::countof(md5_state->buffer),
               md5_state->buffer);
   md5_state->count = md5InternalState->len;
+
+  av_free(md5);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptMd5Update, kNone, kImplemented);
 
@@ -767,6 +770,7 @@ void XeCryptMd5Final_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
 
   uint8_t hash[16];
   av_md5_final(md5, hash);
+  av_free(md5);
 
   std::copy_n(hash, std::min<size_t>(xe::countof(hash), out_size),
               static_cast<uint8_t*>(out));
