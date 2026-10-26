@@ -1137,49 +1137,14 @@ void XeCryptHmacSha_entry(lpvoid_t key, dword_t key_size_in, lpvoid_t inp_1,
                           dword_t inp_1_size, lpvoid_t inp_2,
                           dword_t inp_2_size, lpvoid_t inp_3,
                           dword_t inp_3_size, lpvoid_t out, dword_t out_size) {
-  uint32_t key_size = key_size_in;
-  sha1::SHA1 sha;
-  uint8_t kpad_i[0x40];
-  uint8_t kpad_o[0x40];
-  uint8_t tmp_key[0x40];
-  std::memset(kpad_i, 0x36, 0x40);
-  std::memset(kpad_o, 0x5C, 0x40);
-
-  // Setup HMAC key
-  // Console uses only the first block of a longer key instead of hashing it.
-  key_size = std::min(key_size, 0x40u);
-  std::memcpy(tmp_key, key, key_size);
-
-  for (uint32_t i = 0; i < key_size; i++) {
-    kpad_i[i] = tmp_key[i] ^ 0x36;
-    kpad_o[i] = tmp_key[i] ^ 0x5C;
-  }
-
-  // Inner
-  sha.processBytes(kpad_i, 0x40);
-
-  if (inp_1_size) {
-    sha.processBytes(inp_1, inp_1_size);
-  }
-
-  if (inp_2_size) {
-    sha.processBytes(inp_2, inp_2_size);
-  }
-
-  if (inp_3_size) {
-    sha.processBytes(inp_3, inp_3_size);
-  }
-
-  uint8_t digest[0x14];
-  sha.finalize(digest);
-  sha.reset();
-
-  // Outer
-  sha.processBytes(kpad_o, 0x40);
-  sha.processBytes(digest, 0x14);
-  sha.finalize(digest);
-
-  std::memcpy(out, digest, std::min((uint32_t)out_size, 0x14u));
+  // XeCryptHmacShaInit uses only the first block of a longer key, as the
+  // console does, instead of hashing it.
+  XECRYPT_HMACSHA_STATE state;
+  XeCryptHmacShaInit_entry(&state, key, key_size_in);
+  XeCryptHmacShaUpdate_entry(&state, inp_1, inp_1_size);
+  XeCryptHmacShaUpdate_entry(&state, inp_2, inp_2_size);
+  XeCryptHmacShaUpdate_entry(&state, inp_3, inp_3_size);
+  XeCryptHmacShaFinal_entry(&state, out.as<uint8_t*>(), out_size);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptHmacSha, kNone, kImplemented);
 
