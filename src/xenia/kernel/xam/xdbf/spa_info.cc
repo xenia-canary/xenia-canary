@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/xam/xdbf/spa_info.h"
+#include "xenia/base/logging.h"
 
 namespace xe {
 namespace kernel {
@@ -526,6 +527,7 @@ T SpaInfo::GetSpaEntry(std::vector<T>& container, uint32_t id) {
 std::span<const uint8_t> SpaInfo::GetIcon(uint64_t id) const {
   auto entry = GetEntry(static_cast<uint16_t>(SpaSection::kImage), id);
   if (!entry) {
+    XELOGE("Icon not found");
     return {};
   }
   return {entry->data.data(), entry->data.size()};
