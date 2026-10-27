@@ -118,6 +118,10 @@ class UserProfile {
     return account_info_.GetReservedFlags();
   };
   uint32_t GetCachedFlags() const { return account_info_.GetCachedFlags(); };
+  uint32_t GetUserFlags() const {
+    return account_info_.GetCachedFlags() | account_info_.GetReservedFlags();
+  };
+
   uint32_t GetCountry() const {
     return static_cast<uint32_t>(account_info_.GetCountry());
   };

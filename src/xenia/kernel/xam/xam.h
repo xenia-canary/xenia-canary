@@ -23,10 +23,11 @@ namespace xam {
 #pragma pack(push, 4)
 struct X_XAMACCOUNTINFO {
   enum AccountReservedFlags {
+    kVersionMask = 0x000000FF,
     kPasswordProtected = 0x10000000,
     kLiveEnabled = 0x20000000,
     kRecovering = 0x40000000,
-    kVersionMask = 0x000000FF
+    KPartialProfile = 0x80000000
   };
 
   enum AccountUserFlags {

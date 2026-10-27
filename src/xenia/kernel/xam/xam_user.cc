@@ -1074,7 +1074,7 @@ dword_result_t XamUserGetUserFlags_entry(dword_t user_index) {
   const auto& user_profile =
       kernel_state()->xam_state()->GetUserProfile(user_index);
 
-  return user_profile->GetCachedFlags();
+  return user_profile->GetUserFlags();
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserFlags, kUserProfiles, kImplemented);
 
@@ -1084,7 +1084,7 @@ dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
     return 0;
   }
 
-  return user_profile->GetCachedFlags();
+  return user_profile->GetUserFlags();
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 
@@ -1125,6 +1125,15 @@ dword_result_t XamUserIsParentalControlled_entry(dword_t user_index) {
   return true;
 }
 DECLARE_XAM_EXPORT1(XamUserIsParentalControlled, kUserProfiles, kImplemented);
+
+dword_result_t XamUserIsGuest_entry(dword_t user_index) {
+  if (user_index >= XUserMaxUserCount) {
+    return false;
+  }
+
+  return false;
+}
+DECLARE_XAM_EXPORT1(XamUserIsGuest, kUserProfiles, kStub);
 
 dword_result_t XamUserCreateStatsEnumerator_entry(
     dword_t title_id, dword_t user_index, dword_t count, dword_t flags,
