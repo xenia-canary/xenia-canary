@@ -15,7 +15,8 @@ namespace kernel {
 namespace xam {
 
 XamState::XamState(Emulator* emulator, KernelState* kernel_state)
-    : kernel_state_(kernel_state) {
+    : kernel_state_(kernel_state),
+      global_allocator_(kernel_state, 0x80D00000, 0x100000) {
   app_manager_ = std::make_unique<AppManager>();
 
   auto content_root = emulator->content_root();
@@ -38,32 +39,26 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
 }
 
 void XamState::LoadLanguageLocaleFallback() {
-  const std::array<std::u16string, 18> locale_data = {
+  if (!global_allocator_.is_valid()) {
+    return;
+  }
+
+  const std::array<std::u16string_view, 18> locale_data = {
       u"",      u"",      u"ja-JP", u"de-DE", u"fr-FR",  u"es-ES",
       u"it-IT", u"ko-KR", u"zh-TW", u"pt-BR", u"zh-CHS", u"pl-PL",
       u"ru-RU", u"sv-SE", u"tr-TR", u"nb-NO", u"nl-NL",  u"zh-CHS"};
 
-  constexpr uint32_t array_start = 0x80D00000;
-
-  if (kernel_state_->memory()
-          ->LookupHeap(0x80000000)
-          ->AllocFixed(array_start, 0xC8, 0x1000, kMemoryAllocationCommit,
-                       kMemoryProtectRead | kMemoryProtectWrite)) {
-    char16_t* ptr =
-        kernel_state_->memory()->TranslateVirtual<char16_t*>(array_start);
-
-    for (size_t i = 1; i < locale_data.size(); i++) {
-      language_fallback_address_[i] =
-          kernel_state_->memory()->HostToGuestVirtual(ptr);
-      ptr += xe::string_util::copy_and_swap_truncating(
-                 ptr, locale_data.at(i), locale_data.at(i).size() + 1) +
-             1;
-    }
+  for (size_t i = 1; i < locale_data.size(); i++) {
+    language_fallback_address_[i] = global_allocator_.Write(locale_data.at(i));
   }
 }
 
 void XamState::LoadLanguageTypefacePatch() {
-  const std::array<std::u16string, 7> patch_data = {
+  if (!global_allocator_.is_valid()) {
+    return;
+  }
+
+  const std::array<std::u16string_view, 7> patch_data = {
       u"",
       u"file://media:/XenonSCLatin.xttp2",
       u"file://media:/XenonCLatin.xttp2",
@@ -72,22 +67,8 @@ void XamState::LoadLanguageTypefacePatch() {
       u"file://media:/XenonCLatin.xttp1",
       u"file://media:/XenonJKLatin.xttp1"};
 
-  constexpr uint32_t array_start = 0x80D10000;
-
-  if (kernel_state_->memory()
-          ->LookupHeap(0x80000000)
-          ->AllocFixed(array_start, 0x168, 0x1000, kMemoryAllocationCommit,
-                       kMemoryProtectRead | kMemoryProtectWrite)) {
-    char16_t* ptr =
-        kernel_state_->memory()->TranslateVirtual<char16_t*>(array_start);
-
-    for (size_t i = 1; i < patch_data.size(); i++) {
-      language_type_face_patch_[i] =
-          kernel_state_->memory()->HostToGuestVirtual(ptr);
-      ptr += xe::string_util::copy_and_swap_truncating(
-                 ptr, patch_data.at(i), patch_data.at(i).size() + 1) +
-             1;
-    }
+  for (size_t i = 0; i < patch_data.size(); i++) {
+    language_type_face_patch_[i] = global_allocator_.Write(patch_data.at(i));
   }
 }
 
@@ -108,14 +89,11 @@ uint32_t XamState::GetLanguageTypefacePatch(uint32_t language) const {
 }
 
 void XamState::LoadIptvServiceName() {
-  constexpr uint32_t address = 0x80D20000;
-
-  if (kernel_state_->memory()
-          ->LookupHeap(0x80000000)
-          ->AllocFixed(address, 0x78, 0x1000, kMemoryAllocationCommit,
-                       kMemoryProtectRead | kMemoryProtectWrite)) {
-    iptv_name_address_ = address;
+  if (!global_allocator_.is_valid()) {
+    return;
   }
+  constexpr size_t iptv_service_buffer_size = 0x78;
+  iptv_name_address_ = global_allocator_.Allocate(iptv_service_buffer_size);
 }
 
 UserProfile* XamState::GetUserProfile(uint32_t user_index) const {
