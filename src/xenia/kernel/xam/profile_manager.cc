@@ -490,6 +490,7 @@ bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
   }
 
   XCONTENT_DATA_INTERNAL data{};
+  data.device_id = 1;
   data.title_id = kDashboardID;
   data.content_type = XContentType::kProfile;
   data.xuid = xuid;
@@ -508,7 +509,7 @@ bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
 }
 
 bool ProfileManager::CreateProfile(const X_XAMACCOUNTINFO* account_info,
-                                   uint64_t xuid) {
+                                   uint32_t device_id, uint64_t xuid) {
   if (!xuid) {
     xuid = GenerateXuid();
   }
@@ -519,9 +520,11 @@ bool ProfileManager::CreateProfile(const X_XAMACCOUNTINFO* account_info,
   }
 
   XCONTENT_DATA_INTERNAL data{};
+  data.device_id = device_id;  // XamProfileCreate
   data.title_id = kDashboardID;
   data.content_type = XContentType::kProfile;
   data.xuid = xuid;
+  data.set_file_name(fmt::format("{:016X}", xuid));
 
   if (!kernel_state_->content_manager()->CreateAndMountPackage(
           profile_path, fmt::format(kDefaultMountFormat, xuid), data)) {

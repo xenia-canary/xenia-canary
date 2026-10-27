@@ -62,8 +62,57 @@ dword_result_t XamProfileOpen_entry(
 }
 DECLARE_XAM_EXPORT1(XamProfileOpen, kNone, kImplemented);
 
+X_HRESULT xeXamProfileCreateTask(X_PROFILE_CREATION_INFO* profile_info_ptr) {
+  auto memory_ = kernel_state()->memory();
+  uint32_t flags = profile_info_ptr->flags;
+  if ((flags & 1) || (profile_info_ptr->profile_creation_ptr == 1)) {
+    profile_info_ptr->account_info.reserved_flags =
+        profile_info_ptr->account_info.reserved_flags | 0x00000001;
+    // TODO check if account_info.passcode is filled and if true add
+    // kPasswordProtected
+    if (profile_info_ptr->profile_creation_ptr == 1) {
+      profile_info_ptr->account_info.reserved_flags =
+          profile_info_ptr->account_info.reserved_flags |
+          0x40000000;  // kRecovering
+      if (flags & 0x40000000) {
+        profile_info_ptr->account_info.reserved_flags =
+            profile_info_ptr->account_info.reserved_flags |
+            0xc0000000;  // unk flag
+      }
+      if (!IsOfflineXUID(profile_info_ptr->offline_xuid)) {
+        return X_E_INVALIDARG;
+      }
+    } else {
+      profile_info_ptr->offline_xuid = GenerateXuid();
+    }
+  } else if (!IsOfflineXUID(profile_info_ptr->offline_xuid)) {
+    return X_E_INVALIDARG;
+  }
+  if (flags & 2) {
+    // use XMsgInProcessCall to call 0x58003, if return !=
+    // X_ONLINE_S_LOGON_CONNECTION_ESTABLISHED call some sub functions that
+    // involve things like XamGetAdaptersCollection, repeat call again and if it
+    // still does not return X_ONLINE_S_LOGON_CONNECTION_ESTABLISHED then skip
+    // ahead. if it succeeds at any point then setup things like
+    // user_payment_info gamertag, passcode, & other online stuff
+  }
+  if (*reinterpret_cast<uint32_t*>(
+          memory_->TranslateVirtual(profile_info_ptr->device_id_ptr)) == 0) {
+    // meant to use XamContentGetDefaultDevice
+    *reinterpret_cast<uint32_t*>(
+        memory_->TranslateVirtual(profile_info_ptr->device_id_ptr)) = 1;
+  }
+  // Title id is set to 0 for some reason
+  bool result = kernel_state()->xam_state()->profile_manager()->CreateProfile(
+      &profile_info_ptr->account_info,
+      *reinterpret_cast<uint32_t*>(
+          memory_->TranslateVirtual(profile_info_ptr->device_id_ptr)),
+      profile_info_ptr->offline_xuid);
+  return result ? X_ERROR_SUCCESS : X_ERROR_INVALID_PARAMETER;
+}
+
 dword_result_t XamProfileCreate_entry(
-    dword_t flags, lpdword_t device_id, qword_t xuid,
+    dword_t flags, lpdword_t device_id_ptr, qword_t xuid,
     pointer_t<X_XAMACCOUNTINFO> account,
     pointer_t<X_USER_PAYMENT_INFO> payment_info,
     pointer_t<X_PASSPORT_SESSION_TOKEN> user_token,
@@ -77,11 +126,16 @@ dword_result_t XamProfileCreate_entry(
       kernel_memory()->TranslateVirtual<X_PROFILE_CREATION_INFO*>(
           *profile_info_ptr);
 
-  profile_info->flags = flags & 0x7fffffff;
+  if (flags & 0x80000000) {  // account already exist?
+    profile_info->flags = flags & 0x7fffffff;
+    profile_info->profile_creation_ptr = 1;
+  } else {
+    profile_info->flags = static_cast<uint32_t>(flags);
+    profile_info->profile_creation_ptr = 0;
+  }
 
-  if (device_id) {
-    *device_id = 0x1;
-    profile_info->device_id = *device_id;
+  if (device_id_ptr) {
+    profile_info->device_id_ptr = device_id_ptr.guest_address();
   }
 
   const uint64_t proper_xuid =
@@ -98,13 +152,7 @@ dword_result_t XamProfileCreate_entry(
   if (owner_token) {
     profile_info->owner_token = *owner_token;
   }
-
-  // calls XamTaskSchedule
-
-  bool result = kernel_state()->xam_state()->profile_manager()->CreateProfile(
-      &profile_info->account_info, proper_xuid);
-
-  return result ? X_ERROR_SUCCESS : X_ERROR_INVALID_PARAMETER;
+  return xeXamProfileCreateTask(profile_info);  // calls XamTaskSchedule
 }
 DECLARE_XAM_EXPORT1(XamProfileCreate, kNone, kSketchy);
 

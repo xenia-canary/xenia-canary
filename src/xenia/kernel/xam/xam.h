@@ -22,21 +22,21 @@ namespace xam {
 
 #pragma pack(push, 4)
 struct X_XAMACCOUNTINFO {
-  enum AccountReservedFlags {
+  enum AccountReservedFlags : uint32_t {
     kPasswordProtected = 0x10000000,
     kLiveEnabled = 0x20000000,
     kRecovering = 0x40000000,
     kVersionMask = 0x000000FF
   };
 
-  enum AccountUserFlags {
-    kPaymentInstrumentCreditCard = 1,
+  enum AccountUserFlags : uint32_t {
+    kPaymentInstrumentCreditCard = 0x00000001,
 
-    kCountryMask = 0xFF00,
-    kSubscriptionTierMask = 0xF00000,
+    kCountryMask = 0x0000FF00,
+    kSubscriptionTierMask = 0x00F00000,
     kLanguageMask = 0x3E000000,
 
-    kParentalControlEnabled = 0x1000000,
+    kParentalControlEnabled = 0x01000000,
   };
 
   enum AccountSubscriptionTier {
@@ -163,7 +163,7 @@ struct X_USER_PAYMENT_INFO {
   char16_t City[MAX_CITY_SIZE];
   char16_t State[MAX_STATE_SIZE];
   uint8_t CountryId;
-  uint16_t LanguageId;
+  be<uint16_t> LanguageId;
   char16_t PostalCode[MAX_POSTALCODE_SIZE];
   char16_t PhonePrefix[MAX_PHONE_PREFIX_SIZE];
   char16_t PhoneNumber[MAX_PHONE_NUMBER_SIZE];
@@ -303,16 +303,16 @@ enum class SigninUiFlags : uint32_t {
 };
 
 struct X_PROFILE_CREATION_INFO {
-  uint32_t flags;
-  uint32_t device_id;
+  xe::be<uint32_t> flags;
+  xe::be<uint32_t> device_id_ptr;
   X_XAMACCOUNTINFO account_info;
   X_USER_PAYMENT_INFO user_payment_info;
-  uint32_t unk;
-  uint64_t offline_xuid;
+  xe::be<uint32_t> unk;
+  xe::be<uint64_t> offline_xuid;
   X_PASSPORT_SESSION_TOKEN user_token;
   X_PASSPORT_SESSION_TOKEN owner_token;
-  uint32_t task_handle_ptr;
-  uint32_t profile_creation_ptr;
+  xe::be<uint32_t> task_handle;
+  xe::be<uint32_t> profile_creation_ptr;
 };
 static_assert_size(X_PROFILE_CREATION_INFO, 0xAC0);
 
