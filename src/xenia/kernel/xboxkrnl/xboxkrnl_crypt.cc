@@ -1108,8 +1108,10 @@ void XeCryptAesCbc_entry(pointer_t<XECRYPT_AES_STATE> state_ptr,
   const uint8_t* inp = inp_ptr.as<const uint8_t*>();
   uint8_t* out = out_ptr.as<uint8_t*>();
   uint8_t* feed = feed_ptr.as<uint8_t*>();
+  // Only whole blocks are processed, a partial last block is left alone.
+  const uint32_t size = inp_size & ~15u;
   if (encrypt) {
-    for (uint32_t i = 0; i < inp_size; i += 16) {
+    for (uint32_t i = 0; i < size; i += 16) {
       for (uint32_t j = 0; j < 16; ++j) {
         feed[j] ^= inp[j];
       }
@@ -1119,7 +1121,7 @@ void XeCryptAesCbc_entry(pointer_t<XECRYPT_AES_STATE> state_ptr,
       out += 16;
     }
   } else {
-    for (uint32_t i = 0; i < inp_size; i += 16) {
+    for (uint32_t i = 0; i < size; i += 16) {
       // In case inp == out.
       uint8_t tmp[16];
       std::memcpy(tmp, inp, 16);
