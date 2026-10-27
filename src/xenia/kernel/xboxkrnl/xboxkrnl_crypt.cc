@@ -84,12 +84,12 @@ struct SHA512_STATE {
   uint64_t state[8];
 };
 
-// TODO: Size of this struct hasn't been confirmed yet.
 struct XECRYPT_MD5_STATE {
-  xe::be<uint64_t> count;
-  xe::be<uint32_t> state[4];
-  uint8_t buffer[64];
+  xe::be<uint32_t> count;     // 0x0
+  xe::be<uint32_t> state[4];  // 0x4, A to D
+  uint8_t buffer[64];         // 0x14
 };
+static_assert_size(XECRYPT_MD5_STATE, 0x54);
 
 struct MD5_STATE {
   uint64_t len;
@@ -135,6 +135,10 @@ static_assert_size(XECRYPT_AES_STATE, 0x160);
 // Console Serial Number Key - unimplemented
 static constexpr uint8_t key14[] = {'0', '1', '2', '3', '4', '5',
                                     '6', '7', '8', '9', '1', '0'};  // string
+
+// Motherboard serial number key. XeFu builds the original Xbox HD key from it.
+static constexpr uint8_t key15[] = {'0', '1', '2', '3', '4', '5',
+                                    '6', '7', '8', '9', '1', '0'};
 
 // Retail key 0x19
 static constexpr uint8_t key19[] = {0xE1, 0xBC, 0x15, 0x9C, 0x73, 0xB1,
@@ -191,6 +195,7 @@ static constexpr uint8_t key39[] = {                 // pirs_retail_public
 
 const static std::map<uint16_t, std::span<const uint8_t>> key_vault = {
     {0x14, key14},
+    {0x15, key15},
     {0x19, key19},
     {0x39, key39},
 };
@@ -724,34 +729,32 @@ DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Final, kNone, kImplemented);
 void XeCryptMd5Init_entry(pointer_t<XECRYPT_MD5_STATE> md5_state) {
   md5_state.Zero();
 
-  // must match av_md5_init
-  md5_state->state[0] = 0x10325476;
-  md5_state->state[1] = 0x98badcfe;
-  md5_state->state[2] = 0xefcdab89;
-  md5_state->state[3] = 0x67452301;
+  md5_state->state[0] = 0x67452301;
+  md5_state->state[1] = 0xefcdab89;
+  md5_state->state[2] = 0x98badcfe;
+  md5_state->state[3] = 0x10325476;
+}
+
+// FFmpeg keeps the state words from D to A.
+static void LoadMd5(AVMD5* md5, const XECRYPT_MD5_STATE* md5_state) {
+  MD5_STATE* internal = reinterpret_cast<MD5_STATE*>(md5);
+  std::ranges::reverse_copy(md5_state->state, internal->ABCD);
+  std::ranges::copy(md5_state->buffer, internal->block);
+  internal->len = md5_state->count;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptMd5Init, kNone, kImplemented);
 
 void XeCryptMd5Update_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
                             lpvoid_t input, dword_t input_size) {
   AVMD5* md5 = av_md5_alloc();
-  av_md5_init(md5);
+  LoadMd5(md5, md5_state);
 
-  // Trick to make similar implementation as SHA256
-  MD5_STATE* md5InternalState = reinterpret_cast<MD5_STATE*>(md5);
-  std::ranges::copy(md5_state->state, md5InternalState->ABCD);
-  std::ranges::copy(md5_state->buffer, md5InternalState->block);
-  md5InternalState->len = md5_state->count;
-
-  // Add new entry from input
   av_md5_update(md5, input, input_size);
 
-  // Copy back data to guest md5_state
-  std::copy_n(md5InternalState->ABCD, xe::countof(md5_state->state),
-              md5_state->state);
-  std::copy_n(md5InternalState->block, xe::countof(md5_state->buffer),
-              md5_state->buffer);
-  md5_state->count = md5InternalState->len;
+  const MD5_STATE* internal = reinterpret_cast<const MD5_STATE*>(md5);
+  std::ranges::reverse_copy(internal->ABCD, md5_state->state);
+  std::ranges::copy(internal->block, md5_state->buffer);
+  md5_state->count = static_cast<uint32_t>(internal->len);
 
   av_free(md5);
 }
@@ -760,13 +763,7 @@ DECLARE_XBOXKRNL_EXPORT1(XeCryptMd5Update, kNone, kImplemented);
 void XeCryptMd5Final_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
                            pointer_t<uint8_t> out, dword_t out_size) {
   AVMD5* md5 = av_md5_alloc();
-  av_md5_init(md5);
-
-  // Trick to make similar implementation as SHA256
-  MD5_STATE* md5InternalState = reinterpret_cast<MD5_STATE*>(md5);
-  std::ranges::copy(md5_state->state, md5InternalState->ABCD);
-  std::ranges::copy(md5_state->buffer, md5InternalState->block);
-  md5InternalState->len = md5_state->count;
+  LoadMd5(md5, md5_state);
 
   uint8_t hash[16];
   av_md5_final(md5, hash);
@@ -774,7 +771,8 @@ void XeCryptMd5Final_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
 
   std::copy_n(hash, std::min<size_t>(xe::countof(hash), out_size),
               static_cast<uint8_t*>(out));
-  std::ranges::copy(hash, md5_state->buffer);
+  // The digest is left in the state words.
+  std::ranges::copy(hash, reinterpret_cast<uint8_t*>(md5_state->state));
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptMd5Final, kNone, kImplemented);
 
@@ -1029,11 +1027,12 @@ void XeCryptAesKey_entry(pointer_t<XECRYPT_AES_STATE> state_ptr, lpvoid_t key) {
   aes_key_schedule_128(key, reinterpret_cast<uint8_t*>(state_ptr->keytabenc));
   // Decryption key schedule not needed by openluopworld/aes_128, but generated
   // to fill the context structure properly.
-  std::memcpy(state_ptr->keytabdec[0], state_ptr->keytabenc[10], 16);
+  // Stored in the same round order as the encryption round keys.
+  std::memcpy(state_ptr->keytabdec[0], state_ptr->keytabenc[0], 16);
   // Inverse MixColumns.
   for (uint32_t i = 1; i < 10; ++i) {
     const uint8_t* enc =
-        reinterpret_cast<const uint8_t*>(state_ptr->keytabenc[10 - i]);
+        reinterpret_cast<const uint8_t*>(state_ptr->keytabenc[i]);
     uint8_t* dec = reinterpret_cast<uint8_t*>(state_ptr->keytabdec[i]);
     uint8_t t, u, v;
     t = enc[0] ^ enc[1] ^ enc[2] ^ enc[3];
@@ -1085,8 +1084,7 @@ void XeCryptAesKey_entry(pointer_t<XECRYPT_AES_STATE> state_ptr, lpvoid_t key) {
     dec[14] ^= t ^ u;
     dec[15] ^= t ^ v;
   }
-  std::memcpy(state_ptr->keytabdec[10], state_ptr->keytabenc[0], 16);
-  // TODO(Triang3l): Verify the order in keytabenc and everything in keytabdec.
+  std::memcpy(state_ptr->keytabdec[10], state_ptr->keytabenc[10], 16);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptAesKey, kNone, kImplemented);
 
@@ -1238,7 +1236,8 @@ dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
   if (key_vault.contains(key)) {
     std::span<const uint8_t> key_needed = key_vault.at(key);
 
-    if (*key_length < key_needed.size()) {
+    // Only a buffer of exactly the key's size is accepted.
+    if (*key_length != key_needed.size()) {
       return X_STATUS_BUFFER_TOO_SMALL;
     }
 
