@@ -118,8 +118,13 @@ dword_result_t XamCreateEnumeratorHandle_entry(
   uint32_t enum_handle = 0;
   X_STATUS result = 0;
 
+  // 58039 offline: Crackdown, guitar hero 5, guitar hero world, GOW 2
+  // 58042 offline: GOW Judgement
+
   switch (open_message) {
     case XMPCreateUserPlaylistEnumeratorMessage: {
+      // Games used in:
+      // 494707D4
       result = XMPCreateUserPlaylistEnumeratorHandle(
           user_index, app_id, open_message, close_message, extra_size,
           item_count, flags, enum_handle);
@@ -155,6 +160,9 @@ dword_result_t XamGetPrivateEnumStructureFromHandle_entry(
   // It's released in ObDereferenceObject.
   e->RetainHandle();
 
+  // TODO:
+  // Enumerator objects don't have X_DISPATCH_HEADER currently it's included in
+  // object, but should be removed.
   if (out_object_ptr.guest_address()) {
     *out_object_ptr = e->guest_object();
   }
@@ -178,6 +186,15 @@ dword_result_t XamProfileCreateEnumerator_entry(dword_t device_id,
   if (XFAILED(result)) {
     return result;
   }
+
+  auto object = kernel_state()->memory()->TranslateVirtual(e->guest_object());
+
+  X_ENUMERATOR_ALLOC_PROFILE_ENUM* args =
+      reinterpret_cast<X_ENUMERATOR_ALLOC_PROFILE_ENUM*>(object);
+  args->device_id = device_id.value();
+  args->handle_ptr = handle_ptr.value();
+  args->struct_flags = args->struct_flags | 0x80000000;
+  // RtlInitializeCriticalSection(&args->crit_sec)
 
   const auto& accounts =
       kernel_state()->xam_state()->profile_manager()->GetAccounts();
