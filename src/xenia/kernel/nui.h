@@ -43,6 +43,8 @@ class NUIController {
   void SetInitFlags(uint32_t flags);
   uint64_t GetNUIVersion(uint32_t index);
   void SetNUIVersion(uint64_t version, uint32_t index);
+  uint32_t GetHardwareType(uint32_t index);
+  void SetHardwareType(uint64_t type, uint32_t index);
   uint64_t GetSessionId();
   void SetSessionId(uint64_t id);
   uint32_t NuiHudCheck(uint64_t tracking_id);
@@ -56,6 +58,7 @@ class NUIController {
   uint32_t tilt_callback_ = 0x0;
   uint32_t init_flags_ = 0x0;
   uint64_t nui_versions_[2] = {};
+  uint32_t nui_hardware_[2] = {};
 };
 
 enum X_TILT_STATUS_FLAGS : uint32_t {
