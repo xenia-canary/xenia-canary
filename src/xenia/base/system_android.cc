@@ -283,6 +283,13 @@ void LaunchWebBrowser(const std::string_view url) {
 
 void LaunchFileExplorer(const std::filesystem::path& path) { assert_always(); }
 
+bool RestartApplication() {
+  // Not supported on Android - the OS doesn't expect (or make it easy for)
+  // apps to relaunch themselves this way. Callers fall back to asking the
+  // user to close and reopen Xenia manually.
+  return false;
+}
+
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
   // TODO(Triang3l): Likely not needed much at all. ShowSimpleMessageBox is a
   // concept pretty unfriendly to platforms like Android because it's blocking,
