@@ -41,8 +41,9 @@
 #include "xenia/cpu/processor.h"
 
 DEFINE_bool(use_fast_dot_product, false,
-            "Use less accurate dot-product exception handling that converts "
-            "all infinite results to QNaN.",
+            "Compute vmsum3fp128 and vmsum4fp128 as a float64 sum truncated to "
+            "single, about three times faster but differing from the console "
+            "in about 3% of results.",
             "CPU");
 
 DEFINE_bool(no_round_to_single, false,
@@ -2875,44 +2876,52 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // ============================================================================
 // OPCODE_DOT_PRODUCT_3
 // ============================================================================
-// Keep the float64 accumulation below: it closely matches Xbox 360 vmsum
-// results, which may differ from a host float32 dot product by one bit.
+// A DOT_PRODUCT_3 source in dest with its fourth lane cleared, at compile time
+// for a constant.
+template <typename T>
+static Xmm LoadThreeLanes(X64Emitter& e, const T& src, Xmm dest) {
+  if (src.is_constant) {
+    vec128_t v = src.constant();
+    v.u32[3] = 0;
+    e.LoadConstantXmm(dest, v);
+  } else {
+    e.vandps(dest, src, e.GetXmmConstPtr(XMMThreeFloatMask));
+  }
+  return dest;
+}
+
+// The use_fast_dot_product path: the float64 sum of the products, truncated
+// to single. It matches the console in about 97% of cases; see
+// EmitVectorMultiplySum for the exact one.
+template <typename EmitArgType>
+static void EmitDotProductExceptional(X64Emitter& e, const EmitArgType& i,
+                                      Xbyak::Label& done) {
+  // A dot product of four float32 values can't overflow float64, so
+  // float32 overflow happened exactly when the float64 sum is finite
+  // but its float32 conversion has an all-ones exponent. Preserve
+  // infinities and NaNs originating in the inputs, as the previous
+  // MXCSR overflow-flag check did.
+  Xbyak::Label double_result_was_non_finite;
+  e.vmovq(e.rax, e.xmm2);
+  e.shr(e.rax, 52);
+  e.and_(e.eax, 0x7FF);
+  e.cmp(e.eax, 0x7FF);
+  e.je(double_result_was_non_finite);
+  e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+  e.jmp(done, X64Emitter::T_NEAR);
+  e.L(double_result_was_non_finite);
+
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.jmp(done, X64Emitter::T_NEAR);
+}
+
 template <typename EmitArgType>
 static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   Xbyak::Label& done = e.NewCachedLabel();
   Xbyak::Label& exceptional_result =
       e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& exceptional_result) {
         e.L(exceptional_result);
-
-        if (!cvars::use_fast_dot_product) {
-          // A dot product of four float32 values can't overflow float64, so
-          // float32 overflow happened exactly when the float64 sum is finite
-          // but its float32 conversion has an all-ones exponent. Preserve
-          // infinities and NaNs originating in the inputs, as the previous
-          // MXCSR overflow-flag check did.
-          Xbyak::Label double_result_was_non_finite;
-          e.vmovq(e.rax, e.xmm2);
-          e.shr(e.rax, 52);
-          e.and_(e.eax, 0x7FF);
-          e.cmp(e.eax, 0x7FF);
-          e.je(double_result_was_non_finite);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(double_result_was_non_finite);
-        } else {
-          // Preserve the existing opt-in behavior, which maps infinity to the
-          // canonical quiet NaN but leaves an existing NaN unchanged.
-          Xbyak::Label input_was_nan;
-          e.vmovd(e.eax, e.xmm1);
-          e.test(e.eax, 0x007FFFFF);
-          e.jnz(input_was_nan);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(input_was_nan);
-        }
-
-        e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-        e.jmp(done, X64Emitter::T_NEAR);
+        EmitDotProductExceptional(e, i, done);
       });
 
   // The common finite result needs no MXCSR status round trip. Check only the
@@ -2925,56 +2934,296 @@ static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   e.L(done);
 }
 
+// Converts the float64 sum in xmm2 to float32, rounded toward zero, and splats
+// it into dest. With the bits below single precision cleared, a sum in
+// float32's normal range (or zero) is exactly a float32, so the masked
+// conversion gives the same bits as rounding the sum toward zero. AVX-512 does
+// that in the conversion itself, which takes the and off the result's path;
+// the range check only decides a branch. Other sums take the masked path.
+template <typename EmitArgType>
+static void EmitDotProductRoundTowardZero(X64Emitter& e, const EmitArgType& i) {
+  if (!e.IsFeatureEnabled(kX64EmitAVX512F)) {
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    EmitDotProductResult(e, i);
+    return;
+  }
+
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& masked = e.AddToTail([i, &done](X64Emitter& e,
+                                                Xbyak::Label& masked) {
+    e.L(masked);
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    Xbyak::Label finite;
+    e.vmovd(e.eax, e.xmm1);
+    e.add(e.eax, e.eax);  // Discard the sign bit.
+    e.cmp(e.eax, 0xFF000000);
+    e.jb(finite);
+    EmitDotProductExceptional(e, i, done);
+    e.L(finite);
+    e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+    e.jmp(done, X64Emitter::T_NEAR);
+  });
+
+  Xbyak::Label& exact = e.NewCachedLabel();
+  e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2 | e.T_rz_sae);
+  e.vmovq(e.rax, e.xmm2);
+  e.add(e.rax, e.rax);  // Discard the sign bit.
+  e.jz(exact);
+  // Biased exponents 897-1150 are float32's normal range, 2^-126 to 2^128
+  e.shr(e.rax, 53);
+  e.sub(e.eax, 1023 - 126);
+  e.cmp(e.eax, 254);
+  e.jae(masked, X64Emitter::T_NEAR);
+  e.L(exact);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.L(done);
+}
+
+template <typename EmitArgType>
+static void EmitFastDotProduct3(X64Emitter& e, const EmitArgType& i) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
+
+  LoadThreeLanes(e, i.src1, e.xmm3);
+  if (!is_lensqr) {
+    LoadThreeLanes(e, i.src2, e.xmm2);
+
+    e.vcvtps2pd(e.ymm0, e.xmm3);
+    e.vcvtps2pd(e.ymm1, e.xmm2);
+
+    /*
+        ymm0 = src1 as doubles, ele 3 cleared
+        ymm1 = src2 as doubles, ele 3 cleared
+    */
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
+  } else {
+    e.vcvtps2pd(e.ymm0, e.xmm3);
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
+  }
+  e.vextractf128(e.xmm2, e.ymm3, 1);
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
+  e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
+  e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
+  EmitDotProductRoundTowardZero(e, i);
+}
+
+template <typename EmitArgType>
+static void EmitFastDotProduct4(X64Emitter& e, const EmitArgType& i) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
+
+  auto src1v = e.xmm3;
+  auto src2v = e.xmm2;
+  if (i.src1.is_constant) {
+    src1v = e.xmm3;
+    e.LoadConstantXmm(src1v, i.src1.constant());
+  } else {
+    src1v = i.src1.reg();
+  }
+  if (i.src2.is_constant) {
+    src2v = e.xmm2;
+    e.LoadConstantXmm(src2v, i.src2.constant());
+  } else {
+    src2v = i.src2.reg();
+  }
+  if (is_lensqr) {
+    e.vcvtps2pd(e.ymm0, src1v);
+
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
+  } else {
+    e.vcvtps2pd(e.ymm0, src1v);
+    e.vcvtps2pd(e.ymm1, src2v);
+
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
+  }
+  e.vextractf128(e.xmm2, e.ymm3, 1);
+  e.vaddpd(e.xmm3, e.xmm3, e.xmm2);
+
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
+  e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
+  EmitDotProductRoundTowardZero(e, i);
+}
+
+// vmsum3fp128 and vmsum4fp128, bit-exact with the console. Its adder works on
+// a 30-bit window: the products are exact, and each one's magnitude is
+// truncated to a grid of 2^(S - 28), where S is the largest exponent sum
+// (unbiased exponent of a plus that of b) among products that aren't zero. The
+// products of the majority sign (positive on a tie) add their truncated
+// magnitude T and the others add ~T = -(T + 1), zero products included. A
+// negative total t becomes a magnitude by ~t, with the minority's sign; that
+// magnitude truncated to single is the result. An exact cancellation is +0,
+// products that are all zero give -0 only if every one is -0, a denormal
+// operand or result is flushed to zero, an overflow gives a QNaN with the sign
+// and truncated mantissa, and an infinite operand gives an infinity or, as any
+// NaN operand does, the default QNaN.
+//
+// In terms of u, the signed sum of the truncated products, with s the
+// majority sign and k the number of products of the other sign, that comes to
+// u - s * k, plus s when s * u < k. The products and the grid fit doubles
+// exactly: vroundpd truncates each scaled product, keeping its sign, and the
+// sum of at most four terms under 2^32 is exact. s and k come from a table by
+// the number of negative products. lanes is 3 or 4; vmsum3fp128 leaves the
+// fourth lane out.
+template <typename EmitArgType>
+static void EmitVectorMultiplySum(X64Emitter& e, const EmitArgType& i,
+                                  int lanes) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  Xbyak::Label& done = e.NewCachedLabel();
+  // Only zero products: -0 if every one is -0, unless one is NaN (infinity
+  // times zero). ymm0 holds the products.
+  Xbyak::Label& all_zero =
+      e.AddToTail([lanes, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label not_nan;
+        e.vcmpunordpd(e.ymm1, e.ymm0, e.ymm0);
+        e.vmovmskpd(e.ecx, e.ymm1);
+        e.test(e.ecx, e.ecx);
+        e.jz(not_nan);
+        e.vmovaps(e.xmm1, e.GetXmmConstPtr(XMMQNaN));
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(not_nan);
+        e.vmovmskpd(e.ecx, e.ymm0);
+        if (lanes == 3) {
+          e.and_(e.ecx, 0x7);
+        }
+        e.xor_(e.eax, e.eax);
+        e.cmp(e.ecx, lanes == 3 ? 0x7 : 0xF);
+        e.mov(e.ecx, 0x80000000);
+        e.cmove(e.eax, e.ecx);
+        e.vmovd(e.xmm1, e.eax);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+
+  if (lanes == 3) {
+    LoadThreeLanes(e, i.src1, e.xmm0);
+    LoadThreeLanes(e, i.src2, e.xmm1);
+  } else {
+    e.vmovaps(e.xmm0, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    e.vmovaps(e.xmm1, GetInputRegOrConstant(e, i.src2, e.xmm1));
+  }
+  // Biased exponents
+  e.vpslld(e.xmm2, e.xmm0, 1);
+  e.vpsrld(e.xmm2, e.xmm2, 24);
+  e.vpslld(e.xmm3, e.xmm1, 1);
+  e.vpsrld(e.xmm3, e.xmm3, 24);
+  // The exact products; the VMX MXCSR flushes denormal operands to zero
+  e.vcvtps2pd(e.ymm0, e.xmm0);
+  e.vcvtps2pd(e.ymm1, e.xmm1);
+  e.vmulpd(e.ymm0, e.ymm0, e.ymm1);
+  // The largest exponent sum of a nonzero product, in every lane
+  e.vpminsd(e.xmm1, e.xmm2, e.xmm3);
+  e.vpaddd(e.xmm2, e.xmm2, e.xmm3);
+  e.vpcmpeqd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMZero));
+  e.vpandn(e.xmm2, e.xmm1, e.xmm2);
+  e.vpshufd(e.xmm1, e.xmm2, 0x4E);
+  e.vpmaxsd(e.xmm2, e.xmm2, e.xmm1);
+  e.vpshufd(e.xmm1, e.xmm2, 0xB1);
+  e.vpmaxsd(e.xmm2, e.xmm2, e.xmm1);
+  e.vmovd(e.eax, e.xmm2);
+  e.test(e.eax, e.eax);
+  e.jz(all_zero, X64Emitter::T_NEAR);
+  // The inverse grid, 2^(28 - S), in all four doubles
+  e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVmsumInverseGridBase));
+  e.vpsubd(e.xmm1, e.xmm1, e.xmm2);
+  e.vpsllq(e.xmm1, e.xmm1, 52);
+  e.vinsertf128(e.ymm1, e.ymm1, e.xmm1, 1);
+  // The products truncated to the grid, and their signed sum u
+  e.vmulpd(e.ymm2, e.ymm0, e.ymm1);
+  e.vroundpd(e.ymm2, e.ymm2, 0b1011);
+  e.vmovmskpd(e.ecx, e.ymm0);
+  e.popcnt(e.ecx, e.ecx);
+  e.shl(e.ecx, 4);
+  e.vextractf128(e.xmm3, e.ymm2, 1);
+  if (lanes == 4) {
+    e.vaddpd(e.xmm2, e.xmm2, e.xmm3);
+    e.vunpckhpd(e.xmm3, e.xmm2, e.xmm2);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  } else {
+    e.vunpckhpd(e.xmm0, e.xmm2, e.xmm2);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm0);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  }
+  // d = u - s * k, then add s back when s * d < 0, from -s * k and -s
+  void* adjust = e.backend()->LookupXMMConstantAddress(
+      lanes == 3 ? XMMVmsum3Adjust : XMMVmsum4Adjust);
+  e.vmovapd(e.xmm3, e.ptr[e.rcx + reinterpret_cast<size_t>(adjust)]);
+  e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
+  e.vmulsd(e.xmm3, e.xmm2, e.xmm0);
+  e.vcmpnlesd(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMZero));
+  e.vandpd(e.xmm0, e.xmm0, e.xmm3);
+  e.vsubsd(e.xmm2, e.xmm2, e.xmm0);
+  // Back from the grid, then truncated to single
+  e.vmovdqa(e.xmm3, e.GetXmmConstPtr(XMMVmsumGridSum));
+  e.vpsubq(e.xmm3, e.xmm3, e.xmm1);
+  e.vmulsd(e.xmm2, e.xmm2, e.xmm3);
+  e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+  e.vcvtsd2ss(e.xmm1, e.xmm2);
+  // An all-ones exponent. From a finite sum (xmm2, truncated), an overflow: a
+  // QNaN keeping the sign and the truncated mantissa. Otherwise an operand was
+  // infinite or NaN: the IEEE sum, with a NaN made the default QNaN.
+  Xbyak::Label& exceptional =
+      e.AddToTail([i, lanes, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label nonfinite;
+        e.vmovq(e.rax, e.xmm2);
+        e.mov(e.rcx, e.rax);
+        e.shr(e.rcx, 52);
+        e.and_(e.ecx, 0x7FF);
+        e.cmp(e.ecx, 0x7FF);
+        e.je(nonfinite);
+        e.mov(e.rcx, e.rax);
+        e.shr(e.rcx, 29);
+        e.and_(e.ecx, 0x7FFFFF);
+        e.shr(e.rax, 32);
+        e.and_(e.eax, 0x80000000);
+        e.or_(e.eax, e.ecx);
+        e.or_(e.eax, 0x7FC00000);
+        e.vmovd(e.xmm1, e.eax);
+        e.jmp(done, X64Emitter::T_NEAR);
+
+        e.L(nonfinite);
+        Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        e.vcvtps2pd(e.ymm0, src1);
+        e.vcvtps2pd(e.ymm1, src2);
+        e.vmulpd(e.ymm0, e.ymm0, e.ymm1);
+        e.vextractf128(e.xmm1, e.ymm0, 1);
+        e.vunpckhpd(e.xmm2, e.xmm0, e.xmm0);
+        e.vaddsd(e.xmm0, e.xmm0, e.xmm2);
+        e.vaddsd(e.xmm0, e.xmm0, e.xmm1);
+        if (lanes == 4) {
+          e.vunpckhpd(e.xmm2, e.xmm1, e.xmm1);
+          e.vaddsd(e.xmm0, e.xmm0, e.xmm2);
+        }
+        Xbyak::Label not_nan;
+        e.vucomisd(e.xmm0, e.xmm0);
+        e.jnp(not_nan);
+        e.vmovaps(e.xmm1, e.GetXmmConstPtr(XMMQNaN));
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(not_nan);
+        e.vcvtsd2ss(e.xmm1, e.xmm0);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  e.vmovd(e.eax, e.xmm1);
+  e.add(e.eax, e.eax);  // Discard the sign bit.
+  e.cmp(e.eax, 0xFF000000);
+  e.jae(exceptional, X64Emitter::T_NEAR);
+  e.L(done);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+}
+
 struct DOT_PRODUCT_3_V128
     : Sequence<DOT_PRODUCT_3_V128,
                I<OPCODE_DOT_PRODUCT_3, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    e.vmovaps(e.xmm2, e.GetXmmConstPtr(XMMThreeFloatMask));
-    bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
-
-    auto src1v = e.xmm0;
-    auto src2v = e.xmm1;
-    if (i.src1.is_constant) {
-      src1v = e.xmm0;
-      e.LoadConstantXmm(src1v, i.src1.constant());
+    if (cvars::use_fast_dot_product) {
+      EmitFastDotProduct3(e, i);
     } else {
-      src1v = i.src1.reg();
+      EmitVectorMultiplySum(e, i, 3);
     }
-    if (i.src2.is_constant) {
-      src2v = e.xmm1;
-      e.LoadConstantXmm(src2v, i.src2.constant());
-    } else {
-      src2v = i.src2.reg();
-    }
-    // todo: maybe the top element should be cleared by the InstrEmit_ function
-    // so that in the future this could be optimized away if the top is known to
-    // be zero. Right now im not sure that happens often though and its
-    // currently not worth it also, maybe pre-and if constant
-    if (!is_lensqr) {
-      e.vandps(e.xmm3, src1v, e.xmm2);
-
-      e.vandps(e.xmm2, src2v, e.xmm2);
-
-      e.vcvtps2pd(e.ymm0, e.xmm3);
-      e.vcvtps2pd(e.ymm1, e.xmm2);
-
-      /*
-          ymm0 = src1 as doubles, ele 3 cleared
-          ymm1 = src2 as doubles, ele 3 cleared
-      */
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
-    } else {
-      e.vandps(e.xmm3, src1v, e.xmm2);
-      e.vcvtps2pd(e.ymm0, e.xmm3);
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
-    }
-    e.vextractf128(e.xmm2, e.ymm3, 1);
-    e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
-    e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
-    e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
@@ -2986,40 +3235,11 @@ struct DOT_PRODUCT_4_V128
     : Sequence<DOT_PRODUCT_4_V128,
                I<OPCODE_DOT_PRODUCT_4, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
-
-    auto src1v = e.xmm3;
-    auto src2v = e.xmm2;
-    if (i.src1.is_constant) {
-      src1v = e.xmm3;
-      e.LoadConstantXmm(src1v, i.src1.constant());
+    if (cvars::use_fast_dot_product) {
+      EmitFastDotProduct4(e, i);
     } else {
-      src1v = i.src1.reg();
+      EmitVectorMultiplySum(e, i, 4);
     }
-    if (i.src2.is_constant) {
-      src2v = e.xmm2;
-      e.LoadConstantXmm(src2v, i.src2.constant());
-    } else {
-      src2v = i.src2.reg();
-    }
-    if (is_lensqr) {
-      e.vcvtps2pd(e.ymm0, src1v);
-
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
-    } else {
-      e.vcvtps2pd(e.ymm0, src1v);
-      e.vcvtps2pd(e.ymm1, src2v);
-
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
-    }
-    e.vextractf128(e.xmm2, e.ymm3, 1);
-    e.vaddpd(e.xmm3, e.xmm3, e.xmm2);
-
-    e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
-    e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_4, DOT_PRODUCT_4_V128);
