@@ -176,7 +176,15 @@ enum XmmConst {
   XMMVSRShlByteshuf,
   XMMVSRMask,
   XMMQuietBit,      // 0x00400000
-  XMMVRsqrteTableStart,
+  // For the inline vrefp, see RECIP_V128
+  XMMVRefpStepMask,
+  XMMVRefpSlopeMask,
+  XMMVRefpMantissaMask,
+  XMMVRefpExponentBias,
+  XMMVRefpLargeLimit,
+  XMMVRefpSmallestNormal,
+  XMMVRefpTable,
+  XMMVRsqrteTableStart = XMMVRefpTable + (32 / 4),
   XMMVRsqrteTableBase =
       XMMVRsqrteTableStart +
       (32 /
