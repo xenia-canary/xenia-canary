@@ -3,7 +3,7 @@ test_mffsx_1:
   mtfsf 0xFF, f1
   mffs. f3
   blr
-  #_ REGISTER_OUT f3 0x0000000000000000
+  #_ REGISTER_OUT f3 0xFFF8000000000000
   #_ REGISTER_OUT f1 0x0000000000000000
 
 test_mffsx_2:
@@ -11,7 +11,7 @@ test_mffsx_2:
   mtfsf 0xFF, f1
   mffs. f4
   blr
-  #_ REGISTER_OUT f4 0x0000000000000005
+  #_ REGISTER_OUT f4 0xFFF8000000000001
   #_ REGISTER_OUT f1 0x0000000000000005
 
 test_mffsx_3:
@@ -19,7 +19,7 @@ test_mffsx_3:
   mtfsf 0xFF, f1
   mffs. f5
   blr
-  #_ REGISTER_OUT f5 0x00000000000000F0
+  #_ REGISTER_OUT f5 0xFFF80000000000F0
   #_ REGISTER_OUT f1 0x00000000000000F0
 
 test_mffsx_4:
@@ -27,5 +27,5 @@ test_mffsx_4:
   mtfsf 0xFF, f1
   mffs. f6
   blr
-  #_ REGISTER_OUT f6 0x0000000012345678
+  #_ REGISTER_OUT f6 0xFFF8000072345678
   #_ REGISTER_OUT f1 0x0000000012345678
