@@ -1269,6 +1269,8 @@ static const vec128_t xmm_consts[] = {
     vec128b(1),
     // XMMQuietBit
     vec128i(0x00400000u),
+    // XMMDoubleToSingleTruncateMask
+    vec128q(0xFFFFFFFFE0000000ull),
     // XMMVRsqrteTableStart
     v128_setr_words(0x568B4FD, 0x4F3AF97, 0x48DAAA5, 0x435A618),
     v128_setr_words(0x3E7A1E4, 0x3A29DFE, 0x3659A5C, 0x32E96F8),

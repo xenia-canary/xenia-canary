@@ -2523,43 +2523,50 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // OPCODE_DOT_PRODUCT_3
 // ============================================================================
 // Keep the float64 accumulation below: it closely matches Xbox 360 vmsum
-// results, which may differ from a host float32 dot product by one bit.
+// results, which may differ from a host float32 dot product by one bit. The
+// console rounds the sum toward zero, so the bits below single precision are
+// cleared before converting it.
+template <typename EmitArgType>
+static void EmitDotProductExceptional(X64Emitter& e, const EmitArgType& i,
+                                      Xbyak::Label& done) {
+  if (!cvars::use_fast_dot_product) {
+    // A dot product of four float32 values can't overflow float64, so
+    // float32 overflow happened exactly when the float64 sum is finite
+    // but its float32 conversion has an all-ones exponent. Preserve
+    // infinities and NaNs originating in the inputs, as the previous
+    // MXCSR overflow-flag check did.
+    Xbyak::Label double_result_was_non_finite;
+    e.vmovq(e.rax, e.xmm2);
+    e.shr(e.rax, 52);
+    e.and_(e.eax, 0x7FF);
+    e.cmp(e.eax, 0x7FF);
+    e.je(double_result_was_non_finite);
+    e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+    e.jmp(done, X64Emitter::T_NEAR);
+    e.L(double_result_was_non_finite);
+  } else {
+    // Preserve the existing opt-in behavior, which maps infinity to the
+    // canonical quiet NaN but leaves an existing NaN unchanged.
+    Xbyak::Label input_was_nan;
+    e.vmovd(e.eax, e.xmm1);
+    e.test(e.eax, 0x007FFFFF);
+    e.jnz(input_was_nan);
+    e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+    e.jmp(done, X64Emitter::T_NEAR);
+    e.L(input_was_nan);
+  }
+
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.jmp(done, X64Emitter::T_NEAR);
+}
+
 template <typename EmitArgType>
 static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   Xbyak::Label& done = e.NewCachedLabel();
   Xbyak::Label& exceptional_result =
       e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& exceptional_result) {
         e.L(exceptional_result);
-
-        if (!cvars::use_fast_dot_product) {
-          // A dot product of four float32 values can't overflow float64, so
-          // float32 overflow happened exactly when the float64 sum is finite
-          // but its float32 conversion has an all-ones exponent. Preserve
-          // infinities and NaNs originating in the inputs, as the previous
-          // MXCSR overflow-flag check did.
-          Xbyak::Label double_result_was_non_finite;
-          e.vmovq(e.rax, e.xmm2);
-          e.shr(e.rax, 52);
-          e.and_(e.eax, 0x7FF);
-          e.cmp(e.eax, 0x7FF);
-          e.je(double_result_was_non_finite);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(double_result_was_non_finite);
-        } else {
-          // Preserve the existing opt-in behavior, which maps infinity to the
-          // canonical quiet NaN but leaves an existing NaN unchanged.
-          Xbyak::Label input_was_nan;
-          e.vmovd(e.eax, e.xmm1);
-          e.test(e.eax, 0x007FFFFF);
-          e.jnz(input_was_nan);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(input_was_nan);
-        }
-
-        e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-        e.jmp(done, X64Emitter::T_NEAR);
+        EmitDotProductExceptional(e, i, done);
       });
 
   // The common finite result needs no MXCSR status round trip. Check only the
@@ -2568,6 +2575,53 @@ static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   e.add(e.eax, e.eax);  // Discard the sign bit.
   e.cmp(e.eax, 0xFF000000);
   e.jae(exceptional_result, X64Emitter::T_NEAR);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.L(done);
+}
+
+// Converts the float64 sum in xmm2 to float32, rounded toward zero, and splats
+// it into dest. With the bits below single precision cleared, a sum in
+// float32's normal range (or zero) is exactly a float32, so the masked
+// conversion gives the same bits as rounding the sum toward zero. AVX-512 does
+// that in the conversion itself, which takes the and off the result's path;
+// the range check only decides a branch. Other sums take the masked path.
+template <typename EmitArgType>
+static void EmitDotProductRoundTowardZero(X64Emitter& e, const EmitArgType& i) {
+  if (!e.IsFeatureEnabled(kX64EmitAVX512F)) {
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    EmitDotProductResult(e, i);
+    return;
+  }
+
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& masked = e.AddToTail([i, &done](X64Emitter& e,
+                                                Xbyak::Label& masked) {
+    e.L(masked);
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    Xbyak::Label finite;
+    e.vmovd(e.eax, e.xmm1);
+    e.add(e.eax, e.eax);  // Discard the sign bit.
+    e.cmp(e.eax, 0xFF000000);
+    e.jb(finite);
+    EmitDotProductExceptional(e, i, done);
+    e.L(finite);
+    e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+    e.jmp(done, X64Emitter::T_NEAR);
+  });
+
+  Xbyak::Label& exact = e.NewCachedLabel();
+  e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2 | e.T_rz_sae);
+  e.vmovq(e.rax, e.xmm2);
+  e.add(e.rax, e.rax);  // Discard the sign bit.
+  e.jz(exact);
+  // Biased exponents 897-1150 are float32's normal range, 2^-126 to 2^128
+  e.shr(e.rax, 53);
+  e.sub(e.eax, 1023 - 126);
+  e.cmp(e.eax, 254);
+  e.jae(masked, X64Emitter::T_NEAR);
+  e.L(exact);
   e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
   e.L(done);
 }
@@ -2620,8 +2674,7 @@ struct DOT_PRODUCT_3_V128
     e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
     e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
     e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
+    EmitDotProductRoundTowardZero(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
@@ -2665,8 +2718,7 @@ struct DOT_PRODUCT_4_V128
 
     e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
     e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
+    EmitDotProductRoundTowardZero(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_4, DOT_PRODUCT_4_V128);

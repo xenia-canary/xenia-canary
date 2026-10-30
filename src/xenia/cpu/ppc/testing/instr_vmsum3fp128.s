@@ -7,7 +7,7 @@ test_vmsum3fp128_1:
   blr
   #_ REGISTER_OUT v3 [3f800000, 3fc00000, 3f8ccccd, 01020304]
   #_ REGISTER_OUT v4 [40000000, 40700000, 4013d70a, 01020304]
-  #_ REGISTER_OUT v5 [4122A7F0, 4122A7F0, 4122A7F0, 4122A7F0]
+  #_ REGISTER_OUT v5 [4122A7EF, 4122A7EF, 4122A7EF, 4122A7EF]
 
 test_vmsum3fp128_2:
   # Denormal output flushed to +0.0: FLT_MIN * 0.5 + 0 + 0 = denormal -> +0.0

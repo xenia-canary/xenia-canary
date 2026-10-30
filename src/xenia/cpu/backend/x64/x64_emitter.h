@@ -176,6 +176,9 @@ enum XmmConst {
   XMMVSRShlByteshuf,
   XMMVSRMask,
   XMMQuietBit,  // 0x00400000
+  // Clears the bits of a double below single precision, so converting it to
+  // single rounds toward zero
+  XMMDoubleToSingleTruncateMask,
   XMMVRsqrteTableStart,
   XMMVRsqrteTableBase =
       XMMVRsqrteTableStart +
