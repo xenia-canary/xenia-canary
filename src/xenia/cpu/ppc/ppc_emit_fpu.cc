@@ -122,13 +122,9 @@ int InstrEmit_fmulsx(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_fresx(PPCHIRBuilder& f, const InstrData& i) {
-  // frD <- 1.0 / (frB)
-
-  // this actually does seem to require single precision, oddly
-  // more research is needed
+  // frD <- estimate of 1.0 / (frB), as single precision
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Recip(f.Convert(b, FLOAT32_TYPE));
-  v = f.Convert(v, FLOAT64_TYPE);  // f.ToSingle(v);
+  Value* v = f.Recip(b);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCR(v, {b}, i.A.Rc);
   return 0;
