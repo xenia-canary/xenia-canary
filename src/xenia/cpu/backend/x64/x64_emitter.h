@@ -186,6 +186,16 @@ enum XmmConst {
   XMMVRefpExponentBias,
   XMMVRefpLargeLimit,
   XMMVRefpSmallestNormal,
+  // For the inline vlogefp and vexptefp, see LOG2_V128 and POW2_V128
+  XMMEstimateIndexMask,
+  XMMEstimateExponentMask,
+  XMMVLogeExponentBias,
+  XMMVLogeScale,
+  XMMVLogeZeroResult,
+  XMMVExpteShiftBase,
+  XMMVExpteExponentBias,
+  XMMVExpteSmallestExponent,
+  XMMVExpteLargestInputExponent,
   XMMVRefpTable,
   XMMVRsqrteTableStart = XMMVRefpTable + (32 / 4),
   XMMVRsqrteTableBase =

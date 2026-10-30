@@ -2521,8 +2521,6 @@ EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
 // ============================================================================
 // OPCODE_POW2
 // ============================================================================
-// TODO(benvanik): use approx here:
-//     https://jrfonseca.blogspot.com/2008/09/fast-sse2-pow-tables-or-polynomials.html
 struct POW2_F32 : Sequence<POW2_F32, I<OPCODE_POW2, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_impossible_sequence(POW2_F32);
@@ -2533,12 +2531,94 @@ struct POW2_F64 : Sequence<POW2_F64, I<OPCODE_POW2, F64Op, F64Op>> {
     assert_impossible_sequence(POW2_F64);
   }
 };
-// vexptefp
+// The vexptefp and vlogefp tables in 2048ths, as 32-bit entries for
+// vpgatherdd, read back from ppc_estimates.cc: vexptefp of i/2048 and vlogefp
+// of 1 + i/2048
+struct EstimateTables {
+  uint32_t pow2[2048];
+  uint32_t log2[2048];
+
+  EstimateTables() {
+    for (uint32_t i = 0; i < 2048; ++i) {
+      float input = i / 2048.0f;
+      uint32_t input_bits;
+      std::memcpy(&input_bits, &input, sizeof(input_bits));
+      uint32_t result_bits = ppc::EstimatePow2(input_bits);
+      float result;
+      std::memcpy(&result, &result_bits, sizeof(result));
+      pow2[i] = static_cast<uint32_t>(result * 2048.0f);
+
+      result_bits = ppc::EstimateLog2(0x3F800000 | (i << 12));
+      std::memcpy(&result, &result_bits, sizeof(result));
+      log2[i] = static_cast<uint32_t>(result * 2048.0f);
+    }
+  }
+};
+static const EstimateTables estimate_tables;
+
+// vexptefp, as ppc::EstimatePow2: the input as fixed point with 11 fraction
+// bits, floored, whose integer part is the result's exponent and whose
+// fraction indexes the table
 struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    EmitEstimateCall(
-        e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimatePow2>));
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimatePow2>));
+      return;
+    }
+
+    // The input stays in xmm3, since the result may share its register
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    // Truncated to 15 fraction bits: the mantissa with its implicit bit,
+    // shifted right by 135 - the exponent (32 or more gives 0), then negated
+    // for a negative input
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVExpteShiftBase));
+    e.vpsubd(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm2, e.xmm3, e.GetXmmConstPtr(XMMVRefpMantissaMask));
+    e.vpor(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVRefpSmallestNormal));
+    e.vpsrlvd(e.xmm2, e.xmm2, e.xmm1);
+    e.vpsrad(e.xmm1, e.xmm3, 31);
+    e.vpxor(e.xmm2, e.xmm2, e.xmm1);
+    e.vpsubd(e.xmm2, e.xmm2, e.xmm1);
+
+    // Floored to 11 fraction bits, which index the table
+    e.vpsrad(e.xmm2, e.xmm2, 4);
+    e.vpand(e.xmm0, e.xmm2, e.GetXmmConstPtr(XMMEstimateIndexMask));
+    e.vpsrad(e.xmm2, e.xmm2, 11);
+    e.mov(e.rax, reinterpret_cast<uintptr_t>(estimate_tables.pow2));
+    e.vpcmpeqd(e.xmm1, e.xmm1, e.xmm1);
+    e.vpgatherdd(i.dest, e.ptr[e.rax + e.xmm0 * 4], e.xmm1);
+
+    // The table entry has the implicit bit at bit 11, so it carries into the
+    // exponent: (integer + 126) << 23 plus the entry << 12
+    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVExpteSmallestExponent));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.xmm2);
+    e.vpaddd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVExpteExponentBias));
+    e.vpslld(e.xmm2, e.xmm2, 23);
+    e.vpslld(i.dest, i.dest, 12);
+    e.vpaddd(i.dest, i.dest, e.xmm2);
+
+    // An integer part below -126 gives zero, an input from 128 up (and
+    // infinity) gives infinity, or zero if negative, and a NaN comes back
+    // quiet
+    e.vpandn(i.dest, e.xmm1, i.dest);
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vpcmpgtd(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMVExpteLargestInputExponent));
+    e.vpsrad(e.xmm1, e.xmm3, 31);
+    e.vpandn(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.xmm1, e.xmm0);
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
@@ -2546,9 +2626,6 @@ EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
 // ============================================================================
 // OPCODE_LOG2
 // ============================================================================
-// TODO(benvanik): use approx here:
-//     https://jrfonseca.blogspot.com/2008/09/fast-sse2-pow-tables-or-polynomials.html
-// TODO(benvanik): this emulated fn destroys all xmm registers! don't do it!
 struct LOG2_F32 : Sequence<LOG2_F32, I<OPCODE_LOG2, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_impossible_sequence(LOG2_F32);
@@ -2559,12 +2636,54 @@ struct LOG2_F64 : Sequence<LOG2_F64, I<OPCODE_LOG2, F64Op, F64Op>> {
     assert_impossible_sequence(LOG2_F64);
   }
 };
-// vlogefp
+// vlogefp, as ppc::EstimateLog2: the exponent less 127, plus the table entry
+// for the top 11 mantissa bits, in 2048ths
 struct LOG2_V128 : Sequence<LOG2_V128, I<OPCODE_LOG2, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    EmitEstimateCall(
-        e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateLog2>));
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateLog2>));
+      return;
+    }
+
+    // The input stays in xmm3, since the result may share its register
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    e.vpsrld(e.xmm0, e.xmm3, 12);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateIndexMask));
+    e.mov(e.rax, reinterpret_cast<uintptr_t>(estimate_tables.log2));
+    e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+    e.vpgatherdd(e.xmm1, e.ptr[e.rax + e.xmm0 * 4], e.xmm2);
+
+    // ((exponent - 127) << 11) + entry is exact as a float, and so is
+    // dividing it by 2048
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vpsubd(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMVLogeExponentBias));
+    e.vpslld(e.xmm0, e.xmm0, 11);
+    e.vpaddd(e.xmm0, e.xmm0, e.xmm1);
+    e.vcvtdq2ps(e.xmm0, e.xmm0);
+    e.vmulps(i.dest, e.xmm0, e.GetXmmConstPtr(XMMVLogeScale));
+
+    // A negative input gives a NaN, infinity gives infinity, zero and
+    // denormals give -infinity (even when negative), and a NaN comes back
+    // quiet
+    e.vpsrad(e.xmm0, e.xmm3, 31);
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMQNaN), e.xmm0);
+    e.vpcmpeqd(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMFloatInf), e.xmm0);
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpxor(e.xmm1, e.xmm1, e.xmm1);
+    e.vpcmpeqd(e.xmm0, e.xmm0, e.xmm1);
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMVLogeZeroResult), e.xmm0);
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);

@@ -1283,6 +1283,27 @@ static const vec128_t xmm_consts[] = {
     vec128i(0x7E7FFFFF),
     // XMMVRefpSmallestNormal
     vec128i(0x00800000),
+    // XMMEstimateIndexMask: the 11 bits that index the vlogefp and vexptefp
+    // tables
+    vec128i(0x7FF),
+    // XMMEstimateExponentMask
+    vec128i(0xFF),
+    // XMMVLogeExponentBias
+    vec128i(127),
+    // XMMVLogeScale: the result is in 2048ths
+    vec128f(1.0f / 2048.0f),
+    // XMMVLogeZeroResult: -infinity
+    vec128i(0xFF800000),
+    // XMMVExpteShiftBase: the mantissa shifts right by this minus the
+    // exponent, for 15 fraction bits
+    vec128i(135),
+    // XMMVExpteExponentBias: 127, less the table's implicit bit
+    vec128i(126),
+    // XMMVExpteSmallestExponent: below it, the result flushes to zero
+    vec128i(static_cast<uint32_t>(-126)),
+    // XMMVExpteLargestInputExponent: above it (from 128 up), the result is
+    // infinity, or zero for a negative input
+    vec128i(133),
     // XMMVRefpTable: base >> 9 in the upper half, slope in the lower, for the
     // segments of ppc_estimates.cc's kReciprocalBase and kReciprocalSlope
     v128_setr_words(0x7FFC03E1, 0x7C1C03A7, 0x78750371, 0x75040340),
