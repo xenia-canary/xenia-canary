@@ -37,6 +37,7 @@
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 #include "xenia/cpu/backend/x64/x64_util.h"
 #include "xenia/cpu/hir/hir_builder.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 #include "xenia/cpu/processor.h"
 
 DEFINE_bool(use_fast_dot_product, false,
@@ -2401,12 +2402,40 @@ struct RSQRT_V128 : Sequence<RSQRT_V128, I<OPCODE_RSQRT, V128Op, V128Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_RSQRT, RSQRT_F32, RSQRT_F64, RSQRT_V128);
 
+// The estimate instructions as the console computes them, one lane at a time
+template <uint32_t (*Estimate)(uint32_t)>
+static __m128 EmulateEstimate(void*, __m128 src) {
+  alignas(16) uint32_t values[4];
+  _mm_store_ps(reinterpret_cast<float*>(values), src);
+  for (size_t i = 0; i < 4; ++i) {
+    values[i] = Estimate(values[i]);
+  }
+  return _mm_load_ps(reinterpret_cast<float*>(values));
+}
+
+template <typename EmitArgType>
+static void EmitEstimateCall(X64Emitter& e, const EmitArgType& i,
+                             void* emulate) {
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+#if XE_PLATFORM_WIN32
+  // Windows x64 ABI: __m128 is passed by implicit pointer
+  e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
+#else
+  // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
+  e.vmovaps(e.xmm0, src1);
+#endif
+  e.CallNativeSafe(emulate);
+  e.vmovaps(i.dest, e.xmm0);
+}
+
 // ============================================================================
 // OPCODE_RECIP
 // ============================================================================
-// Altivec guarantees an error of < 1/4096 for vrefp while AVX only gives
-// < 1.5*2^-12 ≈ 1/2730 for rcpps. This breaks camp, horse and random event
-// spawning, breaks cactus collision as well as flickering grass in 5454082B
+// vrefp and fres compute the console's own estimates, bit for bit. Host
+// estimates aren't close enough: rcpps (< 1.5*2^-12 error, where Altivec
+// guarantees < 1/4096) broke camp, horse and random event spawning, cactus
+// collision and grass in 5454082B, and AVX512's vrcp14ps differs as well.
+// Exact division doesn't match the console either.
 struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
@@ -2416,22 +2445,72 @@ struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
     e.vdivss(i.dest, e.xmm0, src1);
   }
 };
+// fres
 struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
+  static __m128 EmulateFres(void*, __m128 src) {
+    return _mm_castpd_ps(_mm_set_sd(
+        ppc::EstimateReciprocalSingle(_mm_cvtsd_f64(_mm_castps_pd(src)))));
+  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-    // AVX512's vrcp14ss has precision issues, division gives exact results
-    e.vmovapd(e.xmm0, e.GetXmmConstPtr(XMMOnePD));
-    e.vdivsd(i.dest, e.xmm0, src1);
+    EmitEstimateCall(e, i, reinterpret_cast<void*>(EmulateFres));
   }
 };
+// vrefp, as ppc::EstimateReciprocal: the top 5 mantissa bits pick a segment,
+// and the result mantissa is its base minus its slope times the next 9 bits
 struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i,
+          reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateReciprocal>));
+      return;
+    }
+
+    // The input stays in xmm3, since the result may share its register
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-    // AVX512's vrcp14ps has precision issues, devision gives exact results
-    e.vmovaps(e.xmm0, e.GetXmmConstPtr(XMMOne));
-    e.vdivps(i.dest, e.xmm0, src1);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    // Each table entry is the segment's base >> 9 above its slope
+    e.lea(e.rax, e.GetXmmConstPtr(XMMVRefpTable));
+    e.vpsrld(e.xmm0, e.xmm3, 18);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMShiftMaskPS));
+    e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+    e.vpgatherdd(e.xmm1, e.ptr[e.rax + e.xmm0 * 4], e.xmm2);
+
+    // Mantissa: base - slope * step
+    e.vpsrld(e.xmm2, e.xmm3, 9);
+    e.vpand(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVRefpStepMask));
+    e.vpand(e.xmm0, e.xmm1, e.GetXmmConstPtr(XMMVRefpSlopeMask));
+    e.vpmulld(e.xmm0, e.xmm0, e.xmm2);
+    e.vpsrld(e.xmm1, e.xmm1, 16);
+    e.vpslld(e.xmm1, e.xmm1, 9);
+    e.vpsubd(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMVRefpMantissaMask));
+
+    // Exponent: 253 - the input's
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vmovdqa(e.xmm2, e.GetXmmConstPtr(XMMVRefpExponentBias));
+    e.vpsubd(e.xmm0, e.xmm2, e.xmm0);
+    e.vpor(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+    e.vpor(i.dest, e.xmm1, e.xmm0);
+
+    // Too large an input (and infinity) gives a signed zero, zero and
+    // denormals a signed infinity, and a NaN comes back quiet
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm2, e.xmm1, e.GetXmmConstPtr(XMMVRefpLargeLimit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
+    e.vmovdqa(e.xmm2, e.GetXmmConstPtr(XMMVRefpSmallestNormal));
+    e.vpcmpgtd(e.xmm2, e.xmm2, e.xmm1);
+    e.vpor(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
+    e.vpcmpgtd(e.xmm2, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
@@ -2451,28 +2530,12 @@ struct POW2_F64 : Sequence<POW2_F64, I<OPCODE_POW2, F64Op, F64Op>> {
     assert_impossible_sequence(POW2_F64);
   }
 };
+// vexptefp
 struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
-  static __m128 EmulatePow2(void*, __m128 src) {
-    alignas(16) float values[4];
-    _mm_store_ps(values, src);
-    for (size_t i = 0; i < 4; ++i) {
-      values[i] = std::exp2(values[i]);
-    }
-    return _mm_load_ps(values);
-  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulatePow2));
-    e.vmovaps(i.dest, e.xmm0);
+    EmitEstimateCall(
+        e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimatePow2>));
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
@@ -2493,28 +2556,12 @@ struct LOG2_F64 : Sequence<LOG2_F64, I<OPCODE_LOG2, F64Op, F64Op>> {
     assert_impossible_sequence(LOG2_F64);
   }
 };
+// vlogefp
 struct LOG2_V128 : Sequence<LOG2_V128, I<OPCODE_LOG2, V128Op, V128Op>> {
-  static __m128 EmulateLog2(void*, __m128 src) {
-    alignas(16) float values[4];
-    _mm_store_ps(values, src);
-    for (size_t i = 0; i < 4; ++i) {
-      values[i] = std::log2(values[i]);
-    }
-    return _mm_load_ps(values);
-  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateLog2));
-    e.vmovaps(i.dest, e.xmm0);
+    EmitEstimateCall(
+        e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateLog2>));
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);

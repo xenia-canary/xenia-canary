@@ -179,7 +179,15 @@ enum XmmConst {
   // Clears the bits of a double below single precision, so converting it to
   // single rounds toward zero
   XMMDoubleToSingleTruncateMask,
-  XMMVRsqrteTableStart,
+  // For the inline vrefp, see RECIP_V128
+  XMMVRefpStepMask,
+  XMMVRefpSlopeMask,
+  XMMVRefpMantissaMask,
+  XMMVRefpExponentBias,
+  XMMVRefpLargeLimit,
+  XMMVRefpSmallestNormal,
+  XMMVRefpTable,
+  XMMVRsqrteTableStart = XMMVRefpTable + (32 / 4),
   XMMVRsqrteTableBase =
       XMMVRsqrteTableStart +
       (32 /

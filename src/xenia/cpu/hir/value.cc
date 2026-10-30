@@ -17,6 +17,7 @@
 #include "xenia/base/byte_order.h"
 #include "xenia/base/math.h"
 #include "xenia/cpu/hir/hir_builder.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 namespace xe {
 namespace cpu {
 namespace hir {
@@ -625,11 +626,13 @@ void Value::Recip() {
       constant.f32 = 1.0f / constant.f32;
       break;
     case FLOAT64_TYPE:
-      constant.f64 = 1.0f / constant.f64;
+      // fres
+      constant.f64 = ppc::EstimateReciprocalSingle(constant.f64);
       break;
     case VEC128_TYPE:
+      // vrefp
       for (int i = 0; i < 4; i++) {
-        constant.v128.f32[i] = 1.0f / constant.v128.f32[i];
+        constant.v128.u32[i] = ppc::EstimateReciprocal(constant.v128.u32[i]);
       }
       break;
     default:

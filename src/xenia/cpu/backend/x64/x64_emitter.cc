@@ -1271,6 +1271,28 @@ static const vec128_t xmm_consts[] = {
     vec128i(0x00400000u),
     // XMMDoubleToSingleTruncateMask
     vec128q(0xFFFFFFFFE0000000ull),
+    // XMMVRefpStepMask
+    vec128i(0x1FF),
+    // XMMVRefpSlopeMask
+    vec128i(0xFFFF),
+    // XMMVRefpMantissaMask
+    vec128i(0x7FFFFF),
+    // XMMVRefpExponentBias: 253 << 23
+    vec128i(0x7E800000),
+    // XMMVRefpLargeLimit: above it, the result is too small and flushes
+    vec128i(0x7E7FFFFF),
+    // XMMVRefpSmallestNormal
+    vec128i(0x00800000),
+    // XMMVRefpTable: base >> 9 in the upper half, slope in the lower, for the
+    // segments of ppc_estimates.cc's kReciprocalBase and kReciprocalSlope
+    v128_setr_words(0x7FFC03E1, 0x7C1C03A7, 0x78750371, 0x75040340),
+    v128_setr_words(0x71C40313, 0x6EB102EA, 0x6BC802C4, 0x690402A0),
+    v128_setr_words(0x6664027F, 0x63E50261, 0x61840245, 0x5F40022A),
+    v128_setr_words(0x5D160212, 0x5B0401FB, 0x590A01E5, 0x572501D1),
+    v128_setr_words(0x555401BE, 0x539601AC, 0x51EB019B, 0x504F018B),
+    v128_setr_words(0x4EC4017C, 0x4D48016E, 0x4BD7015B, 0x4A7C015B),
+    v128_setr_words(0x49220143, 0x47DF0143, 0x469C012D, 0x456F012D),
+    v128_setr_words(0x4442011A, 0x4328011A, 0x420E0108, 0x41060106),
     // XMMVRsqrteTableStart
     v128_setr_words(0x568B4FD, 0x4F3AF97, 0x48DAAA5, 0x435A618),
     v128_setr_words(0x3E7A1E4, 0x3A29DFE, 0x3659A5C, 0x32E96F8),
