@@ -176,11 +176,19 @@ enum XmmConst {
   XMMVSRShlByteshuf,
   XMMVSRMask,
   XMMQuietBit,      // 0x00400000
+  // Clears the bits of a double below single precision, so converting it to
+  // single rounds toward zero
+  XMMDoubleToSingleTruncateMask,
   // For ARITHMETIC_SINGLE_RANGE, see EmitSingleRangeCheck
   XMMSingleRangeBias,
   XMMSingleRangeLimit,
+  // For vmsum3fp128 and vmsum4fp128, see EmitVectorMultiplySum
+  XMMVmsumInverseGridBase,
+  XMMVmsumGridSum,
+  XMMVmsum3Adjust,  // 4 entries, by the number of negative products
+  XMMVmsum4Adjust = XMMVmsum3Adjust + 4,  // 5 entries
   // For the inline vrefp, see RECIP_V128
-  XMMVRefpStepMask,
+  XMMVRefpStepMask = XMMVmsum4Adjust + 5,
   XMMVRefpSlopeMask,
   XMMVRefpMantissaMask,
   XMMVRefpExponentBias,
