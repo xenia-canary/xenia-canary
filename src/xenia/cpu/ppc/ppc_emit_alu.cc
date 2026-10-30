@@ -59,14 +59,15 @@ Value* SignedDivDidOverflow(PPCHIRBuilder& f, Value* dividend, Value* divisor,
                     f.CompareEQ(divisor, f.Not(f.LoadZero(divisor->type)))));
 }
 
-// https://github.com/sebastianbiallas/pearpc/blob/0b3c823f61456faa677f6209545a7b906e797421/src/cpu/cpu_generic/ppc_tools.h#L26
 Value* AddWithCarryDidCarry(PPCHIRBuilder& f, Value* v1, Value* v2, Value* v3) {
-  v1 = f.Truncate(v1, INT32_TYPE);
-  v2 = f.Truncate(v2, INT32_TYPE);
   assert_true(v3->type == INT8_TYPE);
-  v3 = f.ZeroExtend(v3, INT32_TYPE);
-  return f.Or(f.CompareULT(f.Add(f.Add(v1, v2), v3), v3),
-              f.CompareULT(f.Add(v1, v2), v1));
+  // The carry out of bit 31 is bit 32 of the low words' sum, zero extended:
+  // two adds and a shift, with no compares
+  Value* sum =
+      f.Add(f.Add(f.ZeroExtend(f.Truncate(v1, INT32_TYPE), INT64_TYPE),
+                  f.ZeroExtend(f.Truncate(v2, INT32_TYPE), INT64_TYPE)),
+            f.ZeroExtend(v3, INT64_TYPE));
+  return f.Truncate(f.Shr(sum, 32), INT8_TYPE);
 }
 
 int InstrEmit_addx(PPCHIRBuilder& f, const InstrData& i) {
