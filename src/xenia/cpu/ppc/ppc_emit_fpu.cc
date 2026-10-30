@@ -455,8 +455,31 @@ int InstrEmit_mcrfs(PPCHIRBuilder& f, const InstrData& i) {
   return 0;
 }
 
+// FEX and VX are summaries of the other bits, which mtfsf and mtfsfi can't
+// set directly: VX is set while any invalid operation bit is, and FEX while
+// any exception bit is set along with its enable bit. NI always reads back as
+// 0 on the console.
+static Value* UpdateFPSCRSummaryBits(PPCHIRBuilder& f, Value* fpscr) {
+  Value* zero = f.LoadZeroInt32();
+  Value* vx = f.ZeroExtend(
+      f.CompareNE(f.And(fpscr, f.LoadConstantUint32(0x01F80700)), zero),
+      INT32_TYPE);
+  // OX, UX, ZX and XX against OE, UE, ZE and XE
+  Value* exceptions = f.And(f.Shr(fpscr, 25), f.LoadConstantUint32(0xF));
+  Value* enables = f.And(f.Shr(fpscr, 3), f.LoadConstantUint32(0xF));
+  Value* fex =
+      f.ZeroExtend(f.CompareNE(f.And(exceptions, enables), zero), INT32_TYPE);
+  Value* ve = f.And(f.Shr(fpscr, 7), f.LoadConstantUint32(1));
+  fex = f.Or(fex, f.And(vx, ve));
+  fpscr = f.And(fpscr, f.LoadConstantUint32(~0x60000004u));
+  return f.Or(fpscr, f.Or(f.Shl(fex, 30), f.Shl(vx, 29)));
+}
+
 int InstrEmit_mffsx(PPCHIRBuilder& f, const InstrData& i) {
-  Value* v = f.Cast(f.ZeroExtend(f.LoadFPSCR(), INT64_TYPE), FLOAT64_TYPE);
+  // The console fills the upper word with 0xFFF80000
+  Value* v = f.Cast(f.Or(f.ZeroExtend(f.LoadFPSCR(), INT64_TYPE),
+                         f.LoadConstantUint64(0xFFF8000000000000ull)),
+                    FLOAT64_TYPE);
   f.StoreFPR(i.X.RT, v);
   if (i.X.Rc) {
     f.CopyFPSCRToCR1();
@@ -464,8 +487,9 @@ int InstrEmit_mffsx(PPCHIRBuilder& f, const InstrData& i) {
   return 0;
 }
 
-// mtfsb can't set the FEX and VX summaries (bits 1 and 2) directly and setting
-// an exception bit that was clear also sets FX.
+// mtfsb can't set the FEX and VX summaries (bits 1 and 2) directly, and they
+// follow their causes and enables both ways. Setting an exception bit that was
+// clear also sets FX.
 static int InstrEmit_mtfsb(PPCHIRBuilder& f, const InstrData& i, bool value) {
   const uint32_t bit = i.X.RT;
   if (bit != 1 && bit != 2) {
@@ -476,9 +500,7 @@ static int InstrEmit_mtfsb(PPCHIRBuilder& f, const InstrData& i, bool value) {
       // OX, UX, ZX, XX and the VX causes (bits 3-12 and 21-23).
       const bool exception =
           (bit >= 3 && bit <= 12) || (bit >= 21 && bit <= 23);
-      // A VX cause sets the VX summary too.
-      const uint32_t vx = exception && bit >= 7 ? 0x20000000 : 0;
-      v = f.Or(fpscr, f.LoadConstantInt32(mask | vx));
+      v = f.Or(fpscr, f.LoadConstantInt32(mask));
       if (exception) {
         Value* was_clear = f.Not(f.Shl(fpscr, int8_t(bit)));
         v = f.Or(v, f.And(was_clear, f.LoadConstantInt32(0x80000000)));
@@ -486,7 +508,7 @@ static int InstrEmit_mtfsb(PPCHIRBuilder& f, const InstrData& i, bool value) {
     } else {
       v = f.And(fpscr, f.LoadConstantInt32(~mask));
     }
-    f.StoreFPSCR(v);
+    f.StoreFPSCR(UpdateFPSCRSummaryBits(f, v));
     // Update the system rounding mode.
     if (mask & 0x7) {
       f.SetRoundingMode(f.And(v, f.LoadConstantInt32(7)));
@@ -529,7 +551,7 @@ int InstrEmit_mtfsfx(PPCHIRBuilder& f, const InstrData& i) {
       v = f.And(v, f.LoadConstantInt32(mask));
       v = f.Or(v, f.And(fpscr, f.LoadConstantInt32(~mask)));
     }
-    f.StoreFPSCR(v);
+    f.StoreFPSCR(UpdateFPSCRSummaryBits(f, v));
 
     // Update the system rounding mode.
     if (mask & 0x7) {
@@ -552,7 +574,7 @@ int InstrEmit_mtfsfix(PPCHIRBuilder& f, const InstrData& i) {
   Value* fpscr = f.LoadFPSCR();
   fpscr = f.And(fpscr, f.LoadConstantInt32(~mask));
   fpscr = f.Or(fpscr, f.LoadConstantInt32(value));
-  f.StoreFPSCR(fpscr);
+  f.StoreFPSCR(UpdateFPSCRSummaryBits(f, fpscr));
 
   // Update the system rounding mode.
   if (mask & 0x7) {
