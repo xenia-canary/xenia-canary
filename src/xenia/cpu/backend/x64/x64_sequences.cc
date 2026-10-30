@@ -332,9 +332,11 @@ struct CONVERT_I32_F64
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     // Intel returns 0x80000000 if the double value does not fit within an int32
     // PPC saturates the value instead.
-    // So, we can clamp the double value to (double)0x7FFFFFFF.
-    e.vminsd(e.xmm1, GetInputRegOrConstant(e, i.src1, e.xmm0),
-             e.GetXmmConstPtr(XMMIntMaxPD));
+    // So, we can clamp the double value to (double)0x7FFFFFFF. vminsd returns
+    // its second operand when either is a NaN, so a NaN stays one and gives
+    // 0x80000000, as PPC does.
+    e.vmovsd(e.xmm1, e.GetXmmConstPtr(XMMIntMaxPD));
+    e.vminsd(e.xmm1, e.xmm1, GetInputRegOrConstant(e, i.src1, e.xmm0));
     if (i.instr->flags == ROUND_TO_ZERO) {
       e.vcvttsd2si(i.dest, e.xmm1);
     } else {
@@ -347,10 +349,7 @@ struct CONVERT_I64_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    // Copy src1.
-    e.movq(e.rcx, src1);
 
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
     if (i.instr->flags == ROUND_TO_ZERO) {
       e.vcvttsd2si(i.dest, src1);
     } else {
@@ -361,16 +360,16 @@ struct CONVERT_I64_F64
     e.mov(e.rax, 0x1);
     e.shl(e.rax, 63);
 
-    // Saturate positive overflow
-    // TODO(DrChat): Find a shorter equivalent sequence.
+    // Saturate positive overflow. A NaN compares unordered, so it keeps
+    // 0x8000000000000000, as PPC gives.
     // if (result ind. && src1 >= 0)
     //   result = 0x7FFFFFFFFFFFFFFF;
     e.cmp(e.rax, i.dest);
     e.sete(e.al);
+    e.vucomisd(src1, e.GetXmmConstPtr(XMMZero));
+    e.setae(e.cl);
+    e.and_(e.al, e.cl);
     e.movzx(e.rax, e.al);
-    e.shr(e.rcx, 63);
-    e.xor_(e.rcx, 0x01);
-    e.and_(e.rax, e.rcx);
 
     e.sub(i.dest, e.rax);
   }
