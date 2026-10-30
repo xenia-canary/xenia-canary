@@ -252,7 +252,7 @@ TEST_CASE("ADD_CARRY_I8", "[arithmetic]") {
 }
 
 // ============================================================================
-// RECIP F32/F64 — exact reciprocal (1/x)
+// RECIP F32/F64 — fres, the console's reciprocal estimate
 // ============================================================================
 TEST_CASE("RECIP_F64", "[arithmetic]") {
   TestFunction test([](HIRBuilder& b) {
@@ -260,11 +260,11 @@ TEST_CASE("RECIP_F64", "[arithmetic]") {
     b.Return();
   });
   test.Run([](PPCContext* ctx) { ctx->f[4] = 2.0; },
-           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == 0.5); });
+           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == 0.498046875); });
   test.Run([](PPCContext* ctx) { ctx->f[4] = -4.0; },
-           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == -0.25); });
+           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == -0.2490234375); });
   test.Run([](PPCContext* ctx) { ctx->f[4] = 1.0; },
-           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == 1.0); });
+           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == 0.99609375); });
 }
 
 // ============================================================================
