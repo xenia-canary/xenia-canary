@@ -1340,9 +1340,12 @@ EMITTER_ASSOCIATIVE_COMPARE_FLT_XX(UGE, setae);
 // ============================================================================
 struct DID_SATURATE
     : Sequence<DID_SATURATE, I<OPCODE_DID_SATURATE, I8Op, V128Op>> {
+  // The PPC front end passes the lanes that saturated (see SetSatIfAny), so
+  // this is whether any is nonzero
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // TODO(benvanik): implement saturation check (VECTOR_ADD, etc).
-    e.xor_(i.dest, i.dest);
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vptest(src1, src1);
+    e.setnz(i.dest);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
