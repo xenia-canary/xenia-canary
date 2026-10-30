@@ -337,7 +337,11 @@ class ResultBase : public Result {
  public:
   ResultBase(T value) : value_(value) {}
   void Store(PPCContext* ppc_context) {
-    ppc_context->r[3] = uint64_t(int32_t(value_));
+    if constexpr (sizeof(T) == sizeof(uint64_t)) {
+      ppc_context->r[3] = uint64_t(value_);
+    } else {
+      ppc_context->r[3] = uint64_t(int32_t(value_));
+    }
   }
   ResultBase() = delete;
   ResultBase& operator=(const ResultBase&) = delete;
