@@ -2448,7 +2448,27 @@ struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
     e.vdivss(i.dest, e.xmm0, src1);
   }
 };
-// fres
+// fres's result mantissas, for the top 7 input mantissa bits: those of
+// ppc::EstimateReciprocalSingle over [1, 2)
+struct FresTable {
+  uint64_t mantissas[128];
+
+  FresTable() {
+    for (uint32_t i = 0; i < 128; ++i) {
+      double result = ppc::EstimateReciprocalSingle(1.0 + i / 128.0);
+      uint64_t bits;
+      std::memcpy(&bits, &result, sizeof(bits));
+      mantissas[i] = bits & 0x000FFFFFFFFFFFFFull;
+    }
+  }
+};
+static const FresTable fres_table;
+
+// fres. While the result is a normal single (an input exponent from 895 to
+// 1148), it's exact: its mantissa comes from the table, and its exponent is
+// 2045 less the input's. Anything else (denormal and overflowing results,
+// zero, infinity, NaNs and denormal inputs) calls
+// ppc::EstimateReciprocalSingle.
 struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
   static __m128 EmulateFres(void*, __m128 src) {
     return _mm_castpd_ps(_mm_set_sd(
@@ -2456,7 +2476,37 @@ struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
   }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    EmitEstimateCall(e, i, reinterpret_cast<void*>(EmulateFres));
+    Xbyak::Label& done = e.NewCachedLabel();
+    Xbyak::Label& call =
+        e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& call) {
+          e.L(call);
+          EmitEstimateCall(e, i, reinterpret_cast<void*>(EmulateFres));
+          e.jmp(done, X64Emitter::T_NEAR);
+        });
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    e.vmovq(e.rax, src1);
+    e.mov(e.rcx, e.rax);
+    e.shr(e.rcx, 52);
+    e.and_(e.ecx, 0x7FF);
+    e.lea(e.edx, e.ptr[e.rcx - 895]);
+    e.cmp(e.edx, 1148 - 895);
+    e.ja(call, X64Emitter::T_NEAR);
+
+    // Sign | (2045 - exponent) << 52 | the table's mantissa
+    e.mov(e.rdx, e.rax);
+    e.shr(e.rdx, 45);
+    e.and_(e.edx, 0x7F);
+    e.neg(e.rcx);
+    e.add(e.rcx, 2045);
+    e.shl(e.rcx, 52);
+    e.shr(e.rax, 63);
+    e.shl(e.rax, 63);
+    e.or_(e.rax, e.rcx);
+    e.mov(e.rcx, reinterpret_cast<uintptr_t>(fres_table.mantissas));
+    e.or_(e.rax, e.qword[e.rcx + e.rdx * 8]);
+    e.vmovq(i.dest, e.rax);
+    e.L(done);
   }
 };
 // vrefp, as ppc::EstimateReciprocal: the top 5 mantissa bits pick a segment,
