@@ -1580,8 +1580,10 @@ int InstrEmit_vsplth(PPCHIRBuilder& f, const InstrData& i) {
 int InstrEmit_vspltw_(PPCHIRBuilder& f, uint32_t vd, uint32_t vb,
                       uint32_t uimm) {
   // (VD.xyzw) <- (VB.uimm)
-  Value* w = f.Extract(f.LoadVR(vb), uimm & 0x3, INT32_TYPE);
-  Value* v = f.Splat(w, VEC128_TYPE);
+  // One vpshufd, instead of extracting the word to a GPR and splatting it
+  uint32_t word = uimm & 0x3;
+  Value* v = f.Swizzle(f.LoadVR(vb), INT32_TYPE,
+                       MakeSwizzleMask(word, word, word, word));
   f.StoreVR(vd, v);
   return 0;
 }
