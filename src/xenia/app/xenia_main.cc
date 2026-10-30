@@ -106,11 +106,18 @@ DEFINE_path(
     "for the OS, will be used.",
     "Storage");
 
+// System Paths
+DEFINE_bool(mount_mindex, false, "Enable mindex mount", "Storage");
+DEFINE_bool(mount_flash, false, "Enable flash mount", "Storage");
+DEFINE_bool(mount_compatibility, false, "Enable compatibility mount",
+            "Storage");
+
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 
 DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
 UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
 
+// External Devices
 DEFINE_bool(mount_memory_unit, false, "Enable memory unit (MU) mount",
             "Storage");
 
@@ -509,6 +516,7 @@ bool EmulatorApp::OnInitialize() {
 #endif
 
   std::filesystem::path content_root = cvars::content_root;
+  // TODO: Place inside Harddisk0\Partition1 folder
   if (content_root.empty()) {
     content_root = storage_root / "content";
   } else {
@@ -621,6 +629,7 @@ void EmulatorApp::EmulatorThread() {
     }
   }
 
+  // TODO: Place inside Harddisk0 folder
   if (cvars::mount_cache) {
     auto cache0_device = std::make_unique<xe::vfs::HostPathDevice>(
         "\\CACHE0", emulator_->storage_root() / "cache0", false);
@@ -663,6 +672,67 @@ void EmulatorApp::EmulatorThread() {
     }
   }
 
+  // Mindex Setup
+  if (cvars::mount_mindex) {
+    auto mindex_device = std::make_unique<xe::vfs::HostPathDevice>(
+        "\\Device\\Harddisk0\\Partition1\\mindex\\",
+        emulator_->storage_root() / "Harddisk0" / "Partition1" / "Mindex",
+        false);
+    if (!mindex_device->Initialize()) {
+      XELOGE("Unable to scan mindex path");
+    } else {
+      if (!fs->RegisterDevice(std::move(mindex_device))) {
+        XELOGE("Unable to register mindex path");
+      } else {
+        fs->RegisterSymbolicLink("mindex:",
+                                 "\\Device\\Harddisk0\\Partition1\\mindex\\");
+      }
+    }
+  }
+
+  // NAND Setup
+  if (cvars::mount_flash) {
+    auto flash_device = std::make_unique<xe::vfs::HostPathDevice>(
+        "\\Device\\Flash",
+        emulator_->storage_root() / "Harddisk0" / "SystemPartition", false);
+    if (!flash_device->Initialize()) {
+      XELOGE("Unable to scan flash path");
+    } else {
+      if (!fs->RegisterDevice(std::move(flash_device))) {
+        XELOGE("Unable to register flash path");
+      } else {
+        fs->RegisterSymbolicLink("flash:", "\\Device\\Flash");
+      }
+    }
+  }
+
+  // Compatibility Folder Set Up
+  if (cvars::mount_compatibility) {
+    auto compatibility_device = std::make_unique<vfs::HostPathDevice>(
+        "\\Device\\Harddisk0\\Partition1\\Compatibility",
+        emulator_->storage_root() / "Harddisk0" / "Partition1" /
+            "Compatibility",
+        false);
+    // Xbox1 user data stored here
+    if (compatibility_device->Initialize()) {
+      fs->RegisterDevice(std::move(compatibility_device));
+    } else {
+      XELOGE("Unable to scan partition1 compatibility path");
+    }
+    auto SystemCompatibility_device = std::make_unique<vfs::HostPathDevice>(
+        "\\Device\\Harddisk0\\SystemPartition\\Compatibility",
+        emulator_->storage_root() / "Harddisk0" / "systemPartition" /
+            "Compatibility",
+        false);
+    // xefu data stored here
+    if (SystemCompatibility_device->Initialize()) {
+      fs->RegisterDevice(std::move(SystemCompatibility_device));
+    } else {
+      XELOGE("Unable to scan system compatibility path");
+    }
+  }
+
+  // Devkit in Harddisk0\Partition1 folder?
   if (cvars::force_mount_devkit) {
     auto devkit_device =
         std::make_unique<xe::vfs::HostPathDevice>("\\DEVKIT", "devkit", false);
@@ -681,7 +751,7 @@ void EmulatorApp::EmulatorThread() {
 
   if (cvars::mount_memory_unit) {
     auto mu_device =
-        std::make_unique<xe::vfs::HostPathDevice>("\\MU", "MU", false);
+        std::make_unique<xe::vfs::HostPathDevice>("\\MU0", "MU0", false);
 
     if (!mu_device->Initialize()) {
       XELOGE("Unable to scan MU path");
@@ -691,7 +761,7 @@ void EmulatorApp::EmulatorThread() {
       XELOGE("Unable to register MU path");
     }
 
-    fs->RegisterSymbolicLink("MU:", "\\MU");
+    fs->RegisterSymbolicLink("MU0:", "\\MU0");
   }
 
   // Set a debug handler.

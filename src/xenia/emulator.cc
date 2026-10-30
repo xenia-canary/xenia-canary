@@ -94,6 +94,7 @@ DEFINE_int32(priority_class, 0,
              "General");
 
 DECLARE_int32(console_type);
+DECLARE_bool(mount_flash);
 
 namespace xe {
 using namespace xe::literals;
@@ -625,21 +626,32 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
     return result;
   }
 
-  const std::string mount_path =
-      utf8::find_base_guest_path(kernel_state_->GetExecutableModule()->path());
+  if (!cvars::mount_flash) {
+    const std::string mount_path = utf8::find_base_guest_path(
+        kernel_state_->GetExecutableModule()->path());
 
-  // System related symlinks. This should point to dashboard location in the
-  // future.
-  file_system_->RegisterSymbolicLink("\\SystemRoot", mount_path);
+    file_system_->RegisterSymbolicLink("\\SystemRoot", mount_path);
 
-  auto module = kernel_state_->LoadUserModule("xam.xex");
+    auto module = kernel_state_->LoadUserModule("xam.xex");
 
-  if (!module) {
-    module = kernel_state_->LoadUserModule("$flash_xam.xex");
-  }
+    if (!module) {
+      module = kernel_state_->LoadUserModule("$flash_xam.xex");
+    }
 
-  if (module) {
-    result = kernel_state_->FinishLoadingUserModule(module, false);
+    if (module) {
+      result = kernel_state_->FinishLoadingUserModule(module, false);
+    }
+  } else {
+    file_system_->RegisterSymbolicLink("\\SystemRoot", "\\Device\\Flash");
+    auto module = kernel_state_->LoadUserModule("xam.xex");
+
+    if (!module) {
+      module = kernel_state_->LoadUserModule("$flash_xam.xex");
+    }
+
+    if (module) {
+      result = kernel_state_->FinishLoadingUserModule(module, false);
+    }
   }
 
   return result;
