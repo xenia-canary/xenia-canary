@@ -231,13 +231,26 @@ void Value::Convert(TypeName target_type, RoundMode round_mode) {
           type = target_type;
           constant.f32 = (float)constant.f64;
           return;
+        // As fctiw and fctid: saturated, with a NaN giving the smallest value
         case INT32_TYPE:
           type = target_type;
-          constant.i32 = (int32_t)constant.f64;
+          if (std::isnan(constant.f64) || constant.f64 <= INT32_MIN) {
+            constant.i32 = INT32_MIN;
+          } else if (constant.f64 >= INT32_MAX) {
+            constant.i32 = INT32_MAX;
+          } else {
+            constant.i32 = (int32_t)constant.f64;
+          }
           return;
         case INT64_TYPE:
           type = target_type;
-          constant.i64 = (int64_t)constant.f64;
+          if (std::isnan(constant.f64) || constant.f64 <= -0x1p63) {
+            constant.i64 = INT64_MIN;
+          } else if (constant.f64 >= 0x1p63) {
+            constant.i64 = INT64_MAX;
+          } else {
+            constant.i64 = (int64_t)constant.f64;
+          }
           return;
         default:
           assert_unhandled_case(target_type);

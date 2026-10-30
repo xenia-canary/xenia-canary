@@ -311,22 +311,13 @@ int InstrEmit_fcfidx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_fctidxx_(PPCHIRBuilder& f, const InstrData& i,
                        RoundMode round_mode) {
-  auto end = f.NewLabel();
-  auto isnan = f.NewLabel();
-  f.BranchTrue(f.IsNan(f.LoadFPR(i.X.RB)), isnan);
+  // The conversion saturates, and gives 0x8000000000000000 for a NaN, so it
+  // needs no branch (which would end the block)
   Value* b = f.LoadFPR(i.X.RB);
   Value* v = f.Convert(b, INT64_TYPE, round_mode);
   v = f.Cast(v, FLOAT64_TYPE);
   f.StoreFPR(i.X.RT, v);
   f.UpdateFPSCRForConvertToInteger(b, round_mode, /*to_int64=*/true, i.X.Rc);
-  f.Branch(end);
-  f.MarkLabel(isnan);
-  // A NaN answers with the most negative value, and is invalid
-  v = f.Cast(f.LoadConstantUint64(0x8000000000000000ull), FLOAT64_TYPE);
-  f.StoreFPR(i.X.RT, v);
-  f.UpdateFPSCRForConvertToInteger(f.LoadFPR(i.X.RB), round_mode,
-                                   /*to_int64=*/true, i.X.Rc);
-  f.MarkLabel(end);
   return 0;
 }
 
@@ -341,23 +332,13 @@ int InstrEmit_fctidzx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_fctiwxx_(PPCHIRBuilder& f, const InstrData& i,
                        RoundMode round_mode) {
-  auto end = f.NewLabel();
-  auto isnan = f.NewLabel();
-  f.BranchTrue(f.IsNan(f.LoadFPR(i.X.RB)), isnan);
+  // The conversion saturates, and gives 0x80000000 for a NaN, so it needs no
+  // branch (which would end the block)
   Value* b = f.LoadFPR(i.X.RB);
   Value* v = f.Convert(b, INT32_TYPE, round_mode);
   v = f.Cast(f.SignExtend(v, INT64_TYPE), FLOAT64_TYPE);
   f.StoreFPR(i.X.RT, v);
   f.UpdateFPSCRForConvertToInteger(b, round_mode, /*to_int64=*/false, i.X.Rc);
-  f.Branch(end);
-  f.MarkLabel(isnan);
-  // The most negative value, sign extended as the conversion result is, and
-  // invalid
-  v = f.Cast(f.LoadConstantUint64(0xFFFFFFFF80000000ull), FLOAT64_TYPE);
-  f.StoreFPR(i.X.RT, v);
-  f.UpdateFPSCRForConvertToInteger(f.LoadFPR(i.X.RB), round_mode,
-                                   /*to_int64=*/false, i.X.Rc);
-  f.MarkLabel(end);
   return 0;
 }
 
