@@ -211,8 +211,10 @@ def import_vs_environment():
     install_path = None
     env_tool_args = None
 
+    # Backslashes, so Windows finds it in the working directory even with
+    # NoDefaultCurrentDirectoryInExePath set
     vswhere = subprocess.check_output(
-        "tools/vswhere/vswhere.exe -version \"[17,)\" -latest -prerelease -format json -utf8 -products"
+        "tools\\vswhere\\vswhere.exe -version \"[17,)\" -latest -prerelease -format json -utf8 -products"
         " Microsoft.VisualStudio.Product.Enterprise"
         " Microsoft.VisualStudio.Product.Professional"
         " Microsoft.VisualStudio.Product.Community"
@@ -2131,7 +2133,7 @@ class DevenvCommand(Command):
                 # otherwise pick a VS without ARM64 support.
                 try:
                     vswhere_out = subprocess.check_output(
-                        "tools/vswhere/vswhere.exe"
+                        "tools\\vswhere\\vswhere.exe"
                         ' -version "[17,)" -latest -prerelease'
                         " -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64"
                         " -format json -utf8"
