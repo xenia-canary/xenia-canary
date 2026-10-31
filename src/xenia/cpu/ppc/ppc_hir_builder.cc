@@ -414,8 +414,9 @@ void PPCHIRBuilder::UpdateCR(uint32_t n, Value* lhs, Value* rhs,
   Value* eq = CompareEQ(lhs, rhs);
   StoreContext(offsetof(PPCContext, cr0) + (4 * n) + 2, eq);
 
-  // Value* so = AllocValue(UINT8_TYPE);
-  // StoreContext(offsetof(PPCContext, cr) + (4 * n) + 3, so);
+  // A snapshot of XER[SO], so it cannot be resolved lazily at mfcr time.
+  StoreContext(offsetof(PPCContext, cr0) + (4 * n) + 3,
+               LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE));
 
   // TOOD(benvanik): trace CR.
 }
@@ -450,9 +451,11 @@ void PPCHIRBuilder::StoreFPSCR(Value* value) {
   trace_reg.value = value;
 }
 
-void PPCHIRBuilder::UpdateFPSCR(Value* result, bool update_cr1) {
-  // TODO(benvanik): detect overflow and nan cases.
-  // fx and vx are the most important.
+// Writes FX, FEX, VX and OX, the four bits CR1 mirrors. Neither FEX nor OX is
+// derived, so both are always zero.
+void PPCHIRBuilder::StoreFPSCRSummary(Value* vx, bool update_cr1) {
+  // TODO(benvanik): detect overflow and the inexact cases; the latter needs a
+  // status register read after every operation.
   /*
     chrispy: i stubbed this out at one point because all it does is waste
      memory and CPU time, however, this introduced issues with raiden
@@ -460,32 +463,140 @@ void PPCHIRBuilder::UpdateFPSCR(Value* result, bool update_cr1) {
     fpscr?
 
   */
-
-  Value* fx = LoadConstantInt8(0);
-  Value* fex = LoadConstantInt8(0);
-  Value* vx = LoadConstantInt8(0);
-  Value* ox = LoadConstantInt8(0);
-
   if (update_cr1) {
     // Store into the CR1 field.
     // We do this instead of just calling CopyFPSCRToCR1 so that we don't
     // have to read back the bits and do shifting work.
-    StoreContext(offsetof(PPCContext, cr1.cr1_fx), fx);
-    StoreContext(offsetof(PPCContext, cr1.cr1_fex), fex);
+    StoreContext(offsetof(PPCContext, cr1.cr1_fx), vx);
+    StoreContext(offsetof(PPCContext, cr1.cr1_fex), LoadConstantInt8(0));
     StoreContext(offsetof(PPCContext, cr1.cr1_vx), vx);
-    StoreContext(offsetof(PPCContext, cr1.cr1_ox), ox);
+    StoreContext(offsetof(PPCContext, cr1.cr1_ox), LoadConstantInt8(0));
   }
 
-  // Generate our new bits.
-  Value* new_bits = Shl(ZeroExtend(fx, INT32_TYPE), 31);
-  new_bits = Or(new_bits, Shl(ZeroExtend(fex, INT32_TYPE), 30));
-  new_bits = Or(new_bits, Shl(ZeroExtend(vx, INT32_TYPE), 29));
-  new_bits = Or(new_bits, Shl(ZeroExtend(ox, INT32_TYPE), 28));
+  // FX summarizes VX, so both carry the same value here.
+  Value* vx32 = ZeroExtend(vx, INT32_TYPE);
+  Value* new_bits = Or(Shl(vx32, 31), Shl(vx32, 29));
 
-  // Mix into fpscr while preserving sticky bits (FX and OX).
+  // Hardware accumulates these until software clears them, but VX is only
+  // derived for the recording forms, so each instruction keeps its own value.
   Value* bits = LoadFPSCR();
-  bits = Or(And(bits, LoadConstantUint32(0x9FFFFFFF)), new_bits);
+  bits = Or(And(bits, LoadConstantUint32(0x1FFFFFFF)), new_bits);
   StoreFPSCR(bits);
+}
+
+void PPCHIRBuilder::ClearFPSCRExceptions(bool update_cr1) {
+  StoreFPSCRSummary(LoadConstantInt8(0), update_cr1);
+}
+
+// Magnitude of a double, for classifying it without a compare against a NaN.
+static Value* FpMagnitude(PPCHIRBuilder& f, Value* value) {
+  return f.And(f.Cast(value, INT64_TYPE),
+               f.LoadConstantUint64(0x7FFFFFFFFFFFFFFFull));
+}
+
+// An invalid operation is the only way a NaN can appear that did not come
+// from an operand, and an SNaN operand is invalid however it propagates.
+static Value* InvalidFromResult(PPCHIRBuilder& f, Value* result,
+                                std::initializer_list<Value*> operands) {
+  Value* any_nan = nullptr;
+  Value* any_snan = nullptr;
+  for (Value* operand : operands) {
+    Value* is_nan = f.IsNan(operand);
+    Value* quiet_bit = f.And(f.Cast(operand, INT64_TYPE),
+                             f.LoadConstantUint64(0x0008000000000000ull));
+    Value* is_snan = f.And(is_nan, f.IsFalse(quiet_bit));
+    any_nan = any_nan ? f.Or(any_nan, is_nan) : is_nan;
+    any_snan = any_snan ? f.Or(any_snan, is_snan) : is_snan;
+  }
+  return f.And(f.IsNan(result), f.Or(any_snan, f.IsFalse(any_nan)));
+}
+
+void PPCHIRBuilder::UpdateFPSCR(Value* result,
+                                std::initializer_list<Value*> operands,
+                                bool update_cr1, Value* suppress) {
+  if (!update_cr1) {
+    ClearFPSCRExceptions(false);
+    return;
+  }
+
+  Value* vx = InvalidFromResult(*this, result, operands);
+  if (suppress) {
+    vx = And(vx, IsFalse(suppress));
+  }
+
+  StoreFPSCRSummary(vx, true);
+}
+
+void PPCHIRBuilder::UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c,
+                                              Value* b, bool update_cr1,
+                                              Value* suppress) {
+  if (!update_cr1) {
+    ClearFPSCRExceptions(false);
+    return;
+  }
+
+  // 0 x inf is invalid whatever the addend, but with a QNaN addend the result
+  // is that QNaN, which reads as propagated, so test the multiplicands.
+  Value* inf = LoadConstantUint64(0x7FF0000000000000ull);
+  Value* a_magnitude = FpMagnitude(*this, a);
+  Value* c_magnitude = FpMagnitude(*this, c);
+  Value* zero_times_inf =
+      Or(And(IsFalse(a_magnitude), CompareEQ(c_magnitude, inf)),
+         And(CompareEQ(a_magnitude, inf), IsFalse(c_magnitude)));
+  Value* vx = Or(InvalidFromResult(*this, result, {a, c, b}), zero_times_inf);
+  if (suppress) {
+    vx = And(vx, IsFalse(suppress));
+  }
+
+  StoreFPSCRSummary(vx, true);
+}
+
+// A denormalized double operand makes the single-precision arithmetic answer
+// with the default QNaN and raise nothing at all. Divide and square root do not
+// do it, and a NaN or infinite operand takes precedence, so this asks for every
+// operand finite and at least one of them denormal.
+Value* PPCHIRBuilder::SingleDenormalOperand(
+    std::initializer_list<Value*> operands) {
+  Value* any_denormal = nullptr;
+  Value* any_nonfinite = nullptr;
+  for (Value* operand : operands) {
+    Value* magnitude = FpMagnitude(*this, operand);
+    // Subtracting one wraps a zero operand up to the top, which is what keeps
+    // zero from reading as denormal.
+    Value* is_denormal = CompareULT(Sub(magnitude, LoadConstantUint64(1)),
+                                    LoadConstantUint64(0x000FFFFFFFFFFFFFull));
+    Value* is_nonfinite =
+        CompareUGE(magnitude, LoadConstantUint64(0x7FF0000000000000ull));
+    any_denormal = any_denormal ? Or(any_denormal, is_denormal) : is_denormal;
+    any_nonfinite =
+        any_nonfinite ? Or(any_nonfinite, is_nonfinite) : is_nonfinite;
+  }
+  return And(any_denormal, IsFalse(any_nonfinite));
+}
+
+Value* PPCHIRBuilder::ApplySingleDenormalOperand(Value* quirk, Value* result) {
+  return Select(quirk,
+                Cast(LoadConstantUint64(0x7FF8000000000000ull), FLOAT64_TYPE),
+                result);
+}
+
+void PPCHIRBuilder::UpdateFPSCRForConvertToInteger(Value* b,
+                                                   RoundMode round_mode,
+                                                   bool to_int64,
+                                                   bool update_cr1) {
+  if (!update_cr1) {
+    ClearFPSCRExceptions(false);
+    return;
+  }
+  // Invalid is what the target range cannot hold, measured on the rounded
+  // value: truncating 2^31 - 0.5 stays in range where rounding it up does
+  // not. The limit is the power of two just past the maximum, which leaves
+  // the minimum itself in range.
+  Value* rounded = Round(b, round_mode);
+  double limit = to_int64 ? 9223372036854775808.0 : 2147483648.0;
+  Value* out_of_range = Or(CompareSGE(rounded, LoadConstantFloat64(limit)),
+                           CompareSLT(rounded, LoadConstantFloat64(-limit)));
+  StoreFPSCRSummary(Or(IsNan(b), out_of_range), true);
 }
 
 void PPCHIRBuilder::CopyFPSCRToCR1() {
@@ -501,15 +612,32 @@ void PPCHIRBuilder::CopyFPSCRToCR1() {
                And(Truncate(Shr(fpscr, 28), INT8_TYPE), LoadConstantInt8(1)));
 }
 
+// SO is bit 31, OV bit 30, CA bit 29, with no byte count modelled.
 Value* PPCHIRBuilder::LoadXER() {
   Value* v = Shl(ZeroExtend(LoadCA(), INT64_TYPE), 29);
-  // TODO(benvanik): construct with other flags; overflow, etc?
-  return v;
+  v = Or(v, Shl(ZeroExtend(LoadContext(offsetof(PPCContext, xer_ov), INT8_TYPE),
+                           INT64_TYPE),
+                30));
+  return Or(v,
+            Shl(ZeroExtend(LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE),
+                           INT64_TYPE),
+                31));
 }
 
 void PPCHIRBuilder::StoreXER(Value* value) {
-  // TODO(benvanik): use other fields? For now, just pull out CA.
   StoreCA(Truncate(And(Shr(value, 29), LoadConstantInt64(1)), INT8_TYPE));
+  StoreContext(offsetof(PPCContext, xer_ov),
+               Truncate(And(Shr(value, 30), LoadConstantInt64(1)), INT8_TYPE));
+  StoreContext(offsetof(PPCContext, xer_so),
+               Truncate(And(Shr(value, 31), LoadConstantInt64(1)), INT8_TYPE));
+}
+
+void PPCHIRBuilder::StoreOV(Value* value) {
+  assert_true(value->type == INT8_TYPE);
+  StoreContext(offsetof(PPCContext, xer_ov), value);
+  // Sticky until mtxer or mcrxr clears it.
+  StoreContext(offsetof(PPCContext, xer_so),
+               Or(LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE), value));
 }
 
 Value* PPCHIRBuilder::LoadCA() {
@@ -577,14 +705,6 @@ void PPCHIRBuilder::StoreVR(uint32_t reg, Value* value) {
   trace_reg.value = value;
 }
 
-void PPCHIRBuilder::StoreReserved(Value* val) {
-  assert_true(val->type == INT64_TYPE);
-  StoreContext(offsetof(PPCContext, reserved_val), val);
-}
-
-Value* PPCHIRBuilder::LoadReserved() {
-  return LoadContext(offsetof(PPCContext, reserved_val), INT64_TYPE);
-}
 void PPCHIRBuilder::SetReturnAddress(Value* value) {
   /*
      Record the address as being a possible target of a return. This is

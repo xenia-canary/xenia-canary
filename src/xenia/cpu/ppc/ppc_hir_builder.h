@@ -10,6 +10,8 @@
 #ifndef XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 #define XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 
+#include <initializer_list>
+
 #include "xenia/base/string_buffer.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/hir/hir_builder.h"
@@ -59,13 +61,29 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void UpdateCR6(Value* src_value);
   Value* LoadFPSCR();
   void StoreFPSCR(Value* value);
-  void UpdateFPSCR(Value* result, bool update_cr1);
+  // For instructions that cannot raise an exception.
+  void ClearFPSCRExceptions(bool update_cr1);
+  // Derives VX from the operands and the result. Only the recording forms pay
+  // for it; Rc=0 clears the exception bits as ClearFPSCRExceptions does.
+  // `suppress`, when given, is a condition that clears everything raised.
+  void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
+                   bool update_cr1, Value* suppress = nullptr);
+  // As UpdateFPSCR, plus the 0 x inf that a QNaN addend would hide.
+  void UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c, Value* b,
+                                 bool update_cr1, Value* suppress = nullptr);
+  // The single-precision quirk: a denormalized operand answers with the
+  // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
+  Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
+  Value* ApplySingleDenormalOperand(Value* quirk, Value* result);
+  // For the conversions to integer, which are invalid for a NaN or a value
+  // the target cannot hold.
+  void UpdateFPSCRForConvertToInteger(Value* b, hir::RoundMode round_mode,
+                                      bool to_int64, bool update_cr1);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);
-  // void UpdateXERWithOverflow();
-  // void UpdateXERWithOverflowAndCarry();
-  // void StoreOV(Value* value);
+  // Call before UpdateCR, which copies XER[SO] into the CR field.
+  void StoreOV(Value* value);
   Value* LoadCA();
   void StoreCA(Value* value);
   Value* LoadSAT();
@@ -78,8 +96,6 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   Value* LoadVR(uint32_t reg);
   void StoreVR(uint32_t reg, Value* value);
 
-  void StoreReserved(Value* val);
-  Value* LoadReserved();
   // calls original impl in hirbuilder, but also records the is_return_site bit
   // into flags in the guestmodule
   void SetReturnAddress(Value* value);
@@ -87,6 +103,7 @@ class PPCHIRBuilder : public hir::HIRBuilder {
  private:
   void MaybeBreakOnInstruction(uint32_t address);
   void AnnotateLabel(uint32_t address, Label* label);
+  void StoreFPSCRSummary(Value* vx, bool update_cr1);
 
   PPCFrontend* frontend_;
 

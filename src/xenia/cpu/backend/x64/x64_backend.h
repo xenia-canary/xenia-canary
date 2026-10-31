@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_X64_X64_BACKEND_H_
 #define XENIA_CPU_BACKEND_X64_X64_BACKEND_H_
 
+#include <atomic>
 #include <memory>
 
 #include "xenia/base/bit_map.h"
@@ -57,16 +58,25 @@ static constexpr uint32_t GUEST_TRAMPOLINE_MIN_LEN = 8;
 static constexpr uint32_t MAX_GUEST_TRAMPOLINES =
     (GUEST_TRAMPOLINE_END - GUEST_TRAMPOLINE_BASE) / GUEST_TRAMPOLINE_MIN_LEN;
 
-#define RESERVE_BLOCK_SHIFT 16
-
-#define RESERVE_NUM_ENTRIES \
-  ((1024ULL * 1024ULL * 1024ULL * 4ULL) >> RESERVE_BLOCK_SHIFT)
 // https://codalogic.com/blog/2022/12/06/Exploring-PowerPCs-read-modify-write-operations
-struct ReserveHelper {
-  uint64_t blocks[RESERVE_NUM_ENTRIES / 64];
+// Xenon reservation granule is one 128 byte cache line.
+static constexpr uint32_t RESERVE_GRANULE_SHIFT = 7;
+// A generation counter per granule, hashed. stwcx. bumps its granule to kill
+// other threads' reservations. Colliding granules only cost a spurious failure.
+static constexpr uint32_t RESERVE_NUM_ENTRIES = 1u << 20;
+static constexpr uint32_t RESERVE_ENTRY_MASK = RESERVE_NUM_ENTRIES - 1;
 
-  ReserveHelper() { memset(blocks, 0, sizeof(blocks)); }
+struct ReserveHelper {
+  std::atomic<uint32_t> generations[RESERVE_NUM_ENTRIES];
+
+  ReserveHelper() {
+    for (auto& generation : generations) {
+      generation.store(0, std::memory_order_relaxed);
+    }
+  }
 };
+// emitted code indexes the table with a hardcoded 4 byte stride
+static_assert(sizeof(std::atomic<uint32_t>) == sizeof(uint32_t));
 
 struct X64BackendStackpoint {
   uint64_t host_stack_;
@@ -100,8 +110,9 @@ struct X64BackendContext {
   uint64_t* guest_tick_count;
   // records mapping of host_stack to guest_stack
   X64BackendStackpoint* stackpoints;
-  uint64_t cached_reserve_offset;
-  uint32_t cached_reserve_bit;
+  // address of the live reservation, and its granule generation when taken
+  uint32_t reserve_address;
+  uint32_t reserve_generation;
   unsigned int current_stackpoint_depth;
   unsigned int mxcsr_fpu;  // currently, the way we implement rounding mode
                            // affects both vmx and the fpu
@@ -187,6 +198,13 @@ class X64Backend : public Backend {
   void* LookupXMMConstantAddress(unsigned index) {
     return reinterpret_cast<void*>(emitter_data() + sizeof(vec128_t) * index);
   }
+
+  uint32_t ReservedLoad32(ppc::PPCContext* context, uint32_t address) override;
+  uint64_t ReservedLoad64(ppc::PPCContext* context, uint32_t address) override;
+  bool ReservedStore32(ppc::PPCContext* context, uint32_t address,
+                       uint32_t value) override;
+  bool ReservedStore64(ppc::PPCContext* context, uint32_t address,
+                       uint64_t value) override;
 #if XE_X64_PROFILER_AVAILABLE == 1
   uint64_t* GetProfilerRecordForFunction(uint32_t guest_address);
 #endif

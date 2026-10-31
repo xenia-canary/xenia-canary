@@ -3343,6 +3343,11 @@ struct CONVERT_I32_F64
       e.frintx(e.d0, src);
       e.fcvtzs(i.dest, e.d0);
     }
+    // fcvtzs saturates as PPC does, but gives 0 for a NaN, where PPC gives
+    // 0x80000000
+    e.fcmp(src, src);
+    e.mov(e.w0, static_cast<uint64_t>(0x80000000u));
+    e.csel(i.dest, e.w0, i.dest, VS);
   }
 };
 struct CONVERT_I64_F64
@@ -3364,6 +3369,10 @@ struct CONVERT_I64_F64
       e.frintx(e.d0, src);
       e.fcvtzs(i.dest, e.d0);
     }
+    // As for CONVERT_I32_F64: a NaN gives 0x8000000000000000
+    e.fcmp(src, src);
+    e.mov(e.x0, static_cast<uint64_t>(0x8000000000000000ull));
+    e.csel(i.dest, e.x0, i.dest, VS);
   }
 };
 struct CONVERT_F32_I32

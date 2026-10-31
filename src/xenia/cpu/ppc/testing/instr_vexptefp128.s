@@ -20,7 +20,7 @@ test_vexptefp128_3:
   vexptefp128 v5, v4
   blr
   #_ REGISTER_OUT v4 [3F000000, 3E800000, 3E000000, 3D800000]
-  #_ REGISTER_OUT v5 [3FB504F3, 3F9837F0, 3F8B95C2, 3F85AAC3]
+  #_ REGISTER_OUT v5 [3FB50000, 3F980000, 3F8C0000, 3F860000]
 
 test_vexptefp128_4:
   # 2^x estimate for larger values
