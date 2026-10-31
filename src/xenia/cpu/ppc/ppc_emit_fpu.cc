@@ -211,7 +211,7 @@ static int InstrEmit_fmadd(PPCHIRBuilder& f, const InstrData& i, bool single) {
     v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
   return 0;
 }
 
@@ -236,7 +236,7 @@ static int InstrEmit_fmsub(PPCHIRBuilder& f, const InstrData& i, bool single) {
     v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
   return 0;
 }
 int InstrEmit_fmsubx(PPCHIRBuilder& f, const InstrData& i) {
@@ -256,7 +256,7 @@ int InstrEmit_fnmaddx(PPCHIRBuilder& f, const InstrData& i) {
   // alone, so negating afterwards would flip every NaN this produces.
   Value* v = f.MulAdd(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc);
   return 0;
 }
 
@@ -270,7 +270,7 @@ int InstrEmit_fnmaddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, c, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
   return 0;
 }
 
@@ -281,7 +281,7 @@ int InstrEmit_fnmsubx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulSub(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc);
   return 0;
 }
 
@@ -295,7 +295,7 @@ int InstrEmit_fnmsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, c, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c, b}, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
   return 0;
 }
 
