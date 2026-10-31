@@ -494,6 +494,23 @@ static Value* FpMagnitude(PPCHIRBuilder& f, Value* value) {
                f.LoadConstantUint64(0x7FFFFFFFFFFFFFFFull));
 }
 
+// An invalid operation is the only way a NaN can appear that did not come
+// from an operand, and an SNaN operand is invalid however it propagates.
+static Value* InvalidFromResult(PPCHIRBuilder& f, Value* result,
+                                std::initializer_list<Value*> operands) {
+  Value* any_nan = nullptr;
+  Value* any_snan = nullptr;
+  for (Value* operand : operands) {
+    Value* is_nan = f.IsNan(operand);
+    Value* quiet_bit = f.And(f.Cast(operand, INT64_TYPE),
+                             f.LoadConstantUint64(0x0008000000000000ull));
+    Value* is_snan = f.And(is_nan, f.IsFalse(quiet_bit));
+    any_nan = any_nan ? f.Or(any_nan, is_nan) : is_nan;
+    any_snan = any_snan ? f.Or(any_snan, is_snan) : is_snan;
+  }
+  return f.And(f.IsNan(result), f.Or(any_snan, f.IsFalse(any_nan)));
+}
+
 void PPCHIRBuilder::UpdateFPSCR(Value* result,
                                 std::initializer_list<Value*> operands,
                                 bool update_cr1, Value* suppress) {
@@ -502,19 +519,31 @@ void PPCHIRBuilder::UpdateFPSCR(Value* result,
     return;
   }
 
-  // An invalid operation is the only way a NaN can appear that did not come
-  // from an operand, and an SNaN operand is invalid however it propagates.
-  Value* any_nan = nullptr;
-  Value* any_snan = nullptr;
-  for (Value* operand : operands) {
-    Value* is_nan = IsNan(operand);
-    Value* quiet_bit = And(Cast(operand, INT64_TYPE),
-                           LoadConstantUint64(0x0008000000000000ull));
-    Value* is_snan = And(is_nan, IsFalse(quiet_bit));
-    any_nan = any_nan ? Or(any_nan, is_nan) : is_nan;
-    any_snan = any_snan ? Or(any_snan, is_snan) : is_snan;
+  Value* vx = InvalidFromResult(*this, result, operands);
+  if (suppress) {
+    vx = And(vx, IsFalse(suppress));
   }
-  Value* vx = And(IsNan(result), Or(any_snan, IsFalse(any_nan)));
+
+  StoreFPSCRSummary(vx, true);
+}
+
+void PPCHIRBuilder::UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c,
+                                              Value* b, bool update_cr1,
+                                              Value* suppress) {
+  if (!update_cr1) {
+    ClearFPSCRExceptions(false);
+    return;
+  }
+
+  // 0 x inf is invalid whatever the addend, but with a QNaN addend the result
+  // is that QNaN, which reads as propagated, so test the multiplicands.
+  Value* inf = LoadConstantUint64(0x7FF0000000000000ull);
+  Value* a_magnitude = FpMagnitude(*this, a);
+  Value* c_magnitude = FpMagnitude(*this, c);
+  Value* zero_times_inf =
+      Or(And(IsFalse(a_magnitude), CompareEQ(c_magnitude, inf)),
+         And(CompareEQ(a_magnitude, inf), IsFalse(c_magnitude)));
+  Value* vx = Or(InvalidFromResult(*this, result, {a, c, b}), zero_times_inf);
   if (suppress) {
     vx = And(vx, IsFalse(suppress));
   }
