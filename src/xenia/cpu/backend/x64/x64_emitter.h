@@ -260,6 +260,10 @@ class X64Emitter : public Xbyak::CodeGenerator {
   void UnimplementedInstr(const hir::Instr* i);
 
   void Call(const hir::Instr* instr, GuestFunction* function);
+  // Emits a PPC __savegprlr_N/__restgprlr_N helper body inline instead of
+  // calling it. Returns false when the callee is not a GPR saverest helper.
+  bool TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
+                                    const GuestFunction* function);
   void CallIndirect(const hir::Instr* instr, const Xbyak::Reg64& reg);
   void CallExtern(const hir::Instr* instr, const Function* function);
   void CallNative(void* fn);
