@@ -357,6 +357,12 @@ int InstrEmit_frspx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.X.RB);
   Value* v = f.Convert(b, FLOAT32_TYPE, ROUND_DYNAMIC);
   v = f.Convert(v, FLOAT64_TYPE);
+  // The conversions keep an SNaN signalling, as lfs and stfs need, but
+  // rounding is arithmetic and quiets it.
+  Value* quieted = f.Cast(
+      f.Or(f.Cast(v, INT64_TYPE), f.LoadConstantUint64(0x0008000000000000ull)),
+      FLOAT64_TYPE);
+  v = f.Select(f.IsNan(v), quieted, v);
   f.StoreFPR(i.X.RT, v);
   f.UpdateFPSCR(v, {b}, i.X.Rc);
   return 0;
