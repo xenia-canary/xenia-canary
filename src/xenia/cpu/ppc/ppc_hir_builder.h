@@ -68,6 +68,9 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   // `suppress`, when given, is a condition that clears everything raised.
   void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
                    bool update_cr1, Value* suppress = nullptr);
+  // As UpdateFPSCR, plus the 0 x inf that a QNaN addend would hide.
+  void UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c, Value* b,
+                                 bool update_cr1, Value* suppress = nullptr);
   // The single-precision quirk: a denormalized operand answers with the
   // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
   Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
