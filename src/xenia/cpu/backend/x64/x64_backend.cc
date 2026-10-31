@@ -10,6 +10,7 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 
 #include "third_party/capstone/include/capstone/capstone.h"
@@ -1808,6 +1809,39 @@ void X64Backend::PrepareForReentry(void* ctx) {
   X64BackendContext* bctx = BackendContextForGuestContext(ctx);
 
   bctx->current_stackpoint_depth = 0;
+}
+
+void X64Backend::ReleaseReservation(void* ctx) {
+  // ctx is a pointer to the thread's emulated CPU regs
+  // bctx is state notes on the thread in question
+  X64BackendContext* bctx = BackendContextForGuestContext(ctx);
+  constexpr unsigned int has_reserve = 1U << kX64BackendHasReserveBit;
+  // if thread doesn't have a reservation, nothing to do
+  if (!(bctx->flags & has_reserve)) {
+    return;
+  }
+  // cached_reserve_offset is the address of a 64-bit in a shared table.
+  // Each bit marks a 64 KB block, with many others accessing the other bits
+  // concurrently. Need atomic to avoid concurrency issues.
+  auto block = reinterpret_cast<std::atomic<uint64_t>*>(
+      static_cast<uintptr_t>(bctx->cached_reserve_offset));
+  // "AND" the block of reservations with everything but the bit of interest,
+  // aka turn off this bit specifically.
+  block->fetch_and(~(uint64_t(1) << bctx->cached_reserve_bit));
+  // The reserved store helper sees the flag clear.
+  bctx->flags &= ~has_reserve;
+}
+
+bool X64Backend::IsInReservationHelper(uint64_t host_pc) {
+  constexpr uint64_t kMaxHelperSize = 0x100;
+  for (void* helper : {try_acquire_reservation_helper_,
+                       reserved_store_32_helper, reserved_store_64_helper}) {
+    uint64_t start = reinterpret_cast<uint64_t>(helper);
+    if (helper && host_pc >= start && host_pc < start + kMaxHelperSize) {
+      return true;
+    }
+  }
+  return false;
 }
 
 constexpr uint32_t mxcsr_table[8] = {
