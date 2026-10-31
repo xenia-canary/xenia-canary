@@ -634,10 +634,16 @@ void ContentManager::CloseOpenedFilesFromContent(
 
 uint64_t ContentManager::GetContentTotalSpace() const {
   std::error_code ec;
+  uint64_t max_capacity =
+      500 * 1024ull * 1024ull * 1024ull;  // 500 GB max allowed for sata drive
   const auto drive_stats = std::filesystem::space(root_path_, ec);
   if (ec) {
     XELOGW("{}: {} (:08X)", __func__, ec.message(), ec.value());
     return 0;
+  }
+
+  if (drive_stats.capacity > max_capacity) {
+    return max_capacity;
   }
 
   return drive_stats.capacity;
