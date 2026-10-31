@@ -632,6 +632,19 @@ std::pair<uint32_t, uint32_t> UserTracker::GetUserSubscriptionData(
   return data;
 }
 
+int32_t UserTracker::GetUserPreferenceData(UserProfile* user) const {
+  int32_t data;
+  if (const auto setting = GetSetting(
+          user, kDashboardID,
+          static_cast<uint32_t>(UserSettingId::XPROFILE_USER_PREFERENCES))) {
+    data = std::get<int32_t>(setting->get_host_data());
+  } else {
+    data = 0;
+  }
+
+  return data;
+}
+
 void UserTracker::UpdateContext(uint64_t xuid, uint32_t id, uint32_t value) {
   if (!IsUserTracked(xuid)) {
     return;

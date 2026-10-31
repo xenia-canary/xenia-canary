@@ -82,8 +82,10 @@ class UserTracker {
   bool GetUserSetting(uint64_t xuid, uint32_t title_id, uint32_t setting_id,
                       X_USER_PROFILE_SETTING* setting_ptr,
                       uint32_t& extended_data_address) const;
+
   std::pair<uint32_t, uint32_t> GetUserSubscriptionData(
       UserProfile* user) const;
+  int32_t GetUserPreferenceData(UserProfile* user) const;
 
   // Titles
   void AddTitleToPlayedList();
