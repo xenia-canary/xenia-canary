@@ -1188,11 +1188,12 @@ static T MMIOAwareLoad(void* _ctx, unsigned int guestaddr) {
       value = xe::byte_swap(value);
     }
   } else {
-    /*
-          was having issues, found by comparing the values used with exceptions
-          to these that we were reversed...
-    */
+    // The handlers return the value a byte-swapping load gives, as the
+    // exception path does for movbe, so a load without the swap reverses it.
     value = gaddr->read(nullptr, gaddr->callback_context, guestaddr);
+    if (!swap) {
+      value = xe::byte_swap(value);
+    }
   }
   return value;
 }
