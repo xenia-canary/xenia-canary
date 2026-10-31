@@ -67,7 +67,7 @@ make install
 if [ "$(uname -o 2>/dev/null)" = "Msys" ] && [ -n "$MINGW_PREFIX" ]; then
   echo ""
   echo "Copying MinGW runtime DLLs..."
-  for dll in libiconv-2.dll zlib1.dll; do
+  for dll in libdl.dll libiconv-2.dll zlib1.dll; do
     if [ -f "$MINGW_PREFIX/bin/$dll" ] && [ ! -f "$THIS_SCRIPT_DIR/bin/$dll" ]; then
       cp "$MINGW_PREFIX/bin/$dll" "$THIS_SCRIPT_DIR/bin/"
     fi
