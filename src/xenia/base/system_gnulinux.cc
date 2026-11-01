@@ -10,8 +10,11 @@
 #include <alloca.h>
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <cstring>
+#include <fstream>
+#include <vector>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
@@ -20,6 +23,10 @@
 
 // Use headers in third party to not depend on system sdl headers for building
 #include "third_party/SDL2/include/SDL.h"
+
+// Some libcs do not expose environ through <unistd.h> without feature-test
+// macros Xenia does not otherwise require.
+extern char** environ;
 
 namespace xe {
 
@@ -33,6 +40,55 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
   auto cmd = std::string("xdg-open ");
   cmd.append(path);
   system(cmd.c_str());
+}
+
+bool RestartApplication() {
+  // /proc/self/exe is a kernel-provided magic link to this already-running
+  // process's executable. Calling execve on it directly therefore avoids
+  // resolving an externally supplied path or invoking a shell.
+  //
+  // The argument vector is read from /proc/self/cmdline, which contains the
+  // original NUL-separated argv. No cvar or other runtime input is appended.
+  std::ifstream cmdline_file("/proc/self/cmdline", std::ios::binary);
+  if (!cmdline_file.is_open()) {
+    return false;
+  }
+  std::vector<char> cmdline_bytes(
+      (std::istreambuf_iterator<char>(cmdline_file)),
+      std::istreambuf_iterator<char>());
+
+  std::vector<std::string> args;
+  size_t start = 0;
+  for (size_t i = 0; i < cmdline_bytes.size(); ++i) {
+    if (cmdline_bytes[i] == '\0') {
+      args.emplace_back(&cmdline_bytes[start], i - start);
+      start = i + 1;
+    }
+  }
+  if (args.empty()) {
+    args.emplace_back("/proc/self/exe");
+  }
+
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+
+  pid_t child_pid = fork();
+  if (child_pid < 0) {
+    return false;
+  }
+  if (child_pid == 0) {
+    // Child: replace this process image with a fresh instance of Xenia.
+    execve("/proc/self/exe", argv.data(), environ);
+    // Only reached if execve failed.
+    _exit(127);
+  }
+  // Parent: the new instance is on its way up: let the caller shut this one
+  // down normally (saving config, releasing resources, etc).
+  return true;
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
