@@ -1201,7 +1201,10 @@ struct COMPARE_NE_F32
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     if (!HasPrecedingCmpOfSameValues(i.instr)) {
-      e.vcomiss(i.src1, i.src2);
+      EmitCommutativeBinaryXmmOp(
+          e, i, [](X64Emitter& e, I8Op dest, const Xmm& src1, const Xmm& src2) {
+            e.vcomiss(src1, src2);
+          });
     }
     CompareNeDoSetne(e, i.instr, i.dest);
   }
@@ -1211,7 +1214,10 @@ struct COMPARE_NE_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     if (!HasPrecedingCmpOfSameValues(i.instr)) {
-      e.vcomisd(i.src1, i.src2);
+      EmitCommutativeBinaryXmmOp(
+          e, i, [](X64Emitter& e, I8Op dest, const Xmm& src1, const Xmm& src2) {
+            e.vcomisd(src1, src2);
+          });
     }
     CompareNeDoSetne(e, i.instr, i.dest);
   }
