@@ -10,6 +10,7 @@
 #include "xenia/cpu/ppc/ppc_emit-private.h"
 
 #include <stddef.h>
+#include <algorithm>
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/cpu/ppc/ppc_context.h"
@@ -723,25 +724,121 @@ int InstrEmit_lmw(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 // Integer load and store string (A-17)
+// The string instructions move bytes between memory and the low words of RT,
+// RT+1, ..., wrapping from r31 to r0, high byte first. A load zeroes each
+// register first, so its upper word is cleared and a last partial register is
+// padded with zeros. lswi and stswi take the count from NB (0 means 32), lswx
+// and stswx from XER[25:31]. With a count of 0, stswx stores nothing, but lswx
+// still loads one byte into RT on the console (the books leave RT undefined).
+
+// Moves bytes [offset, offset + size) of the string at ea to or from register
+// (rt + offset / 4) % 32. size is 1 to 4 and offset is a multiple of 4.
+static void MoveStringWord(PPCHIRBuilder& f, bool store, uint32_t rt, Value* ea,
+                           uint32_t offset, uint32_t size) {
+  uint32_t reg = (rt + offset / 4) % 32;
+  if (size == 4) {
+    Value* address = f.Add(ea, f.LoadConstantUint64(offset));
+    if (store) {
+      f.Store(address, f.ByteSwap(f.Truncate(f.LoadGPR(reg), INT32_TYPE)));
+    } else {
+      f.StoreGPR(reg, f.ZeroExtend(f.ByteSwap(f.Load(address, INT32_TYPE)),
+                                   INT64_TYPE));
+    }
+    return;
+  }
+  Value* rs = store ? f.LoadGPR(reg) : nullptr;
+  Value* v = f.LoadZeroInt64();
+  for (uint32_t b = 0; b < size; b++) {
+    Value* address = f.Add(ea, f.LoadConstantUint64(offset + b));
+    uint32_t shift = 24 - b * 8;
+    if (store) {
+      f.Store(address, f.Truncate(f.Shr(rs, shift), INT8_TYPE));
+    } else {
+      v = f.Or(v, f.Shl(f.ZeroExtend(f.Load(address, INT8_TYPE), INT64_TYPE),
+                        shift));
+    }
+  }
+  if (!store) {
+    f.StoreGPR(reg, v);
+  }
+}
+
+static int InstrEmit_StringImmediate(PPCHIRBuilder& f, const InstrData& i,
+                                     bool store) {
+  // EA <- (RA|0), n <- NB ? NB : 32
+  Value* ea = i.X.RA ? f.LoadGPR(i.X.RA) : f.LoadZeroInt64();
+  uint32_t n = i.X.RB ? i.X.RB : 32;
+  for (uint32_t offset = 0; offset < n; offset += 4) {
+    MoveStringWord(f, store, i.X.RT, ea, offset, std::min(n - offset, 4u));
+  }
+  return 0;
+}
+
+static int InstrEmit_StringIndexed(PPCHIRBuilder& f, const InstrData& i,
+                                   bool store) {
+  // EA <- (RA|0) + (RB), n <- XER[25:31], at most 127 bytes in 32 registers.
+  // Each whole word is one access, then the 1 to 3 bytes left go one at a
+  // time, so nothing past the string is touched. Each branch starts a block,
+  // so EA and the count are loaded again after one.
+  Label* end = f.NewLabel();
+  Label* tails[32];
+  for (uint32_t j = 0; j < 32; j++) {
+    uint32_t offset = j * 4;
+    tails[j] = f.NewLabel();
+    // lswx with a count of 0 goes on to the first tail, which loads one byte
+    if (store || j) {
+      f.BranchTrue(f.CompareULE(f.LoadXERCount(), f.LoadConstantUint64(offset)),
+                   end);
+    }
+    f.BranchTrue(
+        f.CompareULT(f.LoadXERCount(), f.LoadConstantUint64(offset + 4)),
+        tails[j]);
+    MoveStringWord(f, store, i.X.RT, CalculateEA_0(f, i.X.RA, i.X.RB), offset,
+                   4);
+  }
+  f.Branch(end);
+  for (uint32_t j = 0; j < 32; j++) {
+    uint32_t offset = j * 4;
+    f.MarkLabel(tails[j]);
+    // A load zeroes the register with the first byte, then ORs in the others
+    uint32_t reg = (i.X.RT + j) % 32;
+    for (uint32_t b = 0; b < 3; b++) {
+      if (b) {
+        f.BranchTrue(
+            f.CompareULE(f.LoadXERCount(), f.LoadConstantUint64(offset + b)),
+            end);
+      }
+      Value* address = f.Add(CalculateEA_0(f, i.X.RA, i.X.RB),
+                             f.LoadConstantUint64(offset + b));
+      uint32_t shift = 24 - b * 8;
+      if (store) {
+        f.Store(address, f.Truncate(f.Shr(f.LoadGPR(reg), shift), INT8_TYPE));
+      } else {
+        Value* v =
+            f.Shl(f.ZeroExtend(f.Load(address, INT8_TYPE), INT64_TYPE), shift);
+        f.StoreGPR(reg, b ? f.Or(f.LoadGPR(reg), v) : v);
+      }
+    }
+    f.Branch(end);
+  }
+  f.MarkLabel(end);
+  return 0;
+}
 
 int InstrEmit_lswi(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_StringImmediate(f, i, false);
 }
 
 int InstrEmit_lswx(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_StringIndexed(f, i, false);
 }
 
 int InstrEmit_stswi(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_StringImmediate(f, i, true);
 }
 
 int InstrEmit_stswx(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_StringIndexed(f, i, true);
 }
 
 // Memory synchronization (A-18)
