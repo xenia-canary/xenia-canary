@@ -63,14 +63,32 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void StoreFPSCR(Value* value);
   // For instructions that cannot raise an exception.
   void ClearFPSCRExceptions(bool update_cr1);
-  // Derives VX from the operands and the result. Only the recording forms pay
-  // for it; Rc=0 clears the exception bits as ClearFPSCRExceptions does.
-  // `suppress`, when given, is a condition that clears everything raised.
+  // What UpdateFPSCR checks besides invalid operation. For inexact, the result
+  // is compared exactly with what the operands give; overflow and zero divide
+  // are read off the operands and the result.
+  enum class FPOperation {
+    kOther,  // invalid operation only
+    kSum,
+    kDifference,
+    kProduct,
+    kQuotient,
+    kSquareRoot,
+    kRoundToSingle,
+    kEstimate,  // fres and frsqrte: zero divide and overflow, never inexact
+  };
+  // Derives the exception bits from the operands and the result. Only the
+  // recording forms pay for it; Rc=0 clears the exception bits as
+  // ClearFPSCRExceptions does. `suppress`, when given, is a condition that
+  // clears everything raised.
   void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
-                   bool update_cr1, Value* suppress = nullptr);
-  // As UpdateFPSCR, plus the 0 x inf that a QNaN addend would hide.
+                   bool update_cr1, Value* suppress = nullptr,
+                   FPOperation operation = FPOperation::kOther);
+  // As UpdateFPSCR for a x c + b, or a x c - b when `subtract`, with the
+  // result negated when `negate`. Adds the 0 x inf that a QNaN addend would
+  // hide.
   void UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c, Value* b,
-                                 bool update_cr1, Value* suppress = nullptr);
+                                 bool subtract, bool negate, bool update_cr1,
+                                 Value* suppress = nullptr);
   // The single-precision quirk: a denormalized operand answers with the
   // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
   Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
@@ -105,7 +123,10 @@ class PPCHIRBuilder : public hir::HIRBuilder {
  private:
   void MaybeBreakOnInstruction(uint32_t address);
   void AnnotateLabel(uint32_t address, Label* label);
-  void StoreFPSCRSummary(Value* vx, bool update_cr1);
+  // `ox` and `raised` (any other exception) are null for none. Every exception
+  // sets FX.
+  void StoreFPSCRSummary(Value* vx, bool update_cr1, Value* ox = nullptr,
+                         Value* raised = nullptr);
 
   PPCFrontend* frontend_;
 

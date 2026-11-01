@@ -24,6 +24,7 @@ using namespace xe::cpu::hir;
 
 using xe::cpu::hir::RoundMode;
 using xe::cpu::hir::Value;
+using FPOperation = PPCHIRBuilder::FPOperation;
 
 // Good source of information:
 // https://github.com/mamedev/historic-mame/blob/master/src/emu/cpu/powerpc/ppc_ops.c
@@ -41,7 +42,7 @@ int InstrEmit_faddx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.Add(a, b);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, nullptr, FPOperation::kSum);
   return 0;
 }
 
@@ -53,7 +54,7 @@ int InstrEmit_faddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal, FPOperation::kSum);
   return 0;
 }
 
@@ -66,13 +67,13 @@ int InstrEmit_fdivx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.Div(a, b);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, nullptr, FPOperation::kQuotient);
 #else
   Value* a = f.LoadFPR(i.X.RA);
   Value* b = f.LoadFPR(i.X.RB);
   Value* v = f.Div(a, b);
   f.StoreFPR(i.X.RT, v);
-  f.UpdateFPSCR(v, {a, b}, i.X.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.X.Rc, nullptr, FPOperation::kQuotient);
 #endif
   return 0;
 }
@@ -95,7 +96,7 @@ int InstrEmit_fdivsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, b});
   v = f.Select(denormal, v, f.ToSingle(v));
   f.StoreFPR(frt, v);
-  f.UpdateFPSCR(v, {a, b}, rc);
+  f.UpdateFPSCR(v, {a, b}, rc, nullptr, FPOperation::kQuotient);
   return 0;
 }
 
@@ -105,7 +106,7 @@ int InstrEmit_fmulx(PPCHIRBuilder& f, const InstrData& i) {
   Value* c = f.LoadFPR(i.A.FRC);
   Value* v = f.Mul(a, c);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, c}, i.A.Rc, nullptr, FPOperation::kProduct);
   return 0;
 }
 
@@ -117,7 +118,7 @@ int InstrEmit_fmulsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, c});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, c}, i.A.Rc, denormal);
+  f.UpdateFPSCR(v, {a, c}, i.A.Rc, denormal, FPOperation::kProduct);
   return 0;
 }
 
@@ -126,7 +127,7 @@ int InstrEmit_fresx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.Recip(b);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {b}, i.A.Rc);
+  f.UpdateFPSCR(v, {b}, i.A.Rc, nullptr, FPOperation::kEstimate);
   return 0;
 }
 
@@ -136,7 +137,7 @@ int InstrEmit_frsqrtex(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.RSqrt(b);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {b}, i.A.Rc);
+  f.UpdateFPSCR(v, {b}, i.A.Rc, nullptr, FPOperation::kEstimate);
   return 0;
 }
 
@@ -146,7 +147,7 @@ int InstrEmit_fsubx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.Sub(a, b);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, nullptr, FPOperation::kDifference);
   return 0;
 }
 
@@ -158,7 +159,7 @@ int InstrEmit_fsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal);
+  f.UpdateFPSCR(v, {a, b}, i.A.Rc, denormal, FPOperation::kDifference);
   return 0;
 }
 
@@ -178,14 +179,14 @@ static int InstrEmit_fsqrt(PPCHIRBuilder& f, const InstrData& i, bool single) {
   Value* v = f.Sqrt(b);
   if (!single) {
     f.StoreFPR(i.A.FRT, v);
-    f.UpdateFPSCR(v, {b}, i.A.Rc);
+    f.UpdateFPSCR(v, {b}, i.A.Rc, nullptr, FPOperation::kSquareRoot);
     return 0;
   }
   // A denormalized operand keeps the double root, unrounded.
   Value* denormal = f.SingleDenormalOperand({b});
   v = f.Select(denormal, v, f.ToSingle(v));
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCR(v, {b}, i.A.Rc);
+  f.UpdateFPSCR(v, {b}, i.A.Rc, nullptr, FPOperation::kSquareRoot);
   return 0;
 }
 int InstrEmit_fsqrtx(PPCHIRBuilder& f, const InstrData& i) {
@@ -211,7 +212,7 @@ static int InstrEmit_fmadd(PPCHIRBuilder& f, const InstrData& i, bool single) {
     v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, false, false, i.A.Rc, denormal);
   return 0;
 }
 
@@ -236,7 +237,7 @@ static int InstrEmit_fmsub(PPCHIRBuilder& f, const InstrData& i, bool single) {
     v = f.ApplySingleDenormalOperand(denormal, v);
   }
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, true, false, i.A.Rc, denormal);
   return 0;
 }
 int InstrEmit_fmsubx(PPCHIRBuilder& f, const InstrData& i) {
@@ -256,7 +257,7 @@ int InstrEmit_fnmaddx(PPCHIRBuilder& f, const InstrData& i) {
   // alone, so negating afterwards would flip every NaN this produces.
   Value* v = f.MulAdd(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, false, true, i.A.Rc);
   return 0;
 }
 
@@ -270,7 +271,7 @@ int InstrEmit_fnmaddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, c, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, false, true, i.A.Rc, denormal);
   return 0;
 }
 
@@ -281,7 +282,7 @@ int InstrEmit_fnmsubx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   Value* v = f.MulSub(a, c, b, /*negate_result=*/true);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, true, true, i.A.Rc);
   return 0;
 }
 
@@ -295,7 +296,7 @@ int InstrEmit_fnmsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* denormal = f.SingleDenormalOperand({a, c, b});
   v = f.ApplySingleDenormalOperand(denormal, v);
   f.StoreFPR(i.A.FRT, v);
-  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, i.A.Rc, denormal);
+  f.UpdateFPSCRForMultiplyAdd(v, a, c, b, true, true, i.A.Rc, denormal);
   return 0;
 }
 
@@ -358,7 +359,7 @@ int InstrEmit_frspx(PPCHIRBuilder& f, const InstrData& i) {
   // Unlike the conversions lfs and stfs use, this quiets an SNaN
   Value* v = f.ToSingle(b);
   f.StoreFPR(i.X.RT, v);
-  f.UpdateFPSCR(v, {b}, i.X.Rc);
+  f.UpdateFPSCR(v, {b}, i.X.Rc, nullptr, FPOperation::kRoundToSingle);
   return 0;
 }
 
