@@ -2060,14 +2060,32 @@ int InstrEmit_vpkuwus128(PPCHIRBuilder& f, const InstrData& i) {
   return InstrEmit_vpkuwus_(f, VX128_VD128, VX128_VA128, VX128_VB128);
 }
 
+int InstrEmit_vupkpx_(PPCHIRBuilder& f, const InstrData& i, uint32_t half) {
+  // Vector Unpack High/Low Pixel
+  // Each 1:5:5:5 halfword becomes a word: the sign bit extended to a byte, then
+  // each 5-bit field zero-extended to a byte. Sign-extending the halfwords to
+  // words gives the first byte, then the fields are shifted into place.
+  Value* v = f.Unpack(f.LoadVR(i.VX.VB), half | PACK_TYPE_16_IN_32 |
+                                             PACK_TYPE_IN_SIGNED |
+                                             PACK_TYPE_OUT_SIGNED);
+  Value* sign = f.And(v, f.LoadConstantVec128(vec128i(0xFF000000)));
+  Value* red =
+      f.And(f.VectorShl(v, f.LoadConstantVec128(vec128i(6)), INT32_TYPE),
+            f.LoadConstantVec128(vec128i(0x001F0000)));
+  Value* green =
+      f.And(f.VectorShl(v, f.LoadConstantVec128(vec128i(3)), INT32_TYPE),
+            f.LoadConstantVec128(vec128i(0x00001F00)));
+  Value* blue = f.And(v, f.LoadConstantVec128(vec128i(0x0000001F)));
+  f.StoreVR(i.VX.VD, f.Or(f.Or(sign, red), f.Or(green, blue)));
+  return 0;
+}
+
 int InstrEmit_vupkhpx(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_vupkpx_(f, i, PACK_TYPE_TO_HI);
 }
 
 int InstrEmit_vupklpx(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  return InstrEmit_vupkpx_(f, i, PACK_TYPE_TO_LO);
 }
 
 int InstrEmit_vupkhsh_(PPCHIRBuilder& f, uint32_t vd, uint32_t vb) {
