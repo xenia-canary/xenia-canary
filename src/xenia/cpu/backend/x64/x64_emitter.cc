@@ -325,7 +325,9 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   PopStackpoint();
   ret();
   // todo: do some kind of sorting by alignment?
-  for (auto&& tail_item : tail_code_) {
+  // By index, so tails that a tail's callback adds are emitted too
+  for (size_t i = 0; i < tail_code_.size(); i++) {
+    TailEmitter& tail_item = tail_code_[i];
     if (tail_item.alignment) {
       align(tail_item.alignment);
     }

@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_X64_X64_EMITTER_H_
 #define XENIA_CPU_BACKEND_X64_X64_EMITTER_H_
 
+#include <deque>
 #include <vector>
 
 #include "xenia/base/arena.h"
@@ -336,6 +337,8 @@ class X64Emitter : public Xbyak::CodeGenerator {
     return (feature_flags_ & feature_flag) == feature_flag;
   }
 
+  // The label stays valid for the whole function, even as more tails are
+  // added, and a tail's callback may add tails of its own.
   Xbyak::Label& AddToTail(TailEmitCallback callback, uint32_t alignment = 0);
   Xbyak::Label& NewCachedLabel();
 
@@ -456,7 +459,8 @@ class X64Emitter : public Xbyak::CodeGenerator {
     which would have to represent 0 as 4 bytes
   */
   bool may_use_membase32_as_zero_reg_;
-  std::vector<TailEmitter> tail_code_;
+  // A deque, so adding a tail doesn't move the labels already handed out
+  std::deque<TailEmitter> tail_code_;
   std::vector<Xbyak::Label*>
       label_cache_;  // for creating labels that need to be referenced much
                      // later by tail emitters
