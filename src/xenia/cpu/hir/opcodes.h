@@ -53,6 +53,9 @@ enum ArithmeticFlags {
   // following NEG because PPC leaves the sign of a NaN result alone, which a
   // NEG cannot know to do.
   ARITHMETIC_NEGATE_RESULT = (1 << 4),
+  // ADD/SUB/MUL/MUL_ADD/MUL_SUB on doubles: the default QNaN if an operand is
+  // outside the single range, see PPCHIRBuilder::SingleOutOfRangeOperand.
+  ARITHMETIC_SINGLE_RANGE = (1 << 5),
 };
 
 constexpr uint32_t MakePermuteMask(uint32_t sel_x, uint32_t x, uint32_t sel_y,

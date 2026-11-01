@@ -89,10 +89,14 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c, Value* b,
                                  bool subtract, bool negate, bool update_cr1,
                                  Value* suppress = nullptr);
-  // The single-precision quirk: a denormalized operand answers with the
-  // default QNaN and raises nothing. Feed the condition to UpdateFPSCR.
-  Value* SingleDenormalOperand(std::initializer_list<Value*> operands);
-  Value* ApplySingleDenormalOperand(Value* quirk, Value* result);
+  // The single-precision quirk: an operand outside the single range answers
+  // with the default QNaN and raises nothing (or, for divide and square root,
+  // keeps the double). Feed the condition to UpdateFPSCR.
+  Value* SingleOutOfRangeOperand(std::initializer_list<Value*> operands);
+  Value* ApplySingleOutOfRangeOperand(Value* quirk, Value* result);
+  // ARITHMETIC_SINGLE_RANGE, for the operation to apply the quirk itself,
+  // unless it's a recording form, which needs the condition as well.
+  uint32_t SingleRangeFlag(bool update_cr1) const;
   // For the conversions to integer, which are invalid for a NaN or a value
   // the target cannot hold.
   void UpdateFPSCRForConvertToInteger(Value* b, hir::RoundMode round_mode,

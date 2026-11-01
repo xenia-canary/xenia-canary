@@ -1736,13 +1736,14 @@ Value* HIRBuilder::Div(Value* value1, Value* value2,
 }
 
 Value* HIRBuilder::MulAdd(Value* value1, Value* value2, Value* value3,
-                          bool negate_result) {
+                          bool negate_result, uint32_t arithmetic_flags) {
   ASSERT_TYPES_EQUAL(value1, value2);
   ASSERT_TYPES_EQUAL(value1, value3);
 
-  Instr* i = AppendInstr(OPCODE_MUL_ADD_info,
-                         negate_result ? ARITHMETIC_NEGATE_RESULT : 0,
-                         AllocValue(value1->type));
+  Instr* i = AppendInstr(
+      OPCODE_MUL_ADD_info,
+      (negate_result ? ARITHMETIC_NEGATE_RESULT : 0) | arithmetic_flags,
+      AllocValue(value1->type));
   i->set_src1(value1);
   i->set_src2(value2);
   i->set_src3(value3);
@@ -1750,13 +1751,14 @@ Value* HIRBuilder::MulAdd(Value* value1, Value* value2, Value* value3,
 }
 
 Value* HIRBuilder::MulSub(Value* value1, Value* value2, Value* value3,
-                          bool negate_result) {
+                          bool negate_result, uint32_t arithmetic_flags) {
   ASSERT_TYPES_EQUAL(value1, value2);
   ASSERT_TYPES_EQUAL(value1, value3);
 
-  Instr* i = AppendInstr(OPCODE_MUL_SUB_info,
-                         negate_result ? ARITHMETIC_NEGATE_RESULT : 0,
-                         AllocValue(value1->type));
+  Instr* i = AppendInstr(
+      OPCODE_MUL_SUB_info,
+      (negate_result ? ARITHMETIC_NEGATE_RESULT : 0) | arithmetic_flags,
+      AllocValue(value1->type));
   i->set_src1(value1);
   i->set_src2(value2);
   i->set_src3(value3);
