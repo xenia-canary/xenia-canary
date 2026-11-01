@@ -188,16 +188,21 @@ dword_result_t XamInputGetKeystrokeEx_entry(
 
   keystroke.Zero();
 
-  if (kernel_state()->xam_state()->IsUIActive()) {
-    return X_ERROR_SUCCESS;
-  }
-
   uint32_t user_index = *user_index_ptr;
   auto input_system = kernel_state()->emulator()->input_system();
   auto lock = input_system->lock();
   if ((user_index & XUserIndexAny) == XUserIndexAny) {
     // Always pin user to 0.
     user_index = 0;
+  }
+
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    // 4D5307DC
+    X_INPUT_STATE discarded_state = {};
+    const auto result = input_system->GetState(
+        user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
+        &discarded_state);
+    return result == X_ERROR_DEVICE_NOT_CONNECTED ? result : X_ERROR_EMPTY;
   }
 
   if (flags & X_INPUT_FLAG::X_INPUT_FLAG_ANY_USER) {
