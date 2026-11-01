@@ -291,10 +291,8 @@ int InstrEmit_divwux(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_mulhdx(PPCHIRBuilder& f, const InstrData& i) {
   // RT <- ((RA) × (RB) as 128)[0:63]
-  if (i.XO.OE) {
-    // With XER update.
-    XEINSTRNOTIMPLEMENTED();
-  }
+  // Bit 21 (OE) is reserved here: the OE forms act like the plain ones and
+  // leave XER alone.
   Value* v = f.MulHi(f.LoadGPR(i.XO.RA), f.LoadGPR(i.XO.RB));
   f.StoreGPR(i.XO.RT, v);
   if (i.XO.Rc) {
@@ -305,10 +303,8 @@ int InstrEmit_mulhdx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_mulhdux(PPCHIRBuilder& f, const InstrData& i) {
   // RT <- ((RA) × (RB) as 128)[0:63]
-  if (i.XO.OE) {
-    // With XER update.
-    XEINSTRNOTIMPLEMENTED();
-  }
+  // Bit 21 (OE) is reserved here: the OE forms act like the plain ones and
+  // leave XER alone.
   Value* v =
       f.MulHi(f.LoadGPR(i.XO.RA), f.LoadGPR(i.XO.RB), ARITHMETIC_UNSIGNED);
   f.StoreGPR(i.XO.RT, v);
@@ -320,10 +316,8 @@ int InstrEmit_mulhdux(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_mulhwx(PPCHIRBuilder& f, const InstrData& i) {
   // RT[32:64] <- ((RA)[32:63] × (RB)[32:63])[0:31]
-  if (i.XO.OE) {
-    // With XER update.
-    XEINSTRNOTIMPLEMENTED();
-  }
+  // Bit 21 (OE) is reserved here: the OE forms act like the plain ones and
+  // leave XER alone.
   Value* ratrunc =
       f.SignExtend(f.Truncate(f.LoadGPR(i.XO.RA), INT32_TYPE), INT64_TYPE);
 
@@ -341,10 +335,8 @@ int InstrEmit_mulhwx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_mulhwux(PPCHIRBuilder& f, const InstrData& i) {
   // RT[32:64] <- ((RA)[32:63] × (RB)[32:63])[0:31]
-  if (i.XO.OE) {
-    // With XER update.
-    XEINSTRNOTIMPLEMENTED();
-  }
+  // Bit 21 (OE) is reserved here: the OE forms act like the plain ones and
+  // leave XER alone.
 
   Value* ratrunc =
       f.ZeroExtend(f.Truncate(f.LoadGPR(i.XO.RA), INT32_TYPE), INT64_TYPE);
