@@ -1269,6 +1269,11 @@ static const vec128_t xmm_consts[] = {
     vec128b(1),
     // XMMQuietBit
     vec128i(0x00400000u),
+    // XMMSingleRangeBias: takes a double's bits without the sign, shifted up
+    // by one, from 2^-149 up to the smallest signed value
+    vec128q(0x12C0000000000000ull),
+    // XMMSingleRangeLimit: the last of them below 2^128
+    vec128q(0xA29FFFFFFFFFFFFFull),
     // XMMVRefpStepMask
     vec128i(0x1FF),
     // XMMVRefpSlopeMask

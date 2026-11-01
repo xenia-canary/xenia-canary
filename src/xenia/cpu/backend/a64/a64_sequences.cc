@@ -11,7 +11,9 @@
 
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <type_traits>
+#include <vector>
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/clock.h"
@@ -586,6 +588,53 @@ static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
 
   e.L(done);
 }
+// ARITHMETIC_SINGLE_RANGE, ahead of the operation: the default QNaN if an
+// operand is nonzero and outside [2^-149, 2^128) and none is infinite or NaN,
+// see PPCHIRBuilder::SingleOutOfRangeOperand. The bits are compared without the
+// sign, shifted up by one. A branch rather than a select keeps the check out of
+// the result's dependency chain. Returns a label to place after the operation,
+// if one's needed.
+static Xbyak_aarch64::Label* EmitSingleRangeCheck(
+    A64Emitter& e, uint32_t flags, DReg dest,
+    std::initializer_list<DReg> operands) {
+  if (!(flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  // Ahead of the branch, as the quirk skips the operation that would do this
+  e.ChangeFpcrMode(FPCRMode::Fpu);
+  auto& done = e.NewCachedLabel();
+  auto& resume = e.NewCachedLabel();
+  std::vector<DReg> regs(operands);
+  auto& out_of_range = e.AddToTail(
+      [dest, regs, &done, &resume](A64Emitter& e, Xbyak_aarch64::Label& tail) {
+        // An infinite or NaN operand takes precedence
+        e.mov(e.x1, static_cast<uint64_t>(0xFFE0000000000000ull));
+        for (const DReg& reg : regs) {
+          e.fmov(e.x0, reg);
+          e.add(e.x0, e.x0, e.x0);
+          e.cmp(e.x0, e.x1);
+          e.b(HS, resume);
+        }
+        e.mov(e.x0, static_cast<uint64_t>(0x7FF8000000000000ull));
+        e.fmov(dest, e.x0);
+        e.b(done);
+      });
+  e.mov(e.x1, static_cast<uint64_t>(0x6D40000000000000ull));  // 2^-149
+  e.mov(e.x2, static_cast<uint64_t>(0x22A0000000000000ull));  // To 2^128
+  for (const DReg& reg : regs) {
+    auto& next = e.NewCachedLabel();
+    e.fmov(e.x0, reg);
+    e.add(e.x0, e.x0, e.x0);
+    e.cbz(e.x0, next);
+    e.sub(e.x0, e.x0, e.x1);
+    e.cmp(e.x0, e.x2);
+    e.b(HS, out_of_range);
+    e.L(next);
+  }
+  e.L(resume);
+  return &done;
+}
+
 // PPC FMA NaN selection (PowerISA 4.6.7.2):
 // The first NaN operand by position (frA=s1, frC=s2, frB=s3) wins,
 // regardless of QNaN vs SNaN.  If it's an SNaN, quiet it (set the
@@ -741,7 +790,12 @@ struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan_F64(e, i.dest, s1, s2, FpBinOp::Add);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct ADD_V128 : Sequence<ADD_V128, I<OPCODE_ADD, V128Op, V128Op, V128Op>> {
@@ -1012,7 +1066,12 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan_F64(e, i.dest, s1, s2, FpBinOp::Sub);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct SUB_V128 : Sequence<SUB_V128, I<OPCODE_SUB, V128Op, V128Op, V128Op>> {
@@ -1225,7 +1284,12 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan_F64(e, i.dest, s1, s2, FpBinOp::Mul);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_V128 : Sequence<MUL_V128, I<OPCODE_MUL, V128Op, V128Op, V128Op>> {
@@ -3976,7 +4040,12 @@ struct MUL_ADD_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan_F64(e, i.dest, s1, s2, s3, /*is_sub=*/false);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_ADD_V128
@@ -4069,7 +4138,12 @@ struct MUL_SUB_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan_F64(e, i.dest, s1, s2, s3, /*is_sub=*/true);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_SUB_V128

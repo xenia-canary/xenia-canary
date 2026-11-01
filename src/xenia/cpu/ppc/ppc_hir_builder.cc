@@ -779,33 +779,43 @@ void PPCHIRBuilder::UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c,
   StoreFPSCRSummary(vx, true, ox, inexact);
 }
 
-// A denormalized double operand makes the single-precision arithmetic answer
-// with the default QNaN and raise nothing at all. Divide and square root do not
-// do it, and a NaN or infinite operand takes precedence, so this asks for every
-// operand finite and at least one of them denormal.
-Value* PPCHIRBuilder::SingleDenormalOperand(
+// An operand outside the single range, nonzero and below 2^-149 (denormal
+// doubles among them) or from 2^128 up, makes the single-precision add,
+// multiply and multiply-add answer with the default QNaN and raise nothing at
+// all; divide and square root keep the unrounded double instead. A NaN or
+// infinite operand takes precedence, so this asks for every operand finite and
+// at least one of them out of range.
+Value* PPCHIRBuilder::SingleOutOfRangeOperand(
     std::initializer_list<Value*> operands) {
-  Value* any_denormal = nullptr;
+  Value* any_out_of_range = nullptr;
   Value* any_nonfinite = nullptr;
   for (Value* operand : operands) {
     Value* magnitude = FpMagnitude(*this, operand);
-    // Subtracting one wraps a zero operand up to the top, which is what keeps
-    // zero from reading as denormal.
-    Value* is_denormal = CompareULT(Sub(magnitude, LoadConstantUint64(1)),
-                                    LoadConstantUint64(0x000FFFFFFFFFFFFFull));
+    // Subtracting one wraps a zero operand up to the top, which keeps zero in
+    // range.
+    Value* is_out_of_range =
+        Or(CompareULT(Sub(magnitude, LoadConstantUint64(1)),
+                      LoadConstantUint64(0x369FFFFFFFFFFFFFull)),
+           CompareUGE(magnitude, LoadConstantUint64(0x47F0000000000000ull)));
     Value* is_nonfinite =
         CompareUGE(magnitude, LoadConstantUint64(0x7FF0000000000000ull));
-    any_denormal = any_denormal ? Or(any_denormal, is_denormal) : is_denormal;
+    any_out_of_range = any_out_of_range ? Or(any_out_of_range, is_out_of_range)
+                                        : is_out_of_range;
     any_nonfinite =
         any_nonfinite ? Or(any_nonfinite, is_nonfinite) : is_nonfinite;
   }
-  return And(any_denormal, IsFalse(any_nonfinite));
+  return And(any_out_of_range, IsFalse(any_nonfinite));
 }
 
-Value* PPCHIRBuilder::ApplySingleDenormalOperand(Value* quirk, Value* result) {
+Value* PPCHIRBuilder::ApplySingleOutOfRangeOperand(Value* quirk,
+                                                   Value* result) {
   return Select(quirk,
                 Cast(LoadConstantUint64(0x7FF8000000000000ull), FLOAT64_TYPE),
                 result);
+}
+
+uint32_t PPCHIRBuilder::SingleRangeFlag(bool update_cr1) const {
+  return update_cr1 ? 0 : ARITHMETIC_SINGLE_RANGE;
 }
 
 void PPCHIRBuilder::UpdateFPSCRForConvertToInteger(Value* b,
