@@ -26,6 +26,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_set>
+#include <vector>
 
 #if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
@@ -362,6 +363,29 @@ class TestRunner {
     return result;
   }
 
+  // The bytes of a MEMORY_IN or MEMORY_OUT annotation: after any spaces, each
+  // two characters are read as hex, as far as they go. The tests written as
+  // "[AB, CD, ...]" read as 00 0B CD 00 ..., and their expected values were
+  // written against that. A last single character is read alone; reading two
+  // there went past the end of the string.
+  static std::vector<uint8_t> ParseMemoryBytes(const std::string& text) {
+    std::vector<uint8_t> bytes;
+    size_t i = 0;
+    while (i < text.size()) {
+      while (i < text.size() && text[i] == ' ') {
+        ++i;
+      }
+      if (i >= text.size()) {
+        break;
+      }
+      std::string pair = text.substr(i, 2);
+      bytes.push_back(
+          static_cast<uint8_t>(std::strtoul(pair.c_str(), nullptr, 16)));
+      i += 2;
+    }
+    return bytes;
+  }
+
   bool SetupTestState(TestCase& test_case) {
     auto ppc_context = thread_state_->context();
     for (auto& it : test_case.annotations) {
@@ -376,19 +400,8 @@ class TestRunner {
         auto bytes_str = it.second.substr(space_pos + 1);
         uint32_t address = std::strtoul(address_str.c_str(), nullptr, 16);
         auto p = memory_->TranslateVirtual(address);
-        const char* c = bytes_str.c_str();
-        while (*c) {
-          while (*c == ' ') {
-            ++c;
-          }
-          if (!*c) {
-            break;
-          }
-          char ccs[3] = {c[0], c[1], 0};
-          c += 2;
-          uint32_t b = std::strtoul(ccs, nullptr, 16);
-          *p = static_cast<uint8_t>(b);
-          ++p;
+        for (uint8_t b : ParseMemoryBytes(bytes_str)) {
+          *p++ = b;
         }
       }
     }
@@ -423,24 +436,10 @@ class TestRunner {
         uint32_t address = std::strtoul(address_str.c_str(), nullptr, 16);
         auto base_address = memory_->TranslateVirtual(address);
         auto p = base_address;
-        const char* c = bytes_str.c_str();
         bool failed = false;
-        size_t count = 0;
         StringBuffer expecteds;
         StringBuffer actuals;
-        while (*c) {
-          while (*c == ' ') {
-            ++c;
-          }
-          if (!*c) {
-            break;
-          }
-          char ccs[3] = {c[0], c[1], 0};
-          c += 2;
-          count++;
-          uint32_t current_address =
-              address + static_cast<uint32_t>(p - base_address);
-          uint32_t expected = std::strtoul(ccs, nullptr, 16);
+        for (uint8_t expected : ParseMemoryBytes(bytes_str)) {
           uint8_t actual = *p;
 
           expecteds.AppendFormat(" {:02X}", expected);
