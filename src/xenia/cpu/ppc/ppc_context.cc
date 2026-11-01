@@ -44,13 +44,14 @@ void PPCContext::set_cr(uint64_t value) {
 
 uint32_t PPCContext::xer() const {
   return (uint32_t(xer_so) & 0x1) << 31 | (uint32_t(xer_ov) & 0x1) << 30 |
-         (uint32_t(xer_ca) & 0x1) << 29;
+         (uint32_t(xer_ca) & 0x1) << 29 | (uint32_t(xer_count) & 0x7F);
 }
 
 void PPCContext::set_xer(uint32_t value) {
   xer_so = (value >> 31) & 0x1;
   xer_ov = (value >> 30) & 0x1;
   xer_ca = (value >> 29) & 0x1;
+  xer_count = value & 0x7F;
 }
 
 std::string PPCContext::GetRegisterName(PPCRegister reg) {
