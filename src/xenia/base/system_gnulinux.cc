@@ -24,9 +24,19 @@
 
 namespace xe {
 
+void* LoadSDL2Library() {
+  // The versioned soname is what the runtime package installs, the unversioned
+  // name only exists with the development package.
+  void* libsdl2 = dlopen("libSDL2-2.0.so.0", RTLD_LAZY | RTLD_LOCAL);
+  if (!libsdl2) {
+    libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
+  }
+  return libsdl2;
+}
+
 namespace {
 void OpenUrl(const std::string& url) {
-  void* libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
+  void* libsdl2 = LoadSDL2Library();
   if (!libsdl2) {
     XELOGE("Failed to open {}: {}", url, dlerror());
     return;
@@ -53,7 +63,7 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
-  void* libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
+  void* libsdl2 = LoadSDL2Library();
   assert_not_null(libsdl2);
   if (libsdl2) {
     auto* pSDL_ShowSimpleMessageBox =

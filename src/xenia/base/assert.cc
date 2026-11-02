@@ -24,6 +24,8 @@
 #if XE_PLATFORM_GNU_LINUX
 #include <dlfcn.h>
 
+#include "xenia/base/system.h"
+
 // Use headers in third party to not depend on system sdl headers for building
 #include "third_party/SDL2/include/SDL.h"
 #endif
@@ -41,10 +43,7 @@ thread_local bool in_assert = false;
 // Equivalent of the MSVC debug CRT assertion dialog. SDL is loaded dynamically
 // like in ShowSimpleMessageBox, as xenia-base doesn't link it.
 AssertAction ShowAssertDialog(const std::string& message) {
-  void* libsdl2 = dlopen("libSDL2-2.0.so.0", RTLD_LAZY | RTLD_LOCAL);
-  if (!libsdl2) {
-    libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
-  }
+  void* libsdl2 = LoadSDL2Library();
   if (!libsdl2) {
     return AssertAction::kIgnore;
   }
