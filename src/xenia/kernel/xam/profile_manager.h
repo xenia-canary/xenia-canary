@@ -102,6 +102,9 @@ class ProfileManager {
   }
   const X_XAMACCOUNTINFO* GetAccount(const uint64_t xuid);
 
+  std::vector<uint8_t> GetAccountIcon(const uint64_t xuid,
+                                      const XTileType tile_type);
+
   uint32_t GetAccountCount() const {
     return static_cast<uint32_t>(accounts_.size());
   }

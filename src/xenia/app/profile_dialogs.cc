@@ -96,17 +96,16 @@ void ProfileConfigDialog::LoadProfileIcon() {
     return;
   }
 
-  for (uint8_t user_index = 0; user_index < XUserMaxUserCount; user_index++) {
-    const auto profile = emulator_window_->emulator()
-                             ->kernel_state()
-                             ->xam_state()
-                             ->profile_manager()
-                             ->GetProfile(user_index);
+  const auto profile_manager = emulator_window_->emulator()
+                                   ->kernel_state()
+                                   ->xam_state()
+                                   ->profile_manager();
+  if (!profile_manager) {
+    return;
+  }
 
-    if (!profile) {
-      continue;
-    }
-    LoadProfileIcon(profile->xuid());
+  for (const auto& [xuid, account] : *profile_manager->GetAccounts()) {
+    LoadProfileIcon(xuid);
   }
 }
 
@@ -123,23 +122,16 @@ void ProfileConfigDialog::LoadProfileIcon(const uint64_t xuid) {
     return;
   }
 
-  const auto profile = profile_manager->GetProfile(xuid);
-
-  if (!profile) {
-    if (profile_icon_.contains(xuid)) {
-      profile_icon_[xuid].release();
-    }
-    return;
-  }
-
   const auto profile_icon =
-      profile->GetProfileIcon(kernel::xam::XTileType::kGamerTile);
-  if (profile_icon.empty()) {
-    return;
+      profile_manager->GetAccountIcon(xuid, kernel::xam::XTileType::kGamerTile);
+
+  if (auto& current_icon = profile_icon_[xuid]; current_icon) {
+    released_icons_.push_back(std::move(current_icon));
   }
 
-  profile_icon_[xuid].release();
-  profile_icon_[xuid] = imgui_drawer()->LoadImGuiIcon(profile_icon);
+  profile_icon_[xuid] = profile_icon.empty()
+                            ? nullptr
+                            : imgui_drawer()->LoadImGuiIcon(profile_icon);
 }
 
 void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
@@ -156,6 +148,14 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
   if (!profile_manager) {
     return;
   }
+
+  // Previous frame is already rendered, so these aren't referenced anymore.
+  released_icons_.clear();
+
+  for (const uint64_t xuid : *pending_icon_reloads_) {
+    LoadProfileIcon(xuid);
+  }
+  pending_icon_reloads_->clear();
 
   auto profiles = profile_manager->GetAccounts();
 
@@ -197,8 +197,12 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
     const uint8_t user_index =
         profile_manager->GetUserIndexAssignedToProfile(xuid);
 
-    const auto profile_icon =
-        profile_icon_.contains(xuid) ? profile_icon_[xuid].get() : nullptr;
+    // Profile might be created after dialog was opened.
+    if (!profile_icon_.contains(xuid)) {
+      LoadProfileIcon(xuid);
+    }
+
+    const auto profile_icon = profile_icon_[xuid].get();
 
     auto context_menu_fun = [=, this]() -> bool {
       if (ImGui::BeginPopupContextItem("Profile Menu")) {
@@ -208,11 +212,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
           if (ImGui::MenuItem("Login")) {
             profile_manager->Login(xuid);
-            if (!profile_manager->GetProfile(xuid)
-                     ->GetProfileIcon(kernel::xam::XTileType::kGamerTile)
-                     .empty()) {
-              LoadProfileIcon(xuid);
-            }
+            LoadProfileIcon(xuid);
           }
           if (ImGui::BeginMenu("Login to slot:")) {
             for (uint8_t i = 1; i <= XUserMaxUserCount; i++) {
@@ -245,9 +245,19 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
         }
 
         if (ImGui::MenuItem("Modify")) {
+          // Gamercard might outlive this dialog, so don't capture this.
+          auto on_icon_change = [pending_icon_reloads =
+                                     std::weak_ptr(pending_icon_reloads_),
+                                 xuid]() {
+            if (const auto pending = pending_icon_reloads.lock()) {
+              pending->insert(xuid);
+            }
+          };
+
           new kernel::xam::ui::GamercardUI(
               emulator_window_->window(), emulator_window_->imgui_drawer(),
-              emulator_window_->emulator()->kernel_state(), xuid);
+              emulator_window_->emulator()->kernel_state(), xuid,
+              on_icon_change);
         }
 
         const bool is_signedin = profile_manager->GetProfile(xuid) != nullptr;

@@ -10,6 +10,9 @@
 #ifndef XENIA_APP_PROFILE_DIALOGS_H_
 #define XENIA_APP_PROFILE_DIALOGS_H_
 
+#include <memory>
+#include <set>
+
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/xbox.h"
@@ -47,6 +50,9 @@ class ProfileConfigDialog final : public ui::ImGuiDialog {
   void LoadProfileIcon(const uint64_t xuid);
 
   std::map<uint64_t, std::unique_ptr<ui::ImmediateTexture>> profile_icon_;
+  std::vector<std::unique_ptr<ui::ImmediateTexture>> released_icons_;
+  std::shared_ptr<std::set<uint64_t>> pending_icon_reloads_ =
+      std::make_shared<std::set<uint64_t>>();
 
   uint64_t selected_xuid_ = 0;
   EmulatorWindow* emulator_window_;

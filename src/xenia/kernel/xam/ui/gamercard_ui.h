@@ -44,7 +44,8 @@ struct GamercardSettings {
 class GamercardUI final : public XamDialog {
  public:
   GamercardUI(xe::ui::Window* window, xe::ui::ImGuiDrawer* imgui_drawer,
-              KernelState* kernel_state, uint64_t xuid);
+              KernelState* kernel_state, uint64_t xuid,
+              std::function<void()> on_icon_change = {});
 
   ~GamercardUI() = default;
 
@@ -78,6 +79,7 @@ class GamercardUI final : public XamDialog {
   bool has_opened_ = false;
   KernelState* kernel_state_;
   xe::ui::Window* window_;
+  std::function<void()> on_icon_change_;
 
   // We're storing OG and current values to compare at the end and send what was
   // changed.
