@@ -687,7 +687,7 @@ DECLARE_XAM_EXPORT1(GetLastError, kNone, kImplemented);
 dword_result_t GetModuleHandleA_entry(lpstring_t module_name) {
   xe::be<uint32_t> module_ptr = 0;
   const X_STATUS error_code = xe::kernel::xboxkrnl::XexGetModuleHandle(
-      module_name.value(), &module_ptr);
+      module_name ? module_name.value() : "", &module_ptr);
 
   if (XFAILED(error_code)) {
     RtlSetLastNTError_entry(error_code);
