@@ -940,6 +940,13 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           uint64_t* selected_xuid) {
   const ImVec2 start_position = ImGui::GetCursorPos();
 
+  // Fade out signed out profiles, so signed in ones stand out.
+  const bool is_signed_in = user_index != XUserIndexAny;
+
+  if (!is_signed_in) {
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+  }
+
   ImGui::BeginGroup();
   {
     if (profile_icon) {
@@ -962,8 +969,9 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
       ImGui::TextUnformatted(
           fmt::format("User: {}\n", account->GetGamertagString()).c_str());
       ImGui::TextUnformatted(fmt::format("XUID: {:016X}  \n", xuid).c_str());
-      if (user_index != XUserIndexAny) {
-        ImGui::TextUnformatted(
+      if (is_signed_in) {
+        ImGui::TextColored(
+            ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s",
             fmt::format("Assigned to slot: {}\n", user_index + 1).c_str());
       } else {
         ImGui::TextUnformatted(fmt::format("Profile is not signed in").c_str());
@@ -972,6 +980,10 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
     ImGui::EndGroup();
   }
   ImGui::EndGroup();
+
+  if (!is_signed_in) {
+    ImGui::PopStyleVar();
+  }
 
   if (xuid && selected_xuid) {
     const ImVec2 end_draw_position =
