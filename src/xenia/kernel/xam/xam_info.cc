@@ -1054,6 +1054,9 @@ dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
 }
 DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kStub);
 
+dword_result_t XamGetSecurityViolationsDetected_entry() { return 0; }
+DECLARE_XAM_EXPORT1(XamGetSecurityViolationsDetected, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
