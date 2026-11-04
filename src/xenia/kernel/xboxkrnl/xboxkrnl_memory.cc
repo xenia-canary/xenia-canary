@@ -421,9 +421,18 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
   // by D3D/etc.
 
   // Check protection bits.
-  if (!(protect_bits & (X_PAGE_READONLY | X_PAGE_READWRITE))) {
-    XELOGE("MmAllocatePhysicalMemoryEx: bad protection bits");
-    return 0;
+  // 54540817 passes X_MEM_LARGE_PAGES | X_PAGE_WRITECOMBINE with no access
+  // bits for its front buffer, so treat a missing access mode as read/write.
+  const uint32_t kAccessProtectBits = X_PAGE_READONLY | X_PAGE_READWRITE |
+                                      X_PAGE_EXECUTE_READ |
+                                      X_PAGE_EXECUTE_READWRITE;
+
+  if (!(protect_bits & kAccessProtectBits)) {
+    XELOGW(
+        "MmAllocatePhysicalMemoryEx: no access mode in protection bits {:08X} "
+        "(flags {:08X}, size {:08X}), assuming read/write",
+        protect_bits, flags, region_size);
+    protect_bits |= X_PAGE_READWRITE;
   }
 
   // Either may be OR'ed into protect_bits:
