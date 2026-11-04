@@ -59,6 +59,32 @@ XE_NTDLL_IMPORT(NtQueryEvent, cls_NtQueryEvent, NtQueryEventPointer);
 namespace xe {
 namespace threading {
 
+// Number of waits and sleeps the thread is in, shared with the Thread object
+// Thread::Create returned for it. Null for threads not created by
+// Thread::Create.
+thread_local std::shared_ptr<std::atomic<uint32_t>> current_blocking_depth_;
+
+// Marks a wait or a sleep, which holds no host locks, so the thread may be
+// terminated inside it (see Thread::IsAtTerminationSafePoint).
+class BlockingCallScope {
+ public:
+  BlockingCallScope() : depth_(current_blocking_depth_.get()) {
+    if (depth_) {
+      depth_->fetch_add(1);
+    }
+  }
+  ~BlockingCallScope() {
+    if (depth_) {
+      depth_->fetch_sub(1);
+    }
+  }
+  BlockingCallScope(const BlockingCallScope&) = delete;
+  BlockingCallScope& operator=(const BlockingCallScope&) = delete;
+
+ private:
+  std::atomic<uint32_t>* depth_;
+};
+
 void EnableAffinityConfiguration() {
   // chrispy: i don't think this is necessary,
   // affinity always seems to be the system mask? research more
@@ -149,6 +175,7 @@ void MaybeYield() {
   // MemoryBarrier();
 }
 void NanoSleep(int64_t ns) {
+  BlockingCallScope blocking_call;
   // nanosleep is done in 100 nanosecond increments
   int64_t in_nt_increments = ns / 100LL;
   if (in_nt_increments == 0 && ns != 0) {
@@ -161,7 +188,15 @@ void NanoSleep(int64_t ns) {
 }
 void SyncMemory() { MemoryBarrier(); }
 
+static std::atomic<TerminationSafeCodeCheck> termination_safe_code_check =
+    nullptr;
+
+void SetTerminationSafeCodeCheck(TerminationSafeCodeCheck check) {
+  termination_safe_code_check = check;
+}
+
 void Sleep(std::chrono::microseconds duration) {
+  BlockingCallScope blocking_call;
   if (duration.count() < 100) {
     MaybeYield();
   } else {
@@ -172,6 +207,7 @@ void Sleep(std::chrono::microseconds duration) {
 void NanoSleepPrecise(int64_t ns) { NanoSleep(ns); }
 
 SleepResult AlertableSleep(std::chrono::microseconds duration) {
+  BlockingCallScope blocking_call;
   if (SleepEx(static_cast<DWORD>(duration.count() / 1000), true) ==
       WAIT_IO_COMPLETION) {
     return SleepResult::kAlerted;
@@ -210,6 +246,7 @@ class Win32Handle : public T {
 
 WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
                 std::chrono::milliseconds timeout) {
+  BlockingCallScope blocking_call;
   HANDLE handle = wait_handle->native_handle();
   DWORD result;
   DWORD timeout_dw = DWORD(timeout.count());
@@ -249,6 +286,7 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
 WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
                          WaitHandle* wait_handle_to_wait_on, bool is_alertable,
                          std::chrono::milliseconds timeout) {
+  BlockingCallScope blocking_call;
   HANDLE handle_to_signal = wait_handle_to_signal->native_handle();
   HANDLE handle_to_wait_on = wait_handle_to_wait_on->native_handle();
   DWORD result =
@@ -273,6 +311,7 @@ std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
                                            size_t wait_handle_count,
                                            bool wait_all, bool is_alertable,
                                            std::chrono::milliseconds timeout) {
+  BlockingCallScope blocking_call;
   xenia_assert(wait_handle_count <= 64);
   HANDLE handles[64];
 
@@ -513,7 +552,10 @@ std::unique_ptr<Timer> Timer::CreateSynchronizationTimer() {
 
 class Win32Thread : public Win32Handle<Thread> {
  public:
-  explicit Win32Thread(HANDLE handle) : Win32Handle(handle) {}
+  explicit Win32Thread(
+      HANDLE handle,
+      std::shared_ptr<std::atomic<uint32_t>> blocking_depth = nullptr)
+      : Win32Handle(handle), blocking_depth_(std::move(blocking_depth)) {}
   ~Win32Thread() = default;
 
   void set_name(std::string name) override {
@@ -584,6 +626,29 @@ class Win32Thread : public Win32Handle<Thread> {
     return true;
   }
 
+  bool IsAtTerminationSafePoint() override {
+    // Unknown for threads not created by Thread::Create.
+    if (!blocking_depth_ || blocking_depth_->load() != 0) {
+      return true;
+    }
+    TerminationSafeCodeCheck check = termination_safe_code_check;
+    if (!check) {
+      return false;
+    }
+    CONTEXT context = {};
+    context.ContextFlags = CONTEXT_CONTROL;
+    if (!GetThreadContext(handle_, &context)) {
+      return false;
+    }
+#if XE_ARCH_AMD64
+    return check(static_cast<uintptr_t>(context.Rip));
+#elif XE_ARCH_ARM64
+    return check(static_cast<uintptr_t>(context.Pc));
+#else
+    return false;
+#endif
+  }
+
   void Terminate(int exit_code) override {
     TerminateThread(handle_, exit_code);
   }
@@ -592,17 +657,22 @@ class Win32Thread : public Win32Handle<Thread> {
   void AssertCallingThread() {
     assert_true(GetCurrentThreadId() == GetThreadId(handle_));
   }
+
+  std::shared_ptr<std::atomic<uint32_t>> blocking_depth_;
 };
 
 thread_local std::unique_ptr<Win32Thread> current_thread_ = nullptr;
 
 struct ThreadStartData {
   std::function<void()> start_routine;
+  std::shared_ptr<std::atomic<uint32_t>> blocking_depth;
 };
 DWORD WINAPI ThreadStartRoutine(LPVOID parameter) {
-  current_thread_ = std::make_unique<Win32Thread>(::GetCurrentThread());
-
   auto start_data = reinterpret_cast<ThreadStartData*>(parameter);
+  current_blocking_depth_ = start_data->blocking_depth;
+  current_thread_ = std::make_unique<Win32Thread>(::GetCurrentThread(),
+                                                  current_blocking_depth_);
+
   start_data->start_routine();
   delete start_data;
   return 0;
@@ -610,12 +680,14 @@ DWORD WINAPI ThreadStartRoutine(LPVOID parameter) {
 
 std::unique_ptr<Thread> Thread::Create(CreationParameters params,
                                        std::function<void()> start_routine) {
-  auto start_data = new ThreadStartData({std::move(start_routine)});
+  auto blocking_depth = std::make_shared<std::atomic<uint32_t>>(0);
+  auto start_data =
+      new ThreadStartData({std::move(start_routine), blocking_depth});
   HANDLE handle =
       CreateThread(NULL, params.stack_size, ThreadStartRoutine, start_data,
                    params.create_suspended ? CREATE_SUSPENDED : 0, NULL);
   if (handle) {
-    return std::make_unique<Win32Thread>(handle);
+    return std::make_unique<Win32Thread>(handle, std::move(blocking_depth));
   } else {
     LOG_LASTERROR();
     delete start_data;

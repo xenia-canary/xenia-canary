@@ -12,6 +12,7 @@
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/xobject.h"
+#include "xenia/kernel/xsocket.h"
 #include "xenia/kernel/xthread.h"
 
 namespace xe {
@@ -344,12 +345,28 @@ void ObjectTable::PurgeAllObjects() {
   auto lock = global_critical_region_.Acquire();
   for (uint32_t slot = 0; slot < table_capacity_; slot++) {
     auto& entry = table_[slot];
-    if (entry.object) {
-      entry.handle_ref_count = 0;
-      entry.object->ReleaseHandle();
-
-      entry.object = nullptr;
+    if (!entry.object) {
+      continue;
     }
+
+    // Host threads (kernel dispatch, audio, GPU, etc.) outlive the title.
+    if (entry.object->type() == XObject::Type::Thread &&
+        !static_cast<XThread*>(entry.object)->is_guest_thread()) {
+      continue;
+    }
+
+    X_HANDLE handle = slot << 2;
+    if (entry.object->type() != XObject::Type::Socket) {
+      handle += XObject::kHandleBase;
+    } else {
+      // Terminated threads may still hold references to the socket, close it
+      // now so the next title can bind the same ports.
+      static_cast<XSocket*>(entry.object)->Close();
+    }
+
+    // Drop every reference to the handle so the table releases the object.
+    entry.handle_ref_count = 0;
+    RemoveHandle(handle);
   }
 }
 

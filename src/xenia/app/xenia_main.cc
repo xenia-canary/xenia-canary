@@ -780,6 +780,20 @@ void EmulatorApp::EmulatorThread() {
   while (!emulator_thread_quit_requested_.load(std::memory_order_relaxed)) {
     xe::threading::Wait(emulator_thread_event_.get(), false);
     emulator_->WaitUntilExit();
+
+    switch (emulator_->ConsumeTitleExitRequest()) {
+      case Emulator::TitleExitRequest::kLaunchNext:
+        // The title exited to launch another executable (xex swap).
+        app_context().CallInUIThread(
+            [this]() { emulator_window_->LaunchNextTitle(); });
+        break;
+      case Emulator::TitleExitRequest::kDashboard:
+        app_context().CallInUIThread(
+            [this]() { emulator_window_->ExitToDashboard(); });
+        break;
+      case Emulator::TitleExitRequest::kNone:
+        break;
+    }
   }
 }
 

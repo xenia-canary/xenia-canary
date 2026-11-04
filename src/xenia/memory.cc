@@ -9,6 +9,7 @@
 
 #include "xenia/memory.h"
 
+#include <algorithm>
 #include <cstring>
 #include <random>
 
@@ -746,6 +747,78 @@ void Memory::SystemHeapFree(uint32_t address, uint32_t* out_region_size) {
   heap->Release(address, out_region_size);
 }
 
+std::array<BaseHeap*, 6> Memory::GetTitleHeaps() {
+  return {&heaps_.v00000000, &heaps_.v40000000, &heaps_.v7F000000,
+          &heaps_.vA0000000, &heaps_.vC0000000, &heaps_.vE0000000};
+}
+
+void Memory::CaptureSystemAllocations() {
+  system_allocations_.clear();
+  for (BaseHeap* heap : GetTitleHeaps()) {
+    for (const auto& [base_address, size] : heap->GetAllocations()) {
+      system_allocations_.insert(base_address);
+    }
+  }
+  system_physical_allocations_.clear();
+  for (const auto& [base_address, size] : heaps_.physical.GetAllocations()) {
+    system_physical_allocations_.insert(base_address);
+  }
+  has_system_allocations_ = true;
+}
+
+void Memory::ReleaseTitleAllocations(
+    const std::vector<uint32_t>& preserved_addresses) {
+  if (!has_system_allocations_) {
+    return;
+  }
+
+  auto contains_any = [](const std::vector<uint32_t>& addresses,
+                         uint32_t base_address, uint32_t size) {
+    return std::ranges::any_of(addresses, [base_address, size](uint32_t a) {
+      return a >= base_address && a - base_address < size;
+    });
+  };
+
+  uint32_t released_count = 0;
+  uint64_t released_size = 0;
+  for (BaseHeap* heap : GetTitleHeaps()) {
+    for (const auto& [base_address, size] : heap->GetAllocations()) {
+      if (system_allocations_.contains(base_address) ||
+          contains_any(preserved_addresses, base_address, size)) {
+        continue;
+      }
+
+      // The same physical memory may be mapped in several views, so only the
+      // view is released here and the physical memory below.
+      const bool released =
+          heap->heap_type() == HeapType::kGuestPhysical
+              ? static_cast<PhysicalHeap*>(heap)->ReleaseView(base_address)
+              : heap->Release(base_address);
+      if (released) {
+        released_count++;
+        released_size += size;
+      }
+    }
+  }
+
+  std::vector<uint32_t> preserved_physical_addresses;
+  for (uint32_t address : preserved_addresses) {
+    const BaseHeap* heap = LookupHeap(address);
+    if (heap && heap->heap_type() == HeapType::kGuestPhysical) {
+      preserved_physical_addresses.push_back(GetPhysicalAddress(address));
+    }
+  }
+  for (const auto& [base_address, size] : heaps_.physical.GetAllocations()) {
+    if (!system_physical_allocations_.contains(base_address) &&
+        !contains_any(preserved_physical_addresses, base_address, size)) {
+      heaps_.physical.Release(base_address);
+    }
+  }
+
+  XELOGI("Memory: Released {} title allocations ({} bytes)", released_count,
+         released_size);
+}
+
 void Memory::DumpMap() {
   XELOGE("==================================================================");
   XELOGE("Memory Dump");
@@ -859,6 +932,23 @@ void BaseHeap::Dispose() {
     }
   }
   free_blocks_.clear();
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> BaseHeap::GetAllocations() {
+  auto global_lock = global_critical_region_.Acquire();
+  std::vector<std::pair<uint32_t, uint32_t>> allocations;
+  for (uint32_t i = 0; i < uint32_t(page_table_.size()); ++i) {
+    const PageEntry& page = page_table_[i];
+    if (!page.state || page.base_address != i) {
+      continue;
+    }
+    allocations.emplace_back(heap_base_ + i * page_size_,
+                             page.region_page_count * page_size_);
+    if (page.region_page_count) {
+      i += page.region_page_count - 1;
+    }
+  }
+  return allocations;
 }
 
 void BaseHeap::DumpMap() {
@@ -2016,6 +2106,19 @@ bool PhysicalHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
   }
 
   return BaseHeap::Release(base_address, out_region_size);
+}
+
+bool PhysicalHeap::ReleaseView(uint32_t base_address) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  // Invalidate like Release, the range may be reused in another mapping.
+  uint32_t region_size;
+  if (QuerySize(base_address, &region_size)) {
+    TriggerCallbacks(std::move(global_lock), base_address, region_size, true,
+                     true, true, true);
+  }
+
+  return BaseHeap::Release(base_address);
 }
 
 bool PhysicalHeap::Protect(uint32_t address, uint32_t size, uint32_t protect,

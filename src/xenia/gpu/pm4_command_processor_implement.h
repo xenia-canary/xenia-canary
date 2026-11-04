@@ -31,7 +31,7 @@ void COMMAND_PROCESSOR::ExecuteIndirectBuffer(uint32_t ptr,
         assert_always();
         break;
       }
-    } while (reader_.read_count());
+    } while (reader_.read_count() && !abort_ring_buffer_);
 
     trace_writer_.WriteIndirectBufferEnd();
     reader_ = old_reader;
@@ -771,6 +771,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
         }
       } else {
       }
+      // The title that would have written the value was terminated.
+      if (abort_ring_buffer_) {
+        return true;
+      }
     }
   } while (!matched);
 
@@ -1439,7 +1443,7 @@ uint32_t COMMAND_PROCESSOR::ExecutePrimaryBuffer(uint32_t read_index,
       assert_always();
       break;
     }
-  } while (reader_.read_count());
+  } while (reader_.read_count() && !abort_ring_buffer_);
 
   COMMAND_PROCESSOR::OnPrimaryBufferEnd();
 
@@ -1464,6 +1468,6 @@ void COMMAND_PROCESSOR::ExecutePacket(uint32_t ptr, uint32_t count) {
       assert_always();
       break;
     }
-  } while (reader_.read_count());
+  } while (reader_.read_count() && !abort_ring_buffer_);
   reader_ = old_reader;
 }

@@ -647,6 +647,9 @@ bool A64Backend::Initialize(Processor* processor) {
   // Commit special indirection ranges (force return address, etc.).
   code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
 
+  // Everything placed from now on is guest code, discarded with the title.
+  code_cache_->MarkGuestCodeStart();
+
   // Register exception handler for MMIO access from JIT code.
   ExceptionHandler::Install(ExceptionCallbackThunk, this);
 

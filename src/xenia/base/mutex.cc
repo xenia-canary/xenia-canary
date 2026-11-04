@@ -39,6 +39,14 @@ void xe_global_mutex::unlock() {
   }
 }
 
+bool xe_global_mutex::try_lock_uncontended() {
+  // Any bit set means the lock is owned or threads are queued waiting for it.
+  if (ReadPointerAcquire(&srwlock_.Ptr) != nullptr) {
+    return false;
+  }
+  return try_lock();
+}
+
 bool xe_global_mutex::try_lock() {
   DWORD self = GetCurrentThreadId();
   if (owner_thread_ == self) {
@@ -255,6 +263,18 @@ bool xe_fast_mutex::try_lock() {
 global_mutex_type& global_critical_region::mutex() {
   static global_mutex_type global_mutex;
   return global_mutex;
+}
+
+global_unique_lock_type global_critical_region::TryAcquireUncontended() {
+#if XE_PLATFORM_WIN32 == 1 && XE_ENABLE_FAST_WIN32_MUTEX == 1
+  const bool locked = mutex().try_lock_uncontended();
+#else
+  const bool locked = mutex().try_lock();
+#endif
+  if (!locked) {
+    return global_unique_lock_type(mutex(), std::defer_lock);
+  }
+  return global_unique_lock_type(mutex(), std::adopt_lock);
 }
 
 }  // namespace xe

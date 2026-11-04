@@ -10,6 +10,7 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 
 #include "third_party/capstone/include/capstone/capstone.h"
@@ -17,6 +18,7 @@
 
 #include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/threading.h"
 #include "xenia/cpu/backend/x64/x64_assembler.h"
 #include "xenia/cpu/backend/x64/x64_code_cache.h"
 #include "xenia/cpu/backend/x64/x64_emitter.h"
@@ -46,6 +48,39 @@ namespace xe {
 namespace cpu {
 namespace backend {
 namespace x64 {
+
+// Range of the code cache holding guest functions, placed after the thunks
+// and helpers emitted at initialization.
+static std::atomic<uintptr_t> guest_code_begin = 0;
+static std::atomic<uintptr_t> guest_code_end = 0;
+
+// Whether a thread interrupted at host_pc can be unwound and exited (see
+// threading::SetTerminationSafeCodeCheck). Guest code holds no host locks and
+// has unwind info, which however only describes the prolog: the stack frame is
+// already released at the ret or jmp ending an epilog or a tail call, which
+// may be preceded by the stackpoint decrement. A rejected point only delays
+// the exit until the thread is interrupted again.
+static bool IsTerminationSafeGuestCode(uintptr_t host_pc) {
+  if (host_pc < guest_code_begin.load(std::memory_order_relaxed) ||
+      host_pc >= guest_code_end.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  const uint8_t* code = reinterpret_cast<const uint8_t*>(host_pc);
+  switch (code[0]) {
+    case 0xC2:  // ret imm16
+    case 0xC3:  // ret
+    case 0xE9:  // jmp rel32
+    case 0xEB:  // jmp rel8
+      return false;
+    case 0xFF: {
+      // jmp r/m64 (/4) and dec r/m32 (/1, PopStackpoint).
+      const uint8_t reg = (code[1] >> 3) & 7;
+      return reg != 4 && reg != 1;
+    }
+    default:
+      return true;
+  }
+}
 
 // For positive normal inputs, the VMX reciprocal-square-root estimate ignores
 // the low 9 mantissa bits. The remaining 14 mantissa bits and the low exponent
@@ -344,6 +379,14 @@ bool X64Backend::Initialize(Processor* processor) {
 
   // Allocate some special indirections.
   code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
+
+  // Everything placed from now on is guest code, which terminated threads can
+  // be unwound from on POSIX.
+  guest_code_begin = code_cache_->placed_code_end_address();
+  guest_code_end =
+      code_cache_->execute_base_address() + code_cache_->total_size();
+  threading::SetTerminationSafeCodeCheck(IsTerminationSafeGuestCode);
+  code_cache_->MarkGuestCodeStart();
 
   // Setup exception callback
   ExceptionHandler::Install(&ExceptionCallbackThunk, this);

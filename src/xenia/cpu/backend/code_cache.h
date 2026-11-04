@@ -35,6 +35,11 @@ class CodeCache {
 
   // Finds platform-specific function unwind info for the given host PC.
   virtual void* LookupUnwindInfo(uint64_t host_pc) = 0;
+
+  // Discards the guest code placed since the backend was initialized, once
+  // nothing can execute or look it up anymore (the title was terminated and
+  // its modules unloaded).
+  virtual void ResetGuestCode() = 0;
 };
 
 }  // namespace backend
