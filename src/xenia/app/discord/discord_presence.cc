@@ -8,9 +8,12 @@
 */
 
 #include "discord_presence.h"
+
 #include <ctime>
+#include <string>
+
 #include "third_party/discord-rpc/include/discord_rpc.h"
-#include "xenia/base/string.h"
+#include "third_party/fmt/include/fmt/format.h"
 
 // TODO: This library has been deprecated in favor of Discord's GameSDK.
 namespace xe {
@@ -43,15 +46,20 @@ void DiscordPresence::NotPlaying() {
   Discord_UpdatePresence(&discordPresence);
 }
 
-void DiscordPresence::PlayingTitle(const std::string_view game_title) {
+void DiscordPresence::PlayingTitle(const std::string_view game_title,
+                                   uint32_t title_id) {
   auto details = std::string(game_title);
+  const auto game_tile_url = fmt::format(
+      "https://download-ssl.xbox.com/content/images/"
+      "66acd000-77fe-1000-9115-d802{:08x}/1033/tile.png",
+      title_id);
   DiscordRichPresence discordPresence = {};
   discordPresence.state = "In Game";
   discordPresence.details = details.c_str();
   // TODO(gibbed): we don't have state icons yet.
   // discordPresence.smallImageKey = "app";
   // discordPresence.largeImageKey = "state_ingame";
-  discordPresence.largeImageKey = "app";
+  discordPresence.largeImageKey = game_tile_url.c_str();
   discordPresence.largeImageText = "Xenia Canary - Experimental Testing branch";
   discordPresence.startTimestamp = time(0);
   discordPresence.instance = 1;
