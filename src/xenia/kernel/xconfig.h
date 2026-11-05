@@ -403,6 +403,11 @@ struct Resolution {
 
   std::pair<uint16_t, uint16_t> aspect_ratio() const {
     const uint16_t divisor = std::gcd(width_.get(), height_.get());
+
+    if (!divisor) {
+      return {4, 3};
+    }
+
     return {width_.get() / divisor, height_.get() / divisor};
   }
 
