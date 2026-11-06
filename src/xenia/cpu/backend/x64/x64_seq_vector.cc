@@ -659,7 +659,6 @@ struct VECTOR_ADD
           switch (part_type) {
             case INT8_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpaddusb(dest, src1, src2);
                 } else {
@@ -671,7 +670,6 @@ struct VECTOR_ADD
               break;
             case INT16_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpaddusw(dest, src1, src2);
                 } else {
@@ -776,7 +774,6 @@ struct VECTOR_SUB
           switch (part_type) {
             case INT8_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpsubusb(dest, src1, src2);
                 } else {
@@ -788,7 +785,6 @@ struct VECTOR_SUB
               break;
             case INT16_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpsubusw(dest, src1, src2);
                 } else {
@@ -934,8 +930,6 @@ struct VECTOR_SHL_V128
   }
 
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
-    // TODO(benvanik): native version (with shift magic).
-
     // gf2p8mulb's "x8 + x4 + x3 + x + 1"-polynomial-reduction only
     // applies when the multiplication overflows. Masking away any bits
     // that would have overflowed turns the polynomial-multiplication into
@@ -2215,8 +2209,6 @@ struct EXTRACT_I32
         vec128b(15, 14, 13, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
     };
     if (i.src2.is_constant) {
-      // TODO(gibbed): add support to constant propagation pass for
-      // OPCODE_EXTRACT.
       Xmm src1;
       if (i.src1.is_constant) {
         src1 = e.xmm0;
