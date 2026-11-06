@@ -10,6 +10,8 @@
 #ifndef XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 #define XENIA_CPU_PPC_PPC_HIR_BUILDER_H_
 
+#include <initializer_list>
+
 #include "xenia/base/string_buffer.h"
 #include "xenia/cpu/function.h"
 #include "xenia/cpu/hir/hir_builder.h"
@@ -59,13 +61,53 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   void UpdateCR6(Value* src_value);
   Value* LoadFPSCR();
   void StoreFPSCR(Value* value);
-  void UpdateFPSCR(Value* result, bool update_cr1);
+  // For instructions that cannot raise an exception.
+  void ClearFPSCRExceptions(bool update_cr1);
+  // What UpdateFPSCR checks besides invalid operation. For inexact, the result
+  // is compared exactly with what the operands give; overflow and zero divide
+  // are read off the operands and the result.
+  enum class FPOperation {
+    kOther,  // invalid operation only
+    kSum,
+    kDifference,
+    kProduct,
+    kQuotient,
+    kSquareRoot,
+    kRoundToSingle,
+    kEstimate,  // fres and frsqrte: zero divide and overflow, never inexact
+  };
+  // Derives the exception bits from the operands and the result. Only the
+  // recording forms pay for it; Rc=0 clears the exception bits as
+  // ClearFPSCRExceptions does. `suppress`, when given, is a condition that
+  // clears everything raised.
+  void UpdateFPSCR(Value* result, std::initializer_list<Value*> operands,
+                   bool update_cr1, Value* suppress = nullptr,
+                   FPOperation operation = FPOperation::kOther);
+  // As UpdateFPSCR for a x c + b, or a x c - b when `subtract`, with the
+  // result negated when `negate`. Adds the 0 x inf that a QNaN addend would
+  // hide.
+  void UpdateFPSCRForMultiplyAdd(Value* result, Value* a, Value* c, Value* b,
+                                 bool subtract, bool negate, bool update_cr1,
+                                 Value* suppress = nullptr);
+  // The single-precision quirk: an operand outside the single range answers
+  // with the default QNaN and raises nothing (or, for divide and square root,
+  // keeps the double). Feed the condition to UpdateFPSCR.
+  Value* SingleOutOfRangeOperand(std::initializer_list<Value*> operands);
+  Value* ApplySingleOutOfRangeOperand(Value* quirk, Value* result);
+  // ARITHMETIC_SINGLE_RANGE, for the operation to apply the quirk itself,
+  // unless it's a recording form, which needs the condition as well.
+  uint32_t SingleRangeFlag(bool update_cr1) const;
+  // For the conversions to integer, which are invalid for a NaN or a value
+  // the target cannot hold.
+  void UpdateFPSCRForConvertToInteger(Value* b, hir::RoundMode round_mode,
+                                      bool to_int64, bool update_cr1);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);
-  // void UpdateXERWithOverflow();
-  // void UpdateXERWithOverflowAndCarry();
-  // void StoreOV(Value* value);
+  // XER[25:31] as an INT64
+  Value* LoadXERCount();
+  // Call before UpdateCR, which copies XER[SO] into the CR field.
+  void StoreOV(Value* value);
   Value* LoadCA();
   void StoreCA(Value* value);
   Value* LoadSAT();
@@ -78,8 +120,6 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   Value* LoadVR(uint32_t reg);
   void StoreVR(uint32_t reg, Value* value);
 
-  void StoreReserved(Value* val);
-  Value* LoadReserved();
   // calls original impl in hirbuilder, but also records the is_return_site bit
   // into flags in the guestmodule
   void SetReturnAddress(Value* value);
@@ -87,6 +127,10 @@ class PPCHIRBuilder : public hir::HIRBuilder {
  private:
   void MaybeBreakOnInstruction(uint32_t address);
   void AnnotateLabel(uint32_t address, Label* label);
+  // `ox` and `raised` (any other exception) are null for none. Every exception
+  // sets FX.
+  void StoreFPSCRSummary(Value* vx, bool update_cr1, Value* ox = nullptr,
+                         Value* raised = nullptr);
 
   PPCFrontend* frontend_;
 

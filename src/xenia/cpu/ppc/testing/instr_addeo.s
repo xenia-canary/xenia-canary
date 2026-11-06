@@ -1,0 +1,9 @@
+# The carry in takes the low word past INT32_MAX.
+test_addeo_1:
+  #_ REGISTER_IN r4 0x000000007FFFFFFF
+  #_ REGISTER_IN r5 0x0000000000000000
+  #_ REGISTER_IN xer 0x20000000
+  addeo r3, r4, r5
+  blr
+  #_ REGISTER_OUT r3 0x0000000080000000
+  #_ REGISTER_OUT xer 0xC0000000

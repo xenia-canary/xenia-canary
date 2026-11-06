@@ -119,6 +119,16 @@ class Backend {
   }
   virtual void FreeGuestTrampoline(uint32_t trampoline_addr) {}
 
+  // lwarx/stwcx. for host code, on the same reservation state the JIT uses, so
+  // a host store cancels a guest thread's reservation. Values are guest endian.
+  // The defaults are a host compare-exchange on the value.
+  virtual uint32_t ReservedLoad32(ppc::PPCContext* context, uint32_t address);
+  virtual uint64_t ReservedLoad64(ppc::PPCContext* context, uint32_t address);
+  virtual bool ReservedStore32(ppc::PPCContext* context, uint32_t address,
+                               uint32_t value);
+  virtual bool ReservedStore64(ppc::PPCContext* context, uint32_t address,
+                               uint64_t value);
+
  protected:
   Processor* processor_ = nullptr;
   MachineInfo machine_info_;

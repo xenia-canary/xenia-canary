@@ -37,11 +37,13 @@
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 #include "xenia/cpu/backend/x64/x64_util.h"
 #include "xenia/cpu/hir/hir_builder.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 #include "xenia/cpu/processor.h"
 
 DEFINE_bool(use_fast_dot_product, false,
-            "Use less accurate dot-product exception handling that converts "
-            "all infinite results to QNaN.",
+            "Compute vmsum3fp128 and vmsum4fp128 as a float64 sum truncated to "
+            "single, about three times faster but differing from the console "
+            "in about 3% of results.",
             "CPU");
 
 DEFINE_bool(no_round_to_single, false,
@@ -331,9 +333,11 @@ struct CONVERT_I32_F64
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     // Intel returns 0x80000000 if the double value does not fit within an int32
     // PPC saturates the value instead.
-    // So, we can clamp the double value to (double)0x7FFFFFFF.
-    e.vminsd(e.xmm1, GetInputRegOrConstant(e, i.src1, e.xmm0),
-             e.GetXmmConstPtr(XMMIntMaxPD));
+    // So, we can clamp the double value to (double)0x7FFFFFFF. vminsd returns
+    // its second operand when either is a NaN, so a NaN stays one and gives
+    // 0x80000000, as PPC does.
+    e.vmovsd(e.xmm1, e.GetXmmConstPtr(XMMIntMaxPD));
+    e.vminsd(e.xmm1, e.xmm1, GetInputRegOrConstant(e, i.src1, e.xmm0));
     if (i.instr->flags == ROUND_TO_ZERO) {
       e.vcvttsd2si(i.dest, e.xmm1);
     } else {
@@ -346,10 +350,7 @@ struct CONVERT_I64_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    // Copy src1.
-    e.movq(e.rcx, src1);
 
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
     if (i.instr->flags == ROUND_TO_ZERO) {
       e.vcvttsd2si(i.dest, src1);
     } else {
@@ -360,16 +361,16 @@ struct CONVERT_I64_F64
     e.mov(e.rax, 0x1);
     e.shl(e.rax, 63);
 
-    // Saturate positive overflow
-    // TODO(DrChat): Find a shorter equivalent sequence.
+    // Saturate positive overflow. A NaN compares unordered, so it keeps
+    // 0x8000000000000000, as PPC gives.
     // if (result ind. && src1 >= 0)
     //   result = 0x7FFFFFFFFFFFFFFF;
     e.cmp(e.rax, i.dest);
     e.sete(e.al);
+    e.vucomisd(src1, e.GetXmmConstPtr(XMMZero));
+    e.setae(e.cl);
+    e.and_(e.al, e.cl);
     e.movzx(e.rax, e.al);
-    e.shr(e.rcx, 63);
-    e.xor_(e.rcx, 0x01);
-    e.and_(e.rax, e.rcx);
 
     e.sub(i.dest, e.rax);
   }
@@ -384,8 +385,6 @@ struct CONVERT_F32_F64
     : Sequence<CONVERT_F32_F64, I<OPCODE_CONVERT, F32Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
-
     Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
     e.vmovq(e.rax, src);
     e.vcvtsd2ss(i.dest, src);
@@ -416,7 +415,6 @@ struct CONVERT_F64_I64
       input = e.rax;
       e.mov(input, (uintptr_t)i.src1.constant());
     }
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
     e.vcvtsi2sd(i.dest, input);
   }
 };
@@ -497,6 +495,10 @@ struct ROUND_F64 : Sequence<ROUND_F64, I<OPCODE_ROUND, F64Op, F64Op>> {
         break;
       case ROUND_TO_POSITIVE_INFINITY:
         e.vroundsd(i.dest, src1, 0b00000010);
+        break;
+      case ROUND_DYNAMIC:
+        // Bit 2 takes the mode from MXCSR, which carries the guest's.
+        e.vroundsd(i.dest, src1, 0b00000100);
         break;
     }
   }
@@ -609,6 +611,9 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
 
     e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
     e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+    // Hardware returns that operand quieted. Lanes with no NaN are dropped by
+    // the blend below, so this needs no mask of its own.
+    e.vorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
 
     e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
     e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
@@ -675,6 +680,9 @@ struct MIN_V128 : Sequence<MIN_V128, I<OPCODE_MIN, V128Op, V128Op, V128Op>> {
 
     e.vcmpunordps(e.xmm3, src1, src1);  // mask: vA is NaN
     e.vblendvps(e.xmm3, src2, src1, e.xmm3);
+    // Hardware returns that operand quieted. Lanes with no NaN are dropped by
+    // the blend below, so this needs no mask of its own.
+    e.vorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
 
     e.vcmpunordps(i.dest, src1, src2);  // mask: vA or vB is NaN
     e.vblendvps(i.dest, e.xmm2, e.xmm3, i.dest);
@@ -699,9 +707,16 @@ struct SELECT_I8
     } else {
       src2 = i.src2;
     }
+    Reg8 src3;
+    if (i.src3.is_constant) {
+      src3 = e.dl;
+      e.mov(src3, i.src3.constant());
+    } else {
+      src3 = i.src3;
+    }
     e.test(i.src1, i.src1);
     e.cmovnz(i.dest.reg().cvt32(), src2.cvt32());
-    e.cmovz(i.dest.reg().cvt32(), i.src3.reg().cvt32());
+    e.cmovz(i.dest.reg().cvt32(), src3.cvt32());
   }
 };
 struct SELECT_I16
@@ -714,9 +729,16 @@ struct SELECT_I16
     } else {
       src2 = i.src2;
     }
+    Reg16 src3;
+    if (i.src3.is_constant) {
+      src3 = e.dx;
+      e.mov(src3, i.src3.constant());
+    } else {
+      src3 = i.src3;
+    }
     e.test(i.src1, i.src1);
     e.cmovnz(i.dest.reg().cvt32(), src2.cvt32());
-    e.cmovz(i.dest.reg().cvt32(), i.src3.reg().cvt32());
+    e.cmovz(i.dest.reg().cvt32(), src3.cvt32());
   }
 };
 struct SELECT_I32
@@ -729,9 +751,16 @@ struct SELECT_I32
     } else {
       src2 = i.src2;
     }
+    Reg32 src3;
+    if (i.src3.is_constant) {
+      src3 = e.edx;
+      e.mov(src3, i.src3.constant());
+    } else {
+      src3 = i.src3;
+    }
     e.test(i.src1, i.src1);
     e.cmovnz(i.dest, src2);
-    e.cmovz(i.dest, i.src3);
+    e.cmovz(i.dest, src3);
   }
 };
 struct SELECT_I64
@@ -744,9 +773,16 @@ struct SELECT_I64
     } else {
       src2 = i.src2;
     }
+    Reg64 src3;
+    if (i.src3.is_constant) {
+      src3 = e.rdx;
+      e.mov(src3, i.src3.constant());
+    } else {
+      src3 = i.src3;
+    }
     e.test(i.src1, i.src1);
     e.cmovnz(i.dest, src2);
-    e.cmovz(i.dest, i.src3);
+    e.cmovz(i.dest, src3);
   }
 };
 struct SELECT_F32
@@ -1191,7 +1227,10 @@ struct COMPARE_NE_F32
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     if (!HasPrecedingCmpOfSameValues(i.instr)) {
-      e.vcomiss(i.src1, i.src2);
+      EmitCommutativeBinaryXmmOp(
+          e, i, [](X64Emitter& e, I8Op dest, const Xmm& src1, const Xmm& src2) {
+            e.vcomiss(src1, src2);
+          });
     }
     CompareNeDoSetne(e, i.instr, i.dest);
   }
@@ -1201,7 +1240,10 @@ struct COMPARE_NE_F64
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     if (!HasPrecedingCmpOfSameValues(i.instr)) {
-      e.vcomisd(i.src1, i.src2);
+      EmitCommutativeBinaryXmmOp(
+          e, i, [](X64Emitter& e, I8Op dest, const Xmm& src1, const Xmm& src2) {
+            e.vcomisd(src1, src2);
+          });
     }
     CompareNeDoSetne(e, i.instr, i.dest);
   }
@@ -1329,12 +1371,112 @@ EMITTER_ASSOCIATIVE_COMPARE_FLT_XX(UGE, setae);
 // ============================================================================
 struct DID_SATURATE
     : Sequence<DID_SATURATE, I<OPCODE_DID_SATURATE, I8Op, V128Op>> {
+  // The PPC front end passes the lanes that saturated (see SetSatIfAny), so
+  // this is whether any is nonzero
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // TODO(benvanik): implement saturation check (VECTOR_ADD, etc).
-    e.xor_(i.dest, i.dest);
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vptest(src1, src1);
+    e.setnz(i.dest);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
+
+// Marks the lanes of two packed doubles, in lanes, that are nonzero and outside
+// [2^-149, 2^128), infinities and NaNs among them. Clobbers temp.
+static void EmitSingleRangeBadLanes(X64Emitter& e, const Xmm& lanes,
+                                    const Xmm& temp) {
+  e.vpaddq(lanes, lanes, lanes);  // Discard the sign bit.
+  e.vpaddq(temp, lanes, e.GetXmmConstPtr(XMMSingleRangeBias));
+  e.vpcmpgtq(temp, temp, e.GetXmmConstPtr(XMMSingleRangeLimit));
+  e.vpcmpeqq(lanes, lanes, e.GetXmmConstPtr(XMMZero));
+  e.vpandn(lanes, lanes, temp);
+}
+
+// ARITHMETIC_SINGLE_RANGE, ahead of the operation. A branch rather than a
+// select keeps the check out of the result's dependency chain, and operands are
+// almost never outside the range. The tail gives the default QNaN unless an
+// operand is infinite or NaN, which takes precedence, and goes back to the
+// operation then. Returns a label to place after the operation, if one's
+// needed.
+template <int operands, typename ARGS>
+static Xbyak::Label* EmitSingleRangeCheck(X64Emitter& e, const ARGS& i) {
+  if (!(i.instr->flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& resume = e.NewCachedLabel();
+  Xbyak::Label& out_of_range =
+      e.AddToTail([i, &done, &resume](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        auto resume_if_nonfinite = [&e, &resume](const Xmm& operand) {
+          e.vmovq(e.rax, operand);
+          e.add(e.rax, e.rax);  // Discard the sign bit.
+          e.mov(e.rcx, 0xFFE0000000000000ull);
+          e.cmp(e.rax, e.rcx);
+          e.jae(resume, X64Emitter::T_NEAR);
+        };
+        resume_if_nonfinite(GetInputRegOrConstant(e, i.src1, e.xmm0));
+        resume_if_nonfinite(GetInputRegOrConstant(e, i.src2, e.xmm0));
+        if constexpr (operands == 3) {
+          resume_if_nonfinite(GetInputRegOrConstant(e, i.src3, e.xmm0));
+        }
+        e.mov(e.rax, 0x7FF8000000000000ull);
+        e.vmovq(i.dest, e.rax);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+  Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+  e.vunpcklpd(e.xmm2, src1, src2);
+  EmitSingleRangeBadLanes(e, e.xmm2, e.xmm3);
+  if constexpr (operands == 3) {
+    Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm0);
+    e.vunpcklpd(e.xmm0, src3, src3);
+    EmitSingleRangeBadLanes(e, e.xmm0, e.xmm1);
+    e.vpor(e.xmm2, e.xmm2, e.xmm0);
+  }
+  e.vptest(e.xmm2, e.xmm2);
+  e.jnz(out_of_range, X64Emitter::T_NEAR);
+  e.L(resume);
+  return &done;
+}
+
+// An invalid operation with no NaN operand answers with the default QNaN, and
+// x86's is negative where PPC's is positive. Only a NaN result can need the
+// fixup, so the test stays off the result's dependency chain and the work goes
+// to a tail block. The arithmetic lands in xmm2 because dest may share a
+// register with a source, and the tail needs the operands to tell a propagated
+// NaN from a generated one.
+template <typename ARGS, typename FN>
+static void EmitBinaryFpWithPpcDefaultNan_F64(X64Emitter& e, const ARGS& i,
+                                              FN&& emit_op) {
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& invalid =
+      e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label propagate;
+        // Re-derive rather than capture: a constant operand lives in xmm0 or
+        // xmm1, which the hot path is free to reuse.
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        e.vucomisd(s1, s1);
+        e.jp(propagate);
+        e.vucomisd(s2, s2);
+        e.jp(propagate);
+        e.mov(e.rax, 0x7FF8000000000000ull);
+        e.vmovq(i.dest, e.rax);
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(propagate);
+        e.vmovapd(i.dest, e.xmm2);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+  Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+  emit_op(e, e.xmm2, src1, src2);
+  e.vucomisd(e.xmm2, e.xmm2);
+  e.jp(invalid, X64Emitter::T_NEAR);
+  e.vmovapd(i.dest, e.xmm2);
+  e.L(done);
+}
 
 // ============================================================================
 // OPCODE_ADD
@@ -1387,10 +1529,14 @@ struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
 struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vaddsd(i.dest, src1, src2);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vaddsd(dest, s1, s2);
+        });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct ADD_V128 : Sequence<ADD_V128, I<OPCODE_ADD, V128Op, V128Op, V128Op>> {
@@ -1508,11 +1654,16 @@ struct SUB_F32 : Sequence<SUB_F32, I<OPCODE_SUB, F32Op, F32Op, F32Op>> {
 };
 struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_true(!i.instr->flags);
+    assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vsubsd(i.dest, src1, src2);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vsubsd(dest, s1, s2);
+        });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct SUB_V128 : Sequence<SUB_V128, I<OPCODE_SUB, V128Op, V128Op, V128Op>> {
@@ -1654,12 +1805,16 @@ struct MUL_F32 : Sequence<MUL_F32, I<OPCODE_MUL, F32Op, F32Op, F32Op>> {
 };
 struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_true(!i.instr->flags);
+    assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vmulsd(i.dest, src1, src2);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vmulsd(dest, s1, s2);
+        });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_V128 : Sequence<MUL_V128, I<OPCODE_MUL, V128Op, V128Op, V128Op>> {
@@ -1940,10 +2095,10 @@ struct DIV_F64 : Sequence<DIV_F64, I<OPCODE_DIV, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!i.instr->flags);
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-    e.vdivsd(i.dest, src1, src2);
+    EmitBinaryFpWithPpcDefaultNan_F64(
+        e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
+          e.vdivsd(dest, s1, s2);
+        });
   }
 };
 struct DIV_V128 : Sequence<DIV_V128, I<OPCODE_DIV, V128Op, V128Op, V128Op>> {
@@ -1963,6 +2118,116 @@ EMITTER_OPCODE_TABLE(OPCODE_DIV, DIV_I8, DIV_I16, DIV_I32, DIV_I64, DIV_F32,
 // - 132 -> $1 = $1 * $3 + $2
 // - 213 -> $1 = $2 * $1 + $3
 // - 231 -> $1 = $2 * $3 + $1
+//
+// PPC multiply-add NaN semantics. Hardware returns the first NaN operand in
+// A, B, C order (the HIR operands are A, C, B, so the walk is src1, src3,
+// src2), quieted, rather than whatever the host FMA picked, and leaves its sign
+// alone even for the negated forms.
+//
+// The fixup is only reached when the result is already NaN, which covers every
+// case needing one: a NaN operand always yields a NaN result, and an invalid
+// operation with no NaN operand needs the PPC default rather than x86's.
+
+// Packed single. Branchless, since every lane may need a different answer. The
+// sources are stashed first so xmm0-2 can be clobbered even when they hold
+// materialized constants.
+static void EmitFmaPpcNanFixup_V128(X64Emitter& e, const Xmm& dest,
+                                    const Xmm& result, const Xmm& src1,
+                                    const Xmm& src2, const Xmm& src3) {
+  e.StashXmm(0, src1);
+  e.StashXmm(1, src2);
+  e.StashXmm(2, src3);
+  auto stash = [&e](int index) {
+    return e.ptr[e.rsp + X64Emitter::kStashOffset + index * 16];
+  };
+  // Lowest priority first, so an earlier operand overwrites a later one:
+  // src2 (C), then src3 (B), then src1 (A).
+  const int order[3] = {1, 2, 0};
+
+  e.vmovaps(e.xmm0, e.GetXmmConstPtr(XMMQNaN));
+  for (int step = 0; step < 3; ++step) {
+    e.vmovaps(e.xmm1, stash(order[step]));
+    e.vcmpunordps(e.xmm2, e.xmm1, e.xmm1);
+    e.vorps(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMQuietBit));
+    e.vblendvps(e.xmm0, e.xmm0, e.xmm1, e.xmm2);
+  }
+  // Lanes whose result is not NaN keep the arithmetic answer.
+  e.vcmpunordps(e.xmm2, result, result);
+  e.vblendvps(dest, result, e.xmm0, e.xmm2);
+}
+
+// Scalar double. One lane, so a branch chain beats the blend sequence.
+static void EmitFmaPpcNanFixup_F64(X64Emitter& e, const Xmm& dest,
+                                   const Xmm& src1, const Xmm& src2,
+                                   const Xmm& src3, Xbyak::Label& done) {
+  const Xmm order[3] = {src1, src3, src2};  // A, B, C
+  for (int step = 0; step < 3; ++step) {
+    Xbyak::Label not_nan;
+    e.vucomisd(order[step], order[step]);
+    e.jnp(not_nan);
+    e.vmovq(e.rax, order[step]);
+    e.mov(e.rdx, 1ull << 51);  // ensure quiet
+    e.or_(e.rax, e.rdx);
+    e.vmovq(dest, e.rax);
+    e.jmp(done, e.T_NEAR);
+    e.L(not_nan);
+  }
+  // No NaN operand, so this is an invalid operation.
+  e.mov(e.rax, 0x7FF8000000000000ull);
+  e.vmovq(dest, e.rax);
+  e.jmp(done, e.T_NEAR);
+}
+
+// Negates the arithmetic result in xmm3 when the opcode asks for it, then
+// routes a NaN result to the fixup.
+template <typename ARGS>
+static void EmitPpcFmaResult_F64(X64Emitter& e, const ARGS& i, bool negate) {
+  if (negate) {
+    // Not the vfnmadd/vfnmsub forms: those negate the operands, which differs
+    // from negating the result when the addends are zeros of opposite sign.
+    e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPD));
+  }
+  // Tail code is emitted at the end of the whole function, so the label has to
+  // outlive this sequence.
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& fixup =
+      e.AddToTail([&done, i](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        Xmm s3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+        EmitFmaPpcNanFixup_F64(e, i.dest, s1, s2, s3, done);
+      });
+  e.vucomisd(e.xmm3, e.xmm3);
+  e.jp(fixup, e.T_NEAR);
+  e.vmovapd(i.dest, e.xmm3);
+  e.L(done);
+}
+
+template <typename ARGS>
+static void EmitPpcFmaResult_V128(X64Emitter& e, const ARGS& i, bool negate) {
+  if (negate) {
+    e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+  }
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& fixup =
+      e.AddToTail([&done, i](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        // Re-derive rather than capture: the hot path's NaN test clobbers
+        // xmm0, which is where a constant operand would have been placed.
+        Xmm s1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm s2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        Xmm s3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+        EmitFmaPpcNanFixup_V128(e, i.dest, e.xmm3, s1, s2, s3);
+        e.jmp(done, e.T_NEAR);
+      });
+  e.vcmpunordps(e.xmm0, e.xmm3, e.xmm3);
+  e.vptest(e.xmm0, e.xmm0);
+  e.jnz(fixup, e.T_NEAR);
+  e.vmovaps(i.dest, e.xmm3);
+  e.L(done);
+}
+
 struct MUL_ADD_F32
     : Sequence<MUL_ADD_F32, I<OPCODE_MUL_ADD, F32Op, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
@@ -1975,6 +2240,7 @@ struct MUL_ADD_F64
     : Sequence<MUL_ADD_F64, I<OPCODE_MUL_ADD, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
@@ -1983,11 +2249,15 @@ struct MUL_ADD_F64
       // todo: this is garbage
       e.vmovapd(e.xmm3, src1);
       e.vfmadd213sd(e.xmm3, src2, src3);
-      e.vmovapd(i.dest, e.xmm3);
     } else {
       // todo: might need to use x87 in this case...
       e.vmulsd(e.xmm3, src1, src2);
-      e.vaddsd(i.dest, e.xmm3, src3);
+      e.vaddsd(e.xmm3, e.xmm3, src3);
+    }
+    EmitPpcFmaResult_F64(e, i,
+                         (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
+    if (range_done) {
+      e.L(*range_done);
     }
   }
 };
@@ -2000,16 +2270,17 @@ struct MUL_ADD_V128
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+    const bool negate = (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0;
     if (e.IsFeatureEnabled(kX64EmitFMA)) {
       // todo: this is garbage
       e.vmovaps(e.xmm3, src1);
       e.vfmadd213ps(e.xmm3, src2, src3);
-      e.vmovaps(i.dest, e.xmm3);
     } else {
       // todo: might need to use x87 in this case...
       e.vmulps(e.xmm3, src1, src2);
-      e.vaddps(i.dest, e.xmm3, src3);
+      e.vaddps(e.xmm3, e.xmm3, src3);
     }
+    EmitPpcFmaResult_V128(e, i, negate);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);
@@ -2031,6 +2302,7 @@ struct MUL_SUB_F64
     : Sequence<MUL_SUB_F64, I<OPCODE_MUL_SUB, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
@@ -2039,11 +2311,15 @@ struct MUL_SUB_F64
       // todo: this is garbage
       e.vmovapd(e.xmm3, src1);
       e.vfmsub213sd(e.xmm3, src2, src3);
-      e.vmovapd(i.dest, e.xmm3);
     } else {
       // todo: might need to use x87 in this case...
       e.vmulsd(e.xmm3, src1, src2);
-      e.vsubsd(i.dest, e.xmm3, src3);
+      e.vsubsd(e.xmm3, e.xmm3, src3);
+    }
+    EmitPpcFmaResult_F64(e, i,
+                         (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
+    if (range_done) {
+      e.L(*range_done);
     }
   }
 };
@@ -2056,15 +2332,25 @@ struct MUL_SUB_V128
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
+    const bool negate = (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0;
     if (e.IsFeatureEnabled(kX64EmitFMA)) {
       // todo: this is garbage
       e.vmovaps(e.xmm3, src1);
       e.vfmsub213ps(e.xmm3, src2, src3);
-      e.vmovaps(i.dest, e.xmm3);
+      if (!negate) {
+        e.vmovaps(i.dest, e.xmm3);
+      }
     } else {
       // todo: might need to use x87 in this case...
       e.vmulps(e.xmm3, src1, src2);
-      e.vsubps(i.dest, e.xmm3, src3);
+      if (negate) {
+        e.vsubps(e.xmm3, e.xmm3, src3);
+      } else {
+        e.vsubps(i.dest, e.xmm3, src3);
+      }
+    }
+    if (negate) {
+      EmitPpcFmaResult_V128(e, i, true);
     }
   }
 };
@@ -2157,7 +2443,28 @@ struct SQRT_F32 : Sequence<SQRT_F32, I<OPCODE_SQRT, F32Op, F32Op>> {
 struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    e.vsqrtsd(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    // A negative operand gets the default QNaN, as in
+    // EmitBinaryFpWithPpcDefaultNan_F64, and a NaN operand comes back quieted.
+    Xbyak::Label& done = e.NewCachedLabel();
+    Xbyak::Label& invalid =
+        e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& tail) {
+          e.L(tail);
+          Xbyak::Label propagate;
+          Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
+          e.vucomisd(src, src);
+          e.jp(propagate);
+          e.mov(e.rax, 0x7FF8000000000000ull);
+          e.vmovq(i.dest, e.rax);
+          e.jmp(done, X64Emitter::T_NEAR);
+          e.L(propagate);
+          e.vmovapd(i.dest, e.xmm2);
+          e.jmp(done, X64Emitter::T_NEAR);
+        });
+    e.vsqrtsd(e.xmm2, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    e.vucomisd(e.xmm2, e.xmm2);
+    e.jp(invalid, X64Emitter::T_NEAR);
+    e.vmovapd(i.dest, e.xmm2);
+    e.L(done);
   }
 };
 struct SQRT_V128 : Sequence<SQRT_V128, I<OPCODE_SQRT, V128Op, V128Op>> {
@@ -2218,12 +2525,41 @@ struct RSQRT_V128 : Sequence<RSQRT_V128, I<OPCODE_RSQRT, V128Op, V128Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_RSQRT, RSQRT_F32, RSQRT_F64, RSQRT_V128);
 
+// The estimate instructions as the console computes them, one lane at a time
+template <uint32_t (*Estimate)(uint32_t)>
+static __m128 EmulateEstimate(void*, __m128 src) {
+  alignas(16) uint32_t values[4];
+  _mm_store_si128(reinterpret_cast<__m128i*>(values), _mm_castps_si128(src));
+  for (size_t i = 0; i < 4; ++i) {
+    values[i] = Estimate(values[i]);
+  }
+  return _mm_castsi128_ps(
+      _mm_load_si128(reinterpret_cast<const __m128i*>(values)));
+}
+
+template <typename EmitArgType>
+static void EmitEstimateCall(X64Emitter& e, const EmitArgType& i,
+                             void* emulate) {
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+#if XE_PLATFORM_WIN32
+  // Windows x64 ABI: __m128 is passed by implicit pointer
+  e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
+#else
+  // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
+  e.vmovaps(e.xmm0, src1);
+#endif
+  e.CallNativeSafe(emulate);
+  e.vmovaps(i.dest, e.xmm0);
+}
+
 // ============================================================================
 // OPCODE_RECIP
 // ============================================================================
-// Altivec guarantees an error of < 1/4096 for vrefp while AVX only gives
-// < 1.5*2^-12 ≈ 1/2730 for rcpps. This breaks camp, horse and random event
-// spawning, breaks cactus collision as well as flickering grass in 5454082B
+// vrefp and fres compute the console's own estimates, bit for bit. Host
+// estimates aren't close enough: rcpps (< 1.5*2^-12 error, where Altivec
+// guarantees < 1/4096) broke camp, horse and random event spawning, cactus
+// collision and grass in 5454082B, and AVX512's vrcp14ps differs as well.
+// Exact division doesn't match the console either.
 struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
@@ -2233,22 +2569,122 @@ struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
     e.vdivss(i.dest, e.xmm0, src1);
   }
 };
-struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-    // AVX512's vrcp14ss has precision issues, division gives exact results
-    e.vmovapd(e.xmm0, e.GetXmmConstPtr(XMMOnePD));
-    e.vdivsd(i.dest, e.xmm0, src1);
+// fres's result mantissas, for the top 7 input mantissa bits: those of
+// ppc::EstimateReciprocalSingle over [1, 2)
+struct FresTable {
+  uint64_t mantissas[128];
+
+  FresTable() {
+    for (uint32_t i = 0; i < 128; ++i) {
+      double result = ppc::EstimateReciprocalSingle(1.0 + i / 128.0);
+      uint64_t bits;
+      std::memcpy(&bits, &result, sizeof(bits));
+      mantissas[i] = bits & 0x000FFFFFFFFFFFFFull;
+    }
   }
 };
+static const FresTable fres_table;
+
+// fres. While the result is a normal single (an input exponent from 895 to
+// 1148), it's exact: its mantissa comes from the table, and its exponent is
+// 2045 less the input's. Anything else (denormal and overflowing results,
+// zero, infinity, NaNs and denormal inputs) calls
+// ppc::EstimateReciprocalSingle.
+struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
+  static __m128 EmulateFres(void*, __m128 src) {
+    return _mm_castpd_ps(_mm_set_sd(
+        ppc::EstimateReciprocalSingle(_mm_cvtsd_f64(_mm_castps_pd(src)))));
+  }
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label& done = e.NewCachedLabel();
+    Xbyak::Label& call =
+        e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& call) {
+          e.L(call);
+          EmitEstimateCall(e, i, reinterpret_cast<void*>(EmulateFres));
+          e.jmp(done, X64Emitter::T_NEAR);
+        });
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    e.vmovq(e.rax, src1);
+    e.mov(e.rcx, e.rax);
+    e.shr(e.rcx, 52);
+    e.and_(e.ecx, 0x7FF);
+    e.lea(e.edx, e.ptr[e.rcx - 895]);
+    e.cmp(e.edx, 1148 - 895);
+    e.ja(call, X64Emitter::T_NEAR);
+
+    // Sign | (2045 - exponent) << 52 | the table's mantissa
+    e.mov(e.rdx, e.rax);
+    e.shr(e.rdx, 45);
+    e.and_(e.edx, 0x7F);
+    e.neg(e.rcx);
+    e.add(e.rcx, 2045);
+    e.shl(e.rcx, 52);
+    e.shr(e.rax, 63);
+    e.shl(e.rax, 63);
+    e.or_(e.rax, e.rcx);
+    e.mov(e.rcx, reinterpret_cast<uintptr_t>(fres_table.mantissas));
+    e.or_(e.rax, e.qword[e.rcx + e.rdx * 8]);
+    e.vmovq(i.dest, e.rax);
+    e.L(done);
+  }
+};
+// vrefp, as ppc::EstimateReciprocal: the top 5 mantissa bits pick a segment,
+// and the result mantissa is its base minus its slope times the next 9 bits
 struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i,
+          reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateReciprocal>));
+      return;
+    }
+
+    // The input stays in xmm3, since the result may share its register
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-    // AVX512's vrcp14ps has precision issues, devision gives exact results
-    e.vmovaps(e.xmm0, e.GetXmmConstPtr(XMMOne));
-    e.vdivps(i.dest, e.xmm0, src1);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    // Each table entry is the segment's base >> 9 above its slope
+    e.lea(e.rax, e.GetXmmConstPtr(XMMVRefpTable));
+    e.vpsrld(e.xmm0, e.xmm3, 18);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMShiftMaskPS));
+    e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+    e.vpgatherdd(e.xmm1, e.ptr[e.rax + e.xmm0 * 4], e.xmm2);
+
+    // Mantissa: base - slope * step
+    e.vpsrld(e.xmm2, e.xmm3, 9);
+    e.vpand(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVRefpStepMask));
+    e.vpand(e.xmm0, e.xmm1, e.GetXmmConstPtr(XMMVRefpSlopeMask));
+    e.vpmulld(e.xmm0, e.xmm0, e.xmm2);
+    e.vpsrld(e.xmm1, e.xmm1, 16);
+    e.vpslld(e.xmm1, e.xmm1, 9);
+    e.vpsubd(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMVRefpMantissaMask));
+
+    // Exponent: 253 - the input's
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vmovdqa(e.xmm2, e.GetXmmConstPtr(XMMVRefpExponentBias));
+    e.vpsubd(e.xmm0, e.xmm2, e.xmm0);
+    e.vpor(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+    e.vpor(i.dest, e.xmm1, e.xmm0);
+
+    // Too large an input (and infinity) gives a signed zero, zero and
+    // denormals a signed infinity, and a NaN comes back quiet
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm2, e.xmm1, e.GetXmmConstPtr(XMMVRefpLargeLimit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
+    e.vmovdqa(e.xmm2, e.GetXmmConstPtr(XMMVRefpSmallestNormal));
+    e.vpcmpgtd(e.xmm2, e.xmm2, e.xmm1);
+    e.vpor(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
+    e.vpcmpgtd(e.xmm2, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm2);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
@@ -2256,8 +2692,6 @@ EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
 // ============================================================================
 // OPCODE_POW2
 // ============================================================================
-// TODO(benvanik): use approx here:
-//     https://jrfonseca.blogspot.com/2008/09/fast-sse2-pow-tables-or-polynomials.html
 struct POW2_F32 : Sequence<POW2_F32, I<OPCODE_POW2, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_impossible_sequence(POW2_F32);
@@ -2268,28 +2702,94 @@ struct POW2_F64 : Sequence<POW2_F64, I<OPCODE_POW2, F64Op, F64Op>> {
     assert_impossible_sequence(POW2_F64);
   }
 };
-struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
-  static __m128 EmulatePow2(void*, __m128 src) {
-    alignas(16) float values[4];
-    _mm_store_ps(values, src);
-    for (size_t i = 0; i < 4; ++i) {
-      values[i] = std::exp2(values[i]);
+// The vexptefp and vlogefp tables in 2048ths, as 32-bit entries for
+// vpgatherdd, read back from ppc_estimates.cc: vexptefp of i/2048 and vlogefp
+// of 1 + i/2048
+struct EstimateTables {
+  uint32_t pow2[2048];
+  uint32_t log2[2048];
+
+  EstimateTables() {
+    for (uint32_t i = 0; i < 2048; ++i) {
+      float input = i / 2048.0f;
+      uint32_t input_bits;
+      std::memcpy(&input_bits, &input, sizeof(input_bits));
+      uint32_t result_bits = ppc::EstimatePow2(input_bits);
+      float result;
+      std::memcpy(&result, &result_bits, sizeof(result));
+      pow2[i] = static_cast<uint32_t>(result * 2048.0f);
+
+      result_bits = ppc::EstimateLog2(0x3F800000 | (i << 12));
+      std::memcpy(&result, &result_bits, sizeof(result));
+      log2[i] = static_cast<uint32_t>(result * 2048.0f);
     }
-    return _mm_load_ps(values);
   }
+};
+static const EstimateTables estimate_tables;
+
+// vexptefp, as ppc::EstimatePow2: the input as fixed point with 11 fraction
+// bits, floored, whose integer part is the result's exponent and whose
+// fraction indexes the table
+struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimatePow2>));
+      return;
+    }
 
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulatePow2));
-    e.vmovaps(i.dest, e.xmm0);
+    // The input stays in xmm3, since the result may share its register
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    // Truncated to 15 fraction bits: the mantissa with its implicit bit,
+    // shifted right by 135 - the exponent (32 or more gives 0), then negated
+    // for a negative input
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVExpteShiftBase));
+    e.vpsubd(e.xmm1, e.xmm1, e.xmm0);
+    e.vpand(e.xmm2, e.xmm3, e.GetXmmConstPtr(XMMVRefpMantissaMask));
+    e.vpor(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVRefpSmallestNormal));
+    e.vpsrlvd(e.xmm2, e.xmm2, e.xmm1);
+    e.vpsrad(e.xmm1, e.xmm3, 31);
+    e.vpxor(e.xmm2, e.xmm2, e.xmm1);
+    e.vpsubd(e.xmm2, e.xmm2, e.xmm1);
+
+    // Floored to 11 fraction bits, which index the table
+    e.vpsrad(e.xmm2, e.xmm2, 4);
+    e.vpand(e.xmm0, e.xmm2, e.GetXmmConstPtr(XMMEstimateIndexMask));
+    e.vpsrad(e.xmm2, e.xmm2, 11);
+    e.mov(e.rax, reinterpret_cast<uintptr_t>(estimate_tables.pow2));
+    e.vpcmpeqd(e.xmm1, e.xmm1, e.xmm1);
+    e.vpgatherdd(i.dest, e.ptr[e.rax + e.xmm0 * 4], e.xmm1);
+
+    // The table entry has the implicit bit at bit 11, so it carries into the
+    // exponent: (integer + 126) << 23 plus the entry << 12
+    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVExpteSmallestExponent));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.xmm2);
+    e.vpaddd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVExpteExponentBias));
+    e.vpslld(e.xmm2, e.xmm2, 23);
+    e.vpslld(i.dest, i.dest, 12);
+    e.vpaddd(i.dest, i.dest, e.xmm2);
+
+    // An integer part below -126 gives zero, an input from 128 up (and
+    // infinity) gives infinity, or zero if negative, and a NaN comes back
+    // quiet
+    e.vpandn(i.dest, e.xmm1, i.dest);
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vpcmpgtd(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMVExpteLargestInputExponent));
+    e.vpsrad(e.xmm1, e.xmm3, 31);
+    e.vpandn(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.xmm1, e.xmm0);
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
@@ -2297,9 +2797,6 @@ EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
 // ============================================================================
 // OPCODE_LOG2
 // ============================================================================
-// TODO(benvanik): use approx here:
-//     https://jrfonseca.blogspot.com/2008/09/fast-sse2-pow-tables-or-polynomials.html
-// TODO(benvanik): this emulated fn destroys all xmm registers! don't do it!
 struct LOG2_F32 : Sequence<LOG2_F32, I<OPCODE_LOG2, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_impossible_sequence(LOG2_F32);
@@ -2310,28 +2807,54 @@ struct LOG2_F64 : Sequence<LOG2_F64, I<OPCODE_LOG2, F64Op, F64Op>> {
     assert_impossible_sequence(LOG2_F64);
   }
 };
+// vlogefp, as ppc::EstimateLog2: the exponent less 127, plus the table entry
+// for the top 11 mantissa bits, in 2048ths
 struct LOG2_V128 : Sequence<LOG2_V128, I<OPCODE_LOG2, V128Op, V128Op>> {
-  static __m128 EmulateLog2(void*, __m128 src) {
-    alignas(16) float values[4];
-    _mm_store_ps(values, src);
-    for (size_t i = 0; i < 4; ++i) {
-      values[i] = std::log2(values[i]);
-    }
-    return _mm_load_ps(values);
-  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (!e.IsFeatureEnabled(kX64EmitAVX2)) {
+      EmitEstimateCall(
+          e, i, reinterpret_cast<void*>(EmulateEstimate<ppc::EstimateLog2>));
+      return;
+    }
 
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateLog2));
-    e.vmovaps(i.dest, e.xmm0);
+    // The input stays in xmm3, since the result may share its register
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
+    if (src1.getIdx() != e.xmm3.getIdx()) {
+      e.vmovdqa(e.xmm3, src1);
+    }
+
+    e.vpsrld(e.xmm0, e.xmm3, 12);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateIndexMask));
+    e.mov(e.rax, reinterpret_cast<uintptr_t>(estimate_tables.log2));
+    e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+    e.vpgatherdd(e.xmm1, e.ptr[e.rax + e.xmm0 * 4], e.xmm2);
+
+    // ((exponent - 127) << 11) + entry is exact as a float, and so is
+    // dividing it by 2048
+    e.vpsrld(e.xmm0, e.xmm3, 23);
+    e.vpand(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMEstimateExponentMask));
+    e.vpsubd(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMVLogeExponentBias));
+    e.vpslld(e.xmm0, e.xmm0, 11);
+    e.vpaddd(e.xmm0, e.xmm0, e.xmm1);
+    e.vcvtdq2ps(e.xmm0, e.xmm0);
+    e.vmulps(i.dest, e.xmm0, e.GetXmmConstPtr(XMMVLogeScale));
+
+    // A negative input gives a NaN, infinity gives infinity, zero and
+    // denormals give -infinity (even when negative), and a NaN comes back
+    // quiet
+    e.vpsrad(e.xmm0, e.xmm3, 31);
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMQNaN), e.xmm0);
+    e.vpcmpeqd(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMFloatInf), e.xmm0);
+    e.vpand(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpxor(e.xmm1, e.xmm1, e.xmm1);
+    e.vpcmpeqd(e.xmm0, e.xmm0, e.xmm1);
+    e.vpblendvb(i.dest, i.dest, e.GetXmmConstPtr(XMMVLogeZeroResult), e.xmm0);
+    e.vpand(e.xmm1, e.xmm3, e.GetXmmConstPtr(XMMAbsMaskPS));
+    e.vpcmpgtd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMFloatInf));
+    e.vpor(e.xmm0, e.xmm3, e.GetXmmConstPtr(XMMQuietBit));
+    e.vpblendvb(i.dest, i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
@@ -2339,44 +2862,52 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // ============================================================================
 // OPCODE_DOT_PRODUCT_3
 // ============================================================================
-// Keep the float64 accumulation below: it closely matches Xbox 360 vmsum
-// results, which may differ from a host float32 dot product by one bit.
+// A DOT_PRODUCT_3 source in dest with its fourth lane cleared, at compile time
+// for a constant.
+template <typename T>
+static Xmm LoadThreeLanes(X64Emitter& e, const T& src, Xmm dest) {
+  if (src.is_constant) {
+    vec128_t v = src.constant();
+    v.u32[3] = 0;
+    e.LoadConstantXmm(dest, v);
+  } else {
+    e.vandps(dest, src, e.GetXmmConstPtr(XMMThreeFloatMask));
+  }
+  return dest;
+}
+
+// The use_fast_dot_product path: the float64 sum of the products, truncated
+// to single. It matches the console in about 97% of cases; see
+// EmitVectorMultiplySum for the exact one.
+template <typename EmitArgType>
+static void EmitDotProductExceptional(X64Emitter& e, const EmitArgType& i,
+                                      Xbyak::Label& done) {
+  // A dot product of four float32 values can't overflow float64, so
+  // float32 overflow happened exactly when the float64 sum is finite
+  // but its float32 conversion has an all-ones exponent. Preserve
+  // infinities and NaNs originating in the inputs, as the previous
+  // MXCSR overflow-flag check did.
+  Xbyak::Label double_result_was_non_finite;
+  e.vmovq(e.rax, e.xmm2);
+  e.shr(e.rax, 52);
+  e.and_(e.eax, 0x7FF);
+  e.cmp(e.eax, 0x7FF);
+  e.je(double_result_was_non_finite);
+  e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
+  e.jmp(done, X64Emitter::T_NEAR);
+  e.L(double_result_was_non_finite);
+
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.jmp(done, X64Emitter::T_NEAR);
+}
+
 template <typename EmitArgType>
 static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   Xbyak::Label& done = e.NewCachedLabel();
   Xbyak::Label& exceptional_result =
       e.AddToTail([i, &done](X64Emitter& e, Xbyak::Label& exceptional_result) {
         e.L(exceptional_result);
-
-        if (!cvars::use_fast_dot_product) {
-          // A dot product of four float32 values can't overflow float64, so
-          // float32 overflow happened exactly when the float64 sum is finite
-          // but its float32 conversion has an all-ones exponent. Preserve
-          // infinities and NaNs originating in the inputs, as the previous
-          // MXCSR overflow-flag check did.
-          Xbyak::Label double_result_was_non_finite;
-          e.vmovq(e.rax, e.xmm2);
-          e.shr(e.rax, 52);
-          e.and_(e.eax, 0x7FF);
-          e.cmp(e.eax, 0x7FF);
-          e.je(double_result_was_non_finite);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(double_result_was_non_finite);
-        } else {
-          // Preserve the existing opt-in behavior, which maps infinity to the
-          // canonical quiet NaN but leaves an existing NaN unchanged.
-          Xbyak::Label input_was_nan;
-          e.vmovd(e.eax, e.xmm1);
-          e.test(e.eax, 0x007FFFFF);
-          e.jnz(input_was_nan);
-          e.vmovaps(i.dest, e.GetXmmConstPtr(XMMQNaN));
-          e.jmp(done, X64Emitter::T_NEAR);
-          e.L(input_was_nan);
-        }
-
-        e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
-        e.jmp(done, X64Emitter::T_NEAR);
+        EmitDotProductExceptional(e, i, done);
       });
 
   // The common finite result needs no MXCSR status round trip. Check only the
@@ -2389,56 +2920,296 @@ static void EmitDotProductResult(X64Emitter& e, const EmitArgType& i) {
   e.L(done);
 }
 
+// Converts the float64 sum in xmm2 to float32, rounded toward zero, and splats
+// it into dest. With the bits below single precision cleared, a sum in
+// float32's normal range (or zero) is exactly a float32, so the masked
+// conversion gives the same bits as rounding the sum toward zero. AVX-512 does
+// that in the conversion itself, which takes the and off the result's path;
+// the range check only decides a branch. Other sums take the masked path.
+template <typename EmitArgType>
+static void EmitDotProductRoundTowardZero(X64Emitter& e, const EmitArgType& i) {
+  if (!e.IsFeatureEnabled(kX64EmitAVX512F)) {
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    EmitDotProductResult(e, i);
+    return;
+  }
+
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& masked = e.AddToTail([i, &done](X64Emitter& e,
+                                                Xbyak::Label& masked) {
+    e.L(masked);
+    e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    Xbyak::Label finite;
+    e.vmovd(e.eax, e.xmm1);
+    e.add(e.eax, e.eax);  // Discard the sign bit.
+    e.cmp(e.eax, 0xFF000000);
+    e.jb(finite);
+    EmitDotProductExceptional(e, i, done);
+    e.L(finite);
+    e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+    e.jmp(done, X64Emitter::T_NEAR);
+  });
+
+  Xbyak::Label& exact = e.NewCachedLabel();
+  e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2 | e.T_rz_sae);
+  e.vmovq(e.rax, e.xmm2);
+  e.add(e.rax, e.rax);  // Discard the sign bit.
+  e.jz(exact);
+  // Biased exponents 897-1150 are float32's normal range, 2^-126 to 2^128
+  e.shr(e.rax, 53);
+  e.sub(e.eax, 1023 - 126);
+  e.cmp(e.eax, 254);
+  e.jae(masked, X64Emitter::T_NEAR);
+  e.L(exact);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+  e.L(done);
+}
+
+template <typename EmitArgType>
+static void EmitFastDotProduct3(X64Emitter& e, const EmitArgType& i) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
+
+  LoadThreeLanes(e, i.src1, e.xmm3);
+  if (!is_lensqr) {
+    LoadThreeLanes(e, i.src2, e.xmm2);
+
+    e.vcvtps2pd(e.ymm0, e.xmm3);
+    e.vcvtps2pd(e.ymm1, e.xmm2);
+
+    /*
+        ymm0 = src1 as doubles, ele 3 cleared
+        ymm1 = src2 as doubles, ele 3 cleared
+    */
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
+  } else {
+    e.vcvtps2pd(e.ymm0, e.xmm3);
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
+  }
+  e.vextractf128(e.xmm2, e.ymm3, 1);
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
+  e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
+  e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
+  EmitDotProductRoundTowardZero(e, i);
+}
+
+template <typename EmitArgType>
+static void EmitFastDotProduct4(X64Emitter& e, const EmitArgType& i) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
+
+  auto src1v = e.xmm3;
+  auto src2v = e.xmm2;
+  if (i.src1.is_constant) {
+    src1v = e.xmm3;
+    e.LoadConstantXmm(src1v, i.src1.constant());
+  } else {
+    src1v = i.src1.reg();
+  }
+  if (i.src2.is_constant) {
+    src2v = e.xmm2;
+    e.LoadConstantXmm(src2v, i.src2.constant());
+  } else {
+    src2v = i.src2.reg();
+  }
+  if (is_lensqr) {
+    e.vcvtps2pd(e.ymm0, src1v);
+
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
+  } else {
+    e.vcvtps2pd(e.ymm0, src1v);
+    e.vcvtps2pd(e.ymm1, src2v);
+
+    e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
+  }
+  e.vextractf128(e.xmm2, e.ymm3, 1);
+  e.vaddpd(e.xmm3, e.xmm3, e.xmm2);
+
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
+  e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
+  EmitDotProductRoundTowardZero(e, i);
+}
+
+// vmsum3fp128 and vmsum4fp128, bit-exact with the console. Its adder works on
+// a 30-bit window: the products are exact, and each one's magnitude is
+// truncated to a grid of 2^(S - 28), where S is the largest exponent sum
+// (unbiased exponent of a plus that of b) among products that aren't zero. The
+// products of the majority sign (positive on a tie) add their truncated
+// magnitude T and the others add ~T = -(T + 1), zero products included. A
+// negative total t becomes a magnitude by ~t, with the minority's sign; that
+// magnitude truncated to single is the result. An exact cancellation is +0,
+// products that are all zero give -0 only if every one is -0, a denormal
+// operand or result is flushed to zero, an overflow gives a QNaN with the sign
+// and truncated mantissa, and an infinite operand gives an infinity or, as any
+// NaN operand does, the default QNaN.
+//
+// In terms of u, the signed sum of the truncated products, with s the
+// majority sign and k the number of products of the other sign, that comes to
+// u - s * k, plus s when s * u < k. The products and the grid fit doubles
+// exactly: vroundpd truncates each scaled product, keeping its sign, and the
+// sum of at most four terms under 2^32 is exact. s and k come from a table by
+// the number of negative products. lanes is 3 or 4; vmsum3fp128 leaves the
+// fourth lane out.
+template <typename EmitArgType>
+static void EmitVectorMultiplySum(X64Emitter& e, const EmitArgType& i,
+                                  int lanes) {
+  e.ChangeMxcsrMode(MXCSRMode::Vmx);
+  Xbyak::Label& done = e.NewCachedLabel();
+  // Only zero products: -0 if every one is -0, unless one is NaN (infinity
+  // times zero). ymm0 holds the products.
+  Xbyak::Label& all_zero =
+      e.AddToTail([lanes, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label not_nan;
+        e.vcmpunordpd(e.ymm1, e.ymm0, e.ymm0);
+        e.vmovmskpd(e.ecx, e.ymm1);
+        e.test(e.ecx, e.ecx);
+        e.jz(not_nan);
+        e.vmovaps(e.xmm1, e.GetXmmConstPtr(XMMQNaN));
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(not_nan);
+        e.vmovmskpd(e.ecx, e.ymm0);
+        if (lanes == 3) {
+          e.and_(e.ecx, 0x7);
+        }
+        e.xor_(e.eax, e.eax);
+        e.cmp(e.ecx, lanes == 3 ? 0x7 : 0xF);
+        e.mov(e.ecx, 0x80000000);
+        e.cmove(e.eax, e.ecx);
+        e.vmovd(e.xmm1, e.eax);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+
+  if (lanes == 3) {
+    LoadThreeLanes(e, i.src1, e.xmm0);
+    LoadThreeLanes(e, i.src2, e.xmm1);
+  } else {
+    e.vmovaps(e.xmm0, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    e.vmovaps(e.xmm1, GetInputRegOrConstant(e, i.src2, e.xmm1));
+  }
+  // Biased exponents
+  e.vpslld(e.xmm2, e.xmm0, 1);
+  e.vpsrld(e.xmm2, e.xmm2, 24);
+  e.vpslld(e.xmm3, e.xmm1, 1);
+  e.vpsrld(e.xmm3, e.xmm3, 24);
+  // The exact products; the VMX MXCSR flushes denormal operands to zero
+  e.vcvtps2pd(e.ymm0, e.xmm0);
+  e.vcvtps2pd(e.ymm1, e.xmm1);
+  e.vmulpd(e.ymm0, e.ymm0, e.ymm1);
+  // The largest exponent sum of a nonzero product, in every lane
+  e.vpminsd(e.xmm1, e.xmm2, e.xmm3);
+  e.vpaddd(e.xmm2, e.xmm2, e.xmm3);
+  e.vpcmpeqd(e.xmm1, e.xmm1, e.GetXmmConstPtr(XMMZero));
+  e.vpandn(e.xmm2, e.xmm1, e.xmm2);
+  e.vpshufd(e.xmm1, e.xmm2, 0x4E);
+  e.vpmaxsd(e.xmm2, e.xmm2, e.xmm1);
+  e.vpshufd(e.xmm1, e.xmm2, 0xB1);
+  e.vpmaxsd(e.xmm2, e.xmm2, e.xmm1);
+  e.vmovd(e.eax, e.xmm2);
+  e.test(e.eax, e.eax);
+  e.jz(all_zero, X64Emitter::T_NEAR);
+  // The inverse grid, 2^(28 - S), in all four doubles
+  e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMVmsumInverseGridBase));
+  e.vpsubd(e.xmm1, e.xmm1, e.xmm2);
+  e.vpsllq(e.xmm1, e.xmm1, 52);
+  e.vinsertf128(e.ymm1, e.ymm1, e.xmm1, 1);
+  // The products truncated to the grid, and their signed sum u
+  e.vmulpd(e.ymm2, e.ymm0, e.ymm1);
+  e.vroundpd(e.ymm2, e.ymm2, 0b1011);
+  e.vmovmskpd(e.ecx, e.ymm0);
+  e.popcnt(e.ecx, e.ecx);
+  e.shl(e.ecx, 4);
+  e.vextractf128(e.xmm3, e.ymm2, 1);
+  if (lanes == 4) {
+    e.vaddpd(e.xmm2, e.xmm2, e.xmm3);
+    e.vunpckhpd(e.xmm3, e.xmm2, e.xmm2);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  } else {
+    e.vunpckhpd(e.xmm0, e.xmm2, e.xmm2);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm0);
+    e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  }
+  // d = u - s * k, then add s back when s * d < 0, from -s * k and -s
+  void* adjust = e.backend()->LookupXMMConstantAddress(
+      lanes == 3 ? XMMVmsum3Adjust : XMMVmsum4Adjust);
+  e.vmovapd(e.xmm3, e.ptr[e.rcx + reinterpret_cast<size_t>(adjust)]);
+  e.vaddsd(e.xmm2, e.xmm2, e.xmm3);
+  e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
+  e.vmulsd(e.xmm3, e.xmm2, e.xmm0);
+  e.vcmpnlesd(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMZero));
+  e.vandpd(e.xmm0, e.xmm0, e.xmm3);
+  e.vsubsd(e.xmm2, e.xmm2, e.xmm0);
+  // Back from the grid, then truncated to single
+  e.vmovdqa(e.xmm3, e.GetXmmConstPtr(XMMVmsumGridSum));
+  e.vpsubq(e.xmm3, e.xmm3, e.xmm1);
+  e.vmulsd(e.xmm2, e.xmm2, e.xmm3);
+  e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
+  e.vcvtsd2ss(e.xmm1, e.xmm2);
+  // An all-ones exponent. From a finite sum (xmm2, truncated), an overflow: a
+  // QNaN keeping the sign and the truncated mantissa. Otherwise an operand was
+  // infinite or NaN: the IEEE sum, with a NaN made the default QNaN.
+  Xbyak::Label& exceptional =
+      e.AddToTail([i, lanes, &done](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        Xbyak::Label nonfinite;
+        e.vmovq(e.rax, e.xmm2);
+        e.mov(e.rcx, e.rax);
+        e.shr(e.rcx, 52);
+        e.and_(e.ecx, 0x7FF);
+        e.cmp(e.ecx, 0x7FF);
+        e.je(nonfinite);
+        e.mov(e.rcx, e.rax);
+        e.shr(e.rcx, 29);
+        e.and_(e.ecx, 0x7FFFFF);
+        e.shr(e.rax, 32);
+        e.and_(e.eax, 0x80000000);
+        e.or_(e.eax, e.ecx);
+        e.or_(e.eax, 0x7FC00000);
+        e.vmovd(e.xmm1, e.eax);
+        e.jmp(done, X64Emitter::T_NEAR);
+
+        e.L(nonfinite);
+        Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+        Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+        e.vcvtps2pd(e.ymm0, src1);
+        e.vcvtps2pd(e.ymm1, src2);
+        e.vmulpd(e.ymm0, e.ymm0, e.ymm1);
+        e.vextractf128(e.xmm1, e.ymm0, 1);
+        e.vunpckhpd(e.xmm2, e.xmm0, e.xmm0);
+        e.vaddsd(e.xmm0, e.xmm0, e.xmm2);
+        e.vaddsd(e.xmm0, e.xmm0, e.xmm1);
+        if (lanes == 4) {
+          e.vunpckhpd(e.xmm2, e.xmm1, e.xmm1);
+          e.vaddsd(e.xmm0, e.xmm0, e.xmm2);
+        }
+        Xbyak::Label not_nan;
+        e.vucomisd(e.xmm0, e.xmm0);
+        e.jnp(not_nan);
+        e.vmovaps(e.xmm1, e.GetXmmConstPtr(XMMQNaN));
+        e.jmp(done, X64Emitter::T_NEAR);
+        e.L(not_nan);
+        e.vcvtsd2ss(e.xmm1, e.xmm0);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  e.vmovd(e.eax, e.xmm1);
+  e.add(e.eax, e.eax);  // Discard the sign bit.
+  e.cmp(e.eax, 0xFF000000);
+  e.jae(exceptional, X64Emitter::T_NEAR);
+  e.L(done);
+  e.vshufps(i.dest, e.xmm1, e.xmm1, 0);
+}
+
 struct DOT_PRODUCT_3_V128
     : Sequence<DOT_PRODUCT_3_V128,
                I<OPCODE_DOT_PRODUCT_3, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    e.vmovaps(e.xmm2, e.GetXmmConstPtr(XMMThreeFloatMask));
-    bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
-
-    auto src1v = e.xmm0;
-    auto src2v = e.xmm1;
-    if (i.src1.is_constant) {
-      src1v = e.xmm0;
-      e.LoadConstantXmm(src1v, i.src1.constant());
+    if (cvars::use_fast_dot_product) {
+      EmitFastDotProduct3(e, i);
     } else {
-      src1v = i.src1.reg();
+      EmitVectorMultiplySum(e, i, 3);
     }
-    if (i.src2.is_constant) {
-      src2v = e.xmm1;
-      e.LoadConstantXmm(src2v, i.src2.constant());
-    } else {
-      src2v = i.src2.reg();
-    }
-    // todo: maybe the top element should be cleared by the InstrEmit_ function
-    // so that in the future this could be optimized away if the top is known to
-    // be zero. Right now im not sure that happens often though and its
-    // currently not worth it also, maybe pre-and if constant
-    if (!is_lensqr) {
-      e.vandps(e.xmm3, src1v, e.xmm2);
-
-      e.vandps(e.xmm2, src2v, e.xmm2);
-
-      e.vcvtps2pd(e.ymm0, e.xmm3);
-      e.vcvtps2pd(e.ymm1, e.xmm2);
-
-      /*
-          ymm0 = src1 as doubles, ele 3 cleared
-          ymm1 = src2 as doubles, ele 3 cleared
-      */
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
-    } else {
-      e.vandps(e.xmm3, src1v, e.xmm2);
-      e.vcvtps2pd(e.ymm0, e.xmm3);
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
-    }
-    e.vextractf128(e.xmm2, e.ymm3, 1);
-    e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);  // get element [1] in xmm3
-    e.vaddsd(e.xmm3, e.xmm3, e.xmm2);
-    e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_3, DOT_PRODUCT_3_V128);
@@ -2450,40 +3221,11 @@ struct DOT_PRODUCT_4_V128
     : Sequence<DOT_PRODUCT_4_V128,
                I<OPCODE_DOT_PRODUCT_4, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.ChangeMxcsrMode(MXCSRMode::Vmx);
-    bool is_lensqr = i.instr->src1.value == i.instr->src2.value;
-
-    auto src1v = e.xmm3;
-    auto src2v = e.xmm2;
-    if (i.src1.is_constant) {
-      src1v = e.xmm3;
-      e.LoadConstantXmm(src1v, i.src1.constant());
+    if (cvars::use_fast_dot_product) {
+      EmitFastDotProduct4(e, i);
     } else {
-      src1v = i.src1.reg();
+      EmitVectorMultiplySum(e, i, 4);
     }
-    if (i.src2.is_constant) {
-      src2v = e.xmm2;
-      e.LoadConstantXmm(src2v, i.src2.constant());
-    } else {
-      src2v = i.src2.reg();
-    }
-    if (is_lensqr) {
-      e.vcvtps2pd(e.ymm0, src1v);
-
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm0);
-    } else {
-      e.vcvtps2pd(e.ymm0, src1v);
-      e.vcvtps2pd(e.ymm1, src2v);
-
-      e.vmulpd(e.ymm3, e.ymm0, e.ymm1);
-    }
-    e.vextractf128(e.xmm2, e.ymm3, 1);
-    e.vaddpd(e.xmm3, e.xmm3, e.xmm2);
-
-    e.vunpckhpd(e.xmm0, e.xmm3, e.xmm3);
-    e.vaddsd(e.xmm2, e.xmm3, e.xmm0);
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
-    EmitDotProductResult(e, i);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DOT_PRODUCT_4, DOT_PRODUCT_4_V128);
@@ -2516,10 +3258,6 @@ void EmitAndXX(X64Emitter& e, const ARGS& i) {
           } else if (dest_src.getBit() == 64) {
             e.movzx(dest_src.cvt32(), dest_src.cvt16());
             return;
-          }
-        } else if (constant == -1) {
-          if (dest_src.getBit() == 64) {
-            // todo: verify that mov eax, eax will properly zero upper 64 bits
           }
         } else if (dest_src.getBit() == 64 && constant > 0) {
           // do 32 bit and, not the full 64, because the upper 32 of the mask
@@ -2867,44 +3605,25 @@ struct SHL_I64 : Sequence<SHL_I64, I<OPCODE_SHL, I64Op, I64Op, I8Op>> {
 };
 struct SHL_V128 : Sequence<SHL_V128, I<OPCODE_SHL, V128Op, V128Op, I8Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // TODO(benvanik): native version (with shift magic).
-
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128i is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
+    // The words run from most to least significant, so each one's low bits come
+    // from the top of the word in the next lane. A count of 32 gives 0.
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vpsrldq(e.xmm1, src1, 4);
     if (i.src2.is_constant) {
-      e.mov(e.GetNativeParam(1), i.src2.constant());
+      uint8_t shamt = i.src2.constant() & 0x7;
+      e.vpslld(e.xmm0, src1, shamt);
+      e.vpsrld(e.xmm1, e.xmm1, 32 - shamt);
     } else {
-      // Zero-extend the 8-bit register to avoid garbage in upper bits
-      e.movzx(e.GetNativeParam(1).cvt32(), i.src2);
+      e.movzx(e.eax, i.src2);
+      e.and_(e.eax, 0x7);
+      e.vmovd(e.xmm2, e.eax);
+      e.vpslld(e.xmm0, src1, e.xmm2);
+      e.neg(e.eax);
+      e.add(e.eax, 32);
+      e.vmovd(e.xmm2, e.eax);
+      e.vpsrld(e.xmm1, e.xmm1, e.xmm2);
     }
-#else
-    // Linux/Mac System V ABI: __m128i passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-    if (i.src2.is_constant) {
-      e.mov(e.GetNativeParam(0), i.src2.constant());
-    } else {
-      // Zero-extend the 8-bit register to avoid garbage in upper bits
-      e.movzx(e.GetNativeParam(0).cvt32(), i.src2);
-    }
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateShlV128));
-    e.vmovaps(i.dest, e.xmm0);
-  }
-  static __m128i EmulateShlV128(void*, __m128i src1, uint8_t src2) {
-    // Almost all instances are shamt = 1, but non-constant.
-    // shamt is [0,7]
-    uint8_t shamt = src2 & 0x7;
-    alignas(16) vec128_t value;
-    _mm_store_si128(reinterpret_cast<__m128i*>(&value), src1);
-    for (int i = 0; i < 15; ++i) {
-      value.u8[i ^ 0x3] = (value.u8[i ^ 0x3] << shamt) |
-                          (value.u8[(i + 1) ^ 0x3] >> (8 - shamt));
-    }
-    value.u8[15 ^ 0x3] = value.u8[15 ^ 0x3] << shamt;
-    return _mm_load_si128(reinterpret_cast<__m128i*>(&value));
+    e.vpor(i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_SHL, SHL_I8, SHL_I16, SHL_I32, SHL_I64, SHL_V128);
@@ -2960,65 +3679,25 @@ struct SHR_I64 : Sequence<SHR_I64, I<OPCODE_SHR, I64Op, I64Op, I8Op>> {
 };
 struct SHR_V128 : Sequence<SHR_V128, I<OPCODE_SHR, V128Op, V128Op, I8Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    /*
-          godbolt link:
-    https://godbolt.org/#z:OYLghAFBqd5QCxAYwPYBMCmBRdBLAF1QCcAaPECAMzwBtMA7AQwFtMQByARg9KtQYEAysib0QXACx8BBAKoBnTAAUAHpwAMvAFYTStJg1DIApACYAQuYukl9ZATwDKjdAGFUtAK4sGIMwAcpK4AMngMmAByPgBGmMQgAGwaAJykAA6oCoRODB7evv5BmdmOAmER0SxxCclpdpgOuUIETMQE%2BT5%2BgbaY9mUMLW0EFVGx8Umptq3tnYU9CjMj4WPVE3UAlLaoXsTI7BzmAMzhyN5YANQmR26qAYnhBMThAHQI19gmGgCCx6fnmCuNxihA%2BX1%2BZhODDOXku1zci3wgjeYJ%2B4L%2BVAuGnRkLwmKwNAi6AgAH0SQBxSJyNxkjbgi4XAgAT3SmAJDI5nIutAEwG5vO5tGuVh%2BDOZrPZXgY2WARP5RnlfK8tCFRxF3wZxwJKwuZMeiUkisV9KukO1EV1JMeRzMF0eJq1mEJgL1gi4iQuCgQJAIDrNTp1roIAQZyAQbT9R3NgIAst8ANLYEIhCAMHwbC5plimo7HC7JyPRi4AMRjABUSQbTWYVeYzDijn08Rdo8SSTGhDSAGrYABKdNFjJZbKdXK5QartbVJvFI8xUplconhuVqvVmv9zouccTydT6czPhzebwBsLAYtpYrVbrAEkz2Z62jIU38Re2RdSSSLAB5Xshb5IgAERpEkBw1IcJVHMcOWXQVhRnYdJWlPBZQ/ODVwQwdHS3HckxTLMMyzY9ITtM9sM3HUr0rQ06xCOsGz6JRI3iYgSGrKUAGsGFQAB3BgLjQFh0joeIGOfRsGHwKhwVnZDFw/R4Li8e1px%2BOTRwXVC5TDNplN04gsO%2BDT5xQtD0E9b12mUr0fSMkzlLMuUeQVZVeSM2SkOgmDBPDYgOUeAJ7K8zEGQUiyDI5bJBCCtTjJCxzwt8vSGRUmLgqg0KfNs6y7TdRIMrnKLtI/HKCDCx53UK%2BSSossrUsqgq4ocny8vKgLBBtarvKSpTis6%2BtmoSrTzLazk0oILqhsywVWq5fVJG6zEVTmzlooIM9pqK1dVoawRNvVcEAHojouZRhjwMRaCZFt3ws2cFBeC4ywQTAbraQEvCUCzeNegSCFe26hJE%2Bh/PQVBMAUTNUHK7i%2BOO07DCZAHwj5JgYh2cqAcBWcLkwVR9nScrCCh7IAC9MBeBsi2/ABNMtsD24NqffXUAHU/yApmqokmmgI53suYmrredZkkAEUBaFhaG2bMAwFbUkO27PtwJwwMQh/SJyU17XLUqwJGKkvF0R%2BE6LkiAQAFpFkMdA2gsjHPEwQxIMhp6Xrei4Ppsj9fsYRlAawYHRP80QGB48qvswBHA8BW2pId6snaFR83YuOJRGji5UExbHPTwCmLhYPBFhYJgCDDDOvCxwGSmyGJ6FjgA3MQvEh73iEBARrqxb2pIuLgnqETBATEBRUAuMAOF/H8Qmn9O4h5XiqfUhLAt1WeQi4Ja2vdTefznwb1Qc61bW/Q%2BQkWrb2QWg%2B59iw6JLxKTRxJNnb2An82aEElPJmjeFh6afBvqORqFwpa7zPhcfmnMoEDXzFrck8Dypb2FDBc2Xh0isj2EwJQFwt52ihl9LwV0bqGhiMjSGRtpL/yKnfSWcC4oYlfpiMkyB0jeAUJwr6dDb6CAzqgTw6Cxzm14oCXihgsaT2zinPKOddgXDcBcdIbFgDEFYAoGhJszanSEKgNggkBDN0YHgRg%2Bxi5MGQGxKGRBLGcUBOkC6YhvbIH2AoJQUMGB4H2IZUWW4AJCArJ/ICEBVAZGGCSWcGYOQQHJpgXOYSNhHXiYkpx7QonDgzFbQeatcRvmdG2OmDMSSc1VqaAqZgPRkiASUspvYgRAWuFzGpt5yQkmwMBW8gEGwMiLJrNmJIQlhIiRk6JHJAnBOAiM9JBBMmsjyUcPprMAASbSVlDOmeE2Z8zMAxOxBJJiMcJLLK3Gs8kGzhnbMieM/M3wgmbNCdcsZWTem3QCd/R5MyblZI5AciEklaH%2BJ1LU7ADARmZhiZ%2BAAVFAYp2BoV0iqUk6wDANiLKLFLcF4TIWxNhaSKWiLzCJBRZYNFGLWawMFti0guKYVwqpUBIlyLVBIosOS02AL%2Bk/lBUkhkoKaUDK%2BeE%2BF6KWYfKlnyiBnNBWfKuaQd%2BnMxXAotJrRlfLGWysGfKkkjLlVctWbeXlrL%2BXAJpecy5WyFWgv1erC0azJUmuldSkZFrhUKqlrayi9rbzqpNZq116z3W6s9RSrcoKuBSoIWaiFuTWrm0oQQQEXBPxoClI4BUVA2LZg0GGkFwCzBRoFbGsweaLSgqOEWmNOKLhHDLYCUFkgq0MxpQySQ9bo0MwAKzNrBbGrtHbQUkqdZ2vtNbEiDuAQAdl7a2i4U7J0MwCLO2NARF3YBSCumtKR11cA0FK4tOK927sjU6w9tKuBcF3YWs91aL2lvFfmhmXBK23pbRCl9u6m1vrHRe9tj7y3AK4D2n9rbgMdqlqeqFWLY1XoA4CKWN7oMypLVC0Rp0UbEB%2BiQCyuc445xiNoRoBBaUjSJPB51QFX3IZdTWutFGpbfpo0BOd/6VUIc5iB5jc6B0Mc5sO7jsaJ18cFjOkdMGa0Ls5ebHivEC6jXLtYrIn584KFYICGINcLi8UIAgeTAl8ZJpQgIDtQhz10vpRAQKzKBOoq9VGVmQgJO0rRXiqAjUbOkvZfZosQgA04tc5Zs%2BnnWV2bVuxi4QhNbGpiWZu9Qr5WBR845gZnMpVOZQ%2BEhLVrGrJa3FFn8fqMx%2Bec9lp55ABp5Z1EINZMWGRxffeEt1iWYpVYtDV28jrYvOeazl/KbXAQdaK5F/zpBevlbPgNyLEao0Nd/QyODEW5tIY5HNudD6lsVtm%2BZ2tpnG3bbvW2vbwCuOrZ27xzbwCBNncOxcYTl2GZiahWt2NUmHvYGXSOl7Na10Ubm5ur7O2d1/Yjfup132L25pB0BqD9XzOXuO8%2Blb03DtcA2wa/LEbqNw9R/R97Uh0vw7Yxj6rEbTso8axei7JP2uQdm85hbpnEP08y7Si46O7WDaltj%2BrDPdt/cYyz2jbPiec8i1Lcn4vWcMmp2LjLgtru8%2Bl3dpnnMnurb52934uiLjkkYPECuY8VFMDwP5PDqAcF20epFz0rQpJQ34P5ae4Vp4UbJEIZQ3xby9ndGSCACBUIIFpcvGJUArP9YZP7wPGZ4TwgZGuq4U7lEQAmgniAIeO3u8997m0fuA/ACD/yXiof3OVcj/nhAMebhx/dDHpPn4Jq1/T3xKbWeve9gNHnwPweW%2BR9Lxtdt5fo9AjcHHm0dfk/C1Lc34vmeSQe/b2jgIXeC89%2BL5%2BfvS%2BMxR4L1X0fNw7uD5MPXlPC0Ngz9bySbPPvEgr8LyH2JUBG8Ts/BXvfceLgJ%2BP5PpLn4M9u6v3b1zxJB33v17z71PzL1APfwP1r0Tx/36wvzn2v07xAIrzXyhTDwmgNG3zfxHzH1LXgIb0myQIAOvyXzvwwIgMb0CHPzwNjwPxwKIMgIH3P3/zRB%2BC%2BlRmN2QAcXQCiXxhJDQBwwUCiUaUSlqjag8h%2BEWGIC8AcAuBMWQDMDEOP3XA5CoB5ArguBxSZA8inSaWYWfkxB3h%2BHBi8EbkBGDgMXSC/Dvi7gUGVBIxbB2EsO9l%2BzRCnXUKUmbmPguHNmIBSBNCDH3mblzDVH8NOmIEvRNB8OvgsEiIuGICCkHB8K7XQQCL3WCKtHykUKagSMyNMIgnMLcJiCsU4iEPDHCAyNOhMC7QsG4WsA0HeC7S5jqIsCtj3RaKaUHBKPoEUMfkSPaMaMsDMGaLqLaPqOsC6ImM5QZGbhDGaXcKMgZGbAgHcMaSWI0BeA0AuHAk1C8JNHmNtC2JWMTx6IgiOQdEOMHHmKWSWIdTSyYF%2Bzik5DWM/EeMFggGeJjyqSxFUCnWLGLFzU2KOC5n%2BTHGJWJQ32blojBIuDWXVR%2BNpWbi7XELVUlWRI%2BN9UxK/z%2BI0FUCBKJIzHli2In2/0QSRLXQzH2I5DUKOI5F8PEM6I0DMB3lePmkxHWIgBmx%2BIqX%2BOPVBPBL2IZIOPULHHBlFLpJuIgh8lhIuGhSWOPilM5ERMlQWKry5lhLOJ8neNRJHz7lpJ8npNuNanlO/yWK4C8B1NajVLSw1PEO1I5ONIMJVMZPuPhM%2BNCQ1JtLHH1MVPhOVNNLHCtitl8N9OlIuJ8l%2BlEk/E/BmwdOhIJMFOaS2JFOdK5AxPtK/3hNRIjOPyjK5Gbg9CWLCP5IJKBOwGLAjK9IgETNzPyKlPeOeINO2N2KNK5FrPrK1JLPrwJICA0EHIjLKN4MqJNwElLMfilNrJHIqN0nCE1IRM62zN%2BI9H7MHOLCIIJKOGLGwGxAzILIZKuNNJNNlI5FnLHPCHEOeJrOXK%2BIvPnNcweLvNCT5KTLuA3K3NUB3L3IjKZKWKfycnQhyIICb1rLfPxIBKBJBLBCOEZkHxyT3UfBtMPNNJbKWIfKqIYDONQoglhRDU5gVI2AcKcMdKDIgi7gIF2AEhvOYVdMOWNhkh%2BD6kcJiBJACDMHqMSBSCOH3RCI9GhSYC4FpSUiYDMBEoESYCOAkvKiYGkDGiYC7Rku9kSGUqYC11PNWIEQWJqKSKyNSIERItoF9AiICNzAMvKmbiyNMqiPMogh8JiJsqSKOCKK0ssrR10uIF4tiO0pfU8rMCCIssUKkH8pSO1wggWOvJ3nqPrFaLOPeO%2BJOIP0TJPykoNKEvaNzFaIn0/DkvSuiosEWmyuYMUqBEZgyvqPSOKopO%2BJLLgu9gKoKmqtSqnTKoavaKnQmJpOuPFLtC5O9iSuUUisQpFODIuGABhkngAgsCTBJACptKst2KWIqosCysMN6ubI9KGr3QuBGo7IZAmrsWmtmvmozKspTWWoKqKvWoZObLhO2pTT2qlMOqmu%2BBmpCDmqCLOrRyivaKqputNObLRI%2BGCpOMsEHlGrPIOsmruXes%2BoWpfV%2Bq4tmIzObLqsZisvuPBpTX2vGphuOo%2BtOt6qsrhK5hWs6ritRv6vUrapJtNASJxuevxrepOq%2Bo2upqSoxpDFxrEsdKnMBupo9Ixp2p5o9LJoKrWptLutpsvUhrHDysuvaOuqlupuBuSp%2Bp5rVvFr%2BpRvZrjKYDqu2qWR5rqu1uRspr1vWJprjzpp5tasVvqIpoBrPIStKpyTEozGhVyo9HdrrQVNytavdoQs/DppyXOs9pDsRrDsFK9rrJ%2BrDpzMZltA7NPIJs%2BpAClKMvKlOIPPorPOPLPM0q5BWtiraPhLEojKzvEPZN6oZBWrWuvPCNrvavqOuuvPiKlJWv%2BuvPSIzLrsaomOvMbLGvJsHuWs6tzsLNwoZALrFIZKrstJwrzoZEouoqSMhicP0IuPBDkQUA0R0xTyAoskwBiBNSLs1E4KPsUPEJPtUH5KgAuur1gOyVySMjkVPsdKnjABzvVDIw/GiK4AsiWNvrKpBuTJkjilXuIAEg/uhIAfQC3uk0VMvqShcj5DQaSNoB0wYBYEPtQYFAwfCHSBrlIyvrYmcL/osnLgUE4jr16soaNAwbOBdi7iAfhMAt6kEA2CIZrjpCMLPOYY%2BiAaTyWMEdYYYLcCmifnCs5CgYEjJE0zoAzRJHIcN3oCoAHwgDEbZFpXIaRUSGoc4kQY4O%2BAYaUiTUWEjQYYwcIYYGIYIDofBDkcwewdwZ4ecOTKYAvT4cOjzuhSOk5TMYEXBkICujwckKUhxQMi9teiZE03QHQCZEcdNLkTDEaE4kIHEKoHHhjiprCQNJ3UT2btDFel4MyaWKeHbgjIZBOmcaJoZOno5GhVificSfELSbKZMukbeKoC0dKYyYcaKbdIUZUmMvCBJClC7isXDEsIgB8YaeXo5Gcd4rZvRDzttkcGQAuE0NQG0PDFoCoDMB2YrnCdGh0OSbPOcZJBYBYCEObgIA8RJCoBtFJBubuYIHSAQBJHSAUFedueQHueyFz2yCXw4Yia4dZTFToouI2Z8QkNGnqmOYIDMH2d6aRe2YufnswCougdtwrh8SELwRMrcAYbKg%2BD%2BfeZBcCBJCBcLWuf%2BfuZ%2Be%2BYQApaUDmQ8WoC2F1BjBjBJGLF7B/DkGAhJEiB/A6QAA1lEKT2xeX%2BXBXhWywxWAAtPsH8dFeZzwi49F1QRgAQEkVFo5rQggU5uUc5oZkx8aK%2BhQWUcQu%2B98gcoc/hy1pKfGdIcQvlaEiAFy/A2AqHKmz8eWV1i5nyZxxEEAEAEEOZUQRYeEJF8l61icp%2B5RWvFCvO26gRZAYSQxm%2B1QN11M9hlyiRlMnc3alNEALEG0k6V13agCzN9IbNz19k/fNwY9DVs8hh9etAaURwKipNNhrmO%2BnJLRrNvBTie%2Bpt%2BEVt6Qs89FlgJwvAThMxfyJY2F5AQlmNm4ONuCqAOthtv4wgmqiAAAP13dHdXNyTbbmI0KNcEnuaiWEnEINaRYgC7i7cWEIBrjZDbdkexbXoBbmQIAfa9rnbGcXbEn4bWe3pfEYs5QxArZMfpDJBYCXx0N1YYH1bEEOefaQ6XzwDNfPv8OQaho5DfbtweYZP8YZJw8CDw9RZJFdYEEYDmQbfhPpZpexa4Ho5EndC9a4DkB9eTb9d6uo4CDw8XFEJY5aTebZc48wG45JXXMHLkG/dgmudw7xlzcY8EBJGDi7jYG08k91Gk44647wB48fubcHiE6o7U5o%2B2aNfo804iG09OD06Y%2BudHfELY5k9M5eb44E/Z3oyddU%2BQ7s4pjYi7j5CWO8%2BxfC9QBpbM8CDmZtJE7w9dahmi7ebtgS9BZxTo4Y%2Bc%2BY7PZS9s9E9uh4mIHLloAk888y/%2BeEkwAAEdTOeP0vaU4vIvL2LWQv1OsAKuquauaGSQbQvO3mpQnFeCeQWuSU%2BuSABuPOaHaVZvKvx4FvaGajmwKyiTaVM4DFAQtuiSiSnoIgRwLJHcM56ApJm5uRDc/EZGOQq3c2hTa0LOa8ISeu7Ou5GuVIHDHO5kNEjBMA1vRv6vWRmu5OzOSU2uLh8unP3PDGVOGRUuNP0gdPGg3ODPR2Pw6uSRsuqXl0vufvIY/uVHDBgAgfDHaUCv3PdPMB9OiuaHEfLRQuyudMAZHPMhCvcf0BtAvo%2B2QeaWLDpuIVXW0frE6f4esf0AmeROjEGATF2g2QSQ2fvQa4SeAfyfufefFgBf/3PnvnfmVeOetO5kmAee%2Bev3p3ORkfxOBe8fEvPtaVxO1uuuzybftIFARucfxvyipuIeeOOvMBgAnePefHIjy4HELhtfypxOr2kfSu8PCfTdifDNSfAevfWOxu7Hff4v/eSVA/g/17vvk/RDU%2BNeKfiuMzkey%2ByegekWcjxf6e7epIcukuk/fua/0/xL7Pdm5lqeXPoQMeGf1vgv4%2BWe8Ok1iBnhLCVHMBHh4hVFsWhDjF4h%2Becfo2PnRD8etGV/Ff%2BCVfMZ1fa%2Bte%2Bew%2BTpvRe4vRR5iZBA%2BhaBS5GB8E8Abm2RLok1L%2BvBgByfFgPwUYoZtC2OcfZnup0n7T96ATzXPP3zmQ0BVAWCO3gk186FpQBeAGfl3Hn7EBF%2BUbXfn2yp6qB/ux/evq5wl5cNp2NncfpYiwBo9%2BuW/WqCSDi4dwcelhK7qZ2XTICZ%2BzzFQlAKeZ4BYB6QEPrKE97d9lu83QxsNwfSj916OLeRm8w3748DeEAcuJQOEE0DzIdA%2BIBDAUCu9YOedI6ER05BEBwY5bZ/qolQAmJA4pccEJR1FDI8dWPEdDkixRaYcvwLPDFua3u5j91O9fdGINzHY48fOEPF5gSUBKHcgSXgV3tbwT76ZRBPzAXv4JEiBCPyg5JIdZ1NLI9TB8QHZrxDT7k9YhJnAIYWgJKSBghe5QcmEJK7kCpQWAYgJkOyGAg/BeQ%2BIQUO/IBAHWSQsoVX0iHpDqhy8Wfo4WMq5DQKwvIIUSXaHCdIhi4UQfvHqGDC8%2BEARTikLd6lc8WGSQzK4CV7l8BhnHH5hAESBdou0GgSQDsSoAy9IhovWnvTwz5SdbmcQvAH5344SNAuJw8gaLyIH08phmfa4Q0Mh4QB/ODw49Fbw%2B5lcC%2BAwuLq32XRPD1OkbSOJF114NdweIkZdAX3a7qDOu5QlDlQFx4xBvoTzEgEIQfY49su2wqgLSjY6yCHe8grwViJd7hDAReHDEd4KV7z91ELidfkSyZbb96RWIpXo7jxHpAmeugt0lYiopkJaUaaWgBZGzglwGAR0cuHfXCA/8zeOcTEHW36F2I6wbAYgOTzrB5QJmr8boXxFqFHRxmXQmoeXwo4BNUhkQyODkRJAmiehGw9fsJGMqIDqAmI7EUyI0S0BaUdog0eXwhF2dxmlQjIfaNr6wjOEffRoa6IZH8EPRYgUhlUNNG19/RZXY0Qr0TGA8BeqgXEdv2tGpjgxvo2vjt0IDQig%2BNIjwYECL5E9S%2BeAtYfwQdEfDeRwAOZESLdHcjcRdbJ3ksD%2B61jahZYq4Ah1uLmw0haYnobiKDH6i5MOPbMQ73Dy2iRxBYwHhJV1EJiQxgPPscj3b4p8axr8OscfzQG38MBlFbHg2I37siZxm46sUZiwC7i1xaIuzhiP3GT9MBx4q4eu035gjOWAI8sWV3OFMd4gzffgtvwvHdidxtQ2fugOfHoBcBqPX8ZVi/HAC7OsEvtjiOIBH8MxfgoXvkNdGPiF%2BR4qCUDCH7xB1xSwwwDDFeioSmAvEKgMqHAkHjMBuvIlnIO2FIS2xqEzvuTz7FkD1O%2BzExKIWtEwClecA9foy1EKfNvikccibjyok0ScJh47FiSJ5Z8sBWQrICCKzFbYBJWRBGVkpPlaqTFWJIFVgK35FHRsY%2BCH2JgOZDjUbECgWlEyGoSWjyBwE1YaBPL7vDXxE3TiKX0jFOTtx14sCbJMgnIiIupYu8WVx9G8Q3JRnW5h5K8m3DC0eYicbUKCkkAQpHQioXqMyGRS2OMUl0YGIymrjyeyU1EWlPU7hTfcY4/KXxCylvNpxoLMqapUcgriqpwmCDg5PU6utXO1U25vb1BY%2BSrx6w2vu6GgkN8h%2BKbCQdX1zbcCdW/bKKdz34KzCeJxPfiTwMEl8CUenUlqb1ROiyZPQfQYjJ6FZDIBLotARQm3GOSLDyB3CRoMdJJCtxvAdQhsT1KS71TvR84rIVnSZ5XSjpYgW6WdIF61SkuX0m6XdPbgkisuLfbfqLwEn4SJho7EkLXmInkDoZKEmlodOOkZcGxTA9AM3BYEQAoZK0mGWjJ%2BkgzMAr0/MRFNvwVSmpFMvsc42Rk8igZ48HCpq3BDYFJAYhEDgPiICgs2ZYhC3MJWUgLQ%2BZ6QDnDKXGhCyo4j9LmBAH5nllVAVABWYrIVlM9eZ7ld1hbjBprl5ZSsxWSrIlmMh3WXgFNF7Ssp6z9o7M8qLxDFoqY5ZOs3WTaVVkXBfB7DbOnBRBrj54Jss2CiAi5hSMGSrs6WbLJNlXp6aTsm0s7OlnZ1IKds5WQ7P1kRT3WrskBIzA9kSCNZoDN2fCT9mmkA5DeY2TnBFm/EEiRjDMhHJtneza04g7pks1/a4sZZ6QfORrKLnaYLq4NEudI1wrHBXAOicKg5FkLyFZK9/WUHgh%2BEv4lCFBDLmLMci5A3Ba0SpgoQI4MhtWEZdFnoT7o99tCZMFeTe14iptnac8uQgvKnlvEBoYhHgRGTPhny15zdS%2BcTC3nrzb5doXeZPRtL9yj5zdKfGIS8CqAIyn8qONfKlJ/zlI98j%2BY/K8DPzeqh5DMuiw4FK1daDJPooCCoBngYq8CwGjFDPlBR6iVUC2gyVTxfysFFgHBfvI6igVb8xMHBRYCwUkLuY5C5SJQuoVS1T5xMLqK3TQXtswFrCwquwpPkD4z5KCiwKXTjnmyv5AioRRmTfnZ1j5HIR2cvF/n6yK8e8pes7RNByILcBuIgIZDBLNId%2B3bRQo0AnnQkYgGYUjrPJrlSCi8z3GIC8GXgVJoSFeKxW8EDzKLVFQiE6eoo0SaLSSYJXRTr3HnUstEfxYxXLx14EdnGti7xVzGsW2KLS9eBxZEozhOKC8LiwcP4uXxQwPFFcEgHUWwC%2BLLKBigJUYpMUCBQl0itJTS29jiFoUf/G0kwCSV6YclGFepbUpsV8QrgXaH2YkrkUZlnGTAFxRyXKWBKPQmSzRY0p8WmLBlRSsxQyGqUB4MZXMWZaXHaWMwYgNpZxosq0QckoF6hQZQXI0XZLkUEygpekqmWmKCOuypgFUpqUZk6lDiqEvCWsWKKblrSycVUiaXdLeqvS/pTsuOU0toSIyg5U1FCRHLkAhioJcGyaZ/8rlcy/kqsp6W1yBIGy75SaF2UArDISePJfotBWFLwVISqRcTV%2BX/9oVFg55XcpEYPLmlzymJeSqiUvK1lCK72MitSWEr/lluUZTSsxWTLcVBHDZcSsnnKI4VnyhlUiq2WuloWWKigl0zmKrsEJZXbACB0NxCAEAxALsKCxt57ABZ%2BCmPnsAPbSLzY3wWgCwCyCDyTp8ou3O4k7jxxwwLAXOQLM0zlQ7BVsUjlIlXhnlzYXoVgMTAy71ENApAJ2ngsChiEPVNq8QnvWUJyyJ6vVMQNpBHlwFylllM6Sl2k6aKgeQEufnRMopvj4QqXAMrkuJQkyuWYauDAeUhCqImAwAcuIJAMCuQGAbEFUCSB5AW4GS53cPMTGrq90EieHMBuglDJ4AIVnIEmS8C8CEKu1HS/4g3QAqDrh17RUdYzG3Jj1M5jMYNYMwtJjVdoPkOsmdKHWEKrMu1ONDkvHULrLOEAEMDkmXVQtIFizeYluunU%2Brllh61oo6RvWEKlqY6%2BdY%2BornLr6VFitjloUAnnj01T4zNRv2zUJ9c1EAfNWdIvXXFt61gyIRY0n5zM3BXEz7hvX6HTC2JCIuYdrIvS0pu%2B0lC4PJSUp3ZaUU6WlEEAuBpArOF6AWWjgvQEapAVOJns43lXKhFVyq1VW3zQ3OEpM0LPhJpCvqRRE0mAJQmITJAVwngKAz9n7jrLEZpxFMCAIaC9qpJemjwdVm2xt4IAvACs0GM4PU5FrSMga7VcoUxYyEdV9yoCEEIWq/KY%2BWmnTUDyzr0kxVBK7Fcvls3abNCqa5VU5poUSrqW7m%2BzTSwQBChDizmvBVfX67RrxC%2B5Xqi2qUhdr4SwGdBAlrnU9qrYeAUgJFvv7WBrA/arkF6A83gCs626mdfevfVl0uYWWvANU0siFavNxAErfUSq0LquYs6w9evLCh2bPNQW2gI1vZRzdo1LWz8Hh0Qox43135JRaaQK2Bbitt6iwK%2BrnUTaP18JZrRIq63gCvQDWubc1uW3CkD1TdBktNu61ehet22gbdlt23/EByNpYTaJts3EBptL42aUdvAEQ9l0BmhUgFOA1EtQN4/cDcShe31boNKTKhHdssjVc7NT27zutqB5va4kGq2lNCi%2B1L8QNNwHNeSwB0w6etwOs8ptse1sNk5K7czWtoh3abjxzbACqes9A6rEZ6nbQKgBWAzS8dkO4RsohO347v1a9aHXVtxn07GdiO5HVGx%2B1o6wNGOqpIDt6FOEcdncn4Mj2bh714ZemuzkWry2hsYdxAeHaCrw2XsDCHALYLQE4BdpeAfgDgFoFICoBOAo%2BSwNYE9A7A9gdQyEDwFIAEBNAeurYJxBACSBEgLwSQCkD3QpANARwAcgFUSA9ADdHASQMbtd3m7OAvABQCAF9Uu7Tdeu0gHAFgBIAQ4oMcgJQEz0TAzgZPKJHIQYCcQ%2BASjeIPHogAxBo9IIZgMQCZCcAndQkenj%2BAYDXRo9WAcuEYHEDJ7SA%2BAV9o4F4nR78YjQT9g3t4Dz9w9Zu%2B/jEA0R16PAWAaPZJpYBj6tgmhctQoC7BmJeIP4VkCbqd38BBAIgMQOwEY0H75ASgNQNHt0DCVq1xgHLZYH0AoD49kALYBbgGDx6OAVsH8Nkx167Vy4ewd4GCTJjy94gtoG2AQAQZglZQ1pa3aMSYBx69pTQZwHjKkhzA/AwlUICsCqA1A9AJQHIAIDQO4Gsg%2BBhgKMGwMTBhKDQJA4MCWCEHKDiBgYEMHaBkHxgCQSg7Qc8BdA9AtsZg1gdYMSAtgE8XYPsD0BPBR4K%2B/QIbqj096LdHAO4IkCthVh89CoCAJU2L3b4rdVgB/RcFwCEB2IxwAWR4GEihwcwV6XgEnq0DopSAr0M3hMDmakAPdXaMwC8CnQvpJARwJw5ICKEcUihkhiPdIbN2yG49Ce53a7q2Bp7EAIATGPY2z079jDoMSIOpk4CqAqwLABQM3C2ZWUUgLwKQJ%2BA/iRBsAGwXgK/00V4B0AegM/UfvECn7ZAigFQOoB73X7SAvEDROkAkPh6jdmW6PbIZ/A1x7GSonQvcEUOGhlDfIVQ0XtoafgjDIMf8QYaKOhHk9Vhj3dsSnQpAu0RQ9w1Ol91skqkRwaQOHsj1dGZDse2wCEYsNu6/DZgAI7wCCMLHLDWwBXtkGcCSAgAA%3D%3D%3D
-    */
-    // https://github.com/xenia-canary/xenia-canary/blob/968f656d96b3ca9c14d6467423df77d3583f7d18/src/xenia/cpu/backend/x64/x64_sequences.cc
-    /*
-        todo: this is a naive version, we can do far more optimizations for
-    constant src2
-    */
-    bool consts2 = false;
-
-    if (i.src1.is_constant) {
-      e.LoadConstantXmm(e.xmm0, i.src1.constant());
-    } else {
-      e.vmovdqa(e.xmm0, i.src1);
-    }
+    // As SHL_V128: each word's high bits come from the bottom of the word in
+    // the previous lane.
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vpslldq(e.xmm1, src1, 4);
     if (i.src2.is_constant) {
-      consts2 = true;
-      e.mov(e.r8d, i.src2.constant() & 7);
-      e.mov(e.eax, 8 - (i.src2.constant() & 7));
+      uint8_t shamt = i.src2.constant() & 0x7;
+      e.vpsrld(e.xmm0, src1, shamt);
+      e.vpslld(e.xmm1, e.xmm1, 32 - shamt);
     } else {
-      e.movzx(e.r8d, i.src2);
-      e.and_(e.r8d, 7);
+      e.movzx(e.eax, i.src2);
+      e.and_(e.eax, 0x7);
+      e.vmovd(e.xmm2, e.eax);
+      e.vpsrld(e.xmm0, src1, e.xmm2);
+      e.neg(e.eax);
+      e.add(e.eax, 32);
+      e.vmovd(e.xmm2, e.eax);
+      e.vpslld(e.xmm1, e.xmm1, e.xmm2);
     }
-
-    e.vpshufd(e.xmm1, e.xmm0, 27);
-    e.vpcmpeqd(e.xmm3, e.xmm3, e.xmm3);
-    e.vpshufb(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMVSRShlByteshuf));
-    if (!consts2) {
-      e.mov(e.eax, 8);
-    }
-    e.vmovd(e.xmm2, e.r8d);
-    if (!consts2) {
-      e.sub(e.eax, e.r8d);
-    }
-    e.vpsrlw(e.xmm1, e.xmm1, e.xmm2);
-    e.vpsrlw(e.xmm2, e.xmm3, e.xmm2);
-    e.vpshufb(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMVSRMask));
-    e.vpand(e.xmm1, e.xmm1, e.xmm2);
-    e.vmovd(e.xmm2, e.eax);
-    e.vpsllw(e.xmm0, e.xmm0, e.xmm2);
-    e.vpsllw(e.xmm2, e.xmm3, e.xmm2);
-    e.vpshufb(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMZero));
-    e.vpand(e.xmm0, e.xmm0, e.xmm2);
-    e.vpor(e.xmm0, e.xmm0, e.xmm1);
-    e.vpshufd(i.dest, e.xmm0, 27);
-  }
-  static __m128i EmulateShrV128(void*, __m128i src1, uint8_t src2) {
-    // Almost all instances are shamt = 1, but non-constant.
-    // shamt is [0,7]
-    uint8_t shamt = src2 & 0x7;
-    alignas(16) vec128_t value;
-    _mm_store_si128(reinterpret_cast<__m128i*>(&value), src1);
-    for (int i = 15; i > 0; --i) {
-      value.u8[i ^ 0x3] = (value.u8[i ^ 0x3] >> shamt) |
-                          (value.u8[(i - 1) ^ 0x3] << (8 - shamt));
-    }
-    value.u8[0 ^ 0x3] = value.u8[0 ^ 0x3] >> shamt;
-    return _mm_load_si128(reinterpret_cast<__m128i*>(&value));
+    e.vpor(i.dest, e.xmm0, e.xmm1);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_SHR, SHR_I8, SHR_I16, SHR_I32, SHR_I64, SHR_V128);

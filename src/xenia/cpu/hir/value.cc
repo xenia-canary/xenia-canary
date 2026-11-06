@@ -17,6 +17,7 @@
 #include "xenia/base/byte_order.h"
 #include "xenia/base/math.h"
 #include "xenia/cpu/hir/hir_builder.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 namespace xe {
 namespace cpu {
 namespace hir {
@@ -230,13 +231,26 @@ void Value::Convert(TypeName target_type, RoundMode round_mode) {
           type = target_type;
           constant.f32 = (float)constant.f64;
           return;
+        // As fctiw and fctid: saturated, with a NaN giving the smallest value
         case INT32_TYPE:
           type = target_type;
-          constant.i32 = (int32_t)constant.f64;
+          if (std::isnan(constant.f64) || constant.f64 <= INT32_MIN) {
+            constant.i32 = INT32_MIN;
+          } else if (constant.f64 >= INT32_MAX) {
+            constant.i32 = INT32_MAX;
+          } else {
+            constant.i32 = (int32_t)constant.f64;
+          }
           return;
         case INT64_TYPE:
           type = target_type;
-          constant.i64 = (int64_t)constant.f64;
+          if (std::isnan(constant.f64) || constant.f64 <= -0x1p63) {
+            constant.i64 = INT64_MIN;
+          } else if (constant.f64 >= 0x1p63) {
+            constant.i64 = INT64_MAX;
+          } else {
+            constant.i64 = (int64_t)constant.f64;
+          }
           return;
         default:
           assert_unhandled_case(target_type);
@@ -625,11 +639,13 @@ void Value::Recip() {
       constant.f32 = 1.0f / constant.f32;
       break;
     case FLOAT64_TYPE:
-      constant.f64 = 1.0f / constant.f64;
+      // fres
+      constant.f64 = ppc::EstimateReciprocalSingle(constant.f64);
       break;
     case VEC128_TYPE:
+      // vrefp
       for (int i = 0; i < 4; i++) {
-        constant.v128.f32[i] = 1.0f / constant.v128.f32[i];
+        constant.v128.u32[i] = ppc::EstimateReciprocal(constant.v128.u32[i]);
       }
       break;
     default:

@@ -15,8 +15,11 @@
 #include "third_party/capstone/include/capstone/capstone.h"
 #include "third_party/capstone/include/capstone/x86.h"
 
+#include "xenia/base/atomic.h"
+#include "xenia/base/byte_order.h"
 #include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/memory.h"
 #include "xenia/cpu/backend/x64/x64_assembler.h"
 #include "xenia/cpu/backend/x64/x64_code_cache.h"
 #include "xenia/cpu/backend/x64/x64_emitter.h"
@@ -1557,39 +1560,23 @@ void* X64HelperEmitter::EmitFrsqrteHelper() {
   return EmitCurrentForOffsets(code_offsets);
 }
 
+// ecx = guest addr
+// rax holds the host addr and must survive the call
 void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
 
-  Xbyak::Label already_has_a_reservation;
-  Xbyak::Label acquire_new_reservation;
-
-  btr(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
   mov(r8, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_helper_)));
-  jc(already_has_a_reservation);
-
-  shr(ecx, RESERVE_BLOCK_SHIFT);
-  xor_(r9d, r9d);
   mov(edx, ecx);
-  shr(edx, 6);  // divide by 64
-  lea(rdx, ptr[r8 + rdx * 8]);
-  and_(ecx, 64 - 1);
-
-  lock();
-  bts(qword[rdx], rcx);
-  // set flag on local backend context for thread to indicate our previous
-  // attempt to get the reservation succeeded
-  setnc(r9b);  // success = bitmap did not have a set bit at the idx
-  shl(r9b, kX64BackendHasReserveBit);
-
-  mov(GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_offset)),
-      rdx);
-  mov(GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_bit)), ecx);
-
-  or_(GetBackendCtxPtr(offsetof(X64BackendContext, flags)), r9d);
+  shr(edx, RESERVE_GRANULE_SHIFT);
+  and_(edx, RESERVE_ENTRY_MASK);
+  // snapshot the generation before the caller reads the value, ordered by TSO
+  mov(r9d, dword[r8 + rdx * 4]);
+  mov(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)), r9d);
+  mov(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_address)), ecx);
+  // lwarx replaces any reservation this thread already held
+  bts(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
   ret();
-  L(already_has_a_reservation);
-  DebugBreak();
 
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
@@ -1600,79 +1587,141 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
 // ecx=guest addr
 // r9 = host addr
 // r8 = value
-// if ZF is set and CF is set, we succeeded
+// if ZF is set, we succeeded
 void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
-  Xbyak::Label done;
-  Xbyak::Label reservation_isnt_for_our_addr;
-  Xbyak::Label somehow_double_cleared;
-  // carry must be set + zero flag must be set
+  Xbyak::Label fail;
 
+  // stwcx. always clears the reservation, stored or not
   btr(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
+  jnc(fail);
 
-  jnc(done);
+  // the reservation must be for the address we're storing to
+  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_address)), ecx);
+  jnz(fail);
 
   mov(rax, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_helper_)));
-
-  shr(ecx, RESERVE_BLOCK_SHIFT);
   mov(edx, ecx);
-  shr(edx, 6);  // divide by 64
-  lea(rdx, ptr[rax + rdx * 8]);
-  // begin acquiring exclusive access to cacheline containing our bit
-  prefetchw(ptr[rdx]);
+  shr(edx, RESERVE_GRANULE_SHIFT);
+  and_(edx, RESERVE_ENTRY_MASK);
+  lea(rcx, ptr[rax + rdx * 4]);
+  // get exclusive access to the counter we're about to bump
+  prefetchw(ptr[rcx]);
 
-  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_offset)),
-      rdx);
-  jnz(reservation_isnt_for_our_addr);
+  // a store to this granule since our lwarx kills the reservation
+  mov(edx, dword[rcx]);
+  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)), edx);
+  jnz(fail);
 
   mov(rax,
       GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_value_)));
 
-  // we need modulo bitsize, it turns out bittests' modulus behavior for the
-  // bitoffset only applies for register operands, for memory ones we bug out
-  // todo: actually, the above note may not be true, double check it
-  and_(ecx, 64 - 1);
-  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_bit)), ecx);
-  jnz(reservation_isnt_for_our_addr);
-
-  // was our memory modified by kernel code or something?
   lock();
   if (bit64) {
     cmpxchg(ptr[r9], r8);
-
   } else {
     cmpxchg(ptr[r9], r8d);
   }
-  // the ZF flag is unaffected by BTR! we exploit this for the retval
+  jnz(fail);
 
-  // cancel our lock on the 65k block
+  // the store landed, so kill other reservations on this granule
   lock();
-  btr(qword[rdx], rcx);
+  inc(dword[rcx]);
 
-  jnc(somehow_double_cleared);
-
-  L(done);
-  // i don't care that theres a dependency on the prev value of rax atm
-  // sadly theres no CF&ZF condition code
-  setz(al);
-  setc(ah);
-  cmp(ax, 0x0101);
+  xor_(eax, eax);  // ZF = 1
   ret();
 
-  // could be the same label, but otherwise we don't know where we came from
-  // when one gets triggered
-  L(reservation_isnt_for_our_addr);
-  DebugBreak();
-
-  L(somehow_double_cleared);  // somehow, something else cleared our reserve??
-  DebugBreak();
+  L(fail);
+  or_(eax, 1);  // ZF = 0
+  ret();
 
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
   code_offsets.epilog = getSize();
   code_offsets.tail = getSize();
   return EmitCurrentForOffsets(code_offsets);
+}
+
+// Host counterpart of the two helpers above, on the same state and table.
+namespace {
+
+std::atomic<uint32_t>& ReserveGranule(ReserveHelper* reserve_helper,
+                                      uint32_t address) {
+  const uint32_t granule = address >> RESERVE_GRANULE_SHIFT;
+  return reserve_helper->generations[granule & RESERVE_ENTRY_MASK];
+}
+
+template <typename T>
+T ReservedLoadImpl(X64BackendContext* bctx, ppc::PPCContext* context,
+                   uint32_t address) {
+  T* host_address = context->TranslateVirtual<T*>(address);
+  swcache::PrefetchW(host_address);
+  auto& granule = ReserveGranule(bctx->reserve_helper_, address);
+  // snapshot the generation first, the acquire pins the value read below
+  bctx->reserve_generation = granule.load(std::memory_order_acquire);
+  bctx->reserve_address = address;
+  // lwarx replaces any reservation this thread already held
+  bctx->flags |= 1U << kX64BackendHasReserveBit;
+
+  const T raw = *host_address;
+  bctx->cached_reserve_value_ = static_cast<uint64_t>(raw);
+  return xe::byte_swap(raw);
+}
+
+template <typename T>
+bool ReservedStoreImpl(X64BackendContext* bctx, ppc::PPCContext* context,
+                       uint32_t address, T value) {
+  const uint32_t reserve_flag = 1U << kX64BackendHasReserveBit;
+  const bool had_reservation = (bctx->flags & reserve_flag) != 0;
+  // stwcx. always clears the reservation, stored or not
+  bctx->flags &= ~reserve_flag;
+  // the reservation must be for the address we're storing to
+  if (!had_reservation || bctx->reserve_address != address) {
+    return false;
+  }
+
+  auto& granule = ReserveGranule(bctx->reserve_helper_, address);
+  // a store to this granule since our load kills the reservation
+  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
+    return false;
+  }
+
+  if (!xe::atomic_cas(static_cast<T>(bctx->cached_reserve_value_),
+                      xe::byte_swap(value),
+                      context->TranslateVirtual<T*>(address))) {
+    return false;
+  }
+
+  // the store landed, so kill other reservations on this granule
+  granule.fetch_add(1, std::memory_order_release);
+  return true;
+}
+
+}  // namespace
+
+uint32_t X64Backend::ReservedLoad32(ppc::PPCContext* context,
+                                    uint32_t address) {
+  return ReservedLoadImpl<uint32_t>(BackendContextForGuestContext(context),
+                                    context, address);
+}
+
+uint64_t X64Backend::ReservedLoad64(ppc::PPCContext* context,
+                                    uint32_t address) {
+  return ReservedLoadImpl<uint64_t>(BackendContextForGuestContext(context),
+                                    context, address);
+}
+
+bool X64Backend::ReservedStore32(ppc::PPCContext* context, uint32_t address,
+                                 uint32_t value) {
+  return ReservedStoreImpl<uint32_t>(BackendContextForGuestContext(context),
+                                     context, address, value);
+}
+
+bool X64Backend::ReservedStore64(ppc::PPCContext* context, uint32_t address,
+                                 uint64_t value) {
+  return ReservedStoreImpl<uint64_t>(BackendContextForGuestContext(context),
+                                     context, address, value);
 }
 
 void X64HelperEmitter::EmitSaveVolatileRegs() {
