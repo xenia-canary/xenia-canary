@@ -1576,8 +1576,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, const vec128_t& v) {
       return;
     }
 
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     MovMem64(rsp + kStashOffset, v.low);
     MovMem64(rsp + kStashOffset + 8, v.high);
     vmovdqa(dest, ptr[rsp + kStashOffset]);
@@ -1604,8 +1602,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, float v) {
         return;
       }
     }
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     mov(eax, x.i);
     vmovd(dest, eax);
   }
@@ -1631,8 +1627,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, double v) {
         return;
       }
     }
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     mov(rax, x.i);
     vmovq(dest, rax);
   }
