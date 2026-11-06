@@ -174,8 +174,6 @@ enum XmmConst {
   XMMLVRCmp16,
   XMMSTVLShuffle,
   XMMSTVRSwapMask,  // swapwordmask with bit 7 set
-  XMMVSRShlByteshuf,
-  XMMVSRMask,
   XMMQuietBit,      // 0x00400000
   // Clears the bits of a double below single precision, so converting it to
   // single rounds toward zero

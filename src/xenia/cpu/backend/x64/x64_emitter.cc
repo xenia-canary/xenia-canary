@@ -1265,10 +1265,7 @@ static const vec128_t xmm_consts[] = {
     /*XMMSTVLShuffle*/
     v128_setr_bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
     /* XMMSTVRSwapMask*/
-    vec128b((uint8_t)0x83), /*XMMVSRShlByteshuf*/
-    v128_setr_bytes(13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3, 0x80),
-    // XMMVSRMask
-    vec128b(1),
+    vec128b((uint8_t)0x83),
     // XMMQuietBit
     vec128i(0x00400000u),
     // XMMDoubleToSingleTruncateMask
