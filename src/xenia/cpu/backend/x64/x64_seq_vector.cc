@@ -2409,7 +2409,7 @@ struct PERMUTE_I32
     }
   }
 };
-// todo: use this on const src1
+// A constant control, swapped and masked when the code is emitted
 static vec128_t FixupConstantShuf8(vec128_t input) {
   for (uint32_t i = 0; i < 16; ++i) {
     input.u8[i] ^= 0x03;
@@ -2433,8 +2433,7 @@ struct PERMUTE_V128
       } else {
         // Control mask needs to be shuffled.
         if (i.src1.is_constant) {
-          e.LoadConstantXmm(e.xmm0, i.src1.constant());
-          e.vxorps(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMSwapWordMask));
+          e.LoadConstantXmm(e.xmm0, FixupConstantShuf8(i.src1.constant()));
         } else {
           e.vxorps(e.xmm0, i.src1, e.GetXmmConstPtr(XMMSwapWordMask));
         }
@@ -2453,7 +2452,9 @@ struct PERMUTE_V128
           return;
         }
 
-        e.vpand(e.xmm0, e.GetXmmConstPtr(XMMPermuteByteMask));
+        if (!i.src1.is_constant) {
+          e.vpand(e.xmm0, e.GetXmmConstPtr(XMMPermuteByteMask));
+        }
 
         if (i.src2.is_constant) {
           e.LoadConstantXmm(i.dest, i.src2.constant());
@@ -2469,13 +2470,11 @@ struct PERMUTE_V128
     } else {
       // General permute.
       // Control mask needs to be shuffled.
-      // TODO(benvanik): do constants here instead of in generated code.
       if (e.IsFeatureEnabled(kX64EmitAVX512Ortho | kX64EmitAVX512BW |
                              kX64EmitAVX512VBMI)) {
         Xmm table_idx = e.xmm0;
         if (i.src1.is_constant) {
-          e.LoadConstantXmm(table_idx, i.src1.constant());
-          e.vxorps(table_idx, table_idx, e.GetXmmConstPtr(XMMSwapWordMask));
+          e.LoadConstantXmm(table_idx, FixupConstantShuf8(i.src1.constant()));
         } else {
           e.vxorps(table_idx, i.src1, e.GetXmmConstPtr(XMMSwapWordMask));
         }
@@ -2504,12 +2503,11 @@ struct PERMUTE_V128
       }
 
       if (i.src1.is_constant) {
-        e.LoadConstantXmm(e.xmm2, i.src1.constant());
-        e.vxorps(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMSwapWordMask));
+        e.LoadConstantXmm(e.xmm2, FixupConstantShuf8(i.src1.constant()));
       } else {
         e.vxorps(e.xmm2, i.src1, e.GetXmmConstPtr(XMMSwapWordMask));
+        e.vpand(e.xmm2, e.GetXmmConstPtr(XMMPermuteByteMask));
       }
-      e.vpand(e.xmm2, e.GetXmmConstPtr(XMMPermuteByteMask));
 
       Xmm src2_shuf = e.xmm0;
       if (i.src2.value->IsConstantZero()) {
