@@ -1438,25 +1438,51 @@ int InstrEmit_vsel(PPCHIRBuilder& f, const InstrData& i) {
 int InstrEmit_vsel128(PPCHIRBuilder& f, const InstrData& i) {
   return InstrEmit_vsel_(f, VX128_VD128, VX128_VA128, VX128_VB128, VX128_VD128);
 }
-// chrispy: this is test code for checking whether a game takes advantage of the
-// VSR/VSL undocumented/undefined variable shift behavior
-static void AssertShiftElementsOk(PPCHIRBuilder& f, Value* v) {
-#if 0
-  Value* splatted = f.Splat(f.Extract(v, (uint8_t)0, INT8_TYPE), VEC128_TYPE);
+// vsl and vsr shift each byte by the low 3 bits of its own byte of VB, taking
+// bits from the byte next to it. The books leave counts that differ undefined,
+// and this is what the console does with them, but code always splats the
+// count, so only counts that differ take the byte shifts. The neighbour's bits
+// move by 8 - count: by 1, then by 7 - count, the low 3 bits of ~count, which
+// are all a byte shift reads of its count.
+static int InstrEmit_vsl_vsr_(PPCHIRBuilder& f, const InstrData& i, bool left) {
+  Label* mixed = f.NewLabel();
+  Label* end = f.NewLabel();
+  Value* vb = f.LoadVR(i.VX.VB);
+  Value* differing =
+      f.And(f.Xor(vb, f.Splat(f.Extract(vb, 15, INT8_TYPE), VEC128_TYPE)),
+            f.LoadConstantVec128(vec128b(0b111)));
+  f.BranchFalse(f.IsFalse(differing), mixed);
 
-  Value* checkequal = f.Xor(splatted, v);
-  f.DebugBreakTrue(f.IsTrue(checkequal));
-#endif
+  Value* va = f.LoadVR(i.VX.VA);
+  Value* count = f.And(f.Extract(f.LoadVR(i.VX.VB), 15, INT8_TYPE),
+                       f.LoadConstantInt8(0b111));
+  f.StoreVR(i.VX.VD, left ? f.Shl(va, count) : f.Shr(va, count));
+  f.Branch(end);
+
+  f.MarkLabel(mixed);
+  va = f.LoadVR(i.VX.VA);
+  vb = f.LoadVR(i.VX.VB);
+  Value* one = f.LoadConstantVec128(vec128b(1));
+  Value* v;
+  if (left) {
+    Value* next = f.Permute(f.LoadVectorShl(f.LoadConstantInt8(1)), va,
+                            f.LoadZeroVec128(), INT8_TYPE);
+    v = f.Or(
+        f.VectorShl(va, vb, INT8_TYPE),
+        f.VectorShr(f.VectorShr(next, one, INT8_TYPE), f.Not(vb), INT8_TYPE));
+  } else {
+    Value* previous = f.Permute(f.LoadVectorShr(f.LoadConstantInt8(1)),
+                                f.LoadZeroVec128(), va, INT8_TYPE);
+    v = f.Or(f.VectorShr(va, vb, INT8_TYPE),
+             f.VectorShl(f.VectorShl(previous, one, INT8_TYPE), f.Not(vb),
+                         INT8_TYPE));
+  }
+  f.StoreVR(i.VX.VD, v);
+  f.MarkLabel(end);
+  return 0;
 }
 int InstrEmit_vsl(PPCHIRBuilder& f, const InstrData& i) {
-  Value* va = f.LoadVR(i.VX.VA);
-  Value* vb = f.LoadVR(i.VX.VB);
-
-  AssertShiftElementsOk(f, vb);
-  Value* v =
-      f.Shl(va, f.And(f.Extract(vb, 15, INT8_TYPE), f.LoadConstantInt8(0b111)));
-  f.StoreVR(i.VX.VD, v);
-  return 0;
+  return InstrEmit_vsl_vsr_(f, i, true);
 }
 
 int InstrEmit_vslb(PPCHIRBuilder& f, const InstrData& i) {
@@ -1646,15 +1672,7 @@ int InstrEmit_vspltisw128(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_vsr(PPCHIRBuilder& f, const InstrData& i) {
-  Value* va = f.LoadVR(i.VX.VA);
-  Value* vb = f.LoadVR(i.VX.VB);
-
-  AssertShiftElementsOk(f, vb);
-
-  Value* v =
-      f.Shr(va, f.And(f.Extract(vb, 15, INT8_TYPE), f.LoadConstantInt8(0b111)));
-  f.StoreVR(i.VX.VD, v);
-  return 0;
+  return InstrEmit_vsl_vsr_(f, i, false);
 }
 
 int InstrEmit_vsrab(PPCHIRBuilder& f, const InstrData& i) {
