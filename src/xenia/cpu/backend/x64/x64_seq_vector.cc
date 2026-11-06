@@ -2632,7 +2632,7 @@ static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
   auto src1 = i.src1;
 
   e.vpshufb(i.dest, src1, e.GetXmmConstPtr(initial_shuffle));
-  e.vpmovsxwd(e.xmm1, i.dest);
+  e.vpmovzxwd(e.xmm1, i.dest);
 
   e.vpsrld(e.xmm2, e.xmm1, 10);
   e.vpmovsxwd(e.xmm0, i.dest);
@@ -2657,15 +2657,8 @@ static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
 template <typename Inst>
 static void emit_fast_f16_pack(X64Emitter& e, const Inst& i,
                                XmmConst final_shuffle) {
-  // XMMF16PackLCPI0 includes bias (0x08000000) + round-half-down (0xFFF).
-  // For round-to-nearest-even, also add the tie-breaker: bit 13 of src.
-  // Bit 13 of (src + bias) == bit 13 of src since the bias doesn't affect
-  // bits 0-26.
+  // Rebias the exponent. The console truncates the mantissa.
   e.vpaddd(e.xmm1, i.src1, e.GetXmmConstPtr(XMMF16PackLCPI0));
-  e.vpsrld(e.xmm0, i.src1, 13);
-  e.vpslld(e.xmm0, e.xmm0, 31);
-  e.vpsrld(e.xmm0, e.xmm0, 31);
-  e.vpaddd(e.xmm1, e.xmm1, e.xmm0);
 
   e.vpand(e.xmm2, i.src1, e.GetXmmConstPtr(XMMAbsMaskPS));
   e.vmovdqa(e.xmm3, e.GetXmmConstPtr(XMMF16PackLCPI2));
@@ -2854,7 +2847,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       vec128_t result = vec128b(0);
       for (unsigned idx = 0; idx < 4; ++idx) {
         result.u16[(7 - (idx ^ 2))] =
-            float_to_xenos_half(i.src1.constant().f32[idx], false, true);
+            float_to_xenos_half(i.src1.constant().f32[idx]);
       }
 
       e.LoadConstantXmm(i.dest, result);
