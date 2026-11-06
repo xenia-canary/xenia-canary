@@ -2777,80 +2777,30 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     //     ((src1.uy & 0xFF) << 8) | (src1.uz & 0xFF)
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackD3DCOLOR));
   }
-  static __m128i EmulateFLOAT16_2(void*, __m128 src1) {
-    alignas(16) float a[4];
-    alignas(16) uint16_t b[8];
-    _mm_store_ps(a, src1);
-    std::memset(b, 0, sizeof(b));
-
-    for (int i = 0; i < 2; i++) {
-      b[7 - i] = float_to_xenos_half(a[i]);
-    }
-
-    return _mm_load_si128(reinterpret_cast<__m128i*>(b));
-  }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
-    // http://blogs.msdn.com/b/chuckw/archive/2012/09/11/directxmath-f16c-and-fma.aspx
     // dest = [(src1.x | src1.y), 0, 0, 0]
-
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
-    e.vmovaps(i.dest, e.xmm0);
-  }
-
-  static __m128i EmulateFLOAT16_4_RoundToEven(void*, __m128 src1) {
-    alignas(16) uint16_t b[8] = {0};
-
-    // Extract and convert all 4 floats
-    float f0 = _mm_cvtss_f32(src1);
-    float f1 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(1, 1, 1, 1)));
-    float f2 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(2, 2, 2, 2)));
-    float f3 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(3, 3, 3, 3)));
-
-    // Convert to float16 with round-to-nearest-even
-    // Index calculation: 7 - (i ^ 2) where ^ is XOR
-    b[5] = float_to_xenos_half(f0, false, true);  // 7 - (0 ^ 2) = 7 - 2 = 5
-    b[4] = float_to_xenos_half(f1, false, true);  // 7 - (1 ^ 2) = 7 - 3 = 4
-    b[7] = float_to_xenos_half(f2, false, true);  // 7 - (2 ^ 2) = 7 - 0 = 7
-    b[6] = float_to_xenos_half(f3, false, true);  // 7 - (3 ^ 2) = 7 - 1 = 6
-
-    return _mm_load_si128(reinterpret_cast<const __m128i*>(b));
+    if (i.src1.is_constant) {
+      vec128_t result = vec128b(0);
+      for (unsigned idx = 0; idx < 2; ++idx) {
+        result.u16[7 - idx] = float_to_xenos_half(i.src1.constant().f32[idx]);
+      }
+      e.LoadConstantXmm(i.dest, result);
+    } else {
+      emit_fast_f16_pack(e, i, XMMPackFLOAT16_2);
+    }
   }
 
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
-    if (!i.src1.is_constant) {
-#if XE_ARCH_AMD64
-      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
-#else
-      auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-#if XE_PLATFORM_WIN32
-      e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-      e.vmovaps(e.xmm0, src1);
-#endif
-      e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_4_RoundToEven));
-      e.vmovdqa(i.dest, e.xmm0);
-#endif
-    } else {
+    if (i.src1.is_constant) {
       vec128_t result = vec128b(0);
       for (unsigned idx = 0; idx < 4; ++idx) {
         result.u16[(7 - (idx ^ 2))] =
             float_to_xenos_half(i.src1.constant().f32[idx]);
       }
-
       e.LoadConstantXmm(i.dest, result);
+    } else {
+      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
     }
   }
   static void EmitSHORT_2(X64Emitter& e, const EmitArgType& i) {
@@ -3118,45 +3068,21 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
     e.vpor(i.dest, e.GetXmmConstPtr(XMMOne));
     // To convert to 0 to 1, games multiply by 0x47008081 and add 0xC7008081.
   }
-  static __m128 EmulateFLOAT16_2(void*, __m128i src1) {
-    alignas(16) uint16_t a[8];
-    alignas(16) float b[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-
-    for (int i = 0; i < 2; i++) {
-      b[i] = xenos_half_to_float(a[VEC128_W(6 + i)]);
-    }
-
-    // Constants, or something
-    b[2] = 0.f;
-    b[3] = 1.f;
-
-    return _mm_load_ps(b);
-  }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     // 1 bit sign, 5 bit exponent, 10 bit mantissa
-    // D3D10 half float format
-    // TODO(benvanik):
-    // http://blogs.msdn.com/b/chuckw/archive/2012/09/11/directxmath-f16c-and-fma.aspx
-    // Use _mm_cvtph_ps -- requires very modern processors (SSE5+)
-    // Unpacking half floats:
-    // http://fgiesen.wordpress.com/2012/03/28/half-to-float-done-quic/
-    // Packing half floats: https://gist.github.com/rygorous/2156668
-    // Load source, move from tight pack of X16Y16.... to X16...Y16...
-    // Also zero out the high end.
-    // TODO(benvanik): special case constant unpacks that just get 0/1/etc.
-
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128i is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128i passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
-    e.vmovaps(i.dest, e.xmm0);
+    // (VD.xy) = the halves in the low word of VB, (VD.zw) = 0.0, 1.0
+    if (i.src1.is_constant) {
+      vec128_t result{};
+      for (int idx = 0; idx < 2; ++idx) {
+        result.f32[idx] =
+            xenos_half_to_float(i.src1.constant().u16[VEC128_W(6 + idx)]);
+      }
+      result.f32[3] = 1.0f;
+      e.LoadConstantXmm(i.dest, result);
+    } else {
+      emit_fast_f16_unpack(e, i, XMMUnpackFLOAT16_2);
+      e.vpor(i.dest, i.dest, e.GetXmmConstPtr(XMM0001));
+    }
   }
 
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
