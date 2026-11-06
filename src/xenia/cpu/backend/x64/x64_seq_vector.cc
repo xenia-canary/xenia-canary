@@ -2067,60 +2067,21 @@ struct VECTOR_AVERAGE
               if (is_unsigned) {
                 e.vpavgb(dest, src1, src2);
               } else {
-                // todo: avx2 version or version that sign extends to two __m128
-
-                e.vmovdqa(e.ptr[e.rsp + stack_offset_src1], src1);
-                e.vmovdqa(e.ptr[e.rsp + stack_offset_src2], src2);
-
-                Xbyak::Label looper;
-
-                e.xor_(e.edx, e.edx);
-
-                e.L(looper);
-
-                e.movsx(e.ecx, e.byte[e.rsp + stack_offset_src2 + e.rdx]);
-                e.movsx(e.eax, e.byte[e.rsp + stack_offset_src1 + e.rdx]);
-
-                e.lea(e.ecx, e.ptr[e.ecx + e.eax + 1]);
-                e.sar(e.ecx, 1);
-                e.mov(e.byte[e.rsp + stack_offset_src1 + e.rdx], e.cl);
-
-                if (e.IsFeatureEnabled(kX64FlagsIndependentVars)) {
-                  e.inc(e.edx);
-                } else {
-                  e.add(e.edx, 1);
-                }
-
-                e.cmp(e.edx, 16);
-                e.jnz(looper);
-                e.vmovdqa(dest, e.ptr[e.rsp + stack_offset_src1]);
+                // Biased by 0x80 the values are unsigned, and so is the average
+                e.vpxor(e.xmm1, src1, e.GetXmmConstPtr(XMMSignMaskI8));
+                e.vpxor(e.xmm2, src2, e.GetXmmConstPtr(XMMSignMaskI8));
+                e.vpavgb(e.xmm1, e.xmm1, e.xmm2);
+                e.vpxor(dest, e.xmm1, e.GetXmmConstPtr(XMMSignMaskI8));
               }
               break;
             case INT16_TYPE:
               if (is_unsigned) {
                 e.vpavgw(dest, src1, src2);
               } else {
-                e.vmovdqa(e.ptr[e.rsp + stack_offset_src1], src1);
-                e.vmovdqa(e.ptr[e.rsp + stack_offset_src2], src2);
-
-                Xbyak::Label looper;
-
-                e.xor_(e.edx, e.edx);
-
-                e.L(looper);
-
-                e.movsx(e.ecx, e.word[e.rsp + stack_offset_src2 + e.rdx]);
-                e.movsx(e.eax, e.word[e.rsp + stack_offset_src1 + e.rdx]);
-
-                e.lea(e.ecx, e.ptr[e.ecx + e.eax + 1]);
-                e.sar(e.ecx, 1);
-                e.mov(e.word[e.rsp + stack_offset_src1 + e.rdx], e.cx);
-
-                e.add(e.edx, 2);
-
-                e.cmp(e.edx, 16);
-                e.jnz(looper);
-                e.vmovdqa(dest, e.ptr[e.rsp + stack_offset_src1]);
+                e.vpxor(e.xmm1, src1, e.GetXmmConstPtr(XMMSignMaskI16));
+                e.vpxor(e.xmm2, src2, e.GetXmmConstPtr(XMMSignMaskI16));
+                e.vpavgw(e.xmm1, e.xmm1, e.xmm2);
+                e.vpxor(dest, e.xmm1, e.GetXmmConstPtr(XMMSignMaskI16));
               }
               break;
             case INT32_TYPE: {
