@@ -22,6 +22,8 @@
    usually for camera related functions
    - Messages ids that start with 0x0002Cxxx are used by the XamNuiIdentity
    functions
+   - Messages ids that start with 0x0002Dxxx are used by the XamNetwork
+   functions
 */
 
 namespace xe {
