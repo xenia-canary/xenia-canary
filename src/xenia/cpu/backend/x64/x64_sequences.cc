@@ -385,8 +385,6 @@ struct CONVERT_F32_F64
     : Sequence<CONVERT_F32_F64, I<OPCODE_CONVERT, F32Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
-
     Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
     e.vmovq(e.rax, src);
     e.vcvtsd2ss(i.dest, src);
@@ -417,7 +415,6 @@ struct CONVERT_F64_I64
       input = e.rax;
       e.mov(input, (uintptr_t)i.src1.constant());
     }
-    // TODO(benvanik): saturation check? cvtt* (trunc?)
     e.vcvtsi2sd(i.dest, input);
   }
 };
@@ -3261,10 +3258,6 @@ void EmitAndXX(X64Emitter& e, const ARGS& i) {
           } else if (dest_src.getBit() == 64) {
             e.movzx(dest_src.cvt32(), dest_src.cvt16());
             return;
-          }
-        } else if (constant == -1) {
-          if (dest_src.getBit() == 64) {
-            // todo: verify that mov eax, eax will properly zero upper 64 bits
           }
         } else if (dest_src.getBit() == 64 && constant > 0) {
           // do 32 bit and, not the full 64, because the upper 32 of the mask
