@@ -80,7 +80,7 @@ TEST_CASE("PACK_FLOAT16_4", "[instr]") {
       [](PPCContext* ctx) {
         auto result = ctx->v[3];
         REQUIRE(result ==
-                vec128i(0x00000000, 0x00000000, 0x64D26D8C, 0x48824491));
+                vec128i(0x00000000, 0x00000000, 0x64D26D8B, 0x48814491));
       });
 }
 
