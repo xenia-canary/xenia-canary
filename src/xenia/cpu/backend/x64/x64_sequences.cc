@@ -2127,10 +2127,6 @@ EMITTER_OPCODE_TABLE(OPCODE_DIV, DIV_I8, DIV_I16, DIV_I32, DIV_I64, DIV_F32,
 // src2), quieted, rather than whatever the host FMA picked, and leaves its sign
 // alone even for the negated forms.
 //
-// Every scalar form takes the fixup; of the packed ones only the negated
-// vnmsubfp does. Putting it on vmaddfp as well costs ~8.5fps, and vmaddfp is
-// the only multiply-add hot enough to notice.
-//
 // The fixup is only reached when the result is already NaN, which covers every
 // case needing one: a NaN operand always yields a NaN result, and an invalid
 // operation with no NaN operand needs the PPC default rather than x86's.
@@ -2212,8 +2208,10 @@ static void EmitPpcFmaResult_F64(X64Emitter& e, const ARGS& i, bool negate) {
 }
 
 template <typename ARGS>
-static void EmitNegatedFma_V128(X64Emitter& e, const ARGS& i) {
-  e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+static void EmitPpcFmaResult_V128(X64Emitter& e, const ARGS& i, bool negate) {
+  if (negate) {
+    e.vxorps(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSignMaskPS));
+  }
   Xbyak::Label& done = e.NewCachedLabel();
   Xbyak::Label& fixup =
       e.AddToTail([&done, i](X64Emitter& e, Xbyak::Label& tail) {
@@ -2280,21 +2278,12 @@ struct MUL_ADD_V128
       // todo: this is garbage
       e.vmovaps(e.xmm3, src1);
       e.vfmadd213ps(e.xmm3, src2, src3);
-      if (!negate) {
-        e.vmovaps(i.dest, e.xmm3);
-      }
     } else {
       // todo: might need to use x87 in this case...
       e.vmulps(e.xmm3, src1, src2);
-      if (negate) {
-        e.vaddps(e.xmm3, e.xmm3, src3);
-      } else {
-        e.vaddps(i.dest, e.xmm3, src3);
-      }
+      e.vaddps(e.xmm3, e.xmm3, src3);
     }
-    if (negate) {
-      EmitNegatedFma_V128(e, i);
-    }
+    EmitPpcFmaResult_V128(e, i, negate);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);
@@ -2364,7 +2353,7 @@ struct MUL_SUB_V128
       }
     }
     if (negate) {
-      EmitNegatedFma_V128(e, i);
+      EmitPpcFmaResult_V128(e, i, true);
     }
   }
 };
