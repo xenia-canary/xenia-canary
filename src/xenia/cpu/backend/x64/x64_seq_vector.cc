@@ -2952,71 +2952,25 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // Merge XZ and YW.
     e.vorps(i.dest, e.xmm0);
   }
-  static __m128i EmulatePack8_IN_16_UN_UN_SAT(void*, __m128i src1,
-                                              __m128i src2) {
-    alignas(16) uint16_t a[8];
-    alignas(16) uint16_t b[8];
-    alignas(16) uint8_t c[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(b), src2);
-    for (int i = 0; i < 8; ++i) {
-      c[i] = uint8_t(std::max(uint16_t(0), std::min(uint16_t(255), a[i])));
-      c[i + 8] = uint8_t(std::max(uint16_t(0), std::min(uint16_t(255), b[i])));
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(c));
-  }
-  static __m128i EmulatePack8_IN_16_UN_UN(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint8_t a[16];
-    alignas(16) uint8_t b[16];
-    alignas(16) uint8_t c[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(a), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(b), src2);
-    for (int i = 0; i < 8; ++i) {
-      c[i] = a[i * 2];
-      c[i + 8] = b[i * 2];
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(c));
-  }
   static void Emit8_IN_16(X64Emitter& e, const EmitArgType& i, uint32_t flags) {
-    // TODO(benvanik): handle src2 (or src1) being constant zero
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     if (IsPackInUnsigned(flags)) {
       if (IsPackOutUnsigned(flags)) {
+        // Words of at most 0xFF, which vpackuswb leaves as they are
+        e.vpcmpeqw(e.xmm2, e.xmm2, e.xmm2);
+        e.vpsrlw(e.xmm2, e.xmm2, 8);
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-
-#if XE_PLATFORM_WIN32
-          // Windows x64 ABI: __m128i is passed by implicit pointer
-          e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-          e.lea(e.GetNativeParam(1), e.StashXmm(1, src2));
-#else
-          // Linux/Mac System V ABI: __m128i passed in xmm0/xmm1, return in xmm0
-          e.vmovaps(e.xmm0, src1);
-          e.vmovaps(e.xmm1, src2);
-#endif
-          e.CallNativeSafe(
-              reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN_SAT));
-          e.vmovaps(i.dest, e.xmm0);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
+          e.vpminuw(e.xmm0, src1, e.xmm2);
+          e.vpminuw(e.xmm1, src2, e.xmm2);
         } else {
           // unsigned -> unsigned
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-
-#if XE_PLATFORM_WIN32
-          // Windows x64 ABI: __m128i is passed by implicit pointer
-          e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-          e.lea(e.GetNativeParam(1), e.StashXmm(1, src2));
-#else
-          // Linux/Mac System V ABI: __m128i passed in xmm0/xmm1, return in xmm0
-          e.vmovaps(e.xmm0, src1);
-          e.vmovaps(e.xmm1, src2);
-#endif
-          e.CallNativeSafe(reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN));
-          e.vmovaps(i.dest, e.xmm0);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
+          e.vpand(e.xmm0, src1, e.xmm2);
+          e.vpand(e.xmm1, src2, e.xmm2);
         }
+        e.vpackuswb(i.dest, e.xmm0, e.xmm1);
+        e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
       } else {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> signed + saturate
@@ -3031,16 +2985,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> unsigned + saturate
           // PACKUSWB / SaturateSignedWordToUnsignedByte
-          Xbyak::Xmm src1 = i.src1.is_constant ? e.xmm0 : i.src1;
-          if (i.src1.is_constant) {
-            e.LoadConstantXmm(src1, i.src1.constant());
-          }
-
-          Xbyak::Xmm src2 = i.src2.is_constant ? e.xmm1 : i.src2;
-          if (i.src2.is_constant) {
-            e.LoadConstantXmm(src2, i.src2.constant());
-          }
-
           e.vpackuswb(i.dest, src1, src2);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
@@ -3051,7 +2995,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> signed + saturate
           // PACKSSWB / SaturateSignedWordToSignedByte
-          e.vpacksswb(i.dest, i.src1, i.src2);
+          e.vpacksswb(i.dest, src1, src2);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
           // signed -> signed
@@ -3063,55 +3007,25 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
   // Pack 2 32-bit vectors into a 16-bit vector.
   static void Emit16_IN_32(X64Emitter& e, const EmitArgType& i,
                            uint32_t flags) {
-    // TODO(benvanik): handle src2 (or src1) being constant zero
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     if (IsPackInUnsigned(flags)) {
       if (IsPackOutUnsigned(flags)) {
+        // Dwords of at most 0xFFFF, which vpackusdw leaves as they are
+        e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+        e.vpsrld(e.xmm2, e.xmm2, 16);
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
-          // Construct a saturation max value
-          e.mov(e.eax, 0xFFFFu);
-          e.vmovd(e.xmm0, e.eax);
-          e.vpshufd(e.xmm0, e.xmm0, 0b00000000);
-
-          if (!i.src1.is_constant) {
-            e.vpminud(e.xmm1, i.src1, e.xmm0);  // Saturate src1
-            e.vpshuflw(e.xmm1, e.xmm1, 0b00100010);
-            e.vpshufhw(e.xmm1, e.xmm1, 0b00100010);
-            e.vpshufd(e.xmm1, e.xmm1, 0b00001000);
-          } else {
-            // TODO(DrChat): Non-zero constants
-            assert_true(i.src1.constant().u64[0] == 0 &&
-                        i.src1.constant().u64[1] == 0);
-            e.vpxor(e.xmm1, e.xmm1);
-          }
-
-          if (!i.src2.is_constant) {
-            e.vpminud(i.dest, i.src2, e.xmm0);  // Saturate src2
-            e.vpshuflw(i.dest, i.dest, 0b00100010);
-            e.vpshufhw(i.dest, i.dest, 0b00100010);
-            e.vpshufd(i.dest, i.dest, 0b10000000);
-          } else {
-            // TODO(DrChat): Non-zero constants
-            assert_true(i.src2.constant().u64[0] == 0 &&
-                        i.src2.constant().u64[1] == 0);
-            e.vpxor(i.dest, i.dest);
-          }
-
-          e.vpblendw(i.dest, i.dest, e.xmm1, 0b00001111);
+          e.vpminud(e.xmm0, src1, e.xmm2);
+          e.vpminud(e.xmm1, src2, e.xmm2);
         } else {
           // unsigned -> unsigned
-          e.vmovaps(e.xmm0, i.src1);
-          e.vpshuflw(e.xmm0, e.xmm0, 0b00100010);
-          e.vpshufhw(e.xmm0, e.xmm0, 0b00100010);
-          e.vpshufd(e.xmm0, e.xmm0, 0b00001000);
-
-          e.vmovaps(i.dest, i.src2);
-          e.vpshuflw(i.dest, i.dest, 0b00100010);
-          e.vpshufhw(i.dest, i.dest, 0b00100010);
-          e.vpshufd(i.dest, i.dest, 0b10000000);
-
-          e.vpblendw(i.dest, i.dest, e.xmm0, 0b00001111);
+          e.vpand(e.xmm0, src1, e.xmm2);
+          e.vpand(e.xmm1, src2, e.xmm2);
         }
+        e.vpackusdw(i.dest, e.xmm0, e.xmm1);
+        e.vpshuflw(i.dest, i.dest, 0b10110001);
+        e.vpshufhw(i.dest, i.dest, 0b10110001);
       } else {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> signed + saturate
@@ -3128,7 +3042,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
           // PACKUSDW
           // TMP[15:0] <- (DEST[31:0] < 0) ? 0 : DEST[15:0];
           // DEST[15:0] <- (DEST[31:0] > FFFFH) ? FFFFH : TMP[15:0];
-          e.vpackusdw(i.dest, i.src1, i.src2);
+          e.vpackusdw(i.dest, src1, src2);
           e.vpshuflw(i.dest, i.dest, 0b10110001);
           e.vpshufhw(i.dest, i.dest, 0b10110001);
         } else {
@@ -3139,15 +3053,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> signed + saturate
           // PACKSSDW / SaturateSignedDwordToSignedWord
-          Xmm src2;
-          if (!i.src2.is_constant) {
-            src2 = i.src2;
-          } else {
-            assert_false(i.src1 == e.xmm0);
-            src2 = e.xmm0;
-            e.LoadConstantXmm(src2, i.src2.constant());
-          }
-          e.vpackssdw(i.dest, i.src1, src2);
+          e.vpackssdw(i.dest, src1, src2);
           e.vpshuflw(i.dest, i.dest, 0b10110001);
           e.vpshufhw(i.dest, i.dest, 0b10110001);
         } else {
