@@ -49,7 +49,6 @@ XENIA_TARGETS = [
     "xenia-app",
     "xenia-app-discord",
     "xenia-apu",
-    "xenia-apu-alsa",
     "xenia-apu-nop",
     "xenia-apu-sdl",
     "xenia-base",

@@ -46,10 +46,6 @@ add_subdirectory(hid/sdl)
 add_subdirectory(hid/keyboard)
 
 # Platform-conditional modules
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_subdirectory(apu/alsa)
-endif()
-
 if(WIN32)
   add_subdirectory(apu/xaudio2)
   add_subdirectory(gpu/d3d12)
