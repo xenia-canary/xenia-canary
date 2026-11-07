@@ -389,8 +389,60 @@ bool ImGuiDrawer::LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config,
   return true;
 }
 
-bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
-                                  float font_size) {
+#if XE_PLATFORM_LINUX
+// A font stb_truetype can't parse fails the whole atlas, so check it first.
+static bool IsFontLoadable(const uint8_t* data, size_t size) {
+  if (!data || size < 12) {
+    return false;
+  }
+
+  stbtt_fontinfo font_info = {};
+  const int font_offset = stbtt_GetFontOffsetForIndex(data, 0);
+  return font_offset >= 0 && stbtt_InitFont(&font_info, data, font_offset);
+}
+
+// Returns the best TrueType match stb_truetype can load, or an empty string.
+// It can't parse CFF or variable fonts, such as Fedora's NotoSansCJK-VF.ttc,
+// which fontconfig may still return.
+static std::string MatchFontconfigFont(FcPattern* pattern) {
+  FcConfig* config = FcInitLoadConfigAndFonts();
+  if (!config) {
+    XELOGW("Unable to initialize fontconfig");
+    return {};
+  }
+
+  FcPatternAddString(pattern, FC_FONTFORMAT,
+                     reinterpret_cast<const FcChar8*>("TrueType"));
+  FcConfigSubstitute(config, pattern, FcMatchPattern);
+  FcDefaultSubstitute(pattern);
+
+  std::string font_path;
+  FcResult result;
+  FcPattern* match = FcFontMatch(config, pattern, &result);
+  if (match) {
+    FcChar8* file = nullptr;
+    if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch) {
+      font_path = reinterpret_cast<const char*>(file);
+    }
+    FcPatternDestroy(match);
+  }
+  FcConfigDestroy(config);
+
+  if (font_path.empty() || !std::filesystem::exists(font_path)) {
+    return {};
+  }
+
+  auto font_data = MappedMemory::Open(font_path, MappedMemory::Mode::kRead);
+  if (!font_data || !IsFontLoadable(font_data->data(), font_data->size())) {
+    XELOGW("Font {} cannot be loaded by stb_truetype; skipping", font_path);
+    return {};
+  }
+  return font_path;
+}
+#endif
+
+bool ImGuiDrawer::LoadSystemFont(ImGuiIO& io, ImFontConfig& font_config,
+                                 float font_size) {
 #if XE_PLATFORM_WIN32
   PWSTR fonts_dir;
   HRESULT result = SHGetKnownFolderPath(FOLDERID_Fonts, 0, NULL, &fonts_dir);
@@ -417,25 +469,33 @@ bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
     return false;
   }
   return true;
+#elif XE_PLATFORM_LINUX
+  // Any distribution has a monospace font, which keeps UI columns even.
+  FcPattern* pattern =
+      FcNameParse(reinterpret_cast<const FcChar8*>("monospace"));
+  if (!pattern) {
+    return false;
+  }
+
+  const std::string font_path = MatchFontconfigFont(pattern);
+  FcPatternDestroy(pattern);
+  if (font_path.empty()) {
+    XELOGW("Unable to find a system font; using the built-in one");
+    return false;
+  }
+
+  ImFont* font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
+                                              &font_config, font_glyph_ranges);
+  if (!font) {
+    XELOGE("Failed to load font: {}", font_path);
+    return false;
+  }
+  XELOGI("Using font {}", font_path);
+  return true;
 #endif
 
   return false;
 }
-
-#if XE_PLATFORM_LINUX
-// Whether stb_truetype can parse a font, checked before the font is merged
-// into the real atlas, where a failure would take the base font down with it
-// (and trip an IM_ASSERT in debug builds).
-static bool IsFontLoadable(const uint8_t* data, size_t size) {
-  if (!data || size < 12) {
-    return false;
-  }
-
-  stbtt_fontinfo font_info = {};
-  const int font_offset = stbtt_GetFontOffsetForIndex(data, 0);
-  return font_offset >= 0 && stbtt_InitFont(&font_info, data, font_offset);
-}
-#endif
 
 bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
 #if XE_PLATFORM_WIN32
@@ -484,73 +544,32 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
     XELOGW("Bundled CJK font cannot be loaded; trying fontconfig");
   }
 
-  // Fall back to a system CJK font found with fontconfig
-  FcConfig* config = FcInitLoadConfigAndFonts();
-  if (!config) {
-    XELOGW(
-        "Unable to initialize fontconfig; CJK characters may not display "
-        "correctly");
-    return false;
-  }
-
-  // Create a pattern to search for fonts with CJK support
+  // Fall back to a system font that has a CJK character.
   FcPattern* pattern = FcPatternCreate();
   FcCharSet* charset = FcCharSetCreate();
   FcCharSetAddChar(charset, 0x4E00);
   FcPatternAddCharSet(pattern, FC_CHARSET, charset);
-  // Dear ImGui rasterises with stb_truetype, which cannot parse CFF-outline
-  // OpenType fonts or variable-font collections. Fedora's default CJK match
-  // is NotoSansCJK-VF.ttc, exactly that, and one unloadable font fails the
-  // whole atlas build rather than just its own glyphs. Ask fontconfig for
-  // TrueType outlines only.
-  FcPatternAddString(pattern, FC_FONTFORMAT,
-                     reinterpret_cast<const FcChar8*>("TrueType"));
+  FcCharSetDestroy(charset);  // The pattern holds its own reference.
 
-  // Configure the search
-  FcConfigSubstitute(config, pattern, FcMatchPattern);
-  FcDefaultSubstitute(pattern);
-
-  // Find the best matching font
-  FcResult result;
-  FcPattern* font = FcFontMatch(config, pattern, &result);
-
-  bool success = false;
-  if (font) {
-    FcChar8* file = nullptr;
-    if (FcPatternGetString(font, FC_FILE, 0, &file) == FcResultMatch) {
-      const char* font_path = reinterpret_cast<const char*>(file);
-
-      if (std::filesystem::exists(font_path)) {
-        auto font_data =
-            MappedMemory::Open(font_path, MappedMemory::Mode::kRead);
-        if (font_data && IsFontLoadable(font_data->data(), font_data->size())) {
-          ImFontConfig jp_font_config;
-          jp_font_config.MergeMode = true;
-          jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
-          jp_font_config.PixelSnapH = true;
-
-          io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config);
-          XELOGI("Using CJK font {}", font_path);
-          success = true;
-        } else {
-          XELOGW("CJK font {} cannot be loaded by stb_truetype; skipping",
-                 font_path);
-        }
-      }
-    }
-    FcPatternDestroy(font);
-  }
-
-  FcCharSetDestroy(charset);
+  const std::string font_path = MatchFontconfigFont(pattern);
   FcPatternDestroy(pattern);
-  FcConfigDestroy(config);
 
-  if (!success) {
-    XELOGW(
-        "Unable to find CJK font; Japanese characters may not display "
-        "correctly");
+  if (!font_path.empty()) {
+    ImFontConfig jp_font_config;
+    jp_font_config.MergeMode = true;
+    jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
+    jp_font_config.PixelSnapH = true;
+    if (io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
+                                     &jp_font_config)) {
+      XELOGI("Using CJK font {}", font_path);
+      return true;
+    }
   }
-  return success;
+
+  XELOGW(
+      "Unable to find CJK font; Japanese characters may not display "
+      "correctly");
+  return false;
 #endif
 
   return false;
@@ -571,7 +590,7 @@ void ImGuiDrawer::InitializeFonts(const float font_size) {
 
   bool is_font_loaded = LoadCustomFont(io, font_config, font_size);
   if (!is_font_loaded) {
-    is_font_loaded = LoadWindowsFont(io, font_config, font_size);
+    is_font_loaded = LoadSystemFont(io, font_config, font_size);
   }
 
   if (!is_font_loaded) {

@@ -109,7 +109,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   void Initialize();
   void InitializeFonts(const float font_size);
   bool LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config, float font_size);
-  bool LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config, float font_size);
+  // Tahoma on Windows, the fontconfig monospace match on Linux.
+  bool LoadSystemFont(ImGuiIO& io, ImFontConfig& font_config, float font_size);
   bool LoadJapaneseFont(ImGuiIO& io, float font_size);
 
   void SetupNotificationTextures();
