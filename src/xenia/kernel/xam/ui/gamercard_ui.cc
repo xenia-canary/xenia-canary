@@ -8,6 +8,10 @@
  */
 
 #include "xenia/kernel/xam/ui/gamercard_ui.h"
+
+#include <algorithm>
+#include <cfloat>
+
 #include "xenia/base/png_utils.h"
 #include "xenia/ui/file_picker.h"
 
@@ -16,8 +20,6 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
-constexpr float leftSideTextObjectAlignment = 100.f;
-constexpr float rightSideTextObjectAlignment = 140.f;
 // Because all these ENUM->NAME conversions will be used only here there is no
 // reason to store them somewhere globally available.
 static constexpr const char* XLanguageName[] = {nullptr,
@@ -293,11 +295,48 @@ void GamercardUI::LoadSetting(UserSettingId setting_id) {
       setting.value().get_host_data();
 }
 
+// Must match the labels drawn in each column.
+static constexpr const char* kLeftLabels[] = {
+    "Gamertag:",      "Gamerpic:",   "Gamer Name:",       "Gamer Motto:",
+    "Gamer Bio:",     "Language:",   "Country:",          "Online XUID:",
+    "Online Domain:", "Gamer Zone:", "Subscription Tier:"};
+
+static constexpr const char* kRightLabels[] = {"Difficulty:",
+                                               "Controller Vibration:",
+                                               "Control Sensitivity:",
+                                               "Favorite Color (First):",
+                                               "Favorite Color (Second):",
+                                               "Y-axis Inversion:",
+                                               "Auto Aim:",
+                                               "Auto Center:",
+                                               "Movement Control:",
+                                               "Transmission:",
+                                               "Camera Location:",
+                                               "Brake Control:",
+                                               "Accelerator Control:",
+                                               "Gamer Type:"};
+
+template <size_t N>
+static float MeasureLabelWidth(const char* const (&labels)[N]) {
+  float width = 0.0f;
+  for (const char* label : labels) {
+    width = std::max(width, ImGui::CalcTextSize(label).x);
+  }
+  return width + ImGui::GetStyle().ItemSpacing.x;
+}
+
+static void DrawLabel(const char* label, float width) {
+  const float start_x = ImGui::GetCursorPosX();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted(label);
+  ImGui::SameLine();
+  ImGui::SetCursorPosX(start_x + width);
+}
+
 void GamercardUI::DrawInputTextBox(
     std::string label, char* buffer, size_t buffer_size, float alignment,
     std::function<bool(std::span<char>)> on_input_change) {
-  ImGui::Text("%s", label.c_str());
-  ImGui::SameLine(alignment);
+  DrawLabel(label.c_str(), alignment);
 
   const ImVec2 input_field_pos = ImGui::GetCursorScreenPos();
 
@@ -321,8 +360,7 @@ void GamercardUI::DrawSettingComboBox(UserSettingId setting_id,
                                       std::string label,
                                       const char* const items[], int item_count,
                                       float alignment) {
-  ImGui::Text("%s:", label.c_str());
-  ImGui::SameLine(alignment);
+  DrawLabel(fmt::format("{}:", label).c_str(), alignment);
 
   if (gamercardValues_.gpd_settings.contains(setting_id)) {
     auto entry = &std::get<int32_t>(gamercardValues_.gpd_settings[setting_id]);
@@ -373,17 +411,25 @@ void GamercardUI::DrawBaseSettings(ImGuiIO& io) {
 
   DrawInputTextBox(
       "Gamertag:", gamercardValues_.gamertag,
-      std::size(gamercardValues_.gamertag), leftSideTextObjectAlignment,
+      std::size(gamercardValues_.gamertag), left_label_width_,
       [](std::span<const char> data) {
         return ProfileManager::IsGamertagValid(std::string(data.data()));
       });
 
+  DrawLabel("Gamerpic:", left_label_width_);
+
   ImGui::BeginDisabled(!is_signed_in_);
   ImGui::BeginDisabled(kernel_state_->title_id());
+
+  // A null texture draws as solid white, so hide it without a gamerpic.
+  const ImVec4 icon_tint = gamercardValues_.icon_texture
+                               ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f)
+                               : ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
   if (ImGui::ImageButton(
           "###ProfileIcon",
           reinterpret_cast<ImTextureID>(gamercardValues_.icon_texture),
-          xe::ui::default_image_icon_size)) {
+          xe::ui::default_image_icon_size, ImVec2(0.0f, 0.0f),
+          ImVec2(1.0f, 1.0f), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), icon_tint)) {
     SelectNewIcon();
   }
   ImGui::EndDisabled();
@@ -398,20 +444,17 @@ void GamercardUI::DrawBaseSettings(ImGuiIO& io) {
     }
   }
 
-  ImGui::Text("Gamer Name:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Gamer Name:", left_label_width_);
   ImGui::InputText("###GamerName", gamercardValues_.gamer_name,
                    static_cast<int>(std::size(gamercardValues_.gamer_name)),
                    ImGuiInputTextFlags_ReadOnly);
 
-  ImGui::Text("Gamer Motto:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Gamer Motto:", left_label_width_);
   ImGui::InputText("###GamerMotto", gamercardValues_.gamer_motto,
                    static_cast<int>(std::size(gamercardValues_.gamer_motto)),
                    ImGuiInputTextFlags_ReadOnly);
 
-  ImGui::Text("Gamer Bio:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Gamer Bio:", left_label_width_);
   ImGui::InputTextMultiline(
       "###GamerBio", gamercardValues_.gamer_bio,
       static_cast<int>(std::size(gamercardValues_.gamer_bio)), ImVec2(),
@@ -419,14 +462,12 @@ void GamercardUI::DrawBaseSettings(ImGuiIO& io) {
 
   ImGui::EndDisabled();
 
-  ImGui::Text("Language:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Language:", left_label_width_);
   ImGui::Combo("###Language",
                reinterpret_cast<int*>(&gamercardValues_.language),
                XLanguageName, static_cast<int>(std::size(XLanguageName)));
 
-  ImGui::Text("Country:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Country:", left_label_width_);
   ImGui::Combo("###Country", reinterpret_cast<int*>(&gamercardValues_.country),
                XOnlineCountry, static_cast<int>(std::size(XOnlineCountry)));
 }
@@ -438,14 +479,12 @@ void GamercardUI::DrawOnlineSettings(ImGuiIO& io) {
     // TODO: Add checks to decide if online XUID generation is required
   }
 
-  ImGui::Text("Online XUID:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Online XUID:", left_label_width_);
   ImGui::InputText("###OnlineXUID", gamercardValues_.online_xuid,
                    std::size(gamercardValues_.online_xuid),
                    ImGuiInputTextFlags_ReadOnly);
 
-  ImGui::Text("Online Domain:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Online Domain:", left_label_width_);
   ImGui::InputText("###OnlineDomain", gamercardValues_.online_domain,
                    std::size(gamercardValues_.online_domain),
                    ImGuiInputTextFlags_ReadOnly);
@@ -453,10 +492,9 @@ void GamercardUI::DrawOnlineSettings(ImGuiIO& io) {
   ImGui::BeginDisabled(!gamercardValues_.is_live_enabled);
   DrawSettingComboBox(
       UserSettingId::XPROFILE_GAMERCARD_ZONE, "Gamer Zone", XGamerzoneName,
-      static_cast<int>(std::size(XGamerzoneName)), leftSideTextObjectAlignment);
+      static_cast<int>(std::size(XGamerzoneName)), left_label_width_);
 
-  ImGui::Text("Subscription Tier:");
-  ImGui::SameLine(leftSideTextObjectAlignment);
+  DrawLabel("Subscription Tier:", left_label_width_);
   ImGui::Combo(
       "###Subscription",
       reinterpret_cast<int*>(&gamercardValues_.account_subscription_tier),
@@ -471,75 +509,73 @@ void GamercardUI::DrawGpdSettings(ImGuiIO& io) {
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_DIFFICULTY, "Difficulty",
                       GamerDifficultyOptions,
                       static_cast<int>(std::size(GamerDifficultyOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_OPTION_CONTROLLER_VIBRATION,
                       "Controller Vibration", ControllerVibrationOptions,
                       static_cast<int>(std::size(ControllerVibrationOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_CONTROL_SENSITIVITY,
                       "Control Sensitivity", ControlSensitivityOptions,
                       static_cast<int>(std::size(ControlSensitivityOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_PREFERRED_COLOR_FIRST,
                       "Favorite Color (First)", PreferredColorOptions,
                       static_cast<int>(std::size(PreferredColorOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_PREFERRED_COLOR_SECOND,
                       "Favorite Color (Second)", PreferredColorOptions,
                       static_cast<int>(std::size(PreferredColorOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   ImGui::SeparatorText("Action Games Settings");
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_YAXIS_INVERSION,
                       "Y-axis Inversion", YAxisInversionOptions,
                       static_cast<int>(std::size(YAxisInversionOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
-  DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_ACTION_AUTO_AIM, "Auto Aim",
-                      AutoAimOptions,
-                      static_cast<int>(std::size(AutoAimOptions)),
-                      rightSideTextObjectAlignment);
+  DrawSettingComboBox(
+      UserSettingId::XPROFILE_GAMER_ACTION_AUTO_AIM, "Auto Aim", AutoAimOptions,
+      static_cast<int>(std::size(AutoAimOptions)), right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_ACTION_AUTO_CENTER,
                       "Auto Center", AutoCenterOptions,
                       static_cast<int>(std::size(AutoCenterOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_ACTION_MOVEMENT_CONTROL,
                       "Movement Control", MovementControlOptions,
                       static_cast<int>(std::size(MovementControlOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   ImGui::SeparatorText("Racing Games Settings");
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_RACE_TRANSMISSION,
                       "Transmission", TransmissionOptions,
                       static_cast<int>(std::size(TransmissionOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_RACE_CAMERA_LOCATION,
                       "Camera Location", CameraLocationOptions,
                       static_cast<int>(std::size(CameraLocationOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_RACE_BRAKE_CONTROL,
                       "Brake Control", BrakeControlOptions,
                       static_cast<int>(std::size(BrakeControlOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
 
   DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_RACE_ACCELERATOR_CONTROL,
                       "Accelerator Control", AcceleratorControlOptions,
                       static_cast<int>(std::size(AcceleratorControlOptions)),
-                      rightSideTextObjectAlignment);
-  DrawSettingComboBox(UserSettingId::XPROFILE_GAMER_TYPE, "Gamer Type",
-                      GamerTypeOptions,
-                      static_cast<int>(std::size(GamerTypeOptions)),
-                      rightSideTextObjectAlignment);
+                      right_label_width_);
+  DrawSettingComboBox(
+      UserSettingId::XPROFILE_GAMER_TYPE, "Gamer Type", GamerTypeOptions,
+      static_cast<int>(std::size(GamerTypeOptions)), right_label_width_);
 }
 
 void GamercardUI::OnDraw(ImGuiIO& io) {
@@ -562,17 +598,31 @@ void GamercardUI::OnDraw(ImGuiIO& io) {
     return;
   }
 
-  if (ImGui::BeginTable("###GamercardTable", 2)) {
-    ImGui::TableSetupColumn("###Label", ImGuiTableColumnFlags_WidthFixed,
-                            350.0f);
+  left_label_width_ = MeasureLabelWidth(kLeftLabels);
+  right_label_width_ = MeasureLabelWidth(kRightLabels);
+
+  // Fixed columns with fields about 18 characters wide. Widths that depend on
+  // the window would make the auto-sizing popup grow over several frames.
+  const float field_width = ImGui::GetFontSize() * 18.0f;
+  if (ImGui::BeginTable(
+          "###GamercardTable", 2,
+          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX)) {
+    ImGui::TableSetupColumn("###Left", ImGuiTableColumnFlags_WidthFixed,
+                            left_label_width_ + field_width);
+    ImGui::TableSetupColumn("###Right", ImGuiTableColumnFlags_WidthFixed,
+                            right_label_width_ + field_width);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
-
+    ImGui::PushItemWidth(-FLT_MIN);
     DrawBaseSettings(io);
     DrawOnlineSettings(io);
+    ImGui::PopItemWidth();
+
     ImGui::TableNextColumn();
+    ImGui::PushItemWidth(-FLT_MIN);
     DrawGpdSettings(io);
+    ImGui::PopItemWidth();
 
     ImGui::EndTable();
   }

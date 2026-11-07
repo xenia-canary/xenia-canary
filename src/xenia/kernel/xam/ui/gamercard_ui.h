@@ -77,6 +77,8 @@ class GamercardUI final : public XamDialog {
   const bool is_valid_gamertag_ = true;
 
   bool has_opened_ = false;
+  float left_label_width_ = 0.0f;
+  float right_label_width_ = 0.0f;
   KernelState* kernel_state_;
   xe::ui::Window* window_;
   std::function<void()> on_icon_change_;
