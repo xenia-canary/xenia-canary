@@ -431,7 +431,8 @@ void TraceViewer::DrawPacketDisassemblerUI() {
 }
 
 int TraceViewer::RecursiveDrawCommandBufferUI(
-    const TraceReader::Frame* frame, TraceReader::CommandBuffer* buffer) {
+    const TraceReader::Frame* frame, TraceReader::CommandBuffer* buffer,
+    bool scroll_to_current) {
   int selected_id = -1;
   int column_width =
       int(ImGui::GetContentRegionAvail().x);  // TODO: This might be broken
@@ -448,7 +449,8 @@ int TraceViewer::RecursiveDrawCommandBufferUI(
         if (ImGui::TreeNode((void*)0, "Indirect Buffer %" PRIu64, i)) {
           ImGui::Indent();
           auto id = RecursiveDrawCommandBufferUI(
-              frame, buffer->commands[i].command_subtree.get());
+              frame, buffer->commands[i].command_subtree.get(),
+              scroll_to_current);
           ImGui::Unindent();
           ImGui::TreePop();
 
@@ -472,6 +474,10 @@ int TraceViewer::RecursiveDrawCommandBufferUI(
           case TraceReader::Frame::Command::Type::kSwap:
             label = "Swap";
             break;
+          default:
+            assert_unhandled_case(command.type);
+            label = "Unknown";
+            break;
         }
 
         ImGui::PushID(command_id);
@@ -481,9 +487,10 @@ int TraceViewer::RecursiveDrawCommandBufferUI(
         ImGui::SameLine(column_width - 60.0f);
         ImGui::Text("%d", command_id);
         ImGui::PopID();
-        // if (did_seek && target_command == i) {
-        //   ImGui::SetScrollPosHere();
-        // }
+        if (scroll_to_current &&
+            command_id == player_->current_command_index()) {
+          ImGui::SetScrollHereY(0.5f);
+        }
       } break;
     }
   }
@@ -577,7 +584,8 @@ void TraceViewer::DrawCommandListUI() {
     ImGui::SetScrollHereY(0.5f);
   }
 
-  auto id = RecursiveDrawCommandBufferUI(frame, frame->command_tree.get());
+  auto id =
+      RecursiveDrawCommandBufferUI(frame, frame->command_tree.get(), did_seek);
   if (id != -1 && id != player_->current_command_index() &&
       !player_->is_playing_trace()) {
     player_->SeekCommand(id);
@@ -816,198 +824,194 @@ void TraceViewer::DrawVertexFetcher(Shader* shader,
   }
   ImGui::BeginChild("#indices", ImVec2(0, 300));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10, 0));
-  int display_start = 0;
-  int display_end = 0;
-  // ImGui::CalcListClipping(vertex_count, ImGui::GetTextLineHeight(),
-  //                         &display_start, &display_end);
-  // ImGui::Dummy(ImVec2(0, (display_start)*ImGui::GetTextLineHeight()));
   ImGui::Columns(column_count);
-  if (display_start <= 1) {
-    for (size_t el_index = 0; el_index < vertex_binding.attributes.size();
-         ++el_index) {
-      const auto& attrib = vertex_binding.attributes[el_index];
-      switch (attrib.fetch_instr.attributes.data_format) {
-        case xenos::VertexFormat::k_32:
-        case xenos::VertexFormat::k_32_FLOAT:
-          ImGui::Text("e%" PRId64 ".x", el_index);
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_16_16:
-        case xenos::VertexFormat::k_16_16_FLOAT:
-        case xenos::VertexFormat::k_32_32:
-        case xenos::VertexFormat::k_32_32_FLOAT:
-          ImGui::Text("e%" PRId64 ".x", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".y", el_index);
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_10_11_11:
-        case xenos::VertexFormat::k_11_11_10:
-        case xenos::VertexFormat::k_32_32_32_FLOAT:
-          ImGui::Text("e%" PRId64 ".x", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".y", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".z", el_index);
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_8_8_8_8:
-          ImGui::Text("e%" PRId64 ".xyzw", el_index);
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_2_10_10_10:
-        case xenos::VertexFormat::k_16_16_16_16:
-        case xenos::VertexFormat::k_32_32_32_32:
-        case xenos::VertexFormat::k_16_16_16_16_FLOAT:
-        case xenos::VertexFormat::k_32_32_32_32_FLOAT:
-          ImGui::Text("e%" PRId64 ".x", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".y", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".z", el_index);
-          ImGui::NextColumn();
-          ImGui::Text("e%" PRId64 ".w", el_index);
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::kUndefined:
-          assert_unhandled_case(attrib.fetch_instr.attributes.data_format);
-          break;
-      }
+  for (size_t el_index = 0; el_index < vertex_binding.attributes.size();
+       ++el_index) {
+    const auto& attrib = vertex_binding.attributes[el_index];
+    switch (attrib.fetch_instr.attributes.data_format) {
+      case xenos::VertexFormat::k_32:
+      case xenos::VertexFormat::k_32_FLOAT:
+        ImGui::Text("e%" PRId64 ".x", el_index);
+        ImGui::NextColumn();
+        break;
+      case xenos::VertexFormat::k_16_16:
+      case xenos::VertexFormat::k_16_16_FLOAT:
+      case xenos::VertexFormat::k_32_32:
+      case xenos::VertexFormat::k_32_32_FLOAT:
+        ImGui::Text("e%" PRId64 ".x", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".y", el_index);
+        ImGui::NextColumn();
+        break;
+      case xenos::VertexFormat::k_10_11_11:
+      case xenos::VertexFormat::k_11_11_10:
+      case xenos::VertexFormat::k_32_32_32_FLOAT:
+        ImGui::Text("e%" PRId64 ".x", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".y", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".z", el_index);
+        ImGui::NextColumn();
+        break;
+      case xenos::VertexFormat::k_8_8_8_8:
+        ImGui::Text("e%" PRId64 ".xyzw", el_index);
+        ImGui::NextColumn();
+        break;
+      case xenos::VertexFormat::k_2_10_10_10:
+      case xenos::VertexFormat::k_16_16_16_16:
+      case xenos::VertexFormat::k_32_32_32_32:
+      case xenos::VertexFormat::k_16_16_16_16_FLOAT:
+      case xenos::VertexFormat::k_32_32_32_32_FLOAT:
+        ImGui::Text("e%" PRId64 ".x", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".y", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".z", el_index);
+        ImGui::NextColumn();
+        ImGui::Text("e%" PRId64 ".w", el_index);
+        ImGui::NextColumn();
+        break;
+      case xenos::VertexFormat::kUndefined:
+        assert_unhandled_case(attrib.fetch_instr.attributes.data_format);
+        break;
     }
-    ImGui::Separator();
   }
-  for (int i = display_start; i < display_end; ++i) {
-    const uint8_t* vstart = addr + i * vertex_binding.stride_words * 4;
-    for (const auto& attrib : vertex_binding.attributes) {
+  ImGui::Separator();
+
+  ImGuiListClipper clipper;
+  clipper.Begin(int(vertex_count));
+  while (clipper.Step()) {
+    for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+      const uint8_t* vstart = addr + i * vertex_binding.stride_words * 4;
+      for (const auto& attrib : vertex_binding.attributes) {
 #define LOADEL(type, wo)                                                   \
   GpuSwap(xe::load<type>(vstart +                                          \
                          (attrib.fetch_instr.attributes.offset + wo) * 4), \
           fetch.endian)
-      switch (attrib.fetch_instr.attributes.data_format) {
-        case xenos::VertexFormat::k_32:
-          ImGui::Text("%.8X", LOADEL(uint32_t, 0));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_32_FLOAT:
-          ImGui::Text("%.3f", LOADEL(float, 0));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_16_16: {
-          auto e0 = LOADEL(uint32_t, 0);
-          ImGui::Text("%.4X", (e0 >> 16) & 0xFFFF);
-          ImGui::NextColumn();
-          ImGui::Text("%.4X", (e0 >> 0) & 0xFFFF);
-          ImGui::NextColumn();
-        } break;
-        case xenos::VertexFormat::k_16_16_FLOAT: {
-          auto e0 = LOADEL(uint32_t, 0);
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e0 >> 16) & 0xFFFF)));
-          ImGui::NextColumn();
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e0 >> 0) & 0xFFFF)));
-          ImGui::NextColumn();
-        } break;
-        case xenos::VertexFormat::k_32_32:
-          ImGui::Text("%.8X", LOADEL(uint32_t, 0));
-          ImGui::NextColumn();
-          ImGui::Text("%.8X", LOADEL(uint32_t, 1));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_32_32_FLOAT:
-          ImGui::Text("%.3f", LOADEL(float, 0));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 1));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_10_11_11:
-        case xenos::VertexFormat::k_11_11_10:
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_32_32_32_FLOAT:
-          ImGui::Text("%.3f", LOADEL(float, 0));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 1));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 2));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_8_8_8_8:
-          ImGui::Text("%.8X", LOADEL(uint32_t, 0));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_2_10_10_10: {
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          ImGui::Text("??");
-          ImGui::NextColumn();
-          ImGui::Text("??");
-          ImGui::NextColumn();
-        } break;
-        case xenos::VertexFormat::k_16_16_16_16: {
-          auto e0 = LOADEL(uint32_t, 0);
-          auto e1 = LOADEL(uint32_t, 1);
-          ImGui::Text("%.4X", (e0 >> 16) & 0xFFFF);
-          ImGui::NextColumn();
-          ImGui::Text("%.4X", (e0 >> 0) & 0xFFFF);
-          ImGui::NextColumn();
-          ImGui::Text("%.4X", (e1 >> 16) & 0xFFFF);
-          ImGui::NextColumn();
-          ImGui::Text("%.4X", (e1 >> 0) & 0xFFFF);
-          ImGui::NextColumn();
-        } break;
-        case xenos::VertexFormat::k_32_32_32_32:
-          ImGui::Text("%.8X", LOADEL(uint32_t, 0));
-          ImGui::NextColumn();
-          ImGui::Text("%.8X", LOADEL(uint32_t, 1));
-          ImGui::NextColumn();
-          ImGui::Text("%.8X", LOADEL(uint32_t, 2));
-          ImGui::NextColumn();
-          ImGui::Text("%.8X", LOADEL(uint32_t, 3));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::k_16_16_16_16_FLOAT: {
-          auto e0 = LOADEL(uint32_t, 0);
-          auto e1 = LOADEL(uint32_t, 1);
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e0 >> 16) & 0xFFFF)));
-          ImGui::NextColumn();
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e0 >> 0) & 0xFFFF)));
-          ImGui::NextColumn();
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e1 >> 16) & 0xFFFF)));
-          ImGui::NextColumn();
-          ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
-                                  (e1 >> 0) & 0xFFFF)));
-          ImGui::NextColumn();
-        } break;
-        case xenos::VertexFormat::k_32_32_32_32_FLOAT:
-          ImGui::Text("%.3f", LOADEL(float, 0));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 1));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 2));
-          ImGui::NextColumn();
-          ImGui::Text("%.3f", LOADEL(float, 3));
-          ImGui::NextColumn();
-          break;
-        case xenos::VertexFormat::kUndefined:
-          assert_unhandled_case(attrib.fetch_instr.attributes.data_format);
-          break;
+        switch (attrib.fetch_instr.attributes.data_format) {
+          case xenos::VertexFormat::k_32:
+            ImGui::Text("%.8X", LOADEL(uint32_t, 0));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_32_FLOAT:
+            ImGui::Text("%.3f", LOADEL(float, 0));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_16_16: {
+            auto e0 = LOADEL(uint32_t, 0);
+            ImGui::Text("%.4X", (e0 >> 16) & 0xFFFF);
+            ImGui::NextColumn();
+            ImGui::Text("%.4X", (e0 >> 0) & 0xFFFF);
+            ImGui::NextColumn();
+          } break;
+          case xenos::VertexFormat::k_16_16_FLOAT: {
+            auto e0 = LOADEL(uint32_t, 0);
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e0 >> 16) & 0xFFFF)));
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e0 >> 0) & 0xFFFF)));
+            ImGui::NextColumn();
+          } break;
+          case xenos::VertexFormat::k_32_32:
+            ImGui::Text("%.8X", LOADEL(uint32_t, 0));
+            ImGui::NextColumn();
+            ImGui::Text("%.8X", LOADEL(uint32_t, 1));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_32_32_FLOAT:
+            ImGui::Text("%.3f", LOADEL(float, 0));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 1));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_10_11_11:
+          case xenos::VertexFormat::k_11_11_10:
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_32_32_32_FLOAT:
+            ImGui::Text("%.3f", LOADEL(float, 0));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 1));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 2));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_8_8_8_8:
+            ImGui::Text("%.8X", LOADEL(uint32_t, 0));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_2_10_10_10: {
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            ImGui::Text("??");
+            ImGui::NextColumn();
+            ImGui::Text("??");
+            ImGui::NextColumn();
+          } break;
+          case xenos::VertexFormat::k_16_16_16_16: {
+            auto e0 = LOADEL(uint32_t, 0);
+            auto e1 = LOADEL(uint32_t, 1);
+            ImGui::Text("%.4X", (e0 >> 16) & 0xFFFF);
+            ImGui::NextColumn();
+            ImGui::Text("%.4X", (e0 >> 0) & 0xFFFF);
+            ImGui::NextColumn();
+            ImGui::Text("%.4X", (e1 >> 16) & 0xFFFF);
+            ImGui::NextColumn();
+            ImGui::Text("%.4X", (e1 >> 0) & 0xFFFF);
+            ImGui::NextColumn();
+          } break;
+          case xenos::VertexFormat::k_32_32_32_32:
+            ImGui::Text("%.8X", LOADEL(uint32_t, 0));
+            ImGui::NextColumn();
+            ImGui::Text("%.8X", LOADEL(uint32_t, 1));
+            ImGui::NextColumn();
+            ImGui::Text("%.8X", LOADEL(uint32_t, 2));
+            ImGui::NextColumn();
+            ImGui::Text("%.8X", LOADEL(uint32_t, 3));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::k_16_16_16_16_FLOAT: {
+            auto e0 = LOADEL(uint32_t, 0);
+            auto e1 = LOADEL(uint32_t, 1);
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e0 >> 16) & 0xFFFF)));
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e0 >> 0) & 0xFFFF)));
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e1 >> 16) & 0xFFFF)));
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", static_cast<float>(half_float::detail::uint16(
+                                    (e1 >> 0) & 0xFFFF)));
+            ImGui::NextColumn();
+          } break;
+          case xenos::VertexFormat::k_32_32_32_32_FLOAT:
+            ImGui::Text("%.3f", LOADEL(float, 0));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 1));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 2));
+            ImGui::NextColumn();
+            ImGui::Text("%.3f", LOADEL(float, 3));
+            ImGui::NextColumn();
+            break;
+          case xenos::VertexFormat::kUndefined:
+            assert_unhandled_case(attrib.fetch_instr.attributes.data_format);
+            break;
+        }
       }
     }
   }
   ImGui::Columns(1);
-  ImGui::Dummy(
-      ImVec2(0, (vertex_count - display_end) * ImGui::GetTextLineHeight()));
   ImGui::PopStyleVar();
   ImGui::EndChild();
 }
@@ -1627,55 +1631,6 @@ void TraceViewer::DrawStateUI() {
     }
     ImGui::EndChild();
   }
-  if (ImGui::CollapsingHeader("Vertex Shader Output") &&
-      QueryVSOutputElementSize()) {
-    auto size = QueryVSOutputSize();
-    auto el_size = QueryVSOutputElementSize();
-    if (size > 0) {
-      std::vector<float> vertices;
-      vertices.resize(size / 4);
-      QueryVSOutput(vertices.data(), size);
-
-      ImGui::Text("%" PRIu64 " output vertices", vertices.size() / 4);
-      ImGui::SameLine();
-      static bool normalize = false;
-      ImGui::Checkbox("Normalize", &normalize);
-
-      ImGui::BeginChild("#vsvertices", ImVec2(0, 300));
-
-      int display_start = 0;
-      int display_end = 0;
-      // ImGui::CalcListClipping(int(vertices.size() / 4),
-      //                         ImGui::GetTextLineHeight(), &display_start,
-      //                         &display_end);
-      // ImGui::Dummy(ImVec2(0, (display_start)*ImGui::GetTextLineHeight()));
-
-      ImGui::Columns(int(el_size), "#vsvertices", true);
-      for (size_t i = display_start; i < display_end; i++) {
-        size_t start_vtx = i * el_size;
-        float verts[4] = {vertices[start_vtx], vertices[start_vtx + 1],
-                          vertices[start_vtx + 2], vertices[start_vtx + 3]};
-        assert_true(el_size <= xe::countof(verts));
-        if (normalize) {
-          for (int j = 0; j < el_size; j++) {
-            verts[j] /= verts[3];
-          }
-        }
-
-        for (int j = 0; j < el_size; j++) {
-          ImGui::Text("%.3f", verts[j]);
-          ImGui::NextColumn();
-        }
-      }
-      ImGui::Columns(1);
-
-      ImGui::Dummy(ImVec2(0, ((vertices.size() / 4) - display_end) *
-                                 ImGui::GetTextLineHeight()));
-      ImGui::EndChild();
-    } else {
-      ImGui::Text("No vertex shader output");
-    }
-  }
   if (ImGui::CollapsingHeader("Pixel Shader")) {
     ShaderDisplayType shader_display_type = DrawShaderTypeUI();
     ImGui::BeginChild("#pixel_shader_text", ImVec2(0, 400));
@@ -1709,48 +1664,43 @@ void TraceViewer::DrawStateUI() {
       }
       ImGui::BeginChild("#indices", ImVec2(0, 300));
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-      int display_start = 0;
-      int display_end = 0;
-      // ImGui::CalcListClipping(1 + draw_info.index_count,
-      //                         ImGui::GetTextLineHeight(), &display_start,
-      //                         &display_end);
-      // ImGui::Dummy(ImVec2(0, (display_start)*ImGui::GetTextLineHeight()));
       ImGui::Columns(2, "#indices", true);
       ImGui::SetColumnOffset(1, 60);
-      if (display_start <= 1) {
-        ImGui::Text("Ordinal");
-        ImGui::NextColumn();
-        ImGui::Text(" Value");
-        ImGui::NextColumn();
-        ImGui::Separator();
-      }
+      ImGui::Text("Ordinal");
+      ImGui::NextColumn();
+      ImGui::Text(" Value");
+      ImGui::NextColumn();
+      ImGui::Separator();
       uint32_t element_size =
           draw_info.index_format == xenos::IndexFormat::kInt32 ? 4 : 2;
-      const uint8_t* data_ptr = memory_->TranslatePhysical(
-          draw_info.index_buffer_ptr + (display_start * element_size));
-      for (int i = display_start; i < display_end;
-           ++i, data_ptr += element_size) {
-        if (i < 10) {
-          ImGui::Text("     %d", i);
-        } else if (i < 100) {
-          ImGui::Text("    %d", i);
-        } else if (i < 1000) {
-          ImGui::Text("   %d", i);
-        } else {
-          ImGui::Text("  %d", i);
+
+      ImGuiListClipper clipper;
+      clipper.Begin(int(draw_info.index_count));
+      while (clipper.Step()) {
+        const uint8_t* data_ptr = memory_->TranslatePhysical(
+            draw_info.index_buffer_ptr + (clipper.DisplayStart * element_size));
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd;
+             ++i, data_ptr += element_size) {
+          if (i < 10) {
+            ImGui::Text("     %d", i);
+          } else if (i < 100) {
+            ImGui::Text("    %d", i);
+          } else if (i < 1000) {
+            ImGui::Text("   %d", i);
+          } else {
+            ImGui::Text("  %d", i);
+          }
+          ImGui::NextColumn();
+          uint32_t value = element_size == 4
+                               ? GpuSwap(xe::load<uint32_t>(data_ptr),
+                                         draw_info.index_endianness)
+                               : GpuSwap(xe::load<uint16_t>(data_ptr),
+                                         draw_info.index_endianness);
+          ImGui::Text(" %d", value);
+          ImGui::NextColumn();
         }
-        ImGui::NextColumn();
-        uint32_t value = element_size == 4
-                             ? GpuSwap(xe::load<uint32_t>(data_ptr),
-                                       draw_info.index_endianness)
-                             : GpuSwap(xe::load<uint16_t>(data_ptr),
-                                       draw_info.index_endianness);
-        ImGui::Text(" %d", value);
-        ImGui::NextColumn();
       }
       ImGui::Columns(1);
-      ImGui::Dummy(ImVec2(0, (draw_info.index_count - display_end) *
-                                 ImGui::GetTextLineHeight()));
       ImGui::PopStyleVar();
       ImGui::EndChild();
     }
