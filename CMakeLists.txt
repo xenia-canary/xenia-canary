@@ -104,7 +104,7 @@ include_directories(SYSTEM
 # Global defines
 add_compile_definitions(
   VULKAN_HPP_NO_TO_STRING
-  IMGUI_DISABLE_DEFAULT_FONT
+  IMGUI_DISABLE_DEFAULT_FONT_BITMAP  # Keep the vector font for the fallback
   IMGUI_DISABLE_OBSOLETE_FUNCTIONS
   USE_CPP17  # Tabulate
 )
