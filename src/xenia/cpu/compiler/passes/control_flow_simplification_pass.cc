@@ -43,25 +43,28 @@ bool ControlFlowSimplificationPass::Run(HIRBuilder* builder) {
     block = next_block;
   }
 
-  // Walk backwards and merge blocks if possible.
+  // Walk forwards and merge each block into the one before it if possible.
+  // Merging moves the right block's instructions, so walking forwards moves
+  // each instruction once. Walking backwards would move the growing merged
+  // block again at every step, which is quadratic in functions with thousands
+  // of calls (each call ends a block).
   bool merged_any = false;
-  block = builder->last_block();
-  while (block) {
-    auto prev_block = block->prev;
+  block = builder->first_block();
+  while (block && block->next) {
+    auto next_block = block->next;
     constexpr uint32_t expected = Edge::DOMINATES | Edge::UNCONDITIONAL;
-    if (block->incoming_edge_head &&
-        (block->incoming_edge_head->flags & expected) == expected) {
-      // Dominated by the incoming block.
-      // If that block comes immediately before us then we can merge the
-      // two blocks (assuming it's not a volatile instruction like Trap).
-      if (block->prev == block->incoming_edge_head->src &&
-          block->prev->instr_tail &&
-          !(block->prev->instr_tail->opcode->flags & OPCODE_FLAG_VOLATILE)) {
-        builder->MergeAdjacentBlocks(block->prev, block);
-        merged_any = true;
-      }
+    if (next_block->incoming_edge_head &&
+        (next_block->incoming_edge_head->flags & expected) == expected &&
+        next_block->incoming_edge_head->src == block && block->instr_tail &&
+        !(block->instr_tail->opcode->flags & OPCODE_FLAG_VOLATILE)) {
+      // The next block is dominated by this one and follows it, so merge them
+      // (unless this one ends in a volatile instruction like Trap). Stay on
+      // this block, which may merge with its new next block too.
+      builder->MergeAdjacentBlocks(block, next_block);
+      merged_any = true;
+      continue;
     }
-    block = prev_block;
+    block = next_block;
   }
 
   return true;
