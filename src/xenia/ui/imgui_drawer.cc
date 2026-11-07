@@ -28,13 +28,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "third_party/stb/stb_image.h"
 
-#if XE_PLATFORM_WIN32
-#include <ShlObj_core.h>
-#endif
-
-#if XE_PLATFORM_LINUX
-#include <fontconfig/fontconfig.h>
-
 #include "xenia/base/mapped_memory.h"
 
 // Dear ImGui compiles its stb_truetype as static, so this file needs its own
@@ -42,6 +35,13 @@
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/imgui/imstb_truetype.h"
+
+#if XE_PLATFORM_WIN32
+#include <ShlObj_core.h>
+#endif
+
+#if XE_PLATFORM_LINUX
+#include <fontconfig/fontconfig.h>
 
 #include "embedded_font.h"
 #endif
@@ -155,8 +155,13 @@ static void SetClipboardText(ImGuiContext* ctx, const char* text) {
 }
 
 static const char* GetClipboardText(ImGuiContext* ctx) {
+  // Must stay valid until the next call.
+  static gchar* text = nullptr;
+  g_free(text);
+
   GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-  return gtk_clipboard_wait_for_text(clipboard);
+  text = gtk_clipboard_wait_for_text(clipboard);
+  return text;
 }
 #endif
 
@@ -345,47 +350,36 @@ void ImGuiDrawer::SetupNotificationTextures() {
   }
 }
 
-// https://everythingfonts.com/unicode/maps
-static constexpr ImWchar font_glyph_ranges[] = {
-    0x0020, 0x00FF,  // Basic Latin + Latin Supplement
-    0x0100, 0x024F,  // Extended Latin
-    0x0370, 0x03FF,  // Greek
-    0x0400, 0x04FF,  // Cyrillic
-    0x2000, 0x206F,  // General Punctuation
-    0x2070, 0x209F,  // Superscripts & Subscripts
-    0x20A0, 0x20CF,  // Currency Symbols
-    0x2100, 0x214F,  // Letterlike Symbols
-    0x2150, 0x218F,  // Number Forms
-    0x2500, 0x257F,  // Box Drawing
-    0x2580, 0x259F,  // Block Elements
-    0x25A0, 0x25FF,  // Geometric Shapes
-    0x2600, 0x26FF,  // Miscellaneous Symbols
-    0,
-};
-
-bool ImGuiDrawer::LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config,
-                                 float font_size) {
-  if (cvars::custom_font_path.empty()) {
-    return false;
-  }
-
-  if (!std::filesystem::exists(cvars::custom_font_path)) {
-    return false;
-  }
-
-  const std::string font_path = xe::path_to_utf8(cvars::custom_font_path);
-  ImFont* font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
-                                              &font_config, font_glyph_ranges);
-
-  if (!font) {
-    XELOGE("Failed to load custom font: {}", font_path);
-    return false;
-  }
-  return true;
+#if XE_PLATFORM_WIN32 || XE_PLATFORM_LINUX
+static ImFontConfig MakeCjkFontConfig() {
+  ImFontConfig font_config;
+  font_config.MergeMode = true;
+  font_config.OversampleH = font_config.OversampleV = 2;
+  font_config.PixelSnapH = true;
+  font_config.RasterizerMultiply = 1.15f;
+  return font_config;
 }
+#endif
 
-#if XE_PLATFORM_LINUX
-// A font stb_truetype can't parse fails the whole atlas, so check it first.
+#if XE_PLATFORM_WIN32
+// Returns an empty path if the folder can't be found.
+static std::filesystem::path GetWindowsFontsDir() {
+  PWSTR fonts_dir = nullptr;
+  std::filesystem::path path;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Fonts, 0, nullptr, &fonts_dir))) {
+    path = fonts_dir;
+  } else {
+    XELOGW("Unable to find Windows fonts directory");
+  }
+
+  // Required even on failure.
+  CoTaskMemFree(fonts_dir);
+  return path;
+}
+#endif
+
+// A font stb_truetype can't parse fails the whole atlas and asserts in debug
+// builds, so check it first.
 static bool IsFontLoadable(const uint8_t* data, size_t size) {
   if (!data || size < 12) {
     return false;
@@ -396,6 +390,43 @@ static bool IsFontLoadable(const uint8_t* data, size_t size) {
   return font_offset >= 0 && stbtt_InitFont(&font_info, data, font_offset);
 }
 
+static bool IsFontFileLoadable(const std::filesystem::path& path) {
+  auto font_data = MappedMemory::Open(path, MappedMemory::Mode::kRead);
+  return font_data && IsFontLoadable(font_data->data(), font_data->size());
+}
+
+bool ImGuiDrawer::LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config,
+                                 float font_size) {
+  if (cvars::custom_font_path.empty()) {
+    return false;
+  }
+
+  const std::string font_path = xe::path_to_utf8(cvars::custom_font_path);
+  if (!std::filesystem::exists(cvars::custom_font_path)) {
+    XELOGW("Custom font {} doesn't exist; using the system font", font_path);
+    return false;
+  }
+
+  if (!IsFontFileLoadable(cvars::custom_font_path)) {
+    XELOGW(
+        "Custom font {} can't be loaded, only TrueType fonts are supported; "
+        "using the system font",
+        font_path);
+    return false;
+  }
+
+  ImFont* font =
+      io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size, &font_config);
+  if (!font) {
+    XELOGE("Failed to load custom font: {}", font_path);
+    return false;
+  }
+
+  XELOGI("Using custom font {}", font_path);
+  return true;
+}
+
+#if XE_PLATFORM_LINUX
 // Returns the best TrueType match stb_truetype can load, or an empty string.
 // It can't parse CFF or variable fonts, such as Fedora's NotoSansCJK-VF.ttc,
 // which fontconfig may still return.
@@ -427,8 +458,7 @@ static std::string MatchFontconfigFont(FcPattern* pattern) {
     return {};
   }
 
-  auto font_data = MappedMemory::Open(font_path, MappedMemory::Mode::kRead);
-  if (!font_data || !IsFontLoadable(font_data->data(), font_data->size())) {
+  if (!IsFontFileLoadable(font_path)) {
     XELOGW("Font {} cannot be loaded by stb_truetype; skipping", font_path);
     return {};
   }
@@ -439,26 +469,18 @@ static std::string MatchFontconfigFont(FcPattern* pattern) {
 bool ImGuiDrawer::LoadSystemFont(ImGuiIO& io, ImFontConfig& font_config,
                                  float font_size) {
 #if XE_PLATFORM_WIN32
-  PWSTR fonts_dir;
-  HRESULT result = SHGetKnownFolderPath(FOLDERID_Fonts, 0, NULL, &fonts_dir);
-  if (FAILED(result)) {
-    CoTaskMemFree(static_cast<void*>(fonts_dir));
-    XELOGW("Unable to find Windows fonts directory");
+  std::filesystem::path font_path = GetWindowsFontsDir();
+  if (font_path.empty()) {
     return false;
   }
 
-  std::filesystem::path font_path = std::wstring(fonts_dir);
-  CoTaskMemFree(static_cast<void*>(fonts_dir));
-  font_path.append("tahoma.ttf");
+  font_path /= "tahoma.ttf";
   if (!std::filesystem::exists(font_path)) {
     return false;
   }
 
-  ImFont* font =
-      io.Fonts->AddFontFromFileTTF(xe::path_to_utf8(font_path).c_str(),
-                                   font_size, &font_config, font_glyph_ranges);
-
-  // Something went wrong while loading the font. Probably corrupted.
+  ImFont* font = io.Fonts->AddFontFromFileTTF(
+      xe::path_to_utf8(font_path).c_str(), font_size, &font_config);
   if (!font) {
     XELOGE("Failed to load font: {}", font_path);
     return false;
@@ -479,8 +501,8 @@ bool ImGuiDrawer::LoadSystemFont(ImGuiIO& io, ImFontConfig& font_config,
     return false;
   }
 
-  ImFont* font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
-                                              &font_config, font_glyph_ranges);
+  ImFont* font =
+      io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size, &font_config);
   if (!font) {
     XELOGE("Failed to load font: {}", font_path);
     return false;
@@ -492,52 +514,35 @@ bool ImGuiDrawer::LoadSystemFont(ImGuiIO& io, ImFontConfig& font_config,
   return false;
 }
 
-bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
+void ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
 #if XE_PLATFORM_WIN32
-  PWSTR fonts_dir;
-  HRESULT result = SHGetKnownFolderPath(FOLDERID_Fonts, 0, NULL, &fonts_dir);
-  if (FAILED(result)) {
-    XELOGW("Unable to find Windows fonts directory");
-    return false;
+  std::filesystem::path jp_font_path = GetWindowsFontsDir();
+  if (jp_font_path.empty()) {
+    return;
   }
 
-  std::filesystem::path jp_font_path = std::wstring(fonts_dir);
-  jp_font_path.append("msgothic.ttc");
-  if (std::filesystem::exists(jp_font_path)) {
-    ImFontConfig jp_font_config;
-    jp_font_config.MergeMode = true;
-    jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
-    jp_font_config.PixelSnapH = true;
-    jp_font_config.FontNo = 0;
-    io.Fonts->AddFontFromFileTTF(xe::path_to_utf8(jp_font_path).c_str(),
-                                 font_size, &jp_font_config);
-  } else {
+  jp_font_path /= "msgothic.ttc";
+  if (!std::filesystem::exists(jp_font_path)) {
     XELOGW("Unable to load Japanese font; JP characters will be boxes");
+    return;
   }
-  CoTaskMemFree(static_cast<void*>(fonts_dir));
-  return true;
-#endif
 
-#if XE_PLATFORM_LINUX
-  // Prefer the bundled M PLUS 1p, a TrueType font stb_truetype can load.
-  {
-    void* jp_font_data = const_cast<unsigned char*>(
-        xe::ui::embedded_font::MPLUS1p_Regular_ttf_data);
-    const int jp_font_size =
-        static_cast<int>(xe::ui::embedded_font::MPLUS1p_Regular_ttf_size);
-    if (IsFontLoadable(xe::ui::embedded_font::MPLUS1p_Regular_ttf_data,
-                       xe::ui::embedded_font::MPLUS1p_Regular_ttf_size)) {
-      ImFontConfig jp_font_config;
-      jp_font_config.FontDataOwnedByAtlas = false;
-      jp_font_config.MergeMode = true;
-      jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
-      jp_font_config.PixelSnapH = true;
-      io.Fonts->AddFontFromMemoryTTF(jp_font_data, jp_font_size, font_size,
-                                     &jp_font_config);
-      return true;
-    }
-    XELOGW("Bundled CJK font cannot be loaded; trying fontconfig");
+  ImFontConfig jp_font_config = MakeCjkFontConfig();
+  io.Fonts->AddFontFromFileTTF(xe::path_to_utf8(jp_font_path).c_str(),
+                               font_size, &jp_font_config);
+#elif XE_PLATFORM_LINUX
+  if (IsFontLoadable(xe::ui::embedded_font::MPLUS1p_Regular_ttf_data,
+                     xe::ui::embedded_font::MPLUS1p_Regular_ttf_size)) {
+    ImFontConfig jp_font_config = MakeCjkFontConfig();
+    jp_font_config.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF(
+        const_cast<unsigned char*>(
+            xe::ui::embedded_font::MPLUS1p_Regular_ttf_data),
+        static_cast<int>(xe::ui::embedded_font::MPLUS1p_Regular_ttf_size),
+        font_size, &jp_font_config);
+    return;
   }
+  XELOGW("Bundled CJK font cannot be loaded; trying fontconfig");
 
   // Fall back to a system font that has a CJK character.
   FcPattern* pattern = FcPatternCreate();
@@ -550,25 +555,19 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   FcPatternDestroy(pattern);
 
   if (!font_path.empty()) {
-    ImFontConfig jp_font_config;
-    jp_font_config.MergeMode = true;
-    jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
-    jp_font_config.PixelSnapH = true;
+    ImFontConfig jp_font_config = MakeCjkFontConfig();
     if (io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
                                      &jp_font_config)) {
       XELOGI("Using CJK font {}", font_path);
-      return true;
+      return;
     }
   }
 
   XELOGW(
       "Unable to find CJK font; Japanese characters may not display "
       "correctly");
-  return false;
 #endif
-
-  return false;
-};
+}
 
 void ImGuiDrawer::InitializeFonts(const float font_size) {
   auto& io = ImGui::GetIO();
@@ -582,6 +581,8 @@ void ImGuiDrawer::InitializeFonts(const float font_size) {
   // Oversampled, as the UI is stretched to the window's DPI.
   font_config.OversampleH = font_config.OversampleV = 2;
   font_config.PixelSnapH = true;
+  // Dear ImGui 1.92+ draws glyphs lighter; restore the earlier weight.
+  font_config.RasterizerMultiply = 1.15f;
 
   bool is_font_loaded = LoadCustomFont(io, font_config, font_size);
   if (!is_font_loaded) {

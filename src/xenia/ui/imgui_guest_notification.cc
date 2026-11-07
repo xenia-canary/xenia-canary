@@ -123,8 +123,13 @@ void AchievementNotificationWindow::OnDraw(ImGuiIO& io) {
                  screen_size.y / default_drawing_resolution.y);
   const float font_size =
       default_font_size * default_notification_text_scale * window_scale;
-  const ImVec2 text_size = io.Fonts->Fonts[0]->CalcTextSizeA(
-      font_size, FLT_MAX, -1.0f, longest_notification_text_line.data());
+
+  ImGui::PushFont(nullptr, font_size);
+  const ImVec2 text_size =
+      ImGui::CalcTextSize(longest_notification_text_line.data(),
+                          longest_notification_text_line.data() +
+                              longest_notification_text_line.size());
+  ImGui::PopFont();
 
   const ImVec2 final_notification_size =
       CalculateNotificationSize(text_size, window_scale);
@@ -198,8 +203,13 @@ void XNotifyWindow::OnDraw(ImGuiIO& io) {
                  screen_size.y / default_drawing_resolution.y);
   const float font_size =
       default_font_size * default_notification_text_scale * window_scale;
-  const ImVec2 text_size = io.Fonts->Fonts[0]->CalcTextSizeA(
-      font_size, FLT_MAX, -1.0f, longest_notification_text_line.data());
+
+  ImGui::PushFont(nullptr, font_size);
+  const ImVec2 text_size =
+      ImGui::CalcTextSize(longest_notification_text_line.data(),
+                          longest_notification_text_line.data() +
+                              longest_notification_text_line.size());
+  ImGui::PopFont();
 
   const ImVec2 final_notification_size =
       CalculateNotificationSize(text_size, window_scale);
