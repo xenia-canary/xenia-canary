@@ -10,7 +10,7 @@
 #ifndef XENIA_HELPER_SDL_SDL_HELPER_H_
 #define XENIA_HELPER_SDL_SDL_HELPER_H_
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 namespace xe {
 namespace helper {

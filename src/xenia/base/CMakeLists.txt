@@ -10,6 +10,11 @@ if(_base_exclude AND _base_srcs)
   set_target_properties(xenia-base PROPERTIES SOURCES "${_base_srcs}")
 endif()
 target_link_libraries(xenia-base PUBLIC fmt)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Only SDL3's headers: the library is loaded at runtime, see LoadSDL3Library.
+  target_include_directories(xenia-base PRIVATE
+    ${PROJECT_SOURCE_DIR}/third_party/SDL3/include)
+endif()
 xe_target_defaults(xenia-base)
 
 if(XENIA_BUILD_TESTS)

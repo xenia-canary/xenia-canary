@@ -24,9 +24,9 @@ void ShutdownAndroidSystem();
 #endif
 
 #if XE_PLATFORM_GNU_LINUX
-// Loads the system SDL2 library at runtime, as xenia-base doesn't link it.
+// Loads the SDL3 library at runtime, as xenia-base doesn't link it.
 // Returns nullptr if it's unavailable, otherwise release it with dlclose.
-void* LoadSDL2Library();
+void* LoadSDL3Library();
 #endif
 
 // The URL must include the protocol.

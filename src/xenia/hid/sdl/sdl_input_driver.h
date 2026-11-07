@@ -15,8 +15,7 @@
 #include <mutex>
 #include <optional>
 
-#include "SDL.h"
-#include "third_party/rapidcsv/src/rapidcsv.h"
+#include <SDL3/SDL.h>
 #include "xenia/hid/input_driver.h"
 
 #define HID_SDL_USER_COUNT 4
@@ -48,7 +47,7 @@ class SDLInputDriver final : public InputDriver {
 
  private:
   struct ControllerState {
-    SDL_GameController* sdl;
+    SDL_Gamepad* sdl;
     X_INPUT_CAPABILITIES caps;
     X_INPUT_STATE state;
     bool state_changed;
@@ -84,7 +83,6 @@ class SDLInputDriver final : public InputDriver {
   std::optional<size_t> GetControllerIndexFromInstanceID(
       SDL_JoystickID instance_id);
   ControllerState* GetControllerState(uint32_t user_index);
-  bool TestSDLVersion() const;
   void UpdateXCapabilities(ControllerState& state, size_t user_index);
   void QueueControllerUpdate();
   // The kind controller_subtypes asks for in this slot, if it asks for one.

@@ -117,7 +117,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     X11
     xcb
     X11-xcb
-    SDL2
+    SDL3
   )
 endif()
 

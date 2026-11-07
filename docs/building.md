@@ -116,8 +116,13 @@ Clang-19 or newer should be available from system repositories on all up to date
 You will also need some development libraries. To get them on an Ubuntu system:
 
 ```sh
-sudo apt-get install build-essential mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libgtk-3-dev liblz4-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-19 llvm-19 ninja-build
+sudo apt-get install build-essential mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libgtk-3-dev liblz4-dev libudev-dev libasound2-dev libpulse-dev libpipewire-0.3-dev libvulkan-dev libx11-xcb-dev clang-19 llvm-19 ninja-build
 ```
+
+SDL3 is taken from the system when it is installed (`libsdl3-dev`, Ubuntu 25.04
+or newer), and built from `third_party/SDL3` otherwise. That build needs the
+ALSA, PulseAudio and PipeWire development packages above for sound, and
+`libudev-dev` for controller hotplug.
 
 In addition, you will need up to date Vulkan libraries and drivers for your hardware, which most distributions have in their standard repositories nowadays.
 
