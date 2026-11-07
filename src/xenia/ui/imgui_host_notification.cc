@@ -56,7 +56,7 @@ void HostNotificationWindow::OnDraw(ImGuiIO& io) {
   const float window_scale =
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
-  const float font_size = io.Fonts->Fonts[0]->FontSize;
+  const float font_size = GetDrawer()->GetFontSize();
   const ImVec2 text_size = io.Fonts->Fonts[0]->CalcTextSizeA(
       font_size * window_scale, FLT_MAX, -1.0f,
       longest_notification_text_line.data());
@@ -76,11 +76,13 @@ void HostNotificationWindow::OnDraw(ImGuiIO& io) {
 
   ImGui::Begin("Notification Window", NULL, NOTIFY_TOAST_FLAGS);
   {
-    ImGui::SetWindowFontScale(window_scale);
+    ImGui::PushFont(nullptr, font_size * window_scale);
 
     ImGui::Text("%s", GetTitle().data());
     ImGui::Separator();
     ImGui::Text("%s", GetDescription().data());
+
+    ImGui::PopFont();
   }
   ImGui::End();
 }

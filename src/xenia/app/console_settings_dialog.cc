@@ -225,15 +225,13 @@ void GroupBox(const char* label, auto draw_fn) {
   float label_end = label_start + text_size.x + 4.0f;
 
   // Top edge with gap for label
-  draw_list->AddLine(ImVec2(rect_min.x, rect_min.y),
-                     ImVec2(label_start, rect_min.y), border_color);
-  draw_list->AddLine(ImVec2(label_end, rect_min.y),
-                     ImVec2(rect_max.x, rect_min.y), border_color);
+  draw_list->AddLineH(rect_min.x, label_start, rect_min.y, border_color);
+  draw_list->AddLineH(label_end, rect_max.x, rect_min.y, border_color);
+
   // Left, right, bottom
-  draw_list->AddLine(rect_min, ImVec2(rect_min.x, rect_max.y), border_color);
-  draw_list->AddLine(ImVec2(rect_max.x, rect_min.y),
-                     ImVec2(rect_max.x, rect_max.y), border_color);
-  draw_list->AddLine(ImVec2(rect_min.x, rect_max.y), rect_max, border_color);
+  draw_list->AddLineV(rect_min.x, rect_min.y, rect_max.y, border_color);
+  draw_list->AddLineV(rect_max.x, rect_min.y, rect_max.y, border_color);
+  draw_list->AddLineH(rect_min.x, rect_max.x, rect_max.y, border_color);
 
   // Label
   draw_list->AddText(ImVec2(label_start + 2.0f, rect_min.y - border_offset),

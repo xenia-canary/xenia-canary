@@ -10,6 +10,7 @@
 #include "xenia/ui/imgui_drawer.h"
 
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 #include <ranges>
 
@@ -85,6 +86,7 @@ ImGuiDrawer::~ImGuiDrawer() {
     }
   }
   if (internal_state_) {
+    DestroyTextures();
     ImGui::DestroyContext(internal_state_);
     internal_state_ = nullptr;
   }
@@ -152,12 +154,12 @@ void ImGuiDrawer::RemoveNotification(ImGuiNotification* dialog) {
 }
 
 #ifdef XE_PLATFORM_LINUX
-static void SetClipboardText(void* user_data, const char* text) {
+static void SetClipboardText(ImGuiContext* ctx, const char* text) {
   GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
   gtk_clipboard_set_text(clipboard, text, -1);
 }
 
-static const char* GetClipboardText(void* user_data) {
+static const char* GetClipboardText(ImGuiContext* ctx) {
   GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
   return gtk_clipboard_wait_for_text(clipboard);
 }
@@ -172,19 +174,20 @@ void ImGuiDrawer::Initialize() {
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 
-  const float font_size = std::max((float)cvars::font_size, 8.f);
-  const float title_font_size = font_size + 6.f;
-
-  InitializeFonts(font_size);
-  InitializeFonts(title_font_size);
+  // One font for all text; larger sizes, like titles, use PushFont.
+  font_size_ = std::max((float)cvars::font_size, 8.f);
+  InitializeFonts(font_size_);
 
 #ifdef XE_PLATFORM_LINUX
-  io.SetClipboardTextFn = SetClipboardText;
-  io.GetClipboardTextFn = GetClipboardText;
+  auto& platform_io = ImGui::GetPlatformIO();
+  platform_io.Platform_SetClipboardTextFn = SetClipboardText;
+  platform_io.Platform_GetClipboardTextFn = GetClipboardText;
 #endif
 
   auto& style = ImGui::GetStyle();
+  style.FontSizeBase = font_size_;
   style.ScrollbarRounding = 6.0f;
   style.WindowRounding = 6.0f;
   style.PopupRounding = 6.0f;
@@ -379,11 +382,8 @@ bool ImGuiDrawer::LoadCustomFont(ImGuiIO& io, ImFontConfig& font_config,
   ImFont* font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size,
                                               &font_config, font_glyph_ranges);
 
-  io.Fonts->Build();
-
-  if (!font->IsLoaded()) {
+  if (!font) {
     XELOGE("Failed to load custom font: {}", font_path);
-    io.Fonts->Clear();
     return false;
   }
   return true;
@@ -401,6 +401,7 @@ bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
   }
 
   std::filesystem::path font_path = std::wstring(fonts_dir);
+  CoTaskMemFree(static_cast<void*>(fonts_dir));
   font_path.append("tahoma.ttf");
   if (!std::filesystem::exists(font_path)) {
     return false;
@@ -410,15 +411,14 @@ bool ImGuiDrawer::LoadWindowsFont(ImGuiIO& io, ImFontConfig& font_config,
       io.Fonts->AddFontFromFileTTF(xe::path_to_utf8(font_path).c_str(),
                                    font_size, &font_config, font_glyph_ranges);
 
-  io.Fonts->Build();
-  // Something went wrong while loading custom font. Probably corrupted.
-  if (!font->IsLoaded()) {
-    XELOGE("Failed to load custom font: {}", font_path);
-    io.Fonts->Clear();
+  // Something went wrong while loading the font. Probably corrupted.
+  if (!font) {
+    XELOGE("Failed to load font: {}", font_path);
+    return false;
   }
-  CoTaskMemFree(static_cast<void*>(fonts_dir));
   return true;
 #endif
+
   return false;
 }
 
@@ -430,6 +430,7 @@ static bool IsFontLoadable(const uint8_t* data, size_t size) {
   if (!data || size < 12) {
     return false;
   }
+
   stbtt_fontinfo font_info = {};
   const int font_offset = stbtt_GetFontOffsetForIndex(data, 0);
   return font_offset >= 0 && stbtt_InitFont(&font_info, data, font_offset);
@@ -454,8 +455,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
     jp_font_config.PixelSnapH = true;
     jp_font_config.FontNo = 0;
     io.Fonts->AddFontFromFileTTF(xe::path_to_utf8(jp_font_path).c_str(),
-                                 font_size, &jp_font_config,
-                                 io.Fonts->GetGlyphRangesJapanese());
+                                 font_size, &jp_font_config);
   } else {
     XELOGW("Unable to load Japanese font; JP characters will be boxes");
   }
@@ -478,8 +478,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
       jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
       jp_font_config.PixelSnapH = true;
       io.Fonts->AddFontFromMemoryTTF(jp_font_data, jp_font_size, font_size,
-                                     &jp_font_config,
-                                     io.Fonts->GetGlyphRangesJapanese());
+                                     &jp_font_config);
       return true;
     }
     XELOGW("Bundled CJK font cannot be loaded; trying fontconfig");
@@ -497,7 +496,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
   // Create a pattern to search for fonts with CJK support
   FcPattern* pattern = FcPatternCreate();
   FcCharSet* charset = FcCharSetCreate();
-  FcCharSetAddChar(charset, 0x4E00);  // Add a CJK character to the charset
+  FcCharSetAddChar(charset, 0x4E00);
   FcPatternAddCharSet(pattern, FC_CHARSET, charset);
   // Dear ImGui rasterises with stb_truetype, which cannot parse CFF-outline
   // OpenType fonts or variable-font collections. Fedora's default CJK match
@@ -530,8 +529,7 @@ bool ImGuiDrawer::LoadJapaneseFont(ImGuiIO& io, float font_size) {
           jp_font_config.OversampleH = jp_font_config.OversampleV = 2;
           jp_font_config.PixelSnapH = true;
 
-          io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config,
-                                       io.Fonts->GetGlyphRangesJapanese());
+          io.Fonts->AddFontFromFileTTF(font_path, font_size, &jp_font_config);
           XELOGI("Using CJK font {}", font_path);
           success = true;
         } else {
@@ -567,6 +565,7 @@ void ImGuiDrawer::InitializeFonts(const float font_size) {
   io.IniFilename = nullptr;
 
   ImFontConfig font_config;
+  // Oversampled, as the UI is stretched to the window's DPI.
   font_config.OversampleH = font_config.OversampleV = 2;
   font_config.PixelSnapH = true;
 
@@ -584,18 +583,58 @@ void ImGuiDrawer::InitializeFonts(const float font_size) {
   LoadJapaneseFont(io, font_size);
 }
 
-void ImGuiDrawer::SetupFontTexture() {
-  if (font_texture_ || !immediate_drawer_) {
-    return;
+void ImGuiDrawer::UpdateTexture(ImTextureData* texture) {
+  auto* immediate_texture =
+      static_cast<ImmediateTexture*>(texture->BackendUserData);
+  switch (texture->Status) {
+    case ImTextureStatus_WantCreate:
+    case ImTextureStatus_WantUpdates: {
+      // The immediate drawer can't update part of a texture, so recreate it.
+      // The old one is kept until the GPU is done with it.
+      assert_true(texture->Format == ImTextureFormat_RGBA32);
+      std::unique_ptr<ImmediateTexture> new_texture =
+          immediate_drawer_->CreateTexture(
+              uint32_t(texture->Width), uint32_t(texture->Height),
+              ImmediateTextureFilter::kLinear, true,
+              static_cast<const uint8_t*>(texture->GetPixels()));
+      if (!new_texture) {
+        XELOGE("Failed to create a {}x{} Dear ImGui texture", texture->Width,
+               texture->Height);
+        return;
+      }
+
+      delete immediate_texture;
+      immediate_texture = new_texture.release();
+      texture->BackendUserData = immediate_texture;
+      texture->SetTexID(reinterpret_cast<ImTextureID>(immediate_texture));
+      texture->SetStatus(ImTextureStatus_OK);
+    } break;
+    case ImTextureStatus_WantDestroy:
+      delete immediate_texture;
+      texture->BackendUserData = nullptr;
+      texture->SetTexID(ImTextureID_Invalid);
+      texture->SetStatus(ImTextureStatus_Destroyed);
+      break;
+    default:
+      break;
   }
-  ImGuiIO& io = GetIO();
-  unsigned char* pixels;
-  int width, height;
-  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-  font_texture_ = immediate_drawer_->CreateTexture(
-      width, height, ImmediateTextureFilter::kLinear, true,
-      reinterpret_cast<uint8_t*>(pixels));
-  io.Fonts->TexID = reinterpret_cast<ImTextureID>(font_texture_.get());
+}
+
+void ImGuiDrawer::DestroyTextures() {
+  ImGui::SetCurrentContext(internal_state_);
+  for (ImTextureData* texture : ImGui::GetPlatformIO().Textures) {
+    if (!texture->BackendUserData) {
+      continue;
+    }
+
+    delete static_cast<ImmediateTexture*>(texture->BackendUserData);
+    texture->BackendUserData = nullptr;
+    texture->SetTexID(ImTextureID_Invalid);
+
+    // Recreated by the next immediate drawer if still needed.
+    texture->SetStatus(texture->Pixels ? ImTextureStatus_WantCreate
+                                       : ImTextureStatus_Destroyed);
+  }
 }
 
 void ImGuiDrawer::SetPresenter(Presenter* new_presenter) {
@@ -606,7 +645,6 @@ void ImGuiDrawer::SetPresenter(Presenter* new_presenter) {
     if (!dialogs_.empty()) {
       presenter_->RemoveUIDrawerFromUIThread(this);
     }
-    ImGuiIO& io = GetIO();
   }
   presenter_ = new_presenter;
   if (presenter_) {
@@ -621,14 +659,12 @@ void ImGuiDrawer::SetImmediateDrawer(ImmediateDrawer* new_immediate_drawer) {
     return;
   }
   if (immediate_drawer_) {
-    GetIO().Fonts->TexID = reinterpret_cast<ImTextureID>(nullptr);
-    font_texture_.reset();
+    DestroyTextures();
     locked_achievement_icon_.reset();
     notification_icon_textures_.clear();
   }
   immediate_drawer_ = new_immediate_drawer;
   if (immediate_drawer_) {
-    SetupFontTexture();
     SetupNotificationTextures();
 
     // Load locked achievement icon.
@@ -676,8 +712,11 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
 
   float physical_to_logical =
       float(window_->GetMediumDpi()) / float(window_->GetDpi());
-  io.DisplaySize.x = window_->GetActualPhysicalWidth() * physical_to_logical;
-  io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;
+  // Whole pixels, or Dear ImGui anti-aliases the edges of the modal dimming.
+  io.DisplaySize.x =
+      std::round(window_->GetActualPhysicalWidth() * physical_to_logical);
+  io.DisplaySize.y =
+      std::round(window_->GetActualPhysicalHeight() * physical_to_logical);
 
   if (!dialogs_.empty()) {
     UpdateGamepads();
@@ -749,9 +788,17 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data,
                                   UIDrawContext& ui_draw_context) {
   ImGuiIO& io = ImGui::GetIO();
 
+  if (data->Textures) {
+    for (ImTextureData* texture : *data->Textures) {
+      if (texture->Status != ImTextureStatus_OK) {
+        UpdateTexture(texture);
+      }
+    }
+  }
+
   immediate_drawer_->Begin(ui_draw_context, io.DisplaySize.x, io.DisplaySize.y);
 
-  for (int i = 0; i < data->CmdListsCount; ++i) {
+  for (int i = 0; i < data->CmdLists.Size; ++i) {
     const auto cmd_list = data->CmdLists[i];
 
     ImmediateDrawBatch batch;
@@ -769,7 +816,7 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data,
       draw.primitive_type = ImmediatePrimitiveType::kTriangles;
       draw.count = cmd.ElemCount;
       draw.index_offset = cmd.IdxOffset;
-      draw.texture = reinterpret_cast<ImmediateTexture*>(cmd.TextureId);
+      draw.texture = reinterpret_cast<ImmediateTexture*>(cmd.GetTexID());
       draw.scissor = true;
       draw.scissor_left = cmd.ClipRect.x;
       draw.scissor_top = cmd.ClipRect.y;

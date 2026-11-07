@@ -72,7 +72,7 @@ void TitleListUI::DrawTitleEntry(ImGuiIO& io, TitleInfo& entry) {
 
   // Second Column
   ImGui::TableNextColumn();
-  ImGui::PushFont(imgui_drawer()->GetTitleFont());
+  ImGui::PushFont(nullptr, imgui_drawer()->GetTitleFontSize());
   ImGui::TextUnformatted(xe::to_utf8(entry.title_name).c_str());
   ImGui::PopFont();
 
@@ -235,7 +235,7 @@ void TitleListUI::OnDraw(ImGuiIO& io) {
     // Align text to the center
     std::string no_entries_message = "There are no titles, so far.";
 
-    ImGui::PushFont(imgui_drawer()->GetTitleFont());
+    ImGui::PushFont(nullptr, imgui_drawer()->GetTitleFontSize());
     float windowWidth = ImGui::GetContentRegionAvail().x;
     ImVec2 textSize = ImGui::CalcTextSize(no_entries_message.c_str());
     float textOffsetX = (windowWidth - textSize.x) * 0.5f;

@@ -137,7 +137,7 @@ void GameAchievementsUI::DrawTitleAchievementInfo(
   }
   ImGui::TableNextColumn();
 
-  ImGui::PushFont(imgui_drawer()->GetTitleFont());
+  ImGui::PushFont(nullptr, imgui_drawer()->GetTitleFontSize());
   const auto primary_line_height = ImGui::GetTextLineHeight();
   ImGui::Text("%s", GetAchievementTitle(achievement_entry).c_str());
   ImGui::PopFont();
@@ -165,7 +165,7 @@ void GameAchievementsUI::DrawTitleAchievementInfo(
 
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
                        achievement_row_middle_alignment);
-  ImGui::PushFont(imgui_drawer()->GetTitleFont());
+  ImGui::PushFont(nullptr, imgui_drawer()->GetTitleFontSize());
   ImGui::TextUnformatted(
       fmt::format("{} G", achievement_entry.gamerscore).c_str());
   ImGui::PopFont();

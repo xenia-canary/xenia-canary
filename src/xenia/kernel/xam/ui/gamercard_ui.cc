@@ -312,7 +312,7 @@ void GamercardUI::DrawInputTextBox(
       ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
       draw_list->AddRect(input_field_pos, end_pos, IM_COL32(255, 0, 0, 200),
-                         0.0f, 0, 2.0f);
+                         0.0f, 2.0f);
     }
   }
 }
