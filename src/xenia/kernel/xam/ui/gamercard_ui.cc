@@ -624,6 +624,8 @@ void GamercardUI::SaveAccountData() {
 
   const std::u16string gamertag =
       xe::to_utf16(std::string(gamercardValues_.gamertag));
+  // Clear the old gamertag so a shorter one leaves no stale tail.
+  std::ranges::fill(account.gamertag, u'\0');
   string_util::copy_and_swap_truncating(account.gamertag, gamertag,
                                         std::size(account.gamertag));
 
