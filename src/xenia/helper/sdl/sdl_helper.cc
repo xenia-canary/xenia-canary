@@ -9,12 +9,6 @@
 
 #include "xenia/helper/sdl/sdl_helper.h"
 
-// On linux we likely build on an "outdated" system but still want to control
-// these features when available on a newer system.
-#if !SDL_VERSION_ATLEAST(2, 0, 14)
-#define SDL_HINT_AUDIO_DEVICE_APP_NAME "SDL_AUDIO_DEVICE_APP_NAME"
-#endif
-
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
 
@@ -32,9 +26,11 @@ bool SDLHelper::Prepare() {
   is_prepared_ &= SetHints();
   is_prepared_ &= RedirectLog();
 
-  SDL_version ver = {};
-  SDL_GetVersion(&ver);
-  XELOGI("SDL Version {}.{}.{} initialized.", ver.major, ver.minor, ver.patch);
+  SDL_SetAppMetadata("Xenia", nullptr, nullptr);
+
+  const int ver = SDL_GetVersion();
+  XELOGI("SDL Version {}.{}.{} initialized.", SDL_VERSIONNUM_MAJOR(ver),
+         SDL_VERSIONNUM_MINOR(ver), SDL_VERSIONNUM_MICRO(ver));
 
   return is_prepared_;
 }
@@ -47,8 +43,7 @@ bool SDLHelper::SetHints() {
     // Setting hints with normal priority fails when the hint is set via env
     // vars or a hint with override priority is set, which does not conclude a
     // failure.
-    if (SDL_FALSE ==
-        SDL_SetHintWithPriority(
+    if (!SDL_SetHintWithPriority(
             name, value, override_ ? SDL_HINT_OVERRIDE : SDL_HINT_NORMAL)) {
       const char* msg_fmt =
           "SDLHelper: Unable to set hint \"{}\" to value \"{}\".";
@@ -70,18 +65,17 @@ bool SDLHelper::SetHints() {
 
   suc &= setHint(SDL_HINT_AUDIO_CATEGORY, "playback");
 
-  suc &= setHint(SDL_HINT_AUDIO_DEVICE_APP_NAME, "xenia emulator");
-
   return suc;
 }
 
 bool SDLHelper::RedirectLog() {
   // Redirect SDL_Log* output (internal library stuff) to our log system.
-  SDL_LogSetOutputFunction(
+  SDL_SetLogOutputFunction(
       [](void* userdata, int category, SDL_LogPriority priority,
          const char* message) {
         const char* msg_fmt = "SDL: {}";
         switch (priority) {
+          case SDL_LOG_PRIORITY_TRACE:
           case SDL_LOG_PRIORITY_VERBOSE:
           case SDL_LOG_PRIORITY_DEBUG:
             XELOGD(msg_fmt, message);
@@ -106,7 +100,7 @@ bool SDLHelper::RedirectLog() {
   // SDL itself isn't that talkative. Additionally to this settings there are
   // hints that can be switched on to output additional internal logging
   // information.
-  SDL_LogSetAllPriority(SDL_LogPriority::SDL_LOG_PRIORITY_VERBOSE);
+  SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
   return true;
 }
 }  // namespace sdl

@@ -384,85 +384,57 @@ if(WIN32)
 endif()
 
 # ==============================================================================
-# SDL2
+# SDL3
 # ==============================================================================
-if(WIN32)
-  # Build SDL2 from source on Windows
-  file(GLOB _sdl2_sources
-    "SDL2/src/*.c"
-    "SDL2/src/atomic/*.c"
-    "SDL2/src/audio/*.c"
-    "SDL2/src/audio/directsound/*.c"
-    "SDL2/src/audio/disk/*.c"
-    "SDL2/src/audio/dummy/*.c"
-    "SDL2/src/audio/wasapi/*.c"
-    "SDL2/src/audio/winmm/*.c"
-    "SDL2/src/core/windows/*.c"
-    "SDL2/src/cpuinfo/*.c"
-    "SDL2/src/dynapi/*.c"
-    "SDL2/src/events/*.c"
-    "SDL2/src/file/*.c"
-    "SDL2/src/filesystem/windows/*.c"
-    "SDL2/src/haptic/*.c"
-    "SDL2/src/haptic/dummy/*.c"
-    "SDL2/src/haptic/windows/*.c"
-    "SDL2/src/hidapi/*.c"
-    "SDL2/src/joystick/*.c"
-    "SDL2/src/joystick/dummy/*.c"
-    "SDL2/src/joystick/hidapi/*.c"
-    "SDL2/src/joystick/virtual/*.c"
-    "SDL2/src/joystick/windows/*.c"
-    "SDL2/src/libm/*.c"
-    "SDL2/src/loadso/windows/*.c"
-    "SDL2/src/locale/*.c"
-    "SDL2/src/locale/windows/*.c"
-    "SDL2/src/misc/*.c"
-    "SDL2/src/misc/windows/*.c"
-    "SDL2/src/power/*.c"
-    "SDL2/src/power/windows/*.c"
-    "SDL2/src/render/*.c"
-    "SDL2/src/render/direct3d/*.c"
-    "SDL2/src/render/direct3d11/*.c"
-    "SDL2/src/render/direct3d12/*.c"
-    "SDL2/src/render/opengl/*.c"
-    "SDL2/src/render/opengles2/*.c"
-    "SDL2/src/render/software/*.c"
-    "SDL2/src/sensor/*.c"
-    "SDL2/src/sensor/dummy/*.c"
-    "SDL2/src/sensor/windows/*.c"
-    "SDL2/src/stdlib/*.c"
-    "SDL2/src/thread/*.c"
-    "SDL2/src/thread/generic/SDL_syscond.c"
-    "SDL2/src/thread/windows/*.c"
-    "SDL2/src/timer/*.c"
-    "SDL2/src/timer/windows/*.c"
-    "SDL2/src/video/*.c"
-    "SDL2/src/video/dummy/*.c"
-    "SDL2/src/video/windows/*.c"
-    "SDL2/src/video/yuv2rgb/*.c"
-  )
-  add_library(SDL2 STATIC ${_sdl2_sources})
-  target_compile_definitions(SDL2 PRIVATE
-    HAVE_LIBC
-    SDL_LEAN_AND_MEAN
-    SDL_RENDER_DISABLED
-  )
-  target_include_directories(SDL2 PUBLIC SDL2/include)
-  target_link_libraries(SDL2 PRIVATE setupapi winmm imm32 version)
-elseif(APPLE)
-  # Use system SDL2 framework on macOS
-  add_library(SDL2 INTERFACE)
-  find_library(SDL2_LIBRARY SDL2 REQUIRED)
-  target_include_directories(SDL2 INTERFACE "${SDL2_LIBRARY}/Headers")
-  target_link_libraries(SDL2 INTERFACE "${SDL2_LIBRARY}")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # Use system SDL2 on Linux
-  add_library(SDL2 INTERFACE)
+# Exposed to xenia as the `SDL3` target. Windows always builds the submodule.
+# Linux and macOS use the system SDL3 when there is one, and build the submodule
+# otherwise.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(SDL2_PKG REQUIRED sdl2)
-  target_include_directories(SDL2 INTERFACE ${SDL2_PKG_INCLUDE_DIRS})
-  target_link_libraries(SDL2 INTERFACE ${SDL2_PKG_LDFLAGS})
-  target_compile_options(SDL2 INTERFACE ${SDL2_PKG_CFLAGS_OTHER})
+  pkg_check_modules(SDL3_PKG IMPORTED_TARGET sdl3>=3.2.0)
+elseif(APPLE)
+  find_library(SDL3_FRAMEWORK SDL3)
+endif()
+
+add_library(SDL3 INTERFACE)
+if(SDL3_PKG_FOUND)
+  target_link_libraries(SDL3 INTERFACE PkgConfig::SDL3_PKG)
+elseif(SDL3_FRAMEWORK)
+  target_link_libraries(SDL3 INTERFACE "${SDL3_FRAMEWORK}")
+else()
+  # Only the subsystems xenia uses: audio, events and gamepads, plus video for
+  # message boxes.
+  set(SDL_GPU OFF)
+  set(SDL_RENDER OFF)
+  set(SDL_CAMERA OFF)
+  set(SDL_DIALOG OFF)
+  set(SDL_TRAY OFF)
+  set(SDL_TEST_LIBRARY OFF)
+  set(SDL_TESTS OFF)
+  set(SDL_EXAMPLES OFF)
+  set(SDL_INSTALL OFF)
+  # SDL fails to configure when an enabled X11 extension isn't installed. These
+  # two are only for SDL's own windows (screensaver inhibit, mouse warping),
+  # which xenia doesn't use.
+  set(SDL_X11_XSCRNSAVER OFF)
+  set(SDL_X11_XTEST OFF)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # xenia-base loads libSDL3.so at runtime for message boxes, so it has to be
+    # a shared library. It is placed next to the executable.
+    set(SDL_SHARED ON)
+    set(SDL_STATIC OFF)
+  else()
+    set(SDL_SHARED OFF)
+    set(SDL_STATIC ON)
+  endif()
+  # SDL logs hundreds of feature checks and a summary at configure time. Keep
+  # only its warnings and errors.
+  set(_sdl_saved_log_level "${CMAKE_MESSAGE_LOG_LEVEL}")
+  set(CMAKE_MESSAGE_LOG_LEVEL WARNING)
+  add_subdirectory(SDL3 EXCLUDE_FROM_ALL)
+  set(CMAKE_MESSAGE_LOG_LEVEL "${_sdl_saved_log_level}")
+  unset(_sdl_saved_log_level)
+  target_link_libraries(SDL3 INTERFACE SDL3::SDL3)
 endif()
 
 # ==============================================================================

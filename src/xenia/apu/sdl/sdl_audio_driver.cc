@@ -9,7 +9,9 @@
 
 #include "xenia/apu/sdl/sdl_audio_driver.h"
 
+#include <algorithm>
 #include <cstring>
+#include <string>
 
 #include "xenia/apu/apu_flags.h"
 #include "xenia/apu/conversion.h"
@@ -50,57 +52,47 @@ SDLAudioDriver::~SDLAudioDriver() {
 };
 
 bool SDLAudioDriver::Initialize() {
-  SDL_version ver = {};
-  SDL_GetVersion(&ver);
-  if ((ver.major < 2) || (ver.major == 2 && ver.minor == 0 && ver.patch < 8)) {
-    XELOGW(
-        "SDL library version {}.{}.{} is outdated. "
-        "You may experience choppy audio.",
-        ver.major, ver.minor, ver.patch);
-  }
-
   if (!xe::helper::sdl::SDLHelper::Prepare()) {
     return false;
   }
-  if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+  if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+    XELOGE("SDL_InitSubSystem(SDL_INIT_AUDIO) failed: {}", SDL_GetError());
     return false;
   }
   sdl_initialized_ = true;
 
-  SDL_AudioSpec desired_spec = {};
-  SDL_AudioSpec obtained_spec;
-  desired_spec.freq = frame_frequency_;
-  desired_spec.format = AUDIO_F32;
-  desired_spec.channels = frame_channels_;
-  desired_spec.samples = channel_samples_;
-  desired_spec.callback = SDLCallback;
-  desired_spec.userdata = this;
-  // Allow the hardware to decide between 5.1 and stereo,
-  // unless the input is stereo
-  int allowed_change =
-      frame_channels_ != 2 ? SDL_AUDIO_ALLOW_CHANNELS_CHANGE : 0;
-  for (int i = 0; i < 2; i++) {
-    sdl_device_id_ = SDL_OpenAudioDevice(nullptr, 0, &desired_spec,
-                                         &obtained_spec, allowed_change);
-    if (sdl_device_id_ <= 0) {
-      XELOGE("SDL_OpenAudioDevice() failed.");
-      return false;
-    }
-    if (obtained_spec.channels == 2 || obtained_spec.channels == 6) {
-      break;
-    }
-    // If the system is 4 or 7.1, let SDL convert
-    allowed_change = 0;
-    SDL_CloseAudioDevice(sdl_device_id_);
-    sdl_device_id_ = -1;
+  sdl_stream_channels_ = frame_channels_;
+  if (need_format_conversion_) {
+    // 5.1 input is converted here to stereo when that's what the device has.
+    // Any other layout (4 channels, 7.1) gets 5.1, which SDL converts.
+    SDL_AudioSpec device_spec = {};
+    sdl_stream_channels_ =
+        (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+                                  &device_spec, nullptr) &&
+         device_spec.channels == 2)
+            ? 2
+            : 6;
   }
-  if (sdl_device_id_ <= 0) {
-    XELOGE("Failed to get a compatible SDL Audio Device.");
+  assert_true(sdl_stream_channels_ * channel_samples_ <= kFrameSamplesMax);
+
+  // Ask for a device buffer of one frame, as SDL2's `samples` did. This is
+  // only a request, and SDL may pick another size.
+  SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,
+              std::to_string(channel_samples_).c_str());
+
+  SDL_AudioSpec spec = {};
+  spec.format = SDL_AUDIO_F32;
+  spec.channels = static_cast<int>(sdl_stream_channels_);
+  spec.freq = static_cast<int>(frame_frequency_);
+  sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+                                          &spec, SDLCallback, this);
+  if (!sdl_stream_) {
+    XELOGE("SDL_OpenAudioDeviceStream() failed: {}", SDL_GetError());
     return false;
   }
-  sdl_device_channels_ = obtained_spec.channels;
+  SDL_SetAudioStreamGain(sdl_stream_, volume_);
 
-  SDL_PauseAudioDevice(sdl_device_id_, 0);
+  SDL_ResumeAudioStreamDevice(sdl_stream_);
 
   return true;
 }
@@ -125,14 +117,29 @@ void SDLAudioDriver::SubmitFrame(float* frame) {
   }
 }
 
-void SDLAudioDriver::Pause() { SDL_PauseAudioDevice(sdl_device_id_, 1); }
+void SDLAudioDriver::Pause() {
+  if (sdl_stream_) {
+    SDL_PauseAudioStreamDevice(sdl_stream_);
+  }
+}
 
-void SDLAudioDriver::Resume() { SDL_PauseAudioDevice(sdl_device_id_, 0); }
+void SDLAudioDriver::Resume() {
+  if (sdl_stream_) {
+    SDL_ResumeAudioStreamDevice(sdl_stream_);
+  }
+}
+
+void SDLAudioDriver::SetVolume(float volume) {
+  volume_ = volume;
+  if (sdl_stream_) {
+    SDL_SetAudioStreamGain(sdl_stream_, volume);
+  }
+}
 
 void SDLAudioDriver::Shutdown() {
-  if (sdl_device_id_ > 0) {
-    SDL_CloseAudioDevice(sdl_device_id_);
-    sdl_device_id_ = -1;
+  if (sdl_stream_) {
+    SDL_DestroyAudioStream(sdl_stream_);
+    sdl_stream_ = nullptr;
   }
   if (sdl_initialized_) {
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
@@ -149,57 +156,77 @@ void SDLAudioDriver::Shutdown() {
   };
 }
 
-void SDLAudioDriver::SDLCallback(void* userdata, Uint8* stream, int len) {
+void SDLCALL SDLAudioDriver::SDLCallback(void* userdata,
+                                         SDL_AudioStream* stream,
+                                         int additional_amount,
+                                         int total_amount) {
   SCOPE_profile_cpu_f("apu");
   if (!userdata || !stream) {
-    XELOGE("SDLAudioDriver::sdl_callback called with nullptr.");
+    XELOGE("SDLAudioDriver::SDLCallback called with nullptr.");
     return;
   }
   const auto driver = static_cast<SDLAudioDriver*>(userdata);
-  assert_true(len == sizeof(float) * driver->channel_samples_ *
-                         driver->sdl_device_channels_);
+  float* const output = driver->output_frame_.data();
+  const int output_size = static_cast<int>(
+      sizeof(float) * driver->channel_samples_ * driver->sdl_stream_channels_);
 
-  std::unique_lock<std::mutex> guard(driver->frames_mutex_);
-  if (driver->frames_queued_.empty()) {
-    std::memset(stream, 0, len);
-  } else {
-    auto buffer = driver->frames_queued_.front();
-    driver->frames_queued_.pop();
+  // SDL asks for a number of bytes, not whole frames: give it frames until it
+  // has at least that much.
+  while (additional_amount > 0) {
+    float* buffer = nullptr;
+    {
+      std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+      if (!driver->frames_queued_.empty()) {
+        buffer = driver->frames_queued_.front();
+        driver->frames_queued_.pop();
+      }
+    }
+
+    if (!buffer) {
+      // Nothing to play: give only the silence SDL needs, so that the next
+      // frame isn't delayed.
+      std::memset(output, 0, output_size);
+      while (additional_amount > 0) {
+        const int size = std::min(additional_amount, output_size);
+        SDL_PutAudioStreamData(stream, output, size);
+        additional_amount -= size;
+      }
+      break;
+    }
+
     if (cvars::mute) {
-      std::memset(stream, 0, len);
+      std::memset(output, 0, output_size);
     } else if (driver->need_format_conversion_) {
-      switch (driver->sdl_device_channels_) {
+      switch (driver->sdl_stream_channels_) {
         case 2:
           conversion::sequential_6_BE_to_interleaved_2_LE(
-              reinterpret_cast<float*>(stream), buffer,
-              driver->channel_samples_);
+              output, buffer, driver->channel_samples_);
           break;
         case 6:
           conversion::sequential_6_BE_to_interleaved_6_LE(
-              reinterpret_cast<float*>(stream), buffer,
-              driver->channel_samples_);
+              output, buffer, driver->channel_samples_);
           break;
         default:
-          assert_unhandled_case(driver->sdl_device_channels_);
+          assert_unhandled_case(driver->sdl_stream_channels_);
           break;
       }
     } else {
-      assert_true(driver->sdl_device_channels_ == driver->frame_channels_);
-      if (driver->volume_ != 1.0f) {
-        std::memset(stream, 0, len);
-        SDL_MixAudioFormat(
-            stream, reinterpret_cast<Uint8*>(buffer), AUDIO_F32, len,
-            static_cast<int>(driver->volume_ * SDL_MIX_MAXVOLUME));
-      } else {
-        std::memcpy(stream, buffer, len);
-      }
+      assert_true(driver->sdl_stream_channels_ == driver->frame_channels_);
+      std::memcpy(output, buffer, output_size);
     }
-    driver->frames_unused_.push(buffer);
+    SDL_PutAudioStreamData(stream, output, output_size);
+    additional_amount -= output_size;
+
+    {
+      std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+      driver->frames_unused_.push(buffer);
+    }
 
     auto ret = driver->semaphore_->Release(1, nullptr);
     assert_true(ret);
   }
-};
+}
+
 }  // namespace sdl
 }  // namespace apu
 }  // namespace xe

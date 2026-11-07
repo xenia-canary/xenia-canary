@@ -19,39 +19,38 @@
 #include "xenia/base/string.h"
 #include "xenia/base/system.h"
 
-// Use headers in third party to not depend on system sdl headers for building
-#include "third_party/SDL2/include/SDL.h"
+#include <SDL3/SDL.h>
 
 namespace xe {
 
-void* LoadSDL2Library() {
+void* LoadSDL3Library() {
   // The versioned soname is what the runtime package installs, the unversioned
   // name only exists with the development package.
-  void* libsdl2 = dlopen("libSDL2-2.0.so.0", RTLD_LAZY | RTLD_LOCAL);
-  if (!libsdl2) {
-    libsdl2 = dlopen("libSDL2.so", RTLD_LAZY | RTLD_LOCAL);
+  void* libsdl3 = dlopen("libSDL3.so.0", RTLD_LAZY | RTLD_LOCAL);
+  if (!libsdl3) {
+    libsdl3 = dlopen("libSDL3.so", RTLD_LAZY | RTLD_LOCAL);
   }
-  return libsdl2;
+  return libsdl3;
 }
 
 namespace {
 void OpenUrl(const std::string& url) {
-  void* libsdl2 = LoadSDL2Library();
-  if (!libsdl2) {
+  void* libsdl3 = LoadSDL3Library();
+  if (!libsdl3) {
     XELOGE("Failed to open {}: {}", url, dlerror());
     return;
   }
   auto* pSDL_OpenURL =
-      reinterpret_cast<decltype(SDL_OpenURL)*>(dlsym(libsdl2, "SDL_OpenURL"));
+      reinterpret_cast<decltype(SDL_OpenURL)*>(dlsym(libsdl3, "SDL_OpenURL"));
   auto* pSDL_GetError =
-      reinterpret_cast<decltype(SDL_GetError)*>(dlsym(libsdl2, "SDL_GetError"));
+      reinterpret_cast<decltype(SDL_GetError)*>(dlsym(libsdl3, "SDL_GetError"));
   if (!pSDL_OpenURL) {
     XELOGE("Failed to open {}: SDL_OpenURL is unavailable", url);
-  } else if (pSDL_OpenURL(url.c_str()) != 0) {
+  } else if (!pSDL_OpenURL(url.c_str())) {
     XELOGE("Failed to open {}: {}", url,
            pSDL_GetError ? pSDL_GetError() : "unknown error");
   }
-  dlclose(libsdl2);
+  dlclose(libsdl3);
 }
 }  // namespace
 
@@ -63,15 +62,15 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
-  void* libsdl2 = LoadSDL2Library();
-  assert_not_null(libsdl2);
-  if (libsdl2) {
+  void* libsdl3 = LoadSDL3Library();
+  assert_not_null(libsdl3);
+  if (libsdl3) {
     auto* pSDL_ShowSimpleMessageBox =
         reinterpret_cast<decltype(SDL_ShowSimpleMessageBox)*>(
-            dlsym(libsdl2, "SDL_ShowSimpleMessageBox"));
+            dlsym(libsdl3, "SDL_ShowSimpleMessageBox"));
     assert_not_null(pSDL_ShowSimpleMessageBox);
     if (pSDL_ShowSimpleMessageBox) {
-      Uint32 flags;
+      SDL_MessageBoxFlags flags;
       const char* title;
       char* message_copy = reinterpret_cast<char*>(alloca(message.size() + 1));
       std::memcpy(message_copy, message.data(), message.size());
@@ -94,7 +93,7 @@ void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
       }
       pSDL_ShowSimpleMessageBox(flags, title, message_copy, NULL);
     }
-    dlclose(libsdl2);
+    dlclose(libsdl3);
   }
 }
 
