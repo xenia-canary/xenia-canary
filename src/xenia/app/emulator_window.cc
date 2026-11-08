@@ -1448,8 +1448,7 @@ void EmulatorWindow::ExtractZarchive() {
         abs_extract_dir = std::filesystem::absolute(extract_dir);
       }
 
-      XELOGI("Extracting zar package: {}\n",
-             zarchive_file_path.filename().string());
+      XELOGI("Extracting zar package: {}\n", zarchive_file_path.filename());
 
       auto result =
           emulator_->ExtractZarchivePackage(abs_path, abs_extract_dir);
@@ -1499,7 +1498,8 @@ void EmulatorWindow::CreateZarchive() {
     file_picker->set_mode(ui::FilePicker::Mode::kSave);
     file_picker->set_type(ui::FilePicker::Type::kFile);
     file_picker->set_multi_selection(false);
-    file_picker->set_file_name(content_dirs.front().filename().string());
+    file_picker->set_file_name(
+        xe::path_to_utf8(content_dirs.front().filename()));
     file_picker->set_default_extension("zar");
     file_picker->set_title("Zarchive File");
     file_picker->set_extensions({
@@ -1550,7 +1550,7 @@ void EmulatorWindow::CreateZarchive() {
       // Normalize the path and make absolute.
       auto abs_content_dir = std::filesystem::absolute(content_path);
 
-      XELOGI("Creating zar package: {}\n", zarchive_file.filename().string());
+      XELOGI("Creating zar package: {}\n", zarchive_file.filename());
 
       auto result =
           emulator_->CreateZarchivePackage(abs_content_dir, zarchive_file);
@@ -2090,9 +2090,9 @@ EmulatorWindow::ControllerHotKey EmulatorWindow::ProcessControllerHotkey(
 
     // Use filename if title name is empty
     if (recently_launched_titles_[selected_title_index].title_name.empty()) {
-      title_name = recently_launched_titles_[selected_title_index]
-                       .path_to_file.filename()
-                       .string();
+      title_name =
+          xe::path_to_utf8(recently_launched_titles_[selected_title_index]
+                               .path_to_file.filename());
     } else {
       title_name = recently_launched_titles_[selected_title_index].title_name;
     }
@@ -2359,7 +2359,7 @@ void EmulatorWindow::FillRecentlyLaunchedTitlesMenu(
 
     const RecentTitleEntry& entry = recently_launched_titles_[i];
     const std::string item_text = entry.title_name.empty()
-                                      ? entry.path_to_file.string()
+                                      ? xe::path_to_utf8(entry.path_to_file)
                                       : entry.title_name;
 
     recent_menu->AddChild(MenuItem::Create(
@@ -2394,15 +2394,17 @@ void EmulatorWindow::LoadRecentlyLaunchedTitles() {
       std::string title_name =
           entry_table->get_as<std::string>("title_name")->get();
       std::string path = entry_table->get_as<std::string>("path")->get();
+      std::filesystem::path path_to_file = xe::to_path(path);
       std::time_t last_run_time =
           entry_table->get_as<int64_t>("last_run_time")->get();
 
       std::error_code ec = {};
-      if (path.empty() || !std::filesystem::exists(path, ec)) {
+      if (path.empty() || !std::filesystem::exists(path_to_file, ec)) {
         continue;
       }
 
-      recently_launched_titles_.push_back({title_name, path, last_run_time});
+      recently_launched_titles_.push_back(
+          {title_name, path_to_file, last_run_time});
     }
   }
 }

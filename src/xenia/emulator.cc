@@ -1094,7 +1094,7 @@ X_STATUS Emulator::CreateZarchivePackage(
 
         if (!packContext->currentOutputFile.is_open()) {
           XELOGI("Failed to create output file: {}\n",
-                 packContext->outputFilePath.string());
+                 packContext->outputFilePath);
           packContext->hasError = true;
         }
       },
@@ -1115,13 +1115,20 @@ X_STATUS Emulator::CreateZarchivePackage(
         std::filesystem::relative(dirEntry.path(), inputDirectory, ec);
 
     if (ec) {
-      XELOGI("Failed to get relative path {}\n", pathEntry.string());
+      XELOGI("Failed to get relative path {}\n", dirEntry.path());
       return X_STATUS_UNSUCCESSFUL;
     }
 
+    // Zarchive entry names are UTF-8 with '/' separators. generic_string()
+    // would convert through the ANSI code page on Windows and throw on
+    // characters it can't represent.
+    const std::u8string archive_path_u8 = pathEntry.generic_u8string();
+    const std::string archive_path(archive_path_u8.cbegin(),
+                                   archive_path_u8.cend());
+
     if (dirEntry.is_directory()) {
-      if (!zWriter.MakeDir(pathEntry.generic_string().c_str(), false)) {
-        XELOGI("Failed to create directory {}\n", pathEntry.string());
+      if (!zWriter.MakeDir(archive_path.c_str(), false)) {
+        XELOGI("Failed to create directory {}\n", pathEntry);
         return X_STATUS_UNSUCCESSFUL;
       }
     } else if (dirEntry.is_regular_file()) {
@@ -1130,10 +1137,10 @@ X_STATUS Emulator::CreateZarchivePackage(
         continue;
       }
 
-      XELOGI("Adding file: {}\n", pathEntry.string());
+      XELOGI("Adding file: {}\n", pathEntry);
 
-      if (!zWriter.StartNewFile(pathEntry.generic_string().c_str())) {
-        XELOGI("Failed to create archive file {}\n", pathEntry.string());
+      if (!zWriter.StartNewFile(archive_path.c_str())) {
+        XELOGI("Failed to create archive file {}\n", pathEntry);
         return X_STATUS_UNSUCCESSFUL;
       }
 
@@ -1141,7 +1148,7 @@ X_STATUS Emulator::CreateZarchivePackage(
       FILE* file = xe::filesystem::OpenFile(file_to_pack_path, "rb");
 
       if (!file) {
-        XELOGI("Failed to open input file {}\n", pathEntry.string());
+        XELOGI("Failed to open input file {}\n", pathEntry);
         return X_STATUS_UNSUCCESSFUL;
       }
 
