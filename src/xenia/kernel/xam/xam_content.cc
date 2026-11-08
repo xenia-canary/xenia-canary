@@ -804,7 +804,7 @@ dword_result_t XamSwapDisc_entry(
 
   const std::filesystem::path new_disc_path =
       kernel_state()->emulator()->GetNewDiscPath(xe::to_utf8(text_message));
-  XELOGI("GetNewDiscPath returned path {}.", new_disc_path.string().c_str());
+  XELOGI("GetNewDiscPath returned path {}.", new_disc_path);
 
   // TODO(Gliniak): Implement checking if inserted file is requested one
   kernel_state()->emulator()->MountPath(new_disc_path, mount_path);
