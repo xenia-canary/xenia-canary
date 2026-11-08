@@ -1392,15 +1392,68 @@ static void EmitSingleRangeBadLanes(X64Emitter& e, const Xmm& lanes,
   e.vpandn(lanes, lanes, temp);
 }
 
+// Whether a double is zero, inside [2^-149, 2^128) or not finite, so never
+// out of the single range for ARITHMETIC_SINGLE_RANGE: a result rounded to
+// single, a single converted up (lfs), or a constant that is. Neg, abs and
+// select keep that.
+static bool IsKnownInSingleRange(const Value* value, int depth = 0) {
+  if (value->IsConstant()) {
+    if (value->type != FLOAT64_TYPE) {
+      return false;
+    }
+    uint64_t magnitude = value->constant.u64 & 0x7FFFFFFFFFFFFFFFull;
+    return magnitude == 0 ||
+           (magnitude >= 0x36A0000000000000ull &&
+            magnitude < 0x47F0000000000000ull) ||
+           magnitude >= 0x7FF0000000000000ull;
+  }
+  const Instr* def = value->def;
+  if (!def || depth >= 4) {
+    return false;
+  }
+  switch (def->opcode->num) {
+    case OPCODE_TO_SINGLE:
+      return !cvars::no_round_to_single;
+    case OPCODE_CONVERT:
+      return def->src1.value->type == FLOAT32_TYPE;
+    case OPCODE_ASSIGN:
+    case OPCODE_NEG:
+    case OPCODE_ABS:
+      return IsKnownInSingleRange(def->src1.value, depth + 1);
+    case OPCODE_SELECT:
+      return IsKnownInSingleRange(def->src2.value, depth + 1) &&
+             IsKnownInSingleRange(def->src3.value, depth + 1);
+    default:
+      return false;
+  }
+}
+
 // ARITHMETIC_SINGLE_RANGE, ahead of the operation. A branch rather than a
 // select keeps the check out of the result's dependency chain, and operands are
 // almost never outside the range. The tail gives the default QNaN unless an
 // operand is infinite or NaN, which takes precedence, and goes back to the
-// operation then. Returns a label to place after the operation, if one's
+// operation then. Only the operands that might be out of range are tested,
+// and none at all when every one is known to be in it: an infinite or NaN
+// operand only matters once another is out of range, and the tail tests all
+// of them for that. Returns a label to place after the operation, if one's
 // needed.
 template <int operands, typename ARGS>
 static Xbyak::Label* EmitSingleRangeCheck(X64Emitter& e, const ARGS& i) {
   if (!(i.instr->flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  const Value* sources[3] = {i.src1.value, i.src2.value, nullptr};
+  if constexpr (operands == 3) {
+    sources[2] = i.src3.value;
+  }
+  int unknown[3];
+  int unknown_count = 0;
+  for (int n = 0; n < operands; ++n) {
+    if (!IsKnownInSingleRange(sources[n])) {
+      unknown[unknown_count++] = n;
+    }
+  }
+  if (!unknown_count) {
     return nullptr;
   }
   Xbyak::Label& done = e.NewCachedLabel();
@@ -1424,18 +1477,42 @@ static Xbyak::Label* EmitSingleRangeCheck(X64Emitter& e, const ARGS& i) {
         e.vmovq(i.dest, e.rax);
         e.jmp(done, X64Emitter::T_NEAR);
       });
-  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-  Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-  e.vunpcklpd(e.xmm2, src1, src2);
-  EmitSingleRangeBadLanes(e, e.xmm2, e.xmm3);
-  if constexpr (operands == 3) {
-    Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm0);
-    e.vunpcklpd(e.xmm0, src3, src3);
+  auto source = [&e, &i](int n, const Xmm& scratch) -> Xmm {
+    if (n == 0) {
+      return GetInputRegOrConstant(e, i.src1, scratch);
+    }
+    if constexpr (operands == 3) {
+      if (n == 2) {
+        return GetInputRegOrConstant(e, i.src3, scratch);
+      }
+    }
+    return GetInputRegOrConstant(e, i.src2, scratch);
+  };
+  // The first two in xmm2, with a zero upper lane if there's one
+  Xmm first = source(unknown[0], e.xmm0);
+  if (unknown_count == 1) {
+    e.vmovq(e.xmm2, first);
+  } else {
+    e.vunpcklpd(e.xmm2, first, source(unknown[1], e.xmm1));
+  }
+  if (unknown_count == 3) {
+    Xmm third = source(unknown[2], e.xmm0);
+    e.vunpcklpd(e.xmm0, third, third);
+    EmitSingleRangeBadLanes(e, e.xmm2, e.xmm3);
     EmitSingleRangeBadLanes(e, e.xmm0, e.xmm1);
     e.vpor(e.xmm2, e.xmm2, e.xmm0);
+    e.vptest(e.xmm2, e.xmm2);
+    e.jnz(out_of_range, X64Emitter::T_NEAR);
+  } else {
+    // EmitSingleRangeBadLanes without its vpandn: vptest sets CF when no lane
+    // is outside the range and not zero.
+    e.vpaddq(e.xmm2, e.xmm2, e.xmm2);  // Discard the sign bit.
+    e.vpaddq(e.xmm3, e.xmm2, e.GetXmmConstPtr(XMMSingleRangeBias));
+    e.vpcmpgtq(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMSingleRangeLimit));
+    e.vpcmpeqq(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMZero));
+    e.vptest(e.xmm2, e.xmm3);
+    e.jnc(out_of_range, X64Emitter::T_NEAR);
   }
-  e.vptest(e.xmm2, e.xmm2);
-  e.jnz(out_of_range, X64Emitter::T_NEAR);
   e.L(resume);
   return &done;
 }
