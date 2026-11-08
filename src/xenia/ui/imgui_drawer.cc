@@ -602,10 +602,21 @@ void ImGuiDrawer::UpdateTexture(ImTextureData* texture) {
   auto* immediate_texture =
       static_cast<ImmediateTexture*>(texture->BackendUserData);
   switch (texture->Status) {
-    case ImTextureStatus_WantCreate:
-    case ImTextureStatus_WantUpdates: {
-      // The immediate drawer can't update part of a texture, so recreate it.
-      // The old one is kept until the GPU is done with it.
+    case ImTextureStatus_WantUpdates:
+      if (immediate_texture) {
+        const ImTextureRect& rect = texture->UpdateRect;
+        if (immediate_drawer_->UpdateTexture(
+                immediate_texture, rect.x, rect.y, rect.w, rect.h,
+                static_cast<const uint8_t*>(
+                    texture->GetPixelsAt(rect.x, rect.y)),
+                size_t(texture->GetPitch()))) {
+          texture->SetStatus(ImTextureStatus_OK);
+          break;
+        }
+      }
+      [[fallthrough]];
+    case ImTextureStatus_WantCreate: {
+      // The old texture is kept until the GPU is done with it.
       assert_true(texture->Format == ImTextureFormat_RGBA32);
       std::unique_ptr<ImmediateTexture> new_texture =
           immediate_drawer_->CreateTexture(

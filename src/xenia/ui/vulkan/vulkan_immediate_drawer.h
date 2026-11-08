@@ -36,6 +36,9 @@ class VulkanImmediateDrawer : public ImmediateDrawer {
                                                   ImmediateTextureFilter filter,
                                                   bool is_repeated,
                                                   const uint8_t* data) override;
+  bool UpdateTexture(ImmediateTexture* texture, uint32_t x, uint32_t y,
+                     uint32_t width, uint32_t height, const uint8_t* data,
+                     size_t data_pitch) override;
 
   void Begin(UIDrawContext& ui_draw_context, float coordinate_space_width,
              float coordinate_space_height) override;
@@ -109,7 +112,13 @@ class VulkanImmediateDrawer : public ImmediateDrawer {
                              const uint8_t* data,
                              VulkanImmediateTexture::Resource& resource_out,
                              size_t& pending_upload_index_out);
+  // Creates a filled upload buffer with a tightly packed width x height region
+  // of R8G8B8A8 data.
+  bool CreateUploadBuffer(uint32_t width, uint32_t height, const uint8_t* data,
+                          size_t data_pitch, VkBuffer& buffer_out,
+                          VkDeviceMemory& buffer_memory_out);
   void DestroyTextureResource(VulkanImmediateTexture::Resource& resource);
+  void RecordTextureUpdates(VkCommandBuffer command_buffer);
   void OnImmediateTextureDestroyed(VulkanImmediateTexture& texture);
 
   const VulkanDevice* vulkan_device_;
@@ -134,6 +143,17 @@ class VulkanImmediateDrawer : public ImmediateDrawer {
     uint32_t height;
   };
   std::vector<PendingTextureUpload> texture_uploads_pending_;
+  // Rectangles of textures that have already been uploaded.
+  struct PendingTextureUpdate {
+    VulkanImmediateTexture* texture;
+    VkBuffer buffer;
+    VkDeviceMemory buffer_memory;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+  };
+  std::vector<PendingTextureUpdate> texture_updates_pending_;
   struct SubmittedTextureUploadBuffer {
     VkBuffer buffer;
     VkDeviceMemory buffer_memory;

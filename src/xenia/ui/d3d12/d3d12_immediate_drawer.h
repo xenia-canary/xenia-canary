@@ -44,6 +44,9 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
                                                   ImmediateTextureFilter filter,
                                                   bool is_repeated,
                                                   const uint8_t* data) override;
+  bool UpdateTexture(ImmediateTexture* texture, uint32_t x, uint32_t y,
+                     uint32_t width, uint32_t height, const uint8_t* data,
+                     size_t data_pitch) override;
 
   void Begin(UIDrawContext& ui_draw_context, float coordinate_space_width,
              float coordinate_space_height) override;
@@ -106,6 +109,14 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
 
   void OnImmediateTextureDestroyed(D3D12ImmediateTexture& texture);
 
+  static void FillTextureResourceDesc(D3D12_RESOURCE_DESC& desc, uint32_t width,
+                                      uint32_t height);
+  // Returns an upload buffer with a width x height region of R8G8B8A8 data, or
+  // null on failure.
+  Microsoft::WRL::ComPtr<ID3D12Resource> CreateUploadBuffer(
+      uint32_t width, uint32_t height, const uint8_t* data, size_t data_pitch,
+      D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint_out);
+
   void UploadTextures();
 
   const D3D12Provider& provider_;
@@ -130,10 +141,22 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
   std::vector<D3D12ImmediateTexture*> textures_;
 
   struct PendingTextureUpload {
-    PendingTextureUpload(ID3D12Resource* texture, ID3D12Resource* buffer)
-        : texture(texture), buffer(buffer) {}
+    PendingTextureUpload(ID3D12Resource* texture, ID3D12Resource* buffer,
+                         const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint,
+                         UINT x, UINT y, bool is_update)
+        : texture(texture),
+          buffer(buffer),
+          footprint(footprint),
+          x(x),
+          y(y),
+          is_update(is_update) {}
     Microsoft::WRL::ComPtr<ID3D12Resource> texture;
     Microsoft::WRL::ComPtr<ID3D12Resource> buffer;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+    UINT x;
+    UINT y;
+    // Whether the texture is already a shader resource rather than new.
+    bool is_update;
   };
   std::vector<PendingTextureUpload> texture_uploads_pending_;
 

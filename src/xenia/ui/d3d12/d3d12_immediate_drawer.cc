@@ -233,80 +233,25 @@ std::unique_ptr<ImmediateTexture> D3D12ImmediateDrawer::CreateTexture(
     uint32_t width, uint32_t height, ImmediateTextureFilter filter,
     bool is_repeated, const uint8_t* data) {
   ID3D12Device* device = provider_.GetDevice();
-  D3D12_HEAP_FLAGS heap_flag_create_not_zeroed =
-      provider_.GetHeapFlagCreateNotZeroed();
 
   D3D12_RESOURCE_DESC resource_desc;
-  resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-  resource_desc.Alignment = 0;
-  resource_desc.Width = width;
-  resource_desc.Height = height;
-  resource_desc.DepthOrArraySize = 1;
-  resource_desc.MipLevels = 1;
-  resource_desc.Format = D3D12ImmediateTexture::kFormat;
-  resource_desc.SampleDesc.Count = 1;
-  resource_desc.SampleDesc.Quality = 0;
-  resource_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-  resource_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+  FillTextureResourceDesc(resource_desc, width, height);
   Microsoft::WRL::ComPtr<ID3D12Resource> resource;
   if (SUCCEEDED(device->CreateCommittedResource(
-          &util::kHeapPropertiesDefault, heap_flag_create_not_zeroed,
+          &util::kHeapPropertiesDefault, provider_.GetHeapFlagCreateNotZeroed(),
           &resource_desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
           IID_PPV_ARGS(&resource)))) {
-    // Create and fill the upload buffer.
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT upload_footprint;
-    UINT64 upload_size;
-    device->GetCopyableFootprints(&resource_desc, 0, 1, 0, &upload_footprint,
-                                  nullptr, nullptr, &upload_size);
-    D3D12_RESOURCE_DESC upload_buffer_desc;
-    util::FillBufferResourceDesc(upload_buffer_desc, upload_size,
-                                 D3D12_RESOURCE_FLAG_NONE);
-    Microsoft::WRL::ComPtr<ID3D12Resource> upload_buffer;
-    if (SUCCEEDED(device->CreateCommittedResource(
-            &util::kHeapPropertiesUpload, heap_flag_create_not_zeroed,
-            &upload_buffer_desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-            IID_PPV_ARGS(&upload_buffer)))) {
-      D3D12_RANGE upload_buffer_read_range;
-      upload_buffer_read_range.Begin = 0;
-      upload_buffer_read_range.End = 0;
-      void* upload_buffer_mapping;
-      if (SUCCEEDED(upload_buffer->Map(0, &upload_buffer_read_range,
-                                       &upload_buffer_mapping))) {
-        size_t data_row_length = sizeof(uint32_t) * width;
-        if (data_row_length == upload_footprint.Footprint.RowPitch) {
-          std::memcpy(upload_buffer_mapping, data, data_row_length * height);
-        } else {
-          uint8_t* upload_buffer_row =
-              reinterpret_cast<uint8_t*>(upload_buffer_mapping) +
-              upload_footprint.Offset;
-          const uint8_t* data_row = data;
-          for (uint32_t i = 0; i < height; ++i) {
-            std::memcpy(upload_buffer_row, data_row, data_row_length);
-            data_row += data_row_length;
-            upload_buffer_row += upload_footprint.Footprint.RowPitch;
-          }
-        }
-        upload_buffer->Unmap(0, nullptr);
-        // Defer uploading and transition to the next draw.
-        // While the upload has not been yet completed, keep a reference to the
-        // resource because its lifetime is not tied to that of the
-        // ImmediateTexture (and thus to context's submissions) now.
-        PendingTextureUpload& pending_upload =
-            texture_uploads_pending_.emplace_back(resource.Get(),
-                                                  upload_buffer.Get());
-      } else {
-        XELOGE(
-            "D3D12ImmediateDrawer: Failed to map an upload buffer for a {}x{} "
-            "texture",
-            width, height);
-        upload_buffer.Reset();
-        resource.Reset();
-      }
+    Microsoft::WRL::ComPtr<ID3D12Resource> upload_buffer = CreateUploadBuffer(
+        width, height, data, sizeof(uint32_t) * width, upload_footprint);
+    if (upload_buffer) {
+      // Defer uploading and transition to the next draw.
+      // While the upload has not been yet completed, keep a reference to the
+      // resource because its lifetime is not tied to that of the
+      // ImmediateTexture (and thus to context's submissions) now.
+      texture_uploads_pending_.emplace_back(resource.Get(), upload_buffer.Get(),
+                                            upload_footprint, 0, 0, false);
     } else {
-      XELOGE(
-          "D3D12ImmediateDrawer: Failed to create an upload buffer for a {}x{} "
-          "texture",
-          width, height);
       resource.Reset();
     }
   } else {
@@ -332,6 +277,28 @@ std::unique_ptr<ImmediateTexture> D3D12ImmediateDrawer::CreateTexture(
     textures_.push_back(texture.get());
   }
   return std::move(texture);
+}
+
+bool D3D12ImmediateDrawer::UpdateTexture(ImmediateTexture* texture, uint32_t x,
+                                         uint32_t y, uint32_t width,
+                                         uint32_t height, const uint8_t* data,
+                                         size_t data_pitch) {
+  ID3D12Resource* resource =
+      static_cast<D3D12ImmediateTexture*>(texture)->resource();
+  if (!resource) {
+    return false;
+  }
+
+  D3D12_PLACED_SUBRESOURCE_FOOTPRINT upload_footprint;
+  Microsoft::WRL::ComPtr<ID3D12Resource> upload_buffer =
+      CreateUploadBuffer(width, height, data, data_pitch, upload_footprint);
+  if (!upload_buffer) {
+    return false;
+  }
+
+  texture_uploads_pending_.emplace_back(resource, upload_buffer.Get(),
+                                        upload_footprint, x, y, true);
+  return true;
 }
 
 void D3D12ImmediateDrawer::Begin(UIDrawContext& ui_draw_context,
@@ -496,8 +463,7 @@ void D3D12ImmediateDrawer::Draw(const ImmediateDraw& draw) {
     command_list->RSSetScissorRects(1, &scissor);
   }
 
-  // Ensure texture data is available if any texture is loaded, upload all in a
-  // batch, then transition all at once.
+  // Ensure texture data is available if any texture is loaded or updated.
   UploadTextures();
 
   // Bind the texture. If this is the first draw in a frame, the descriptor heap
@@ -648,52 +614,125 @@ void D3D12ImmediateDrawer::OnImmediateTextureDestroyed(
   }
 }
 
+void D3D12ImmediateDrawer::FillTextureResourceDesc(D3D12_RESOURCE_DESC& desc,
+                                                   uint32_t width,
+                                                   uint32_t height) {
+  desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+  desc.Alignment = 0;
+  desc.Width = width;
+  desc.Height = height;
+  desc.DepthOrArraySize = 1;
+  desc.MipLevels = 1;
+  desc.Format = D3D12ImmediateTexture::kFormat;
+  desc.SampleDesc.Count = 1;
+  desc.SampleDesc.Quality = 0;
+  desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+  desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> D3D12ImmediateDrawer::CreateUploadBuffer(
+    uint32_t width, uint32_t height, const uint8_t* data, size_t data_pitch,
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint_out) {
+  ID3D12Device* device = provider_.GetDevice();
+
+  D3D12_RESOURCE_DESC region_desc;
+  FillTextureResourceDesc(region_desc, width, height);
+  UINT64 upload_size;
+  device->GetCopyableFootprints(&region_desc, 0, 1, 0, &footprint_out, nullptr,
+                                nullptr, &upload_size);
+
+  D3D12_RESOURCE_DESC upload_buffer_desc;
+  util::FillBufferResourceDesc(upload_buffer_desc, upload_size,
+                               D3D12_RESOURCE_FLAG_NONE);
+  Microsoft::WRL::ComPtr<ID3D12Resource> upload_buffer;
+  if (FAILED(device->CreateCommittedResource(
+          &util::kHeapPropertiesUpload, provider_.GetHeapFlagCreateNotZeroed(),
+          &upload_buffer_desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+          IID_PPV_ARGS(&upload_buffer)))) {
+    XELOGE(
+        "D3D12ImmediateDrawer: Failed to create an upload buffer for a {}x{} "
+        "texture",
+        width, height);
+    return nullptr;
+  }
+
+  D3D12_RANGE upload_buffer_read_range;
+  upload_buffer_read_range.Begin = 0;
+  upload_buffer_read_range.End = 0;
+  void* upload_buffer_mapping;
+  if (FAILED(upload_buffer->Map(0, &upload_buffer_read_range,
+                                &upload_buffer_mapping))) {
+    XELOGE(
+        "D3D12ImmediateDrawer: Failed to map an upload buffer for a {}x{} "
+        "texture",
+        width, height);
+    return nullptr;
+  }
+
+  uint8_t* upload_buffer_row =
+      reinterpret_cast<uint8_t*>(upload_buffer_mapping) + footprint_out.Offset;
+  const size_t row_length = sizeof(uint32_t) * width;
+  if (data_pitch == row_length &&
+      row_length == footprint_out.Footprint.RowPitch) {
+    std::memcpy(upload_buffer_row, data, row_length * height);
+  } else {
+    for (uint32_t i = 0; i < height; ++i) {
+      std::memcpy(upload_buffer_row, data, row_length);
+      data += data_pitch;
+      upload_buffer_row += footprint_out.Footprint.RowPitch;
+    }
+  }
+  upload_buffer->Unmap(0, nullptr);
+
+  return upload_buffer;
+}
+
 void D3D12ImmediateDrawer::UploadTextures() {
   if (texture_uploads_pending_.empty()) {
     // Called often - don't initialize anything.
     return;
   }
 
-  ID3D12Device* device = provider_.GetDevice();
   const D3D12UIDrawContext& d3d12_ui_draw_context =
       *static_cast<const D3D12UIDrawContext*>(ui_draw_context());
   ID3D12GraphicsCommandList* command_list =
       d3d12_ui_draw_context.command_list();
 
-  // Copy all at once, then transition all at once (not interleaving copying and
-  // pipeline barriers).
-  std::vector<D3D12_RESOURCE_BARRIER> barriers;
-  barriers.reserve(texture_uploads_pending_.size());
+  // In order, as a texture may be created and then updated.
   for (const PendingTextureUpload& pending_upload : texture_uploads_pending_) {
     ID3D12Resource* texture = pending_upload.texture.Get();
 
-    D3D12_RESOURCE_DESC texture_desc = texture->GetDesc();
-    D3D12_TEXTURE_COPY_LOCATION location_source, location_dest;
-    location_source.pResource = pending_upload.buffer.Get();
-    location_source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    device->GetCopyableFootprints(&texture_desc, 0, 1, 0,
-                                  &location_source.PlacedFootprint, nullptr,
-                                  nullptr, nullptr);
-    location_dest.pResource = texture;
-    location_dest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    location_dest.SubresourceIndex = 0;
-    command_list->CopyTextureRegion(&location_dest, 0, 0, 0, &location_source,
-                                    nullptr);
-
-    D3D12_RESOURCE_BARRIER& barrier = barriers.emplace_back();
+    D3D12_RESOURCE_BARRIER barrier;
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
     barrier.Transition.pResource = texture;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    if (pending_upload.is_update) {
+      barrier.Transition.StateBefore =
+          D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+      command_list->ResourceBarrier(1, &barrier);
+    }
+
+    D3D12_TEXTURE_COPY_LOCATION location_source, location_dest;
+    location_source.pResource = pending_upload.buffer.Get();
+    location_source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    location_source.PlacedFootprint = pending_upload.footprint;
+    location_dest.pResource = texture;
+    location_dest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    location_dest.SubresourceIndex = 0;
+    command_list->CopyTextureRegion(&location_dest, pending_upload.x,
+                                    pending_upload.y, 0, &location_source,
+                                    nullptr);
+
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    command_list->ResourceBarrier(1, &barrier);
 
     texture_uploads_submitted_.emplace_back(
         texture, pending_upload.buffer.Get(), last_paint_submission_index_);
   }
   texture_uploads_pending_.clear();
-  assert_false(barriers.empty());
-  command_list->ResourceBarrier(UINT(barriers.size()), barriers.data());
 }
 
 }  // namespace d3d12

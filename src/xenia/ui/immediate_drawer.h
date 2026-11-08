@@ -101,6 +101,12 @@ class ImmediateDrawer {
   virtual std::unique_ptr<ImmediateTexture> CreateTexture(
       uint32_t width, uint32_t height, ImmediateTextureFilter filter,
       bool is_repeated, const uint8_t* data) = 0;
+  // Replaces a rectangle of a texture with R8G8B8A8 data whose rows are
+  // data_pitch bytes apart. Returns false if the texture needs to be recreated
+  // instead.
+  virtual bool UpdateTexture(ImmediateTexture* texture, uint32_t x, uint32_t y,
+                             uint32_t width, uint32_t height,
+                             const uint8_t* data, size_t data_pitch) = 0;
 
   // Begins drawing in immediate mode using the given projection matrix. The
   // presenter that is currently attached to the immediate drawer, as the
