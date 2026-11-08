@@ -7,6 +7,10 @@
  ******************************************************************************
  */
 #include "xenia/app/profile_dialogs.h"
+
+#include <algorithm>
+#include <cfloat>
+
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/png_utils.h"
 #include "xenia/base/system.h"
@@ -191,6 +195,23 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
       ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x + 20.f,
              ImGui::GetWindowPos().y);
 
+  // Scroll instead of running off the window, keeping Create Profile visible.
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const float reserved_height = style.ItemSpacing.y * 2.0f +
+                                ImGui::GetFrameHeightWithSpacing() +
+                                style.WindowPadding.y;
+  const float max_list_height =
+      std::max(viewport->WorkPos.y + viewport->WorkSize.y -
+                   ImGui::GetCursorScreenPos().y - reserved_height,
+               ui::default_image_icon_size.y * 1.5f);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
+                                      ImVec2(FLT_MAX, max_list_height));
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, ImGui::GetFontSize() * 0.8f);
+  ImGui::BeginChild("##ProfileList", ImVec2(0.0f, 0.0f),
+                    ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
+  ImGui::PopStyleVar();
+
   for (auto& [xuid, account] : *profiles) {
     ImGui::PushID(fmt::format("{:016X}", xuid).c_str());
 
@@ -314,6 +335,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
             context_menu_fun, [=, this]() { LoadProfileIcon(xuid); },
             &selected_xuid_)) {
       ImGui::PopID();
+      ImGui::EndChild();
       ImGui::End();
       return;
     }
@@ -321,6 +343,8 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
     ImGui::PopID();
     ImGui::Separator();
   }
+
+  ImGui::EndChild();
 
   ImGui::Spacing();
 
