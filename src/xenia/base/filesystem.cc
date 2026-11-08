@@ -57,8 +57,10 @@ std::vector<FileInfo> FilterByName(const std::vector<FileInfo>& files,
 
   std::ranges::copy_if(files, std::back_inserter(filtered_entries),
                        [pattern](const FileInfo& file) {
-                         return std::regex_match(file.name.filename().string(),
-                                                 pattern);
+                         // path::string() converts through the ANSI code page
+                         // on Windows and throws on names it can't represent.
+                         return std::regex_match(
+                             path_to_utf8(file.name.filename()), pattern);
                        });
   return filtered_entries;
 }

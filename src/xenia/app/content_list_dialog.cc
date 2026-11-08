@@ -302,7 +302,7 @@ void ContentListDialog::ExecutePendingDeletion() {
         file_to_delete.parent_path().parent_path() /
         kernel::xam::kGameContentHeaderDirName /
         fmt::format("{:08X}", static_cast<uint32_t>(type)) /
-        (file_to_delete.filename().string() + ".header");
+        (file_to_delete.filename() += ".header");
     std::error_code ec;
     std::filesystem::remove(header_path, ec);  // fine if it doesn't exist
   }

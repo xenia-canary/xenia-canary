@@ -12,6 +12,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/filesystem.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/reset_scope.h"
@@ -170,7 +171,7 @@ void PPCTranslator::DumpHIR(GuestFunction* function, PPCHIRBuilder* builder) {
       folder_path.append(&tmpbuf[0]);
     }
 
-    FILE* f = fopen(folder_path.string().c_str(), "w");
+    FILE* f = xe::filesystem::OpenFile(folder_path, "w");
     if (f) {
       fputs(buffer.buffer(), f);
       fclose(f);
