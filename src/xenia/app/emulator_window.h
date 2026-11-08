@@ -223,20 +223,13 @@ class EmulatorWindow {
    public:
     XMPConfigDialog(ui::ImGuiDrawer* imgui_drawer,
                     EmulatorWindow& emulator_window)
-        : ui::ImGuiDialog(imgui_drawer), emulator_window_(emulator_window) {
-      if (emulator_window_.emulator_->audio_media_player()) {
-        volume_ = emulator_window_.emulator_->audio_media_player()
-                      ->GetVolume()
-                      ->load();
-      }
-    }
+        : ui::ImGuiDialog(imgui_drawer), emulator_window_(emulator_window) {}
 
    protected:
     void OnDraw(ImGuiIO& io) override;
 
    private:
     EmulatorWindow& emulator_window_;
-    float volume_ = 0.0f;
   };
 
   explicit EmulatorWindow(Emulator* emulator,

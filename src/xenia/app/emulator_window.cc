@@ -689,51 +689,68 @@ void EmulatorWindow::XMPConfigDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowSize(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("Audio Player Menu", &dialog_open,
-                    ImGuiWindowFlags_NoCollapse |
-                        ImGuiWindowFlags_AlwaysAutoResize |
-                        ImGuiWindowFlags_HorizontalScrollbar)) {
+  if (!ImGui::Begin(
+          "Audio Player", &dialog_open,
+          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
     Close();
     ImGui::End();
     return;
   }
 
   auto audio_player = emulator_window_.emulator_->audio_media_player();
-  using xmp_state = kernel::xam::apps::XmpApp::State;
-  if (audio_player) {
-    ImGui::Text("Audio player status:");
-    ImGui::SameLine();
-    switch (audio_player->GetState()) {
-      case xmp_state::kIdle:
-        ImGui::Text("Idle");
+  if (!audio_player) {
+    ImGui::TextDisabled("Audio player isn't available.");
+  } else if (ImGui::BeginTable("##AudioPlayer", 2,
+                               ImGuiTableFlags_SizingFixedFit)) {
+    using xmp_state = kernel::xam::apps::XmpApp::State;
+    const xmp_state state = audio_player->GetState();
+    const float control_width = ImGui::GetFontSize() * 14.0f;
+    const float button_width = ImGui::GetFontSize() * 5.0f;
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Status");
+    ImGui::TableNextColumn();
+    const float control_x = ImGui::GetCursorPosX();
+    ImGui::AlignTextToFramePadding();
+    switch (state) {
+      case xmp_state::kPlaying:
+        ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.45f, 1.0f), "Playing");
         break;
       case xmp_state::kPaused:
-        ImGui::Text("Paused");
-        break;
-      case xmp_state::kPlaying:
-        ImGui::Text("Playing");
+        ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.35f, 1.0f), "Paused");
         break;
       default:
+        ImGui::TextDisabled("Idle");
         break;
     }
-
-    if (audio_player->IsPlaying()) {
-      if (ImGui::Button("Pause")) {
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(control_x + control_width - button_width);
+    ImGui::BeginDisabled(state == xmp_state::kIdle);
+    if (ImGui::Button(state == xmp_state::kPaused ? "Resume" : "Pause",
+                      ImVec2(button_width, 0.0f))) {
+      if (state == xmp_state::kPaused) {
+        audio_player->Continue();
+      } else {
         audio_player->Pause();
       }
-    } else if (audio_player->IsPaused()) {
-      if (ImGui::Button("Resume")) {
-        audio_player->Continue();
-      }
+    }
+    ImGui::EndDisabled();
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Volume");
+    ImGui::TableNextColumn();
+    int volume_percent =
+        static_cast<int>(audio_player->GetVolume()->load() * 100.0f + 0.5f);
+    ImGui::SetNextItemWidth(control_width);
+    if (ImGui::SliderInt("##Volume", &volume_percent, 0, 100, "%d%%")) {
+      audio_player->SetVolume(volume_percent / 100.0f);
     }
 
-    volume_ =
-        emulator_window_.emulator_->audio_media_player()->GetVolume()->load();
-
-    if (ImGui::SliderFloat("Audio player volume", &volume_, 0.0f, 1.0f,
-                           "%.2f")) {
-      audio_player->SetVolume(volume_);
-    }
+    ImGui::EndTable();
   }
 
   ImGui::End();
