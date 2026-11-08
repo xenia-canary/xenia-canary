@@ -119,12 +119,7 @@ void ContentListDialog::OnEntryDraw(ImGuiIO& io, const XContentType type,
 
   // Second Column
   ImGui::TableNextColumn();
-  if (entry.is_package) {
-    ImGui::Text("Name: %s (Filename: %s)", xe::to_utf8(entry.name).c_str(),
-                xe::path_to_utf8(entry.path.filename()).c_str());
-  } else {
-    ImGui::Text("Name: %s", xe::to_utf8(entry.name).c_str());
-  }
+  ImGui::Text("Name: %s", xe::to_utf8(entry.name).c_str());
 
   if (!entry.title_name.empty()) {
     ImGui::Text("Title Name: %s (Title ID: %s)",
@@ -137,6 +132,10 @@ void ContentListDialog::OnEntryDraw(ImGuiIO& io, const XContentType type,
   ImGui::Text("Content Installation Type: %s",
               entry.is_package ? "Package" : "Directory");
   ImGui::Text("Installation Size: %s", size_to_string(entry.size).c_str());
+  if (entry.is_package) {
+    ImGui::Text("Filename: %s",
+                xe::path_to_utf8(entry.path.filename()).c_str());
+  }
 
   // Third Column
   ImGui::TableNextColumn();
