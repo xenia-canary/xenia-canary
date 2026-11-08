@@ -40,11 +40,12 @@
 #include "xenia/cpu/ppc/ppc_estimates.h"
 #include "xenia/cpu/processor.h"
 
-DEFINE_bool(use_fast_dot_product, false,
+DEFINE_bool(use_fast_dot_product, true,
             "Compute vmsum3fp128 and vmsum4fp128 as a float64 sum truncated to "
             "single, about three times faster but differing from the console "
             "in about 3% of results.",
             "CPU");
+UPDATE_from_bool(use_fast_dot_product, 2026, 11, 8, 12, false);
 
 DEFINE_bool(no_round_to_single, false,
             "Not for users, breaks games. Skip rounding double values to "
