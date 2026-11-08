@@ -612,16 +612,17 @@ void ImGuiDrawer::UpdateTexture(ImTextureData* texture) {
               uint32_t(texture->Width), uint32_t(texture->Height),
               ImmediateTextureFilter::kLinear, true,
               static_cast<const uint8_t*>(texture->GetPixels()));
-      if (!new_texture) {
+      if (new_texture) {
+        delete immediate_texture;
+        immediate_texture = new_texture.release();
+        texture->BackendUserData = immediate_texture;
+        texture->SetTexID(reinterpret_cast<ImTextureID>(immediate_texture));
+      } else {
+        // Keep the old texture, or skip drawing with it if there's none, until
+        // the atlas changes again instead of retrying every frame.
         XELOGE("Failed to create a {}x{} Dear ImGui texture", texture->Width,
                texture->Height);
-        return;
       }
-
-      delete immediate_texture;
-      immediate_texture = new_texture.release();
-      texture->BackendUserData = immediate_texture;
-      texture->SetTexID(reinterpret_cast<ImTextureID>(immediate_texture));
       texture->SetStatus(ImTextureStatus_OK);
     } break;
     case ImTextureStatus_WantDestroy:
@@ -638,10 +639,11 @@ void ImGuiDrawer::UpdateTexture(ImTextureData* texture) {
 void ImGuiDrawer::DestroyTextures() {
   ImGui::SetCurrentContext(internal_state_);
   for (ImTextureData* texture : ImGui::GetPlatformIO().Textures) {
-    if (!texture->BackendUserData) {
+    if (texture->Status == ImTextureStatus_Destroyed) {
       continue;
     }
 
+    // Also covers textures that failed to be created.
     delete static_cast<ImmediateTexture*>(texture->BackendUserData);
     texture->BackendUserData = nullptr;
     texture->SetTexID(ImTextureID_Invalid);
@@ -827,11 +829,17 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data,
     for (int j = 0; j < cmd_list->CmdBuffer.size(); ++j) {
       const auto& cmd = cmd_list->CmdBuffer[j];
 
+      // A Dear ImGui texture that failed to be created.
+      const ImTextureID texture_id = cmd.TexRef.GetTexID();
+      if (cmd.TexRef._TexData && texture_id == ImTextureID_Invalid) {
+        continue;
+      }
+
       ImmediateDraw draw;
       draw.primitive_type = ImmediatePrimitiveType::kTriangles;
       draw.count = cmd.ElemCount;
       draw.index_offset = cmd.IdxOffset;
-      draw.texture = reinterpret_cast<ImmediateTexture*>(cmd.GetTexID());
+      draw.texture = reinterpret_cast<ImmediateTexture*>(texture_id);
       draw.scissor = true;
       draw.scissor_left = cmd.ClipRect.x;
       draw.scissor_top = cmd.ClipRect.y;
@@ -856,11 +864,10 @@ void ImGuiDrawer::OnKeyDown(KeyEvent& e) { OnKey(e, true); }
 void ImGuiDrawer::OnKeyUp(KeyEvent& e) { OnKey(e, false); }
 
 void ImGuiDrawer::OnKeyChar(KeyEvent& e) {
-  auto& io = GetIO();
-  // TODO(Triang3l): Accept the Unicode character.
-  unsigned int character = static_cast<unsigned int>(e.unicode());
-  if (character > 0 && character < 0x10000) {
-    io.AddInputCharacter(character);
+  // UTF-16 code unit, ImGui joins surrogate pairs.
+  const uint16_t character = e.unicode();
+  if (character) {
+    GetIO().AddInputCharacterUTF16(character);
     e.set_handled(true);
   }
 }

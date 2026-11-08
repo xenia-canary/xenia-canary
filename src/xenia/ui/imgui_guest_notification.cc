@@ -121,8 +121,10 @@ void AchievementNotificationWindow::OnDraw(ImGuiIO& io) {
   const float window_scale =
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
-  const float font_size =
-      default_font_size * default_notification_text_scale * window_scale;
+  // Whole pixel sizes, so PixelSnapH works and resizing doesn't bake a new
+  // font size every frame.
+  const float font_size = std::round(
+      default_font_size * default_notification_text_scale * window_scale);
 
   ImGui::PushFont(nullptr, font_size);
   const ImVec2 text_size =
@@ -201,8 +203,10 @@ void XNotifyWindow::OnDraw(ImGuiIO& io) {
   const float window_scale =
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
-  const float font_size =
-      default_font_size * default_notification_text_scale * window_scale;
+  // Whole pixel sizes, so PixelSnapH works and resizing doesn't bake a new
+  // font size every frame.
+  const float font_size = std::round(
+      default_font_size * default_notification_text_scale * window_scale);
 
   ImGui::PushFont(nullptr, font_size);
   const ImVec2 text_size =

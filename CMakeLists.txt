@@ -106,6 +106,7 @@ add_compile_definitions(
   VULKAN_HPP_NO_TO_STRING
   IMGUI_DISABLE_DEFAULT_FONT_BITMAP  # Keep the vector font for the fallback
   IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+  IMGUI_USE_WCHAR32  # Characters above U+FFFF
   USE_CPP17  # Tabulate
 )
 

@@ -56,9 +56,11 @@ void HostNotificationWindow::OnDraw(ImGuiIO& io) {
   const float window_scale =
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
-  const float font_size = GetDrawer()->GetFontSize();
+  // Whole pixel sizes, so PixelSnapH works and resizing doesn't bake a new
+  // font size every frame.
+  const float font_size = std::round(GetDrawer()->GetFontSize() * window_scale);
 
-  ImGui::PushFont(nullptr, font_size * window_scale);
+  ImGui::PushFont(nullptr, font_size);
   const ImVec2 text_size =
       ImGui::CalcTextSize(longest_notification_text_line.data(),
                           longest_notification_text_line.data() +
@@ -80,7 +82,7 @@ void HostNotificationWindow::OnDraw(ImGuiIO& io) {
 
   ImGui::Begin("Notification Window", NULL, NOTIFY_TOAST_FLAGS);
   {
-    ImGui::PushFont(nullptr, font_size * window_scale);
+    ImGui::PushFont(nullptr, font_size);
 
     ImGui::Text("%s", GetTitle().data());
     ImGui::Separator();
