@@ -408,8 +408,19 @@ X_STATUS VirtualFileSystem::ExtractDeviceFile(Entry* entry,
 
     while (remaining_size > 0) {
       size_t bytes_read = 0;
-      in_file->ReadSync(std::span<uint8_t>(buffer, write_buffer_size), offset,
-                        &bytes_read);
+      result = in_file->ReadSync(
+          std::span<uint8_t>(buffer,
+                             std::min(write_buffer_size, remaining_size)),
+          offset, &bytes_read);
+
+      if (result != X_STATUS_SUCCESS || !bytes_read) {
+        XELOGE("Failed to read {} at offset {}", entry->path(), offset);
+        if (result == X_STATUS_SUCCESS) {
+          result = X_STATUS_UNSUCCESSFUL;
+        }
+        break;
+      }
+
       fwrite(buffer, bytes_read, 1, file);
       offset += bytes_read;
       remaining_size -= bytes_read;
@@ -423,7 +434,7 @@ X_STATUS VirtualFileSystem::ExtractDeviceFile(Entry* entry,
   if (buffer) {
     delete[] buffer;
   }
-  return 0;
+  return result;
 }
 
 X_STATUS VirtualFileSystem::ExtractDeviceFiles(Device* device,
@@ -441,7 +452,11 @@ X_STATUS VirtualFileSystem::ExtractDeviceFiles(Device* device,
       queue.push(entry.get());
     }
 
-    ExtractDeviceFile(entry, base_path, progress);
+    const X_STATUS result = ExtractDeviceFile(entry, base_path, progress);
+
+    if (result != X_STATUS_SUCCESS) {
+      return result;
+    }
   }
   return X_STATUS_SUCCESS;
 }
