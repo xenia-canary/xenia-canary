@@ -73,7 +73,8 @@ struct XECRYPT_SHA256_STATE {
 
 // TODO: Size of this struct hasn't been confirmed yet.
 struct XECRYPT_SHA512_STATE {
-  xe::be<uint64_t> count;     // 0x0
+  xe::be<uint32_t> count;     // 0x0
+  uint32_t pad;               // 0x4
   xe::be<uint64_t> state[8];  // 0x8
   uint8_t buffer[128];        // 0x48
 };
@@ -616,36 +617,69 @@ void XeCryptSha256Init_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state) {
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256Init, kNone, kImplemented);
 
+// The SHA-256 and SHA-512 Finals pad the context in place with a 32-bit bit
+// count and leave the count alone, so the state words end up as the hash. The
+// last block compressed stays in the buffer, not the message tail, which only
+// shows when a title finalizes the same context twice after the padding needed
+// a second block.
+template <size_t kBlockSize, typename Update>
+void PadShaInPlace(uint32_t count, Update&& update) {
+  constexpr size_t kLengthSize = kBlockSize / 8;
+  constexpr size_t kLengthStart = kBlockSize - kLengthSize;
+  const size_t used = count % kBlockSize;
+  const size_t length_offset =
+      (used < kLengthStart ? kLengthStart : kLengthStart + kBlockSize) - used;
+
+  uint8_t padding[kBlockSize + kLengthSize] = {0x80};
+  xe::store_and_swap<uint32_t>(
+      padding + length_offset + kLengthSize - sizeof(uint32_t), count << 3);
+
+  update(padding, length_offset);
+  // Fed on its own, the length always completes the block in the buffer.
+  // Together with the padding, a block that starts empty would be compressed
+  // straight from the padding and never reach the buffer.
+  update(padding + length_offset, kLengthSize);
+}
+
+void LoadSha256(sha256::SHA256* sha, const XECRYPT_SHA256_STATE* state) {
+  std::ranges::copy(state->state, sha->getHashValues());
+  std::ranges::copy(state->buffer, sha->getBuffer());
+  sha->setTotalSize(state->count);
+}
+
+void StoreSha256(sha256::SHA256* sha, XECRYPT_SHA256_STATE* state) {
+  std::copy_n(sha->getHashValues(), xe::countof(state->state), state->state);
+  std::copy_n(sha->getBuffer(), xe::countof(state->buffer), state->buffer);
+  state->count = static_cast<uint32_t>(sha->getTotalSize());
+}
+
 void XeCryptSha256Update_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state,
                                lpvoid_t input, dword_t input_size) {
   sha256::SHA256 sha;
-  std::ranges::copy(sha_state->state, sha.getHashValues());
-  std::ranges::copy(sha_state->buffer, sha.getBuffer());
-  sha.setTotalSize(sha_state->count);
+  LoadSha256(&sha, sha_state);
 
   sha.add(input, input_size);
 
-  std::copy_n(sha.getHashValues(), xe::countof(sha_state->state),
-              sha_state->state);
-  std::copy_n(sha.getBuffer(), xe::countof(sha_state->buffer),
-              sha_state->buffer);
-  sha_state->count = static_cast<uint32_t>(sha.getTotalSize());
+  StoreSha256(&sha, sha_state);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256Update, kNone, kImplemented);
 
 void XeCryptSha256Final_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state,
                               pointer_t<uint8_t> out, dword_t out_size) {
+  const uint32_t count = sha_state->count;
   sha256::SHA256 sha;
-  std::ranges::copy(sha_state->state, sha.getHashValues());
-  std::ranges::copy(sha_state->buffer, sha.getBuffer());
-  sha.setTotalSize(sha_state->count);
+  LoadSha256(&sha, sha_state);
 
-  uint8_t hash[32];
-  sha.getHash(hash);
+  PadShaInPlace<sha256::SHA256::BlockSize>(
+      count, [&](const uint8_t* data, size_t size) { sha.add(data, size); });
 
-  std::copy_n(hash, std::min<size_t>(xe::countof(hash), out_size),
+  StoreSha256(&sha, sha_state);
+  sha_state->count = count;
+
+  // The state words are big-endian, so their bytes are the digest.
+  std::copy_n(reinterpret_cast<const uint8_t*>(sha_state->state),
+              std::min<size_t>(sizeof(sha_state->state), out_size),
               static_cast<uint8_t*>(out));
-  std::ranges::copy(hash, sha_state->buffer);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256Final, kNone, kImplemented);
 
@@ -686,44 +720,54 @@ void XeCryptSha512Init_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state) {
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Init, kNone, kImplemented);
 
-void XeCryptSha512Update_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
-                               lpvoid_t input, dword_t input_size) {
+// AVSHA512 is opaque in the header, so the context goes through SHA512_STATE,
+// which mirrors its layout.
+AVSHA512* LoadSha512(const XECRYPT_SHA512_STATE* state) {
   AVSHA512* sha = av_sha512_alloc();
   av_sha512_init(sha, 512);
 
-  // Trick to make similar implementation as SHA256
   SHA512_STATE* sha2 = reinterpret_cast<SHA512_STATE*>(sha);
-  std::ranges::copy(sha_state->state, sha2->state);
-  std::ranges::copy(sha_state->buffer, sha2->buffer);
-  sha2->count = sha_state->count;
+  std::ranges::copy(state->state, sha2->state);
+  std::ranges::copy(state->buffer, sha2->buffer);
+  sha2->count = state->count;
+  return sha;
+}
 
-  // Add new entry from input
+// Copies the context back to the guest and frees it.
+void StoreSha512(AVSHA512* sha, XECRYPT_SHA512_STATE* state) {
+  const SHA512_STATE* sha2 = reinterpret_cast<const SHA512_STATE*>(sha);
+  std::copy_n(sha2->state, xe::countof(state->state), state->state);
+  std::copy_n(sha2->buffer, xe::countof(state->buffer), state->buffer);
+  state->count = static_cast<uint32_t>(sha2->count);
+  av_free(sha);
+}
+
+void XeCryptSha512Update_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
+                               lpvoid_t input, dword_t input_size) {
+  AVSHA512* sha = LoadSha512(sha_state);
+
   av_sha512_update(sha, input, input_size);
 
-  // Copy back data to guest sha_state
-  std::copy_n(sha2->state, xe::countof(sha_state->state), sha_state->state);
-  std::copy_n(sha2->buffer, xe::countof(sha_state->buffer), sha_state->buffer);
-  sha_state->count = sha2->count;
+  StoreSha512(sha, sha_state);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Update, kNone, kImplemented);
 
 void XeCryptSha512Final_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
                               pointer_t<uint8_t> out, dword_t out_size) {
-  AVSHA512* sha = av_sha512_alloc();
-  av_sha512_init(sha, 512);
+  const uint32_t count = sha_state->count;
+  AVSHA512* sha = LoadSha512(sha_state);
 
-  // Trick to make similar implementation as SHA256
-  SHA512_STATE* sha2 = reinterpret_cast<SHA512_STATE*>(sha);
-  std::ranges::copy(sha_state->state, sha2->state);
-  std::ranges::copy(sha_state->buffer, sha2->buffer);
-  sha2->count = sha_state->count;
+  PadShaInPlace<128>(count, [&](const uint8_t* data, size_t size) {
+    av_sha512_update(sha, data, size);
+  });
 
-  uint8_t hash[64];
-  av_sha512_final(sha, hash);
+  StoreSha512(sha, sha_state);
+  sha_state->count = count;
 
-  std::copy_n(hash, std::min<size_t>(xe::countof(hash), out_size),
+  // The state words are big-endian, so their bytes are the digest.
+  std::copy_n(reinterpret_cast<const uint8_t*>(sha_state->state),
+              std::min<size_t>(sizeof(sha_state->state), out_size),
               static_cast<uint8_t*>(out));
-  std::ranges::copy(hash, sha_state->buffer);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Final, kNone, kImplemented);
 
