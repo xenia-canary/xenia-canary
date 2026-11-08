@@ -390,25 +390,33 @@ void ConsoleSettingsDialog::OnDraw(ImGuiIO& io) {
   ImGui::Dummy(ImVec2(2.f, 2.f));
   // Bottom
   ImGui::Separator();
+  ImGui::Spacing();
 
   ImGui::BeginDisabled(emulator_window_.emulator()->is_title_open());
-  if (ImGui::Button("Save")) {
+  const float footer_y = ImGui::GetCursorPosY();
+  if (ui::DialogButton("Save", true)) {
     SaveConfig();
+    save_confirmation_text_ = "Settings Saved!";
     save_confirmation_disappearance_ = ImGui::GetTime() + 3.0;
   }
 
   if (save_confirmation_disappearance_ > ImGui::GetTime()) {
+    // Centre vertically on the button.
     ImGui::SameLine();
-    ImGui::Text("Settings Saved!");
+    ImGui::SetCursorPosY(
+        footer_y +
+        (ui::DialogButtonSize().y - ImGui::GetTextLineHeight()) * 0.5f);
+    ImGui::TextUnformatted(save_confirmation_text_);
   }
 
   ImGui::SameLine();
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
-                       ImGui::GetContentRegionAvail().x - 55.f);
-
-  if (ImGui::Button("Reset", ImVec2(55.f, 0.0f))) {
+  ImGui::SetCursorPosY(footer_y);
+  ui::RightAlignDialogButtons(1);
+  if (ui::DialogButton("Reset", false)) {
     xconfig_->SetDefaults();
     xconfig_data_ = *xconfig_->GetXConfig();
+    SaveConfig();
+    save_confirmation_text_ = "Settings Reset and Saved!";
     save_confirmation_disappearance_ = ImGui::GetTime() + 3.0;
   }
   ImGui::EndDisabled();

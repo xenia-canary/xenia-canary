@@ -1206,5 +1206,35 @@ void TitleIcon(ImmediateTexture* icon, ImVec2 size) {
   draw_list->AddCircleFilled(center, radius * 0.22f, disc_color);
 }
 
+ImVec2 DialogButtonSize() {
+  return ImVec2(ImGui::GetFontSize() * 6.0f, ImGui::GetFrameHeight() * 1.3f);
+}
+
+void RightAlignDialogButtons(int count) {
+  const float width = DialogButtonSize().x * count +
+                      ImGui::GetStyle().ItemSpacing.x * (count - 1);
+  const float x = ImGui::GetCursorPosX();
+  ImGui::SetCursorPosX(
+      std::max(x, x + ImGui::GetContentRegionAvail().x - width));
+}
+
+bool DialogButton(const char* label, bool primary) {
+  const ImGuiStyle& style = ImGui::GetStyle();
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+  if (primary) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.56f, 0.11f, 1.0f));
+  } else {
+    ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_FrameBg]);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          style.Colors[ImGuiCol_FrameBgHovered]);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                          style.Colors[ImGuiCol_FrameBgActive]);
+  }
+  const bool pressed = ImGui::Button(label, DialogButtonSize());
+  ImGui::PopStyleColor(primary ? 1 : 3);
+  ImGui::PopStyleVar();
+  return pressed;
+}
+
 }  // namespace ui
 }  // namespace xe

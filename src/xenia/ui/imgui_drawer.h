@@ -43,6 +43,12 @@ constexpr ImVec2 default_image_icon_size = ImVec2(64.f, 64.f);
 // Draws a title's icon, or a placeholder disc when it has none.
 void TitleIcon(ImmediateTexture* icon, ImVec2 size = default_image_icon_size);
 
+ImVec2 DialogButtonSize();
+// Right-aligns the next `count` dialog buttons on this line.
+void RightAlignDialogButtons(int count);
+// Green when primary, grey otherwise.
+bool DialogButton(const char* label, bool primary);
+
 class ImGuiDrawer : public WindowInputListener, public UIDrawer {
  public:
   ImGuiDrawer(Window* window, size_t z_order);

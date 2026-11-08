@@ -628,13 +628,15 @@ void GamercardUI::OnDraw(ImGuiIO& io) {
     ImGui::EndTable();
   }
 
-  ImGui::NewLine();
+  ImGui::Spacing();
+  ImGui::Separator();
+  ImGui::Spacing();
 
   const bool is_valid_gamertag =
       ProfileManager::IsGamertagValid(std::string(gamercardValues_.gamertag));
 
   ImGui::BeginDisabled(!is_valid_gamertag);
-  if (ImGui::Button("Save")) {
+  if (xe::ui::DialogButton("Save", true)) {
     SaveProfileIcon();
     SaveSettings();
     SaveAccountData();
@@ -648,8 +650,8 @@ void GamercardUI::OnDraw(ImGuiIO& io) {
   }
 
   ImGui::SameLine();
-
-  if (ImGui::Button("Cancel")) {
+  xe::ui::RightAlignDialogButtons(1);
+  if (xe::ui::DialogButton("Cancel", false)) {
     dialog_open = false;
   }
 
