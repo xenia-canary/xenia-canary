@@ -110,12 +110,7 @@ void ContentListDialog::OnEntryDraw(ImGuiIO& io, const XContentType type,
   const auto start_position = ImGui::GetCursorPos();
   // First Column
   ImGui::TableSetColumnIndex(0);
-  if (entry.icon) {
-    ImGui::Image(reinterpret_cast<ImTextureID>(entry.icon.get()),
-                 ui::default_image_icon_size);
-  } else {
-    ImGui::Dummy(ui::default_image_icon_size);
-  }
+  ui::TitleIcon(entry.icon.get());
 
   // Second Column
   ImGui::TableNextColumn();

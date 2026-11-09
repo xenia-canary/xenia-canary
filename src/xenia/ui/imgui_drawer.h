@@ -40,6 +40,9 @@ using IconsData = std::map<uint32_t, std::span<const uint8_t>>;
 
 constexpr ImVec2 default_image_icon_size = ImVec2(64.f, 64.f);
 
+// Draws a title's icon, or a placeholder disc when it has none.
+void TitleIcon(ImmediateTexture* icon, ImVec2 size = default_image_icon_size);
+
 class ImGuiDrawer : public WindowInputListener, public UIDrawer {
  public:
   ImGuiDrawer(Window* window, size_t z_order);

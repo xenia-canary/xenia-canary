@@ -1181,5 +1181,30 @@ void ImGuiDrawer::UpdateGamepads() {
 #undef MAP_ANALOG
 }
 
+void TitleIcon(ImmediateTexture* icon, ImVec2 size) {
+  if (icon) {
+    ImGui::Image(reinterpret_cast<ImTextureID>(icon), size);
+    return;
+  }
+
+  // Placeholder: a disc on a rounded tile, in the theme's muted colours.
+  const ImVec2 min = ImGui::GetCursorScreenPos();
+  const ImVec2 max(min.x + size.x, min.y + size.y);
+  ImGui::Dummy(size);
+
+  ImDrawList* draw_list = ImGui::GetWindowDrawList();
+  const float rounding = size.x * 0.12f;
+  draw_list->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_FrameBg),
+                           rounding);
+  draw_list->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border), rounding);
+
+  const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+  const float radius = std::min(size.x, size.y) * 0.32f;
+  const ImU32 disc_color = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+  draw_list->AddCircle(center, radius, disc_color, 0,
+                       std::max(1.0f, radius * 0.12f));
+  draw_list->AddCircleFilled(center, radius * 0.22f, disc_color);
+}
+
 }  // namespace ui
 }  // namespace xe

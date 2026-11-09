@@ -613,12 +613,7 @@ void EmulatorWindow::ContentInstallDialog::OnDraw(ImGuiIO& io) {
     ImGui::BeginTable(fmt::format("table_{}", entry.name_).c_str(), 2);
     ImGui::TableNextRow(0);
     ImGui::TableSetColumnIndex(0);
-    if (entry.icon_) {
-      ImGui::Image(reinterpret_cast<ImTextureID>(entry.icon_.get()),
-                   ui::default_image_icon_size);
-    } else {
-      ImGui::Dummy(ui::default_image_icon_size);
-    }
+    ui::TitleIcon(entry.icon_.get());
     ImGui::TableNextColumn();
 
     ImGui::Text("Name: %s", entry.name_.c_str());
