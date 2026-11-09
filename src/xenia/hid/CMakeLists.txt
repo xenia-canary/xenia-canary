@@ -9,3 +9,8 @@ if(_hid_demo AND _hid_srcs)
 endif()
 target_link_libraries(xenia-hid PUBLIC xenia-base xenia-hid-portal)
 xe_target_defaults(xenia-hid)
+
+if(XENIA_BUILD_TESTS)
+  set(CMAKE_FOLDER "tests")
+  add_subdirectory(testing)
+endif()

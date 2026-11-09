@@ -87,6 +87,8 @@ class SDLInputDriver final : public InputDriver {
   bool TestSDLVersion() const;
   void UpdateXCapabilities(ControllerState& state, size_t user_index);
   void QueueControllerUpdate();
+  // What the UI thread runs for each pump QueueControllerUpdate queues.
+  void PumpEvents();
   // The kind controller_subtypes asks for in this slot, if it asks for one.
   static std::optional<uint8_t> ForcedSubtypeForSlot(size_t user_index);
   static bool IsGuitarSubtype(uint8_t sub_type);
@@ -99,6 +101,12 @@ class SDLInputDriver final : public InputDriver {
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
+  // Guards the slots' state (see the lock notes in sdl_input_driver.cc).
+  // A leaf lock, always taken after SDL's joystick lock, never before.
+  std::mutex state_mutex_;
+
+  // Drives the driver's own event handling without a window (tests only).
+  friend class SDLInputDriverTestAccess;
 };
 
 }  // namespace sdl
