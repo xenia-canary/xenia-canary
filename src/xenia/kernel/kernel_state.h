@@ -42,6 +42,9 @@ class Emulator;
 namespace cpu {
 class Processor;
 }  // namespace cpu
+namespace hid {
+class InputSystem;
+}  // namespace hid
 }  // namespace xe
 
 namespace xe {
@@ -178,6 +181,9 @@ class KernelState {
   Memory* memory() const { return memory_; }
   cpu::Processor* processor() const { return processor_; }
   vfs::VirtualFileSystem* file_system() const { return file_system_; }
+  // The emulator's input system, or the one a test passed to the test-only
+  // constructor (tests have no Emulator).
+  hid::InputSystem* input_system() const;
 
   xex2_opt_execution_info* GetExecutionInfo() const;
   uint32_t title_id() const;
@@ -337,8 +343,10 @@ class KernelState {
 
  private:
   // Object Manager tests use the real kernel without Emulator UI or storage.
+  // XAM input tests pass their own input system.
   KernelState(Memory* memory, cpu::Processor* processor,
-              vfs::VirtualFileSystem* file_system);
+              vfs::VirtualFileSystem* file_system,
+              hid::InputSystem* input_system = nullptr);
   friend class test::KernelStateTest;
 
   void LoadKernelModule(object_ref<KernelModule> kernel_module);
@@ -364,6 +372,8 @@ class KernelState {
   Memory* memory_;
   cpu::Processor* processor_;
   vfs::VirtualFileSystem* file_system_;
+  // Set only by the test-only constructor.
+  hid::InputSystem* test_input_system_ = nullptr;
   std::unique_ptr<xam::XamState> xam_state_;
   std::unique_ptr<SystemManagementController> smc_;
   std::unique_ptr<XmpVolumePatch> xmp_volume_patch_;

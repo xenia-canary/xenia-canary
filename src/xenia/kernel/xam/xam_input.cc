@@ -107,6 +107,13 @@ dword_result_t XamInputGetCapabilities_entry(
 }
 DECLARE_XAM_EXPORT1(XamInputGetCapabilities, kInput, kSketchy);
 
+// Xenia's own UI is up: titles see idle controllers. Kernel tests have no
+// XamState.
+static bool InputHiddenByUI() {
+  auto xam_state = kernel_state()->xam_state();
+  return xam_state && xam_state->IsUIActive();
+}
+
 // https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.reference.xinputgetstate(v=vs.85).aspx
 dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
                                       pointer_t<X_INPUT_STATE> input_state) {
@@ -117,10 +124,10 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
-  if (kernel_state()->xam_state()->IsUIActive()) {
+  if (InputHiddenByUI()) {
     // 58410A24
     X_INPUT_STATE discarded_state = {};
-    auto input_system = kernel_state()->emulator()->input_system();
+    auto input_system = kernel_state()->input_system();
     auto lock = input_system->lock();
     return input_system->GetState(
         user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
@@ -138,7 +145,7 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
   }
 
   X_RESULT result;
-  auto input_system = kernel_state()->emulator()->input_system();
+  auto input_system = kernel_state()->input_system();
   {
     auto lock = input_system->lock();
     result = input_system->GetState(

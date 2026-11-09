@@ -81,11 +81,13 @@ KernelState::KernelState(Emulator* emulator)
 }
 
 KernelState::KernelState(Memory* memory, cpu::Processor* processor,
-                         vfs::VirtualFileSystem* file_system)
+                         vfs::VirtualFileSystem* file_system,
+                         hid::InputSystem* input_system)
     : emulator_(nullptr),
       memory_(memory),
       processor_(processor),
       file_system_(file_system),
+      test_input_system_(input_system),
       dispatch_thread_running_(false),
       dpc_list_(memory),
       kernel_trampoline_group_(processor->backend()) {
@@ -146,6 +148,10 @@ uint32_t KernelState::title_id() const {
 }
 
 bool KernelState::is_title_open() const { return emulator_->is_title_open(); }
+
+hid::InputSystem* KernelState::input_system() const {
+  return emulator_ ? emulator_->input_system() : test_input_system_;
+}
 
 const std::unique_ptr<xam::SpaInfo> KernelState::title_xdbf() const {
   return module_xdbf(executable_module_);
