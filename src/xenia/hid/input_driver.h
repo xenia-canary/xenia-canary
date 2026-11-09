@@ -43,6 +43,16 @@ class InputDriver {
                             X_INPUT_VIBRATION* vibration) = 0;
   virtual X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                                 X_INPUT_KEYSTROKE* out_keystroke) = 0;
+  // Whether the device now in the slot is a keyboard instrument (subtype 15),
+  // whose axes are bitfields and get no deadzone. InputSystem asks after each
+  // successful GetState while a deadzone is set, so a driver whose
+  // GetCapabilities is slow answers from its own cached state instead.
+  virtual bool IsKeyboardInstrument(uint32_t user_index) {
+    X_INPUT_CAPABILITIES capabilities = {};
+    return GetCapabilities(user_index, 0, &capabilities) == X_ERROR_SUCCESS &&
+           capabilities.type == XINPUT_DEVTYPE_GAMEPAD &&
+           capabilities.sub_type == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT;
+  }
 
   virtual InputType GetInputType() const = 0;
 

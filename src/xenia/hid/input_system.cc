@@ -125,7 +125,12 @@ X_RESULT InputSystem::GetState(uint32_t user_index, uint32_t flags,
     X_RESULT result = driver->GetState(user_index, out_state);
     if (result == X_ERROR_SUCCESS) {
       UpdateUsedSlot(driver, user_index, true);
-      AdjustDeadzoneLevels(user_index, &out_state->gamepad);
+      // A keyboard instrument's sticks are bitfields (keys, velocities): a
+      // deadzone would drop keys. The driver answers for the device and
+      // configuration in the slot now, so ask on every poll.
+      if (DeadzoneConfigured() && !driver->IsKeyboardInstrument(user_index)) {
+        AdjustDeadzoneLevels(user_index, &out_state->gamepad);
+      }
 
       if (out_state->gamepad.buttons != 0) {
         last_used_slot = user_index;
@@ -189,6 +194,11 @@ void InputSystem::ToggleVibration() {
   for (uint8_t user_index = 0; user_index < XUserMaxUserCount; user_index++) {
     SetState(user_index, &vibration);
   }
+}
+
+bool InputSystem::DeadzoneConfigured() {
+  return cvars::left_stick_deadzone_percentage > 0.0 ||
+         cvars::right_stick_deadzone_percentage > 0.0;
 }
 
 void InputSystem::AdjustDeadzoneLevels(const uint8_t slot,

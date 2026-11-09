@@ -68,6 +68,7 @@ class InputSystem {
       "New controller connected to slot {}."};
 
   void UpdateUsedSlot(InputDriver* driver, uint8_t slot, bool connected);
+  static bool DeadzoneConfigured();
   void AdjustDeadzoneLevels(const uint8_t slot, X_INPUT_GAMEPAD* gamepad);
   X_INPUT_VIBRATION ModifyVibrationLevel(X_INPUT_VIBRATION* vibration);
 

@@ -28,6 +28,7 @@
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/hid/sdl/sdl_input_driver.h"
+#include "xenia/ui/virtual_key.h"
 
 #include "third_party/catch/include/catch.hpp"
 
@@ -36,6 +37,10 @@ DECLARE_string(guitar_whammy_on_stick);
 
 namespace xe {
 namespace hid {
+
+// Defined inside xe::hid (input_system.cc), so declared there too.
+DECLARE_double(left_stick_deadzone_percentage);
+
 namespace sdl {
 
 // Stands in for SDLInputDriver::Setup, which needs Xenia's UI thread: the
@@ -441,6 +446,328 @@ void PollingSurvivesConnectCycles(const char* controller_subtypes) {
 
 TEST_CASE("DriverPollingSurvivesConnectCycles", "[hid][sdl]") {
   PollingSurvivesConnectCycles("");
+}
+
+// SDL takes the device's values without posting axis events. That is what
+// happens to an axis that has not moved since the device opened, such as an
+// idle keyboard instrument's RY. (A change SDL's jitter filter drops is
+// different: SDL does not take its value either. Virtual devices are exempt
+// from that filter, so these tests cannot show it.)
+struct AxisEventsOff {
+  AxisEventsOff() { SDL_EventState(SDL_JOYAXISMOTION, SDL_IGNORE); }
+  ~AxisEventsOff() { SDL_EventState(SDL_JOYAXISMOTION, SDL_ENABLE); }
+};
+
+// The values SDL reads for an idle keyboard instrument.
+void SetKeyboardIdle(SDL_Joystick* joystick) {
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTY, 0);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTX, 0);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTY, -32513);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_TRIGGERLEFT,
+                         kTriggerRest);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
+                         kTriggerRest);
+}
+
+TEST_CASE("DriverKeyboardStartsIdleWhereSdlHasNoValue", "[hid][sdl]") {
+  // A device without a right stick Y: SDL has no value for RY, and GetAxis
+  // reads 0, which taken at face value is overdrive + pedal (~0 = 0xFFFF).
+  // (A bound axis before SDL's first report is the other "no value" case.
+  // Virtual devices cannot produce it: SDL_JoystickOpen reads the device
+  // once, and the virtual driver always reports every axis, so that branch
+  // is covered by KeyboardAxesNotSeededFromSdlPlaceholder only.)
+  DriverFixture fixture("0:keyboard");
+  constexpr uint32_t kNoRightY = ((1u << SDL_CONTROLLER_AXIS_MAX) - 1) &
+                                 ~(1u << SDL_CONTROLLER_AXIS_RIGHTY);
+  SDL_Joystick* joystick =
+      fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER, kNoRightY);
+  SDL_GameController* controller =
+      SDL_GameControllerFromInstanceID(SDL_JoystickInstanceID(joystick));
+  REQUIRE(controller != nullptr);
+  CHECK(SDL_GameControllerGetBindForAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY)
+            .bindType == SDL_CONTROLLER_BINDTYPE_NONE);
+  CHECK(SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY) == 0);
+
+  X_INPUT_CAPABILITIES caps = {};
+  REQUIRE(fixture.driver().GetCapabilities(0, 0, &caps) == X_ERROR_SUCCESS);
+  CHECK(uint32_t(caps.type) == XINPUT_DEVTYPE_GAMEPAD);
+  CHECK(uint32_t(caps.sub_type) == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT);
+
+  {
+    AxisEventsOff no_events;
+    // Five joystick axes: the triggers are a3 and a4 here.
+    REQUIRE(SDL_JoystickSetVirtualAxis(joystick, 3, kTriggerRest) == 0);
+    REQUIRE(SDL_JoystickSetVirtualAxis(joystick, 4, kTriggerRest) == 0);
+    SDL_JoystickUpdate();
+  }
+  const X_INPUT_STATE state = fixture.State();
+  CHECK(U16(state.gamepad.thumb_ry) == 0x7F00);  // idle, not 0xFFFF
+  CHECK(uint32_t(state.gamepad.left_trigger) == 0);
+  CHECK(uint32_t(state.gamepad.right_trigger) == 0);
+}
+
+TEST_CASE("DriverKeyboardFollowsSdlWithoutEvents", "[hid][sdl]") {
+  DriverFixture fixture("0:keyboard");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  // At add SDL already has the device's values (all 0) and has posted no
+  // event; the keyboard shows SDL's values (RY 0 -> ~0).
+  const X_INPUT_STATE at_add = fixture.State();
+  CHECK(U16(at_add.gamepad.thumb_ry) == 0xFFFF);
+  const uint32_t first_packet = at_add.packet_number;
+  // Nothing changed, so the packet number stays.
+  CHECK(uint32_t(fixture.State().packet_number) == first_packet);
+
+  {
+    AxisEventsOff no_events;
+    SetKeyboardIdle(joystick);
+    // Overdrive held (RY 0x807F) and key 24 (LX 0x0A01): SDL has the values
+    // but posts no event for them.
+    DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTY, -32641);
+    DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+    SDL_JoystickUpdate();
+  }
+  Sint16 unused = 0;
+  REQUIRE(SDL_JoystickGetAxisInitialState(joystick, SDL_CONTROLLER_AXIS_RIGHTY,
+                                          &unused) == SDL_TRUE);
+
+  const X_INPUT_STATE state = fixture.State();
+  CHECK(U16(state.gamepad.thumb_ry) == 0x7F80);
+  CHECK(U16(state.gamepad.thumb_lx) == 0x0A01);
+  CHECK(uint32_t(state.gamepad.left_trigger) == 0);
+  // A title may only reread a pad whose packet number moved.
+  CHECK(uint32_t(state.packet_number) != first_packet);
+  CHECK(uint32_t(fixture.State().packet_number) ==
+        uint32_t(state.packet_number));
+}
+
+TEST_CASE("DriverKeyboardKeepsAnEventValue", "[hid][sdl]") {
+  DriverFixture fixture("0:keyboard");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  {
+    AxisEventsOff no_events;
+    SetKeyboardIdle(joystick);
+    SDL_JoystickUpdate();
+  }
+  CHECK(U16(fixture.State().gamepad.thumb_ry) == 0x7F00);
+
+  // Overdrive pressed, with events: the driver takes the event.
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTY, -32641);
+  SDL_JoystickUpdate();
+  const X_INPUT_STATE pressed = fixture.State();
+  CHECK(U16(pressed.gamepad.thumb_ry) == 0x7F80);
+
+  // A key on the left trigger (key 1 = byte 0x80, raw 0x80 * 257 - 32768).
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_TRIGGERLEFT, 128);
+  SDL_JoystickUpdate();
+  CHECK(uint32_t(fixture.State().gamepad.left_trigger) == 0x80);
+
+  // SDL's value moves without an event: an axis that has had an event keeps
+  // the event's value; it is not re-seeded from SDL.
+  {
+    AxisEventsOff no_events;
+    DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTY, -32513);
+    SDL_JoystickUpdate();
+  }
+  CHECK(U16(fixture.State().gamepad.thumb_ry) == 0x7F80);
+}
+
+TEST_CASE("DriverKeyboardSendsNoAnalogKeystrokes", "[hid][sdl]") {
+  // The idle RY (0x7F00) is past the thumb threshold. On a gamepad that is
+  // the right stick held up, which XInputGetKeystroke reports.
+  {
+    DriverFixture fixture("");
+    SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+    SetKeyboardIdle(joystick);
+    SDL_JoystickUpdate();
+    REQUIRE(U16(fixture.State().gamepad.thumb_ry) == 0x7F00);
+    X_INPUT_KEYSTROKE keystroke = {};
+    REQUIRE(fixture.driver().GetKeystroke(0, 0, &keystroke) == X_ERROR_SUCCESS);
+    CHECK(uint32_t(keystroke.virtual_key) ==
+          uint32_t(ui::VirtualKey::kXInputPadRThumbUp));
+  }
+
+  // A keyboard instrument's axes are bitfields: no keystrokes from them, not
+  // even with a key held. Its buttons still send theirs.
+  DriverFixture fixture("0:keyboard");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  SetKeyboardIdle(joystick);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_TRIGGERLEFT, 128);
+  SDL_JoystickUpdate();
+  const X_INPUT_STATE state = fixture.State();
+  REQUIRE(U16(state.gamepad.thumb_ry) == 0x7F00);
+  REQUIRE(uint32_t(state.gamepad.left_trigger) == 0x80);  // key 1
+  X_INPUT_KEYSTROKE keystroke = {};
+  CHECK(fixture.driver().GetKeystroke(0, 0, &keystroke) == X_ERROR_EMPTY);
+
+  REQUIRE(SDL_JoystickSetVirtualButton(joystick, SDL_CONTROLLER_BUTTON_A,
+                                       SDL_PRESSED) == 0);
+  SDL_JoystickUpdate();
+  fixture.State();
+  REQUIRE(fixture.driver().GetKeystroke(0, 0, &keystroke) == X_ERROR_SUCCESS);
+  CHECK(uint32_t(keystroke.virtual_key) ==
+        uint32_t(ui::VirtualKey::kXInputPadA));
+}
+
+TEST_CASE("DriverKeyboardIgnoresWhammyOnStick", "[hid][sdl]") {
+  // guitar_whammy_on_stick only applies to a guitar: listed for a keyboard
+  // slot, its left trigger and right stick X still carry keys and velocities.
+  WhammyOnStick whammy("0");
+  DriverFixture fixture("0:keyboard");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  SetKeyboardIdle(joystick);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_TRIGGERLEFT, 128);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_RIGHTX, 0x0A00);
+  SDL_JoystickUpdate();
+  const X_INPUT_STATE state = fixture.State();
+  CHECK(uint32_t(state.gamepad.left_trigger) == 0x80);  // key 1
+  CHECK(U16(state.gamepad.thumb_rx) == 0x0A00);
+}
+
+TEST_CASE("DriverKeyboardDisconnectAndReconnect", "[hid][sdl]") {
+  DriverFixture fixture("0:keyboard");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  SetKeyboardIdle(joystick);
+  SDL_JoystickUpdate();
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  SDL_JoystickUpdate();
+  CHECK(U16(fixture.State().gamepad.thumb_lx) == 0x0A01);  // key 24 down
+
+  DriverFixture::DetachAll();
+  X_INPUT_STATE state = {};
+  CHECK(fixture.driver().GetState(0, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
+
+  // Back in the same slot: still a keyboard, idle, no key left held.
+  joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  {
+    AxisEventsOff no_events;
+    SetKeyboardIdle(joystick);
+    SDL_JoystickUpdate();
+  }
+  state = fixture.State();
+  CHECK(U16(state.gamepad.thumb_lx) == 0);
+  CHECK(U16(state.gamepad.thumb_ry) == 0x7F00);
+  X_INPUT_CAPABILITIES caps = {};
+  REQUIRE(fixture.driver().GetCapabilities(0, 0, &caps) == X_ERROR_SUCCESS);
+  CHECK(uint32_t(caps.sub_type) == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT);
+}
+
+// Sets left_stick_deadzone_percentage for one test.
+class LeftDeadzone {
+ public:
+  explicit LeftDeadzone(double value)
+      : saved_(cvars::left_stick_deadzone_percentage) {
+    cvars::left_stick_deadzone_percentage = value;
+  }
+  ~LeftDeadzone() { cvars::left_stick_deadzone_percentage = saved_; }
+
+ private:
+  double saved_;
+};
+
+// Slot 0's left stick X through InputSystem, as XamInputGetState reads it.
+uint16_t InputSystemLeftX(DriverFixture& fixture) {
+  Access::Pump(fixture.driver());
+  X_INPUT_STATE state = {};
+  REQUIRE(fixture.input_system().GetState(0, X_INPUT_FLAG_GAMEPAD, &state) ==
+          X_ERROR_SUCCESS);
+  return U16(state.gamepad.thumb_lx);
+}
+
+TEST_CASE("DriverKeyboardDeadzoneFollowsPerTitleSubtypes", "[hid][sdl]") {
+  // A title's own config asks for "keyboard" while the slot is connected
+  // (no failed poll in between). Once the title asks for the capabilities,
+  // which reapplies controller_subtypes, the deadzone no longer applies.
+  LeftDeadzone deadzone(0.2);
+  DriverFixture fixture("");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  SDL_JoystickUpdate();
+  CHECK(InputSystemLeftX(fixture) == 0);  // a gamepad: inside the deadzone
+
+  ::cvars::controller_subtypes = "0:keyboard";
+  X_INPUT_CAPABILITIES caps = {};
+  REQUIRE(fixture.driver().GetCapabilities(0, 0, &caps) == X_ERROR_SUCCESS);
+  REQUIRE(uint32_t(caps.sub_type) == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT);
+  CHECK(InputSystemLeftX(fixture) == 0x0A01);  // key 24 kept
+}
+
+TEST_CASE("DriverKeyboardDeadzoneFollowsSlotReuse", "[hid][sdl]") {
+  // A gamepad leaves and a keyboard instrument takes its slot between two
+  // polls, so InputSystem never sees the slot empty.
+  LeftDeadzone deadzone(0.2);
+  DriverFixture fixture("");
+  SDL_Joystick* joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  SDL_JoystickUpdate();
+  CHECK(InputSystemLeftX(fixture) == 0);
+
+  DriverFixture::DetachAll();
+  ::cvars::controller_subtypes = "0:keyboard";
+  joystick = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  DriverFixture::SetAxis(joystick, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  SDL_JoystickUpdate();
+  CHECK(InputSystemLeftX(fixture) == 0x0A01);
+}
+
+TEST_CASE("DriverKeyboardDeadzonePollDoesNotWaitForSdl", "[hid][sdl]") {
+  // With a deadzone set, polls through InputSystem must not ask the driver
+  // whether the slot is a keyboard instrument: SDL's GetCapabilities waits
+  // for SDL's joystick lock.
+  LeftDeadzone deadzone(0.2);
+  DriverFixture fixture("1:keyboard");
+  SDL_Joystick* gamepad = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  SDL_Joystick* keyboard = fixture.Attach(SDL_JOYSTICK_TYPE_GAMECONTROLLER);
+  DriverFixture::SetAxis(gamepad, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  DriverFixture::SetAxis(keyboard, SDL_CONTROLLER_AXIS_LEFTX, 0x0A01);
+  SDL_JoystickUpdate();
+  Access::Pump(fixture.driver());
+  X_INPUT_STATE state = {};
+  // The first polls connect the slots (one capabilities query each). The
+  // deadzone zeroes the gamepad's small LX, not the keyboard's key 24.
+  REQUIRE(fixture.input_system().GetState(0, X_INPUT_FLAG_GAMEPAD, &state) ==
+          X_ERROR_SUCCESS);
+  CHECK(U16(state.gamepad.thumb_lx) == 0);
+  REQUIRE(fixture.input_system().GetState(1, X_INPUT_FLAG_GAMEPAD, &state) ==
+          X_ERROR_SUCCESS);
+  CHECK(U16(state.gamepad.thumb_lx) == 0x0A01);
+
+  std::promise<void> locked;
+  std::promise<void> release;
+  std::thread sdl_busy([&] {
+    SDL_LockJoysticks();
+    locked.set_value();
+    release.get_future().wait();
+    SDL_UnlockJoysticks();
+  });
+  locked.get_future().wait();
+  auto polls = std::async(std::launch::async, [&] {
+    X_INPUT_STATE gamepad_state = {};
+    X_INPUT_STATE keyboard_state = {};
+    return fixture.input_system().GetState(0, X_INPUT_FLAG_GAMEPAD,
+                                           &gamepad_state) == X_ERROR_SUCCESS &&
+           fixture.input_system().GetState(
+               1, X_INPUT_FLAG_GAMEPAD, &keyboard_state) == X_ERROR_SUCCESS &&
+           U16(keyboard_state.gamepad.thumb_lx) == 0x0A01;
+  });
+  const bool prompt =
+      polls.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+  release.set_value();
+  sdl_busy.join();
+  CHECK(prompt);
+  CHECK(polls.get());
+}
+
+TEST_CASE("DriverKeyboardPollDoesNotWaitForSdl", "[hid][sdl]") {
+  PollDoesNotWaitForSdl("1:keyboard");
+}
+
+TEST_CASE("DriverKeyboardPacketNumberNeverRepeatsWithNewState", "[hid][sdl]") {
+  PacketNumberNeverRepeatsWithNewState("0:keyboard");
+}
+
+TEST_CASE("DriverKeyboardPollingSurvivesConnectCycles", "[hid][sdl]") {
+  PollingSurvivesConnectCycles("0:keyboard");
 }
 
 }  // namespace test

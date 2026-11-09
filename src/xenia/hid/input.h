@@ -73,6 +73,9 @@ enum X_INPUT_DEVSUBTYPE {
   XINPUT_DEVSUBTYPE_DRUM_KIT = 0x00000008,
   XINPUT_DEVSUBTYPE_UNK = 0x00000009,
   XINPUT_DEVSUBTYPE_GUITAR_BASS = 0x0000000B,
+  // A keyboard instrument. Not in the public XInput headers; its axes carry
+  // key bitfields, see sdl/sdl_keyboard_report.h.
+  XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT = 0x0000000F,
   XINPUT_DEVSUBTYPE_ARCADE_PAD = 0x00000013,
 };
 
