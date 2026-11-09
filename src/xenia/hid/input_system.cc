@@ -142,6 +142,31 @@ X_RESULT InputSystem::GetState(uint32_t user_index, uint32_t flags,
   return X_ERROR_DEVICE_NOT_CONNECTED;
 }
 
+X_RESULT InputSystem::GetRawState(uint32_t user_index, uint32_t flags,
+                                  X_INPUT_RAW_STATE* out_raw_state) {
+  SCOPE_profile_cpu_f("hid");
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+  // Slot bookkeeping (connected slots, last used slot) stays with GetState,
+  // which title 45410914 calls before this on every pass. No deadzone
+  // either: keyboard instruments are exempt from it, and the title ignores
+  // the raw payload of other devices. The title closes the slot on 0x48F
+  // but keeps it on any other error, so a driver's other read error is
+  // passed on, not turned into "not connected".
+  X_RESULT first_error = X_ERROR_DEVICE_NOT_CONNECTED;
+  for (auto& driver : FilterDrivers(flags)) {
+    const X_RESULT result = driver->GetRawState(user_index, out_raw_state);
+    if (result == X_ERROR_SUCCESS) {
+      return X_ERROR_SUCCESS;
+    }
+    if (first_error == X_ERROR_DEVICE_NOT_CONNECTED) {
+      first_error = result;
+    }
+  }
+  return first_error;
+}
+
 X_RESULT InputSystem::SetState(uint32_t user_index,
                                X_INPUT_VIBRATION* vibration) {
   SCOPE_profile_cpu_f("hid");

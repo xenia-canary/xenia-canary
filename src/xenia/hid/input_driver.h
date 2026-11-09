@@ -14,6 +14,7 @@
 #include <functional>
 
 #include "xenia/hid/input.h"
+#include "xenia/hid/raw_report.h"
 #include "xenia/ui/window.h"
 #include "xenia/xbox.h"
 
@@ -39,6 +40,20 @@ class InputDriver {
   virtual X_RESULT GetCapabilities(uint32_t user_index, uint32_t flags,
                                    X_INPUT_CAPABILITIES* out_caps) = 0;
   virtual X_RESULT GetState(uint32_t user_index, X_INPUT_STATE* out_state) = 0;
+  // The report XamInputRawState reads. The default builds a wired-style
+  // report from GetState's state (raw_report.h), so every connected device
+  // answers: title 45410914 reads raw reports from drum kits too, and drops
+  // the user's pad data when it gets X_ERROR_DEVICE_NOT_CONNECTED.
+  virtual X_RESULT GetRawState(uint32_t user_index,
+                               X_INPUT_RAW_STATE* out_raw_state) {
+    X_INPUT_STATE state = {};
+    const X_RESULT result = GetState(user_index, &state);
+    if (result != X_ERROR_SUCCESS) {
+      return result;
+    }
+    BuildWiredRawReport(state, out_raw_state);
+    return X_ERROR_SUCCESS;
+  }
   virtual X_RESULT SetState(uint32_t user_index,
                             X_INPUT_VIBRATION* vibration) = 0;
   virtual X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,

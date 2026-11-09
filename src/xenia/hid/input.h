@@ -122,6 +122,26 @@ struct X_INPUT_STATE {
 };
 static_assert_size(X_INPUT_STATE, sizeof(X_INPUT_GAMEPAD) + 4);
 
+// The buffer XamInputRawState reads into or sends from. The layout comes from
+// the disassembly of title 45410914's two XamInputRawState call sites (title
+// update 5: the read at 0x8284E570, the send at 0x8284EB04), which use the
+// same stack buffer and touch nothing past 0x27.
+// `data` holds a raw XUSB report including its header. After a read the title
+// checks data[1]: 1 means a 6-byte (wireless-style) header, anything else a
+// 2-byte (wired, 00 14) one; it copies data_length bytes minus the header.
+// Multi-byte fields inside `data` are in the device's wire order
+// (little-endian), not guest order.
+struct X_INPUT_RAW_STATE {
+  uint8_t data[0x20];
+  // Read: in = the capacity (the title passes 0x20), out = the bytes valid.
+  // Send: in = the payload length.
+  uint8_t data_length;
+  uint8_t pad_21[3];
+  // Read only. The title keeps it per slot and compares it with the last one.
+  be<uint32_t> packet_number;
+};
+static_assert_size(X_INPUT_RAW_STATE, 0x28);
+
 struct X_INPUT_VIBRATION {
   be<uint16_t> left_motor_speed;
   be<uint16_t> right_motor_speed;

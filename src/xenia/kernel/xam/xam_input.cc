@@ -11,6 +11,7 @@
 #include "xenia/emulator.h"
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/hid/raw_report.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
@@ -26,6 +27,7 @@ using xe::hid::X_INPUT_CAPABILITIES;
 using xe::hid::X_INPUT_CAPABILITIES_EX;
 using xe::hid::X_INPUT_FLAG;
 using xe::hid::X_INPUT_KEYSTROKE;
+using xe::hid::X_INPUT_RAW_STATE;
 using xe::hid::X_INPUT_STATE;
 using xe::hid::X_INPUT_VIBRATION;
 using xe::hid::X_USER_DEVICE_CLASS;
@@ -162,6 +164,73 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
   return result;
 }
 DECLARE_XAM_EXPORT2(XamInputGetState, kInput, kImplemented, kHighFrequency);
+
+// Reads (set = 0) or sends (set != 0) a raw XUSB report (X_INPUT_RAW_STATE).
+// Derived from the disassembly of title 45410914's two call sites (title
+// update 5: the read at 0x8284E570, the send at 0x8284EB04): r3 = user index,
+// r4 = the flags word the title also passes to XamInputGetState and
+// XamInputGetCapabilities for that slot (0 for its pads), r5 = 0 or 1,
+// r6 = the buffer. The title reads raw reports only for the subtypes its own
+// device table marks (drum kit and keyboard instrument among them), and what
+// it does with each result is:
+// - Read, 0: parses the report.
+// - Read, 0x48F (X_ERROR_DEVICE_NOT_CONNECTED): closes the slot and skips
+//   that user's pad data for the pass. So it is returned only for an empty
+//   slot or a bad user index; every connected device answers, drum kits
+//   included.
+// - Read, any other code: keeps the slot and its old data, so other driver
+//   errors are passed on as they are.
+// - Send, 0x3E5 (X_ERROR_IO_PENDING): leaves the request pending; any other
+//   code completes it.
+// The report is built from the state GetState returns and carries its packet
+// number, because the title rereads it only when XamInputGetState's packet
+// number moved (see raw_report.h). All of this is what the caller expects,
+// not observed console behaviour; how the console answers a short buffer or
+// a send is not known.
+// TODO(stone-ericm): Sends are accepted and dropped; no driver can send a
+// raw report yet.
+dword_result_t XamInputRawState_entry(dword_t user_index, dword_t flags,
+                                      dword_t set,
+                                      pointer_t<X_INPUT_RAW_STATE> raw_state) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+  if (set) {
+    return X_ERROR_SUCCESS;
+  }
+  if (!raw_state) {
+    return X_ERROR_BAD_ARGUMENTS;
+  }
+  // data_length comes in as the capacity (the title passes 0x20). One too
+  // small for the report gets the Win32 "buffer too small, nothing written"
+  // code, which the title would treat as "keep the slot, no new data" (any
+  // code but 0 and 0x48F); the title itself never passes one. Checked before
+  // the device is read, so no state change is consumed.
+  if (raw_state->data_length < xe::hid::kWiredRawReportLength) {
+    return X_ERROR_INSUFFICIENT_BUFFER;
+  }
+
+  X_INPUT_RAW_STATE report = {};
+  X_RESULT result;
+  auto input_system = kernel_state()->input_system();
+  {
+    auto lock = input_system->lock();
+    result = input_system->GetRawState(
+        user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
+        &report);
+  }
+  if (result != X_ERROR_SUCCESS) {
+    // The guest buffer is left as it was.
+    return result;
+  }
+  if (InputHiddenByUI()) {
+    // As XamInputGetState: the title sees an idle device (packet number 0).
+    xe::hid::BuildWiredRawReport(X_INPUT_STATE{}, &report);
+  }
+  std::memcpy(raw_state, &report, sizeof(report));
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamInputRawState, kInput, kSketchy);
 
 // https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.reference.xinputsetstate(v=vs.85).aspx
 dword_result_t XamInputSetState_entry(

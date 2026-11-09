@@ -17,6 +17,7 @@
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_driver.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/hid/raw_report.h"
 #include "xenia/hid/sdl/sdl_keyboard_report.h"
 
 #include "third_party/catch/include/catch.hpp"
@@ -234,7 +235,7 @@ TEST_CASE("KeyboardLxIsCopiedBitExact", "[hid][keyboard]") {
 }
 
 // A driver with one device in slot 0. It implements only the InputDriver
-// interface's required functions.
+// interface's required functions (no GetRawState of its own).
 class FakeDriver final : public InputDriver {
  public:
   FakeDriver(uint8_t sub_type, const X_INPUT_STATE& state)
@@ -357,6 +358,82 @@ TEST_CASE("DeadzoneRetriesAFailedSubtypeQuery", "[hid][keyboard]") {
   CHECK(PollLeftX(input_system) == 0);
   driver.set_capabilities_error(X_ERROR_SUCCESS);
   CHECK(PollLeftX(input_system) == 0x0A01);
+}
+
+TEST_CASE("RawReportIsWireOrder", "[hid][keyboard]") {
+  static_assert(sizeof(X_INPUT_RAW_STATE) == 0x28);
+  static_assert(offsetof(X_INPUT_RAW_STATE, data) == 0x00);
+  static_assert(offsetof(X_INPUT_RAW_STATE, data_length) == 0x20);
+  static_assert(offsetof(X_INPUT_RAW_STATE, packet_number) == 0x24);
+
+  X_INPUT_STATE in = {};
+  in.packet_number = 0x12345678;
+  in.gamepad.buttons = X_INPUT_GAMEPAD_A | X_INPUT_GAMEPAD_DPAD_UP;
+  in.gamepad.left_trigger = 0x80;
+  in.gamepad.right_trigger = 0x01;
+  in.gamepad.thumb_lx = static_cast<int16_t>(0x8A01);
+  in.gamepad.thumb_ly = 0x1234;
+  in.gamepad.thumb_rx = 0x5678;
+  in.gamepad.thumb_ry = 0x7F80;
+
+  X_INPUT_RAW_STATE raw;
+  std::memset(&raw, 0xCC, sizeof(raw));
+  BuildWiredRawReport(in, &raw);
+
+  // Wired-style header: type 0x00, length 0x14.
+  CHECK(uint32_t(raw.data[0]) == 0x00);
+  CHECK(uint32_t(raw.data[1]) == 0x14);
+  const uint8_t* payload = raw.data + 2;
+  CHECK(uint32_t(payload[0]) == 0x01);  // D-pad up
+  CHECK(uint32_t(payload[1]) == 0x10);  // A
+  CHECK(uint32_t(payload[2]) == 0x80);  // LT: keys 1-8
+  CHECK(uint32_t(payload[3]) == 0x01);  // RT: keys 9-16
+  CHECK(uint32_t(payload[4]) == 0x01);  // LX low: keys 17-24
+  CHECK(uint32_t(payload[5]) == 0x8A);  // LX high: key 25 + velocity
+  CHECK(uint32_t(payload[6]) == 0x34);
+  CHECK(uint32_t(payload[7]) == 0x12);
+  CHECK(uint32_t(payload[8]) == 0x78);
+  CHECK(uint32_t(payload[9]) == 0x56);
+  CHECK(uint32_t(payload[10]) == 0x80);  // RY low: overdrive (bit 7)
+  CHECK(uint32_t(payload[11]) == 0x7F);  // RY high: pedal
+  for (size_t i = 12; i < 18; ++i) {
+    INFO("payload byte " << i);
+    CHECK(uint32_t(payload[i]) == 0);
+  }
+  for (size_t i = 0x14; i < sizeof(raw.data); ++i) {
+    INFO("data byte " << i);
+    CHECK(uint32_t(raw.data[i]) == 0);
+  }
+  CHECK(uint32_t(raw.data_length) == 0x14);
+  for (size_t i = 0; i < sizeof(raw.pad_21); ++i) {
+    CHECK(uint32_t(raw.pad_21[i]) == 0);
+  }
+  CHECK(uint32_t(raw.packet_number) == 0x12345678u);
+  // Guest big-endian (the title reads it with lwz).
+  const auto* bytes = reinterpret_cast<const uint8_t*>(&raw);
+  CHECK(uint32_t(bytes[0x24]) == 0x12);
+  CHECK(uint32_t(bytes[0x27]) == 0x78);
+}
+
+TEST_CASE("RawStateConnectedNonKeyboardRawDeviceIsNotDisconnected",
+          "[hid][keyboard]") {
+  // Title 45410914 reads raw reports from drum kits (subtype 8) too. A driver
+  // that knows nothing about raw reports must still answer for a connected
+  // device: the title drops a user's pad data on X_ERROR_DEVICE_NOT_CONNECTED.
+  X_INPUT_STATE state = {};
+  state.packet_number = 7;
+  state.gamepad.buttons = X_INPUT_GAMEPAD_B;
+  FakeDriver driver(XINPUT_DEVSUBTYPE_DRUM_KIT, state);
+
+  X_INPUT_RAW_STATE raw = {};
+  CHECK(driver.GetRawState(0, &raw) == X_ERROR_SUCCESS);
+  CHECK(uint32_t(raw.data[1]) == 0x14);
+  CHECK(uint32_t(raw.data[3]) == 0x20);  // payload[1] = B
+  CHECK(uint32_t(raw.data_length) == 0x14);
+  CHECK(uint32_t(raw.packet_number) == 7);
+
+  // An empty slot is reported as such.
+  CHECK(driver.GetRawState(1, &raw) == X_ERROR_DEVICE_NOT_CONNECTED);
 }
 
 }  // namespace test

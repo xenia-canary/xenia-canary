@@ -43,6 +43,12 @@ class InputSystem {
                            X_INPUT_CAPABILITIES* out_caps);
   X_RESULT GetState(uint32_t user_index, uint32_t flags,
                     X_INPUT_STATE* out_state);
+  // XamInputRawState's read: the first filtered driver that has the user
+  // answers, from a GetState of its own (same packet counter).
+  // With no success: the first other error a driver gave, else
+  // X_ERROR_DEVICE_NOT_CONNECTED (every driver reported the user absent).
+  X_RESULT GetRawState(uint32_t user_index, uint32_t flags,
+                       X_INPUT_RAW_STATE* out_raw_state);
   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration);
   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                         X_INPUT_KEYSTROKE* out_keystroke);
