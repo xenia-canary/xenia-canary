@@ -434,7 +434,8 @@ void GamercardUI::DrawBaseSettings(ImGuiIO& io) {
   }
   ImGui::EndDisabled();
 
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip |
+                           ImGuiHoveredFlags_AllowWhenDisabled)) {
     if (kernel_state_->title_id()) {
       ImGui::SetTooltip("Icon change is disabled when title is running.");
     } else {
@@ -639,13 +640,12 @@ void GamercardUI::OnDraw(ImGuiIO& io) {
     SaveAccountData();
     dialog_open = false;
   }
-  if (!is_valid_gamertag) {
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-      ImGui::SetTooltip("Saving disabled! Invalid gamertag provided.");
-    }
-  }
-
   ImGui::EndDisabled();
+  if (!is_valid_gamertag &&
+      ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip |
+                           ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::SetTooltip("Saving disabled! Invalid gamertag provided.");
+  }
 
   ImGui::SameLine();
 
