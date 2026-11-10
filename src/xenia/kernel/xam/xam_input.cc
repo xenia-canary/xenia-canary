@@ -144,6 +144,11 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
     result = input_system->GetState(
         user_index, !flags ? X_INPUT_FLAG::X_INPUT_FLAG_GAMEPAD : flags,
         input_state);
+
+    if (input_state && result == X_ERROR_SUCCESS) {
+      kernel_state()->xam_state()->ui_input_filter().FilterState(user_index,
+                                                                 input_state);
+    }
   }
 
   if (input_state && result == X_ERROR_SUCCESS) {
@@ -205,6 +210,8 @@ dword_result_t XamInputGetKeystrokeEx_entry(
     return result == X_ERROR_DEVICE_NOT_CONNECTED ? result : X_ERROR_EMPTY;
   }
 
+  UIInputFilter& filter = kernel_state()->xam_state()->ui_input_filter();
+
   if (flags & X_INPUT_FLAG::X_INPUT_FLAG_ANY_USER) {
     // That flag means we should iterate over every connected controller and
     // check which one have pending request.
@@ -213,7 +220,8 @@ dword_result_t XamInputGetKeystrokeEx_entry(
       auto result = input_system->GetKeystroke(i, flags, keystroke);
 
       // Return result from first user that have pending request
-      if (result == X_ERROR_SUCCESS) {
+      if (result == X_ERROR_SUCCESS &&
+          !filter.ShouldDropKeystroke(input_system, *keystroke)) {
         *user_index_ptr = keystroke->user_index;
         return result;
       }
@@ -222,6 +230,12 @@ dword_result_t XamInputGetKeystrokeEx_entry(
   }
 
   auto result = input_system->GetKeystroke(user_index, flags, keystroke);
+
+  if (result == X_ERROR_SUCCESS &&
+      filter.ShouldDropKeystroke(input_system, *keystroke)) {
+    keystroke.Zero();
+    return X_ERROR_EMPTY;
+  }
 
   if (XSUCCEEDED(result)) {
     *user_index_ptr = keystroke->user_index;

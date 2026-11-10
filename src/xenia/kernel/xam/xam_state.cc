@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xam/xam_state.h"
 #include "xenia/emulator.h"
+#include "xenia/kernel/kernel_state.h"
 
 namespace xe {
 namespace kernel {
@@ -35,6 +36,18 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
   LoadIptvServiceName();
 
   AppManager::RegisterApps(kernel_state, app_manager_.get());
+}
+
+void XamState::SetUIActive(bool active) {
+  const bool was_active = ui_active_.exchange(active);
+
+  if (active || !was_active) {
+    return;
+  }
+
+  if (auto input_system = kernel_state_->emulator()->input_system()) {
+    ui_input_filter_.OnUIClosed(input_system);
+  }
 }
 
 void XamState::LoadLanguageLocaleFallback() {

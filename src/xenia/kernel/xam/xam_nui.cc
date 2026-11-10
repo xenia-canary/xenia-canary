@@ -201,7 +201,7 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
 DECLARE_XAM_EXPORT1(XamNuiCameraSetFlags, kNone, kStub);
 
 dword_result_t XamIsNuiUIActive_entry() {
-  return kernel_state()->xam_state()->is_xam_dialog_present_.load();
+  return kernel_state()->xam_state()->IsUIActive();
 }
 DECLARE_XAM_EXPORT1(XamIsNuiUIActive, kNone, kImplemented);
 

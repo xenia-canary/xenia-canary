@@ -1682,7 +1682,7 @@ void EmulatorWindow::ToggleProfilesConfigDialog() {
 
     emulator_->kernel_state()->BroadcastNotification(kXNotificationSystemUI,
                                                      true);
-    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
+    emulator_->kernel_state()->xam_state()->SetUIActive(true);
 
     profile_config_dialog_ =
         std::make_unique<ProfileConfigDialog>(imgui_drawer_.get(), this);
@@ -1695,7 +1695,7 @@ void EmulatorWindow::ToggleProfilesConfigDialog() {
     } else {
       profile_config_dialog_.reset();
     }
-    emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
+    emulator_->kernel_state()->xam_state()->SetUIActive(false);
   }
 }
 
@@ -2487,7 +2487,7 @@ void EmulatorWindow::ClearDialogs() {
   }
 
   imgui_drawer_.get()->ClearDialogs();
-  emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
+  emulator_->kernel_state()->xam_state()->SetUIActive(false);
 }
 
 }  // namespace app
