@@ -1432,6 +1432,21 @@ void Presenter::WaitForUITickFromUIThread() {
     }
     dxgi_ui_tick_signal_condition_.wait(dxgi_ui_tick_lock);
   }
+#else
+  if (!AreUITicksNeededFromUIThread()) {
+    return;
+  }
+  // Guest output refreshes and forced ticks interrupt the wait, and are then
+  // consumed by the next WaitForGuestOutputRefreshFromUIThread.
+  std::unique_lock<std::mutex> guest_output_refresh_wait_lock(
+      guest_output_refresh_wait_mutex_);
+  guest_output_refresh_wait_condition_.wait_until(
+      guest_output_refresh_wait_lock, ui_tick_next_time_, [this]() {
+        return guest_output_refresh_wait_force_requested_ ||
+               guest_output_refresh_count_ !=
+                   guest_output_refresh_count_last_ui_paint_;
+      });
+  ui_tick_next_time_ = std::chrono::steady_clock::now() + kUITickInterval;
 #endif  // XE_PLATFORM
 }
 

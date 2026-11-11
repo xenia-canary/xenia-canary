@@ -10,8 +10,10 @@
 #ifndef XENIA_UI_WINDOW_GTK_H_
 #define XENIA_UI_WINDOW_GTK_H_
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
@@ -77,6 +79,7 @@ class GTKWindow : public Window {
                                                GdkEvent* event,
                                                gpointer user_data);
   static gboolean DrawHandler(GtkWidget* widget, cairo_t* cr, gpointer data);
+  static gboolean PaintIdleHandler(gpointer data);
 
   // Non-owning (initially floating) references to the widgets.
   GtkWidget* window_ = nullptr;
@@ -84,6 +87,9 @@ class GTKWindow : public Window {
   GtkWidget* drawing_area_ = nullptr;
 
   const std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+
+  // Whether a paint is already pending in the UI thread, to coalesce requests.
+  std::atomic<bool> paint_requested_{false};
 
   uint32_t batched_size_update_depth_ = 0;
   bool batched_size_update_contained_configure_ = false;

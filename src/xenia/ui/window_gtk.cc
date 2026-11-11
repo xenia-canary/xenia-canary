@@ -297,12 +297,44 @@ std::unique_ptr<Surface> GTKWindow::CreateSurfaceImpl(
 }
 
 void GTKWindow::RequestPaintImpl() {
-  // Called from the guest output thread, but GTK is not thread-safe.
-  app_context().CallInUIThread([this, alive = alive_]() {
-    if (*alive && drawing_area_) {
-      gtk_widget_queue_draw(drawing_area_);
-    }
-  });
+  // May be called from the guest output thread, but painting must be done in
+  // the UI thread.
+  // Painting directly rather than via gtk_widget_queue_draw, as GTK defers
+  // draws to its own frame clock, while guest output frames need to be painted
+  // as soon as they're ready, and the presenter limits the frame rate of the UI
+  // itself.
+  if (paint_requested_.exchange(true, std::memory_order_relaxed)) {
+    return;
+  }
+  // Not via CallInUIThread, as a paint may request the next one, and pending
+  // functions are executed until there are none left, which would never let
+  // the main loop handle events. With the same priority as pending functions
+  // so neither can starve the other.
+  gdk_threads_add_idle_full(
+      G_PRIORITY_DEFAULT_IDLE, PaintIdleHandler,
+      new std::pair<GTKWindow*, std::shared_ptr<bool>>(this, alive_),
+      [](gpointer data) {
+        delete static_cast<std::pair<GTKWindow*, std::shared_ptr<bool>>*>(data);
+      });
+}
+
+gboolean GTKWindow::PaintIdleHandler(gpointer data) {
+  const auto& request =
+      *static_cast<std::pair<GTKWindow*, std::shared_ptr<bool>>*>(data);
+  if (!*request.second) {
+    return G_SOURCE_REMOVE;
+  }
+  GTKWindow* window = request.first;
+  window->paint_requested_.store(false, std::memory_order_relaxed);
+  if (!window->drawing_area_) {
+    return G_SOURCE_REMOVE;
+  }
+  if (window->batched_size_update_depth_) {
+    window->batched_size_update_contained_draw_ = true;
+  } else {
+    window->OnPaint();
+  }
+  return G_SOURCE_REMOVE;
 }
 
 void GTKWindow::HandleSizeUpdate(

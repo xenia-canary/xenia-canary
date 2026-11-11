@@ -1008,8 +1008,8 @@ class Presenter {
   // frame rates wasting the CPU and the GPU resources and starving everything
   // else. The waits performed here must be interruptible by guest output
   // presentation requests to prevent adding arbitrary amounts of latency to it.
-  // On Android and GTK, this is not needed, the frame rate of draw events is
-  // limited to the display refresh rate internally.
+  // On Windows, the ticks are the vertical blanking intervals of the display.
+  // Elsewhere, a timer is used.
 #if XE_PLATFORM_WIN32
   static Microsoft::WRL::ComPtr<IDXGIOutput> GetDXGIOutputForMonitor(
       IDXGIFactory1* factory, HMONITOR monitor);
@@ -1059,6 +1059,11 @@ class Presenter {
   std::condition_variable dxgi_ui_tick_signal_condition_;
 
   std::thread dxgi_ui_tick_thread_;
+#else
+  static constexpr std::chrono::microseconds kUITickInterval{1000000 / 60};
+
+  // Accessible only from the UI thread.
+  std::chrono::steady_clock::time_point ui_tick_next_time_;
 #endif  // XE_PLATFORM
 };
 
