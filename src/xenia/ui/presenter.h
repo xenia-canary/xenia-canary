@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <climits>
 #include <cmath>
 #include <condition_variable>
@@ -842,6 +843,13 @@ class Presenter {
   }
   void UpdateUITicksNeededFromUIThread();
   void WaitForUITickFromUIThread();
+  // While the guest output is being refreshed steadily, waits for its next
+  // refresh so the UI is painted once along with each guest frame rather than
+  // in a loop of its own on top of them, which takes GPU time away from the
+  // guest. Returns whether to paint now without waiting for a UI tick - true
+  // if a refresh or a forced tick has arrived, false if the guest output isn't
+  // being refreshed often enough to rely on.
+  bool WaitForGuestOutputRefreshFromUIThread();
   // May be called from any thread.
   void ForceUIThreadPaintTick();
 
@@ -978,6 +986,22 @@ class Presenter {
   bool is_in_ui_thread_paint_ = false;
   bool request_guest_output_paint_after_current_ui_thread_paint_;
   bool request_ui_paint_after_current_ui_thread_paint_;
+
+  // A guest output refreshed less often than this (below roughly 25 FPS) is
+  // not waited for by UI paints, as the UI would be too unresponsive at its
+  // frame rate.
+  static constexpr std::chrono::milliseconds kGuestOutputRefreshWaitTimeout{40};
+
+  std::mutex guest_output_refresh_wait_mutex_;
+  std::condition_variable guest_output_refresh_wait_condition_;
+  // The fields below are protected by guest_output_refresh_wait_mutex_.
+  uint64_t guest_output_refresh_count_ = 0;
+  std::chrono::steady_clock::time_point guest_output_last_refresh_time_;
+  std::chrono::steady_clock::duration guest_output_refresh_interval_ =
+      std::chrono::steady_clock::duration::max();
+  bool guest_output_refresh_wait_force_requested_ = false;
+  // Accessible only from the UI thread.
+  uint64_t guest_output_refresh_count_last_ui_paint_ = 0;
 
   // Platform-specific, but implementation-agnostic parts, primarily for
   // limiting of the frame rate of the UI to avoid drawing the UI at extreme

@@ -276,7 +276,8 @@ void Presenter::PaintFromUIThread(bool force_paint) {
       // is consistent with painting from the UI thread.
       SetPaintModeFromUIThread(PaintMode::kUIThreadOnRequest);
 
-      // Limit the frame rate of the UI, usually to the monitor refresh rate,
+      // Limit the frame rate of the UI, to the guest output refresh rate if
+      // it's being refreshed, otherwise usually to the monitor refresh rate,
       // in a way so that the UI won't be stealing all the remaining GPU
       // resources if it's repainted continuously, and the window system itself
       // doesn't limit the frame rate.
@@ -418,6 +419,22 @@ bool Presenter::RefreshGuestOutput(
     guest_output_mailbox_writable_ =
         (3 - last_acquired - guest_output_mailbox_writable_) % 3;
   }
+
+  // Let a UI thread paint waiting for the guest output proceed with this
+  // frame.
+  {
+    std::lock_guard<std::mutex> guest_output_refresh_wait_lock(
+        guest_output_refresh_wait_mutex_);
+    std::chrono::steady_clock::time_point refresh_time =
+        std::chrono::steady_clock::now();
+    if (guest_output_refresh_count_) {
+      guest_output_refresh_interval_ =
+          refresh_time - guest_output_last_refresh_time_;
+    }
+    guest_output_last_refresh_time_ = refresh_time;
+    ++guest_output_refresh_count_;
+  }
+  guest_output_refresh_wait_condition_.notify_all();
 
   // Trigger the presentation on the host.
   PaintResult paint_result = PaintResult::kNotPresented;
@@ -1356,7 +1373,40 @@ void Presenter::UpdateUITicksNeededFromUIThread() {
 #endif
 }
 
+bool Presenter::WaitForGuestOutputRefreshFromUIThread() {
+  std::unique_lock<std::mutex> guest_output_refresh_wait_lock(
+      guest_output_refresh_wait_mutex_);
+  auto paint_requested = [this]() {
+    return guest_output_refresh_wait_force_requested_ ||
+           guest_output_refresh_count_ !=
+               guest_output_refresh_count_last_ui_paint_;
+  };
+  if (!paint_requested()) {
+    // Wait only if the next refresh is expected soon - the guest output has
+    // been refreshed recently, and not too long after the previous refresh.
+    std::chrono::steady_clock::time_point wait_end =
+        guest_output_last_refresh_time_ + kGuestOutputRefreshWaitTimeout;
+    if (guest_output_refresh_interval_ >= kGuestOutputRefreshWaitTimeout ||
+        std::chrono::steady_clock::now() >= wait_end ||
+        !guest_output_refresh_wait_condition_.wait_until(
+            guest_output_refresh_wait_lock, wait_end, paint_requested)) {
+      return false;
+    }
+  }
+  guest_output_refresh_wait_force_requested_ = false;
+  guest_output_refresh_count_last_ui_paint_ = guest_output_refresh_count_;
+  return true;
+}
+
 void Presenter::WaitForUITickFromUIThread() {
+  if (!ui_drawers_.empty() && WaitForGuestOutputRefreshFromUIThread()) {
+#if XE_PLATFORM_WIN32
+    // The forced tick, if there was one, has been satisfied.
+    std::scoped_lock<std::mutex> dxgi_ui_tick_lock(dxgi_ui_tick_mutex_);
+    dxgi_ui_tick_force_requested_ = false;
+#endif  // XE_PLATFORM
+    return;
+  }
 #if XE_PLATFORM_WIN32
   if (!AreUITicksNeededFromUIThread()) {
     return;
@@ -1386,6 +1436,12 @@ void Presenter::WaitForUITickFromUIThread() {
 }
 
 void Presenter::ForceUIThreadPaintTick() {
+  {
+    std::lock_guard<std::mutex> guest_output_refresh_wait_lock(
+        guest_output_refresh_wait_mutex_);
+    guest_output_refresh_wait_force_requested_ = true;
+  }
+  guest_output_refresh_wait_condition_.notify_all();
 #if XE_PLATFORM_WIN32
   std::scoped_lock<std::mutex> dxgi_ui_tick_lock(dxgi_ui_tick_mutex_);
   dxgi_ui_tick_force_requested_ = true;
