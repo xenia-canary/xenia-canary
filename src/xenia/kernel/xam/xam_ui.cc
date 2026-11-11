@@ -55,6 +55,8 @@ bool xeXamShowDialog(const std::function<T*()>& create_dialog,
     dialog->set_close_callback(
         [dialog, close_callback]() { close_callback(dialog); });
 
+    kernel_state()->xam_state()->SetUIActive(true);
+
     if (closed_fence) {
       dialog->Then(closed_fence);
     }
@@ -1115,6 +1117,10 @@ dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
     return X_ERROR_NO_SUCH_USER;
   }
 
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+
   xe::ui::ImGuiDrawer* imgui_drawer =
       kernel_state()->emulator()->imgui_drawer();
 
@@ -1130,7 +1136,7 @@ DECLARE_XAM_EXPORT1(XamShowAchievementsUI, kUserProfiles, kStub);
 
 dword_result_t XamShowGamerCardUI_entry(dword_t user_index) {
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
+  if (!user || kernel_state()->xam_state()->IsUIActive()) {
     return X_ERROR_ACCESS_DENIED;
   }
 
@@ -1149,7 +1155,7 @@ DECLARE_XAM_EXPORT1(XamShowGamerCardUI, kUserProfiles, kImplemented);
 
 dword_result_t XamShowEditProfileUI_entry(dword_t user_index) {
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
+  if (!user || kernel_state()->xam_state()->IsUIActive()) {
     return X_ERROR_ACCESS_DENIED;
   }
 
