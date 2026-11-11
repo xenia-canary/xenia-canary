@@ -240,6 +240,8 @@ def import_vs_environment():
     global vs_install_path
     vs_install_path = install_path
 
+    # VsDevCmd launches PowerShell to send telemetry unless told not to.
+    os.environ["VSCMD_SKIP_SENDTELEMETRY"] = "1"
     import_subprocess_environment(env_tool_args)
     os.environ["VSVERSION"] = f"{version}"
     return version
@@ -641,6 +643,44 @@ def get_pr_number():
     if github_ref and github_ref.startswith('refs/pull/'):
         return github_ref.split('/')[2]
 
+def git_submodules_up_to_date(submodules):
+    """Checks whether the submodules are checked out at their recorded commits.
+
+    Reads each submodule's HEAD file directly, because git spawns a process per
+    submodule for sync, update and status, which takes seconds on Windows.
+
+    Args:
+      submodules: Submodule paths to check, or an empty list for all of them.
+
+    Returns:
+      True if nothing needs updating. False if anything is missing, differs,
+      or could not be determined.
+    """
+    try:
+        index = subprocess.check_output(["git", "ls-files", "-s"], text=True)
+        for line in index.splitlines():
+            if not line.startswith("160000 "):
+                continue
+            info, path = line.split("\t", 1)
+            if submodules and path not in submodules:
+                continue
+            git_dir = os.path.join(path, ".git")
+            if os.path.isfile(git_dir):
+                with open(git_dir) as f:
+                    pointer = f.read().strip()
+                if not pointer.startswith("gitdir: "):
+                    return False
+                git_dir = os.path.join(path, pointer[len("gitdir: "):])
+            with open(os.path.join(git_dir, "HEAD")) as f:
+                head = f.read().strip()
+            # A HEAD on a branch reads as "ref: ...", which also returns False.
+            if head != info.split()[1]:
+                return False
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
 def git_submodule_update():
     """Runs a git submodule sync, init, and update.
     """
@@ -656,6 +696,9 @@ def git_submodule_update():
         submodules = re_findall(r"(?<=path = )(?!third_party\/(?:" + "|".join(submodules_ignore) + r")).+", gitmodules)
     else:
         submodules = []
+    if git_submodules_up_to_date(submodules):
+        print("  submodules already up to date")
+        return
     # Sync submodule URLs from .gitmodules to local config
     shell_call([
         "git",
@@ -2098,8 +2141,11 @@ class DevenvCommand(Command):
 
         target_arch = args.get("target_arch", None)
 
-        print("\n- running cmake configure...")
-        run_cmake_configure(target_arch=target_arch)
+        # Visual Studio opens its own solution below, so the Ninja build tree
+        # is left for the build command to configure.
+        if sys.platform != "win32":
+            print("\n- running cmake configure...")
+            run_cmake_configure(target_arch=target_arch)
 
         print("\n- launching devenv...")
         if sys.platform == "win32":
