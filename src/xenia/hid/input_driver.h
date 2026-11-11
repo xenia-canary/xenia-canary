@@ -14,6 +14,7 @@
 #include <functional>
 
 #include "xenia/hid/input.h"
+#include "xenia/hid/raw_report.h"
 #include "xenia/ui/window.h"
 #include "xenia/xbox.h"
 
@@ -39,10 +40,34 @@ class InputDriver {
   virtual X_RESULT GetCapabilities(uint32_t user_index, uint32_t flags,
                                    X_INPUT_CAPABILITIES* out_caps) = 0;
   virtual X_RESULT GetState(uint32_t user_index, X_INPUT_STATE* out_state) = 0;
+  // The report XamInputRawState reads. The default builds a wired-style
+  // report from GetState's state (raw_report.h), so every connected device
+  // answers: title 45410914 reads raw reports from drum kits too, and drops
+  // the user's pad data when it gets X_ERROR_DEVICE_NOT_CONNECTED.
+  virtual X_RESULT GetRawState(uint32_t user_index,
+                               X_INPUT_RAW_STATE* out_raw_state) {
+    X_INPUT_STATE state = {};
+    const X_RESULT result = GetState(user_index, &state);
+    if (result != X_ERROR_SUCCESS) {
+      return result;
+    }
+    BuildWiredRawReport(state, out_raw_state);
+    return X_ERROR_SUCCESS;
+  }
   virtual X_RESULT SetState(uint32_t user_index,
                             X_INPUT_VIBRATION* vibration) = 0;
   virtual X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                                 X_INPUT_KEYSTROKE* out_keystroke) = 0;
+  // Whether the device now in the slot is a keyboard instrument (subtype 15),
+  // whose axes are bitfields and get no deadzone. InputSystem asks after each
+  // successful GetState while a deadzone is set, so a driver whose
+  // GetCapabilities is slow answers from its own cached state instead.
+  virtual bool IsKeyboardInstrument(uint32_t user_index) {
+    X_INPUT_CAPABILITIES capabilities = {};
+    return GetCapabilities(user_index, 0, &capabilities) == X_ERROR_SUCCESS &&
+           capabilities.type == XINPUT_DEVTYPE_GAMEPAD &&
+           capabilities.sub_type == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT;
+  }
 
   virtual InputType GetInputType() const = 0;
 

@@ -37,10 +37,12 @@ DEFINE_string(
     "What kind of controller each slot is reported as, when the kind SDL "
     "reports is not what the title expects: a comma separated list of "
     "slot:kind, e.g. \"0:guitar\". Kinds: gamepad, guitar, guitar_bass, "
-    "guitar_alternate, drums, wheel, arcade_stick, flight_stick, dance_pad, "
-    "arcade_pad. Guitar Hero and Rock Band read this to decide whether they "
-    "are being played on an instrument or on a pad. Empty, the default, "
-    "leaves every slot as SDL reports it.",
+    "guitar_alternate, drums, keyboard, wheel, arcade_stick, flight_stick, "
+    "dance_pad, arcade_pad. Music titles read this to decide whether they are "
+    "being played on an instrument or on a pad. keyboard is a keyboard "
+    "instrument (subtype 15): its keys arrive in the triggers and the left "
+    "stick, so its axes are passed on bit for bit, with no deadzone. Empty, "
+    "the default, leaves every slot as SDL reports it.",
     "HID");
 DEFINE_string(
     guitar_whammy_on_stick, "",
@@ -54,6 +56,63 @@ DEFINE_string(
 namespace xe {
 namespace hid {
 namespace sdl {
+
+// SdlAxes indices are SDL_GameControllerAxis values.
+static_assert(int(SDL_CONTROLLER_AXIS_LEFTX) == kSdlAxisLeftX);
+static_assert(int(SDL_CONTROLLER_AXIS_LEFTY) == kSdlAxisLeftY);
+static_assert(int(SDL_CONTROLLER_AXIS_RIGHTX) == kSdlAxisRightX);
+static_assert(int(SDL_CONTROLLER_AXIS_RIGHTY) == kSdlAxisRightY);
+static_assert(int(SDL_CONTROLLER_AXIS_TRIGGERLEFT) == kSdlAxisTriggerLeft);
+static_assert(int(SDL_CONTROLLER_AXIS_TRIGGERRIGHT) == kSdlAxisTriggerRight);
+static_assert(kSdlAxisCount <= 8, "keyboard_axes_with_events is 8 bits");
+
+namespace {
+// Two locks guard the slots (controllers_, keystroke_states_):
+//
+// - SDL's joystick lock (recursive, JoystickLock) keeps SDL handles alive:
+//   device removal closes a handle only inside HandleEvent, which holds it.
+//   Code that calls SDL with a slot's handle holds it: HandleEvent,
+//   PumpEvents' keyboard refresh, GetCapabilities, SetState,
+//   LoadGameControllerDB and the destructor.
+// - state_mutex_ guards the slot state itself. It is a leaf lock: no SDL
+//   call, and no other lock but the guest clock's (GetKeystroke), is ever
+//   taken while holding it. Every change to slot state is made while holding
+//   both locks (SDL's first); GetState and GetKeystroke take only
+//   state_mutex_ and read the cached state. So these polls never wait for
+//   SDL's joystick lock, which SDL holds for every device update and
+//   detection (HIDAPI device init sleeps under it); they only wait for a
+//   writer's short critical section. GetCapabilities and SetState still call
+//   SDL and take its lock.
+//
+// Order: SDL's joystick lock, then state_mutex_, never the other way round,
+// so no cycle can include state_mutex_. From reading SDL 2.32's source
+// (e11183ea6, Windows), these threads take SDL's lock: Xenia's UI thread
+// (SDL_PumpEvents -> SDL_JoystickUpdate, which also posts events from
+// detection, e.g. HIDAPI device init), SDL's RAWINPUT worker thread (its
+// window procedure handles WM_INPUT and device changes under the lock and can
+// post device events), and Windows.Gaming.Input callbacks that reach
+// HIDAPI_IsDevicePresent. Events are posted with SDL's lock held and then
+// SDL's event-watcher lock, which is the order HandleEvent sees. Guest
+// threads never take the watcher lock, and the UI-thread queue releases its
+// own mutex before running SDL (windowed_app_context.cc), so neither adds a
+// cycle. QueueControllerUpdate, which queues work for the UI thread, is
+// called before taking either lock.
+//
+// One inversion remains, and it predates these locks: SDL_GameControllerInit
+// posts the controllers already connected from SDL_InitSubSystem without the
+// joystick lock, so on that path HandleEvent takes the joystick lock after the
+// watcher lock (SDL_GameControllerOpen in OnControllerDeviceAdded always
+// did). A thread posting a device event under the joystick lock at that
+// moment could deadlock with it. Not observed, and the tests do not exercise
+// it: they initialize SDL before installing the event watch, unlike Setup.
+class JoystickLock {
+ public:
+  JoystickLock() { SDL_LockJoysticks(); }
+  ~JoystickLock() { SDL_UnlockJoysticks(); }
+  JoystickLock(const JoystickLock&) = delete;
+  JoystickLock& operator=(const JoystickLock&) = delete;
+};
+}  // namespace
 
 SDLInputDriver::SDLInputDriver(xe::ui::Window* window, size_t window_z_order)
     : InputDriver(window, window_z_order),
@@ -71,10 +130,17 @@ SDLInputDriver::~SDLInputDriver() {
       window()->app_context().ExecutePendingFunctionsFromUIThread();
     });
   }
-  for (size_t i = 0; i < controllers_.size(); i++) {
-    if (controllers_.at(i).sdl) {
-      SDL_GameControllerClose(controllers_.at(i).sdl);
-      controllers_.at(i) = {};
+  {
+    JoystickLock lock;
+    for (size_t i = 0; i < controllers_.size(); i++) {
+      SDL_GameController* controller = controllers_.at(i).sdl;
+      if (controller) {
+        {
+          std::lock_guard<std::mutex> state_lock(state_mutex_);
+          controllers_.at(i) = {};
+        }
+        SDL_GameControllerClose(controller);
+      }
     }
   }
   if (sdl_events_initialized_) {
@@ -200,6 +266,7 @@ void SDLInputDriver::LoadGameControllerDB() {
     }
   }
 
+  JoystickLock lock;
   for (uint32_t i = 0; i < HID_SDL_USER_COUNT; i++) {
     auto controller = GetControllerState(i);
 
@@ -221,6 +288,7 @@ X_RESULT SDLInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
   }
 
   QueueControllerUpdate();
+  JoystickLock lock;
 
   auto controller = GetControllerState(user_index);
   if (!controller) {
@@ -231,6 +299,7 @@ X_RESULT SDLInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
   // battery information) so this needs to be refreshed every time.
   UpdateXCapabilities(*controller, user_index);
 
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
   std::memcpy(out_caps, &controller->caps, sizeof(*out_caps));
 
   return X_ERROR_SUCCESS;
@@ -243,7 +312,11 @@ X_RESULT SDLInputDriver::GetState(uint32_t user_index,
     return X_ERROR_BAD_ARGUMENTS;
   }
 
+  // The keyboard's refresh from SDL runs in PumpEvents, which this queues.
   QueueControllerUpdate();
+  // Cached state only: never waits for SDL's joystick lock (see the lock
+  // notes at the top).
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
 
   auto controller = GetControllerState(user_index);
   if (!controller) {
@@ -266,6 +339,7 @@ X_RESULT SDLInputDriver::SetState(uint32_t user_index,
   }
 
   QueueControllerUpdate();
+  JoystickLock lock;
 
   auto controller = GetControllerState(user_index);
   if (!controller) {
@@ -343,6 +417,8 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
   };
 
   QueueControllerUpdate();
+  // Cached state only, like GetState.
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
 
   for (uint32_t user_index = (user_any ? 0 : users);
        user_index < (user_any ? HID_SDL_USER_COUNT : users + 1); user_index++) {
@@ -358,8 +434,13 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
     // If input is not active (e.g. due to a dialog overlay), force buttons to
     // "unpressed". The algorithm will automatically send UP events when
     // `is_active()` goes low and DOWN events when it goes high again.
-    const uint64_t curr_butts = controller->state.gamepad.buttons |
-                                AnalogToKeyfield(controller->state.gamepad);
+    // A keyboard instrument's axes are bitfields, not positions: no thumb or
+    // trigger keystrokes from them (its idle RY alone would hold the right
+    // thumb up).
+    const uint64_t analog_butts =
+        controller->keyboard ? 0 : AnalogToKeyfield(controller->state.gamepad);
+    const uint64_t curr_butts =
+        controller->state.gamepad.buttons | analog_butts;
     KeystrokeState& last = keystroke_states_.at(user_index);
 
     // Handle repeating
@@ -431,11 +512,21 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
   return X_ERROR_EMPTY;
 }
 
+bool SDLInputDriver::IsKeyboardInstrument(uint32_t user_index) {
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
+  const ControllerState* controller = GetControllerState(user_index);
+  return controller && controller->keyboard;
+}
+
 InputType SDLInputDriver::GetInputType() const { return InputType::Controller; }
 
 void SDLInputDriver::HandleEvent(const SDL_Event& event) {
   // This callback will likely run on the thread that posts the event, which
   // may be a dedicated thread SDL has created for the joystick subsystem.
+  // SDL usually holds the joystick lock here already (it is recursive); take
+  // it anyway so a handle cannot be closed under the handlers' SDL calls.
+  // The handlers take state_mutex_ only around their writes.
+  JoystickLock lock;
 
   // Event queue should never be (this) full
   assert(SDL_PeepEvents(nullptr, 0, SDL_PEEKEVENT, SDL_FIRSTEVENT,
@@ -525,11 +616,15 @@ void SDLInputDriver::OnControllerDeviceAdded(const SDL_Event& event) {
     }
   }
   if (user_id >= 0) {
-    auto& state = controllers_.at(user_id);
-    state = {controller, {}};
+    // Fill the new slot completely before a guest can see it.
+    ControllerState state = {controller, {}};
     // XInput seems to start with packet_number = 1 .
     state.state_changed = true;
     UpdateXCapabilities(state, static_cast<size_t>(user_id));
+    {
+      std::lock_guard<std::mutex> state_lock(state_mutex_);
+      controllers_.at(user_id) = state;
+    }
 
     XELOGI("SDL OnControllerDeviceAdded: Added at index {}.", user_id);
     XELOGI("SDL Controller {}: {}", user_id,
@@ -545,9 +640,13 @@ void SDLInputDriver::OnControllerDeviceRemoved(const SDL_Event& event) {
   // Find the disconnected gamecontroller and close it.
   auto idx = GetControllerIndexFromInstanceID(event.cdevice.which);
   if (idx) {
-    SDL_GameControllerClose(controllers_.at(*idx).sdl);
-    controllers_.at(*idx) = {};
-    keystroke_states_.at(*idx) = {};
+    SDL_GameController* controller = controllers_.at(*idx).sdl;
+    {
+      std::lock_guard<std::mutex> state_lock(state_mutex_);
+      controllers_.at(*idx) = {};
+      keystroke_states_.at(*idx) = {};
+    }
+    SDL_GameControllerClose(controller);
     XELOGI("SDL OnControllerDeviceRemoved: Removed at player index {}.", *idx);
   } else {
     // Can happen in case all slots where full previously.
@@ -558,7 +657,22 @@ void SDLInputDriver::OnControllerDeviceRemoved(const SDL_Event& event) {
 void SDLInputDriver::OnControllerDeviceAxisMotion(const SDL_Event& event) {
   auto idx = GetControllerIndexFromInstanceID(event.caxis.which);
   assert(idx);
-  auto& pad = controllers_.at(*idx).state.gamepad;
+  const bool whammy_on_stick = WhammyOnStick(*idx);
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
+  auto& controller = controllers_.at(*idx);
+  if (controller.keyboard && event.caxis.axis < kSdlAxisCount) {
+    // Bit-exact: no whammy handling; KeyboardGamepadFromSdl applies the
+    // same transforms as below.
+    SdlAxisValue(controller.keyboard_axes, event.caxis.axis) =
+        event.caxis.value;
+    controller.keyboard_axes_with_events = static_cast<uint8_t>(
+        controller.keyboard_axes_with_events | (1u << event.caxis.axis));
+    controller.state.gamepad = KeyboardGamepadFromSdl(
+        controller.keyboard_axes, controller.state.gamepad.buttons);
+    controller.state_changed = true;
+    return;
+  }
+  auto& pad = controller.state.gamepad;
   switch (event.caxis.axis) {
     case SDL_CONTROLLER_AXIS_LEFTX:
       pad.thumb_lx = event.caxis.value;
@@ -567,7 +681,7 @@ void SDLInputDriver::OnControllerDeviceAxisMotion(const SDL_Event& event) {
       pad.thumb_ly = ~event.caxis.value;
       break;
     case SDL_CONTROLLER_AXIS_RIGHTX:
-      if (WhammyOnStick(*idx)) {
+      if (whammy_on_stick) {
         // The trigger drives this axis; what arrives here is the tilt sensor.
         break;
       }
@@ -580,7 +694,7 @@ void SDLInputDriver::OnControllerDeviceAxisMotion(const SDL_Event& event) {
       pad.thumb_ry = ~event.caxis.value;
       break;
     case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
-      if (WhammyOnStick(*idx)) {
+      if (whammy_on_stick) {
         // A trigger is 0 to 32767; spread it over the whole stick, since a
         // title reads the middle as the bar held half down.
         pad.thumb_rx =
@@ -639,9 +753,7 @@ void SDLInputDriver::OnControllerDeviceButtonChanged(const SDL_Event& event) {
 
   auto idx = GetControllerIndexFromInstanceID(event.cbutton.which);
   assert(idx);
-  auto& controller = controllers_.at(*idx);
 
-  uint16_t xbuttons = controller.state.gamepad.buttons;
   // Lookup the XInput button code.
   if (event.cbutton.button >= xbutton_lookup.size()) {
     // A newer SDL Version may have added new buttons.
@@ -649,6 +761,9 @@ void SDLInputDriver::OnControllerDeviceButtonChanged(const SDL_Event& event) {
     return;
   }
   auto xbutton = xbutton_lookup.at(event.cbutton.button);
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
+  auto& controller = controllers_.at(*idx);
+  uint16_t xbuttons = controller.state.gamepad.buttons;
   // Pressed or released?
   if (event.cbutton.state == SDL_PRESSED) {
     if (xbutton == X_INPUT_GAMEPAD_GUIDE && !cvars::guide_button) {
@@ -748,6 +863,7 @@ std::optional<uint8_t> SDLInputDriver::ForcedSubtypeForSlot(size_t user_index) {
       {"guitar_alternate", XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE},
       {"guitar_bass", XINPUT_DEVSUBTYPE_GUITAR_BASS},
       {"drums", XINPUT_DEVSUBTYPE_DRUM_KIT},
+      {"keyboard", XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT},
       {"wheel", XINPUT_DEVSUBTYPE_WHEEL},
       {"arcade_stick", XINPUT_DEVSUBTYPE_ARCADE_STICK},
       {"arcade_pad", XINPUT_DEVSUBTYPE_ARCADE_PAD},
@@ -785,6 +901,65 @@ std::optional<uint8_t> SDLInputDriver::ForcedSubtypeForSlot(size_t user_index) {
   return std::nullopt;
 }
 
+void SDLInputDriver::RefreshKeyboardAxes(ControllerState& state) {
+  // TODO(stone-ericm): A change SDL drops before it reaches its cached value
+  // cannot be recovered here. In SDL 2.32.2 (e11183ea6, SDL_joystick.c lines
+  // 1953-1959, SDL_PrivateJoystickAxis) and SDL 3 (SDL_SendJoystickAxis), a
+  // physical axis that has not yet moved by more than 409
+  // (SDL_JOYSTICK_AXIS_MAX / 80) from its first value after the device opens
+  // drops every smaller change: no event, and SDL_GameControllerGetAxis keeps
+  // the old value. On a keyboard instrument that loses the first press of key
+  // 8 or key 16 on its own (trigger byte 0x01, a change of 257) and the
+  // overdrive button (right stick Y bit 7, a change of 128) until something
+  // moves that axis further. Fixing it needs a change in SDL.
+  // Called with SDL's joystick lock held, so the slot's SDL handle stays open
+  // and no event changes the state while it runs (events need that lock to
+  // write), so the mask can be read here; the writes below also take
+  // state_mutex_, after the SDL calls.
+  const uint8_t axes_with_events = state.keyboard_axes_with_events;
+  std::array<SdlAxisReading, kSdlAxisCount> readings = {};
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(state.sdl);
+  for (size_t axis = 0; axis < kSdlAxisCount; ++axis) {
+    if (axes_with_events & (1u << axis)) {
+      continue;
+    }
+    const auto controller_axis = static_cast<SDL_GameControllerAxis>(axis);
+    // Until SDL has had a report for the joystick axis, GetAxis reads SDL's
+    // zero-filled placeholder (a trigger reads 16383, half way), not the
+    // device; SDL_JoystickOpen does not wait for a report.
+    const SDL_GameControllerButtonBind bind =
+        SDL_GameControllerGetBindForAxis(state.sdl, controller_axis);
+    Sint16 initial_value = 0;
+    readings[axis].known =
+        bind.bindType == SDL_CONTROLLER_BINDTYPE_AXIS &&
+        SDL_JoystickGetAxisInitialState(joystick, bind.value.axis,
+                                        &initial_value) == SDL_TRUE;
+    if (readings[axis].known) {
+      readings[axis].value =
+          SDL_GameControllerGetAxis(state.sdl, controller_axis);
+    }
+  }
+
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
+  SeedKeyboardAxes(&state.keyboard_axes, state.keyboard_axes_with_events,
+                   readings);
+  // Axes only: the buttons belong to the button events (another thread).
+  const X_INPUT_GAMEPAD from = KeyboardGamepadFromSdl(state.keyboard_axes, 0);
+  X_INPUT_GAMEPAD& pad = state.state.gamepad;
+  if (pad.left_trigger != from.left_trigger ||
+      pad.right_trigger != from.right_trigger ||
+      pad.thumb_lx != from.thumb_lx || pad.thumb_ly != from.thumb_ly ||
+      pad.thumb_rx != from.thumb_rx || pad.thumb_ry != from.thumb_ry) {
+    pad.left_trigger = from.left_trigger;
+    pad.right_trigger = from.right_trigger;
+    pad.thumb_lx = from.thumb_lx;
+    pad.thumb_ly = from.thumb_ly;
+    pad.thumb_rx = from.thumb_rx;
+    pad.thumb_ry = from.thumb_ry;
+    state.state_changed = true;
+  }
+}
+
 void SDLInputDriver::UpdateXCapabilities(ControllerState& state,
                                          size_t user_index) {
   assert(state.sdl);
@@ -819,7 +994,7 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state,
     }
   }
 
-  auto& c = state.caps;
+  X_INPUT_CAPABILITIES c = state.caps;
   c.type = 0x01;  // XINPUT_DEVTYPE_GAMEPAD
   // SDL's joystick types match the XInput subtypes up to the guitar.
   switch (SDL_JoystickGetType(SDL_GameControllerGetJoystick(state.sdl))) {
@@ -855,19 +1030,9 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state,
   if (const auto forced = ForcedSubtypeForSlot(user_index)) {
     c.sub_type = *forced;
   }
-  state.guitar = IsGuitarSubtype(c.sub_type);
-  state.whammy_on_trigger = SDL_GameControllerGetBindForAxis(
-                                state.sdl, SDL_CONTROLLER_AXIS_TRIGGERLEFT)
-                                .bindType != SDL_CONTROLLER_BINDTYPE_NONE;
-  if (state.guitar && !state.whammy_seen) {
-    // An untouched axis reads as the middle, which is the whammy held half
-    // down. Start it where the bar rests.
-    const int16_t resting = std::numeric_limits<int16_t>::min();
-    if (state.state.gamepad.thumb_rx != resting) {
-      state.state.gamepad.thumb_rx = resting;
-      state.state_changed = true;
-    }
-  }
+  const bool whammy_on_trigger = SDL_GameControllerGetBindForAxis(
+                                     state.sdl, SDL_CONTROLLER_AXIS_TRIGGERLEFT)
+                                     .bindType != SDL_CONTROLLER_BINDTYPE_NONE;
   c.flags = cap_flags;
   c.gamepad.buttons =
       0xF3FF | (cvars::guide_button ? X_INPUT_GAMEPAD_GUIDE : 0x0);
@@ -879,16 +1044,58 @@ void SDLInputDriver::UpdateXCapabilities(ControllerState& state,
   c.gamepad.thumb_ry = static_cast<int16_t>(0xFFFFu);
   c.vibration.left_motor_speed = 0xFFFFu;
   c.vibration.right_motor_speed = 0xFFFFu;
+
+  {
+    // No SDL calls from here on while state_mutex_ is held.
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+    state.caps = c;
+    state.guitar = IsGuitarSubtype(c.sub_type);
+    state.keyboard = c.sub_type == XINPUT_DEVSUBTYPE_KEYBOARD_INSTRUMENT;
+    state.whammy_on_trigger = whammy_on_trigger;
+    if (state.guitar && !state.whammy_seen) {
+      // An untouched axis reads as the middle, which is the whammy held half
+      // down. Start it where the bar rests.
+      const int16_t resting = std::numeric_limits<int16_t>::min();
+      if (state.state.gamepad.thumb_rx != resting) {
+        state.state.gamepad.thumb_rx = resting;
+        state.state_changed = true;
+      }
+    }
+  }
+  if (state.keyboard) {
+    // The state starts zeroed at device add, and SDL sends no event for an
+    // axis that never moves (an idle keyboard instrument's RY), so start from
+    // SDL's values, or the idle values where SDL has none yet.
+    RefreshKeyboardAxes(state);
+  }
+}
+
+void SDLInputDriver::PumpEvents() {
+  SDL_PumpEvents();
+  // A keyboard's axes that have not sent an event follow SDL. This runs
+  // here, on the UI thread, rather than in GetState, so a guest poll never
+  // waits for SDL's joystick lock; each GetState queues one of these, so
+  // the next poll sees the result (with the packet number moved).
+  JoystickLock lock;
+  for (auto& state : controllers_) {
+    if (state.sdl && state.keyboard) {
+      RefreshKeyboardAxes(state);
+    }
+  }
 }
 
 void SDLInputDriver::QueueControllerUpdate() {
+  if (!window()) {
+    // Only in tests, which pump SDL themselves.
+    return;
+  }
   // To minimize consecutive event pumps do not queue before previous pump is
   // finished.
   bool is_queued = false;
   sdl_pumpevents_queued_.compare_exchange_strong(is_queued, true);
   if (!is_queued) {
     window()->app_context().CallInUIThread([this]() {
-      SDL_PumpEvents();
+      PumpEvents();
       sdl_pumpevents_queued_ = false;
     });
   }

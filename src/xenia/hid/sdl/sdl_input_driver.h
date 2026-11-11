@@ -18,6 +18,7 @@
 #include "SDL.h"
 #include "third_party/rapidcsv/src/rapidcsv.h"
 #include "xenia/hid/input_driver.h"
+#include "xenia/hid/sdl/sdl_keyboard_report.h"
 
 #define HID_SDL_USER_COUNT 4
 #define HID_SDL_THUMB_THRES 0x4E00
@@ -44,6 +45,8 @@ class SDLInputDriver final : public InputDriver {
   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration) override;
   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                         X_INPUT_KEYSTROKE* out_keystroke) override;
+  // From the cached slot state: never calls SDL or waits for its lock.
+  bool IsKeyboardInstrument(uint32_t user_index) override;
   virtual InputType GetInputType() const override;
 
  private:
@@ -58,6 +61,15 @@ class SDLInputDriver final : public InputDriver {
     bool whammy_on_trigger;
     // The whammy has moved, so the stick holds the device's value.
     bool whammy_seen;
+    // Reported as a keyboard instrument (subtype 15): its axes are
+    // bitfields, kept bit-exact in keyboard_axes.
+    bool keyboard;
+    // The keyboard's axes as SDL reports them; the gamepad is built from them.
+    sdl::SdlAxes keyboard_axes;
+    // Bit (1 << SDL axis) set once that axis has sent an event. Until then
+    // the axis follows SDL_GameControllerGetAxis (SDL sends no event for an
+    // axis that never moves, such as an idle keyboard instrument's RY).
+    uint8_t keyboard_axes_with_events;
   };
 
   enum class RepeatState {
@@ -86,7 +98,14 @@ class SDLInputDriver final : public InputDriver {
   ControllerState* GetControllerState(uint32_t user_index);
   bool TestSDLVersion() const;
   void UpdateXCapabilities(ControllerState& state, size_t user_index);
+  // Brings a keyboard's axes that have not sent an event up to date from SDL
+  // (or to the idle values while SDL has had no report for them) and
+  // rebuilds its gamepad; marks the state changed when the gamepad changed.
+  void RefreshKeyboardAxes(ControllerState& state);
   void QueueControllerUpdate();
+  // What the UI thread runs for each pump QueueControllerUpdate queues:
+  // SDL_PumpEvents, then the keyboards' refresh from SDL.
+  void PumpEvents();
   // The kind controller_subtypes asks for in this slot, if it asks for one.
   static std::optional<uint8_t> ForcedSubtypeForSlot(size_t user_index);
   static bool IsGuitarSubtype(uint8_t sub_type);
@@ -99,6 +118,12 @@ class SDLInputDriver final : public InputDriver {
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
+  // Guards the slots' state (see the lock notes in sdl_input_driver.cc).
+  // A leaf lock, always taken after SDL's joystick lock, never before.
+  std::mutex state_mutex_;
+
+  // Drives the driver's own event handling without a window (tests only).
+  friend class SDLInputDriverTestAccess;
 };
 
 }  // namespace sdl

@@ -30,9 +30,11 @@ namespace kernel {
 namespace test {
 
 // Real memory, CPU and kernel globals, without Emulator UI or persistent data.
+// `input_system` (optional) is what KernelState::input_system() returns.
 class KernelStateTest {
  public:
-  KernelStateTest() : processor_(&memory_, &export_resolver_) {
+  explicit KernelStateTest(hid::InputSystem* input_system = nullptr)
+      : processor_(&memory_, &export_resolver_) {
     REQUIRE(memory_.Initialize());
     std::unique_ptr<cpu::backend::Backend> backend;
 #if XE_ARCH_AMD64
@@ -42,7 +44,8 @@ class KernelStateTest {
 #endif
     REQUIRE(backend != nullptr);
     REQUIRE(processor_.Setup(std::move(backend)));
-    kernel_state_.reset(new KernelState(&memory_, &processor_, &file_system_));
+    kernel_state_.reset(
+        new KernelState(&memory_, &processor_, &file_system_, input_system));
   }
 
   Memory* memory() { return &memory_; }
