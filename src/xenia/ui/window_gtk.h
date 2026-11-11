@@ -44,6 +44,7 @@ class GTKWindow : public Window {
 
   void ApplyNewFullscreen() override;
   void ApplyNewTitle() override;
+  void ApplyNewDesiredLogicalSize() override;
   void ApplyNewMainMenu(MenuItem* old_main_menu) override;
   // Mouse capture seems to happen implicitly compared to Windows.
   void FocusImpl() override;

@@ -426,6 +426,75 @@ void Win32Window::ApplyNewFullscreen() {
   }
 }
 
+void Win32Window::ApplyNewDesiredLogicalSize() {
+  if (IsFullscreen()) {
+    // Update the placement that will be restored when exiting fullscreen, in
+    // the DPI it was saved with (the exit rescales it if the DPI has changed).
+    pre_fullscreen_normal_client_width_ = ConvertSizeDpi(
+        GetDesiredLogicalWidth(), pre_fullscreen_dpi_, USER_DEFAULT_SCREEN_DPI);
+    pre_fullscreen_normal_client_height_ =
+        ConvertSizeDpi(GetDesiredLogicalHeight(), pre_fullscreen_dpi_,
+                       USER_DEFAULT_SCREEN_DPI);
+
+    RECT window_rect;
+    window_rect.left = 0;
+    window_rect.top = 0;
+    window_rect.right = LONG(pre_fullscreen_normal_client_width_);
+    window_rect.bottom = LONG(pre_fullscreen_normal_client_height_);
+
+    // The non-client area is removed while in fullscreen, use the style that
+    // will be reinstated when exiting it.
+    if (!AdjustWindowRectangle(
+            window_rect, GetWindowLong(hwnd_, GWL_STYLE) | WS_OVERLAPPEDWINDOW,
+            BOOL(GetMainMenu() != nullptr), GetWindowLong(hwnd_, GWL_EXSTYLE),
+            pre_fullscreen_dpi_)) {
+      return;
+    }
+
+    pre_fullscreen_placement_.rcNormalPosition.right =
+        pre_fullscreen_placement_.rcNormalPosition.left +
+        (window_rect.right - window_rect.left);
+    pre_fullscreen_placement_.rcNormalPosition.bottom =
+        pre_fullscreen_placement_.rcNormalPosition.top +
+        (window_rect.bottom - window_rect.top);
+
+    return;
+  }
+
+  // Note that WINDOWPLACEMENT contains workspace coordinates, but only the size
+  // of rcNormalPosition is changed here. If the window is maximized, this only
+  // changes the size it will be restored to.
+  WINDOWPLACEMENT placement;
+  placement.length = sizeof(placement);
+  if (!GetWindowPlacement(hwnd_, &placement)) {
+    return;
+  }
+
+  RECT window_rect;
+  window_rect.left = 0;
+  window_rect.top = 0;
+  window_rect.right = LONG(SizeToPhysical(GetDesiredLogicalWidth()));
+  window_rect.bottom = LONG(SizeToPhysical(GetDesiredLogicalHeight()));
+
+  if (!AdjustWindowRectangle(window_rect)) {
+    return;
+  }
+
+  placement.rcNormalPosition.right =
+      placement.rcNormalPosition.left + (window_rect.right - window_rect.left);
+  placement.rcNormalPosition.bottom =
+      placement.rcNormalPosition.top + (window_rect.bottom - window_rect.top);
+
+  // Don't change the minimized / maximized / normal state.
+  placement.flags = 0;
+  if (placement.showCmd == SW_SHOWMINIMIZED) {
+    placement.showCmd = SW_SHOWMINNOACTIVE;
+  }
+
+  // May send WM_SIZE, which reports the new sizes to the common Window.
+  SetWindowPlacement(hwnd_, &placement);
+}
+
 void Win32Window::ApplyNewTitle() {
   SetWindowTextW(hwnd_,
                  reinterpret_cast<LPCWSTR>(xe::to_utf16(GetTitle()).c_str()));

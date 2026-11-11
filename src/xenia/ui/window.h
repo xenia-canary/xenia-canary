@@ -269,6 +269,16 @@ class Window {
   uint32_t GetDesiredLogicalWidth() const { return desired_logical_width_; }
   uint32_t GetDesiredLogicalHeight() const { return desired_logical_height_; }
 
+  // Changes the desired logical size of the client area in the non-maximized,
+  // non-fullscreen state. If the window is currently maximized or fullscreen,
+  // the new size is applied when it's restored.
+  void SetDesiredLogicalSize(uint32_t new_desired_logical_width,
+                             uint32_t new_desired_logical_height);
+
+  // Resets the window size persisted in the config to the default and resizes
+  // the window to it.
+  void ResetLogicalSizeToDefault();
+
   // 0 width or height may be returned even in case of an open window with a
   // valid non-zero-area surface depending on the platform.
   uint32_t GetActualPhysicalWidth() const {
@@ -504,6 +514,8 @@ class Window {
   // different than it was previously.
   virtual void ApplyNewFullscreen() {}
   virtual void ApplyNewTitle() {}
+  // The new size is already stored in the desired logical size.
+  virtual void ApplyNewDesiredLogicalSize() {}
   // can_apply_state_in_current_phase whether the window is in a life cycle
   // phase that would normally accept Apply calls (the native window surely
   // exists), since this function may be called in closed states too to update

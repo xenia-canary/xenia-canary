@@ -9,6 +9,8 @@
 
 #include "xenia/ui/window.h"
 
+#include <algorithm>
+
 #include "third_party/imgui/imgui.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
@@ -499,6 +501,36 @@ void Window::OnUsbDeviceChanged(
   SendEventToListeners(
       [is_arrival](auto listener) { listener->OnUsbDeviceChanged(is_arrival); },
       destruction_receiver);
+}
+
+void Window::SetDesiredLogicalSize(uint32_t new_desired_logical_width,
+                                   uint32_t new_desired_logical_height) {
+  if (desired_logical_width_ == new_desired_logical_width &&
+      desired_logical_height_ == new_desired_logical_height) {
+    return;
+  }
+
+  desired_logical_width_ = new_desired_logical_width;
+  desired_logical_height_ = new_desired_logical_height;
+
+  if (!CanApplyState()) {
+    return;
+  }
+
+  WindowDestructionReceiver destruction_receiver(this);
+  ApplyNewDesiredLogicalSize();
+
+  if (destruction_receiver.IsWindowDestroyedOrStateInapplicable()) {
+    return;
+  }
+}
+
+void Window::ResetLogicalSizeToDefault() {
+  ACCESS_CVar(window_size_x).ResetConfigValueToDefault();
+  ACCESS_CVar(window_size_y).ResetConfigValueToDefault();
+
+  SetDesiredLogicalSize(uint32_t(std::max(cvars::window_size_x, 1)),
+                        uint32_t(std::max(cvars::window_size_y, 1)));
 }
 
 bool Window::OnActualSizeUpdate(

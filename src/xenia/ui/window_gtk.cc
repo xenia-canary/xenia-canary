@@ -210,6 +210,26 @@ void GTKWindow::ApplyNewFullscreen() {
   }
 }
 
+void GTKWindow::ApplyNewDesiredLogicalSize() {
+  // The desired size is the size of the drawing area, while gtk_window_resize
+  // takes the size of the whole window contents, which also include the main
+  // menu outside fullscreen. The menu is detached while in fullscreen, so use
+  // its preferred height rather than the current layout. For a maximized or a
+  // fullscreen window, GTK applies the size when the window is restored.
+  int menu_height = 0;
+  const auto* main_menu = dynamic_cast<const GTKMenuItem*>(GetMainMenu());
+
+  if (main_menu && main_menu->handle()) {
+    int menu_minimum_height = 0;
+    gtk_widget_get_preferred_height(main_menu->handle(), &menu_minimum_height,
+                                    &menu_height);
+  }
+
+  // The GDK_CONFIGURE that follows reports the new actual size.
+  gtk_window_resize(GTK_WINDOW(window_), int(GetDesiredLogicalWidth()),
+                    int(GetDesiredLogicalHeight()) + menu_height);
+}
+
 void GTKWindow::ApplyNewTitle() {
   gtk_window_set_title(GTK_WINDOW(window_), GetTitle().c_str());
 }

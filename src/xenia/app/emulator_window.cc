@@ -900,6 +900,10 @@ bool EmulatorWindow::Initialize() {
     hid_menu->AddChild(MenuItem::Create(
         MenuItem::Type::kString, "&Display controller hotkeys", "",
         std::bind(&EmulatorWindow::DisplayHotKeysConfig, this)));
+    hid_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
+    hid_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "&Reset window size", "",
+                         [this] { window_->ResetLogicalSizeToDefault(); }));
   }
   main_menu->AddChild(std::move(hid_menu));
 
