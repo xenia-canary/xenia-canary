@@ -594,7 +594,12 @@ class Win32Thread : public Win32Handle<Thread> {
 
   void QueueUserCallback(std::function<void()> callback) override {
     auto apc_data = new ApcData({std::move(callback)});
-    QueueUserAPC(DispatchApc, handle_, reinterpret_cast<ULONG_PTR>(apc_data));
+    if (!QueueUserAPC(DispatchApc, handle_,
+                      reinterpret_cast<ULONG_PTR>(apc_data))) {
+      // Not queued (e.g. the thread is exiting): DispatchApc will never run
+      // to free it.
+      delete apc_data;
+    }
   }
 
   bool Resume(uint32_t* out_previous_suspend_count = nullptr) override {
