@@ -1405,6 +1405,10 @@ X_STATUS xeProcessUserApcs(PPCContext* ctx) {
 
     XAPC* apc = user_apc_queue.ListEntryObject(
         ctx->TranslateVirtual<X_LIST_ENTRY*>(apc_ptr));
+    // apc_ptr is the APC's list entry; the kernel routine and the free below
+    // take the KAPC itself.
+    uint32_t kapc_ptr =
+        apc_ptr - static_cast<uint32_t>(offsetof(XAPC, list_entry));
 
     uint8_t* scratch_ptr = ctx->TranslateVirtual(scratch_address);
     xe::store_and_swap<uint32_t>(scratch_ptr + 0, apc->normal_routine);
@@ -1418,7 +1422,7 @@ X_STATUS xeProcessUserApcs(PPCContext* ctx) {
     alert_status = X_STATUS_USER_APC;
     if (apc->kernel_routine != XAPC::kDummyKernelRoutine) {
       uint64_t kernel_args[] = {
-          apc_ptr,
+          kapc_ptr,
           scratch_address + 0,
           scratch_address + 4,
           scratch_address + 8,
@@ -1427,7 +1431,7 @@ X_STATUS xeProcessUserApcs(PPCContext* ctx) {
       ctx->processor->Execute(ctx->thread_state, apc->kernel_routine,
                               kernel_args, xe::countof(kernel_args));
     } else {
-      ctx->kernel_state->memory()->SystemHeapFree(apc_ptr);
+      ctx->kernel_state->memory()->SystemHeapFree(kapc_ptr);
     }
 
     uint32_t normal_routine = xe::load_and_swap<uint32_t>(scratch_ptr + 0);
