@@ -83,7 +83,7 @@ XThread::~XThread() {
   kernel_state_->UnregisterThread(this);
 
   // Notify processor of our impending destruction.
-  emulator()->processor()->OnThreadDestroyed(thread_id_);
+  kernel_state()->processor()->OnThreadDestroyed(thread_id_);
 
   thread_.reset();
 
@@ -462,7 +462,7 @@ X_STATUS XThread::Create() {
   SetActiveCpu(cpu_index);
 
   // Notify processor of our creation.
-  emulator()->processor()->OnThreadCreated(handle(), thread_state_, this);
+  kernel_state()->processor()->OnThreadCreated(handle(), thread_state_, this);
 
   if ((creation_params_.creation_flags & X_CREATE_SUSPENDED) == 0) {
     // Start the thread now that we're all setup.
@@ -503,7 +503,7 @@ X_STATUS XThread::Exit(int exit_code) {
   kernel_state()->OnThreadExit(this);
 
   // Notify processor of our exit.
-  emulator()->processor()->OnThreadExit(thread_id_);
+  kernel_state()->processor()->OnThreadExit(thread_id_);
 
   // NOTE: unless PlatformExit fails, expect it to never return!
   current_xthread_tls_ = nullptr;
@@ -527,7 +527,7 @@ X_STATUS XThread::Terminate(int exit_code) {
   thread->exit_status = exit_code;
 
   // Notify processor of our exit.
-  emulator()->processor()->OnThreadExit(thread_id_);
+  kernel_state()->processor()->OnThreadExit(thread_id_);
 
   running_ = false;
   if (XThread::IsInThread(this)) {
@@ -1053,7 +1053,7 @@ bool XThread::Save(ByteStream* stream) {
 
   uint32_t pc = 0;
   if (running_) {
-    pc = emulator()->processor()->StepToGuestSafePoint(thread_id_);
+    pc = kernel_state()->processor()->StepToGuestSafePoint(thread_id_);
     if (!pc) {
       XELOGE("XThread {:08X} failed to save: could not step to a safe point!",
              handle());
@@ -1217,7 +1217,7 @@ object_ref<XThread> XThread::Restore(KernelState* kernel_state,
     assert_not_null(thread->thread_);
 
     // Notify processor we were recreated.
-    thread->emulator()->processor()->OnThreadCreated(
+    thread->kernel_state()->processor()->OnThreadCreated(
         thread->handle(), thread->thread_state(), thread);
   }
 

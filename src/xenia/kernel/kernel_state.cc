@@ -1027,7 +1027,7 @@ void KernelState::OnThreadExit(XThread* thread) {
     }
   }
 
-  emulator()->processor()->OnThreadExit(thread->thread_id());
+  processor()->OnThreadExit(thread->thread_id());
 }
 
 object_ref<XThread> KernelState::GetThreadByID(uint32_t thread_id) {
