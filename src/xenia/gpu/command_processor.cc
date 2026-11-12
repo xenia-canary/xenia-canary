@@ -557,13 +557,7 @@ void CommandProcessor::LogRegisterSets(uint32_t base_register_index,
 #if XE_ENABLE_GPU_REG_WRITE_LOGGING == 1
   if (cvars::log_guest_driven_gpu_register_written_values &&
       logging::ShouldLog(LogLevel::Debug)) {
-    auto target = logging::internal::GetThreadBuffer();
-
-    auto target_ptr = target.first;
-
-    size_t total_size = 0;
-
-    size_t rem_size = target.second;
+    logging::LoggerBatch<LogLevel::Debug> logger{};
 
     for (uint32_t i = 0; i < n_values; ++i) {
       uint32_t register_index = base_register_index + i;
@@ -574,22 +568,12 @@ void CommandProcessor::LogRegisterSets(uint32_t base_register_index,
           RegisterFile::GetRegisterInfo(register_index);
 
       if (!reginfo) {
-        auto tmpres = fmt::format_to_n(target_ptr, rem_size,
-                                       "Unknown_Reg{:04X} <- {:08X}\n",
-                                       register_index, value);
-        target_ptr = tmpres.out;
-        rem_size -= tmpres.size;
-        total_size += tmpres.size;
-
+        logger("Unknown_Reg{:04X} <- {:08X}\n", register_index, value);
       } else {
-        auto tmpres = fmt::format_to_n(target_ptr, rem_size, "{} <- {:08X}\n",
-                                       reginfo->name, value);
-        rem_size -= tmpres.size;
-        target_ptr = tmpres.out;
-        total_size += tmpres.size;
+        logger("{} <- {:08X}\n", reginfo->name, value);
       }
     }
-    logging::internal::AppendLogLine(LogLevel::Debug, 'd', total_size);
+    logger.submit('d');
   }
 #endif
 }

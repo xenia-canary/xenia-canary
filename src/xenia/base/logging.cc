@@ -255,6 +255,8 @@ class Logger {
   static constexpr size_t kBlockCount = kBufferSize / kBlockSize;
   static constexpr size_t kBlockIndexMask = kBlockCount - 1;
 
+  static constexpr size_t kMaxLineLength = kBufferSize / 2 - sizeof(LogLine);
+
   static const size_t kClaimStrategyFootprint =
       sizeof(std::atomic<dp::sequence_t>[kBlockCount]);
 
@@ -408,6 +410,8 @@ class Logger {
   void AppendLine(uint32_t thread_id, const char prefix_char,
                   const char* buffer_data, size_t buffer_length,
                   bool terminate = false) {
+    buffer_length = std::min(buffer_length, kMaxLineLength);
+
     size_t count = BlockCount(sizeof(LogLine) + buffer_length);
 
     auto range = claim_strategy_.claim(count);
@@ -506,13 +510,20 @@ void logging::internal::AppendLogLine(LogLevel log_level,
   if (!logger_ || !ShouldLog(log_level) || !written) {
     return;
   }
+  if (written > sizeof(thread_log_buffer_)) {
+    // fmt::format_to_n reports the untruncated length.
+    constexpr std::string_view kTruncated = "... [truncated]\n";
+    written = sizeof(thread_log_buffer_);
+    std::memcpy(thread_log_buffer_ + written - kTruncated.size(),
+                kTruncated.data(), kTruncated.size());
+  }
   logger_->AppendLine(xe::threading::current_thread_id(), prefix_char,
                       thread_log_buffer_, written);
 }
 
 void logging::AppendLogLine(LogLevel log_level, const char prefix_char,
                             const std::string_view str, uint32_t log_mask) {
-  if (!ShouldLog(log_level, log_mask) || !str.size()) {
+  if (!logger_ || !ShouldLog(log_level, log_mask) || !str.size()) {
     return;
   }
   logger_->AppendLine(xe::threading::current_thread_id(), prefix_char,

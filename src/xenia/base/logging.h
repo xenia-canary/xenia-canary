@@ -149,9 +149,11 @@ struct LoggerBatch {
   void operator()(const char (&fmt)[fmtlen], Ts&&... args) {
     auto tmpres =
         fmt::format_to_n(thrd_buf, thrd_buf_rem, fmt::runtime(fmt), args...);
-    thrd_buf_rem -= tmpres.size;
+    // tmpres.size is the untruncated length.
+    const size_t written = static_cast<size_t>(tmpres.out - thrd_buf);
+    thrd_buf_rem -= written;
     thrd_buf = tmpres.out;
-    total_size += tmpres.size;
+    total_size += written;
   }
 
   void submit(char prefix_char) {
