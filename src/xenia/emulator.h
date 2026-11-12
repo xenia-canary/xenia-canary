@@ -48,6 +48,7 @@ class InputDriver;
 class InputSystem;
 }  // namespace hid
 namespace ui {
+struct CrashReport;
 class ImGuiDrawer;
 class Window;
 }  // namespace ui
@@ -133,6 +134,8 @@ class Emulator {
   // ImGui drawer for various kinds of dialogs requested by the guest. Can be
   // null.
   ui::ImGuiDrawer* imgui_drawer() const { return imgui_drawer_; }
+
+  void ShowCrashDialog(ui::CrashReport report);
 
   // Guest memory system modelling the RAM (both virtual and physical) of the
   // system.

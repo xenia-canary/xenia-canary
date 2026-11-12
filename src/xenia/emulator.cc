@@ -17,6 +17,7 @@
 #include "third_party/zarchive/include/zarchive/zarchivecommon.h"
 #include "third_party/zarchive/include/zarchive/zarchivewriter.h"
 #include "third_party/zarchive/src/sha_256.h"
+#include "version.h"
 #include "xenia/apu/audio_system.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
@@ -49,6 +50,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/memory.h"
 #include "xenia/ui/file_picker.h"
+#include "xenia/ui/imgui_crash_dialog.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/imgui_host_notification.h"
@@ -1378,6 +1380,114 @@ const std::filesystem::path Emulator::ShowDiscPicker(
   return path;
 }
 
+static std::string DescribeException(const Exception& ex) {
+  switch (ex.code()) {
+    case Exception::Code::kAccessViolation: {
+      const char* op_str = "unknown";
+
+      switch (ex.access_violation_operation()) {
+        case Exception::AccessViolationOperation::kRead:
+          op_str = "read";
+          break;
+        case Exception::AccessViolationOperation::kWrite:
+          op_str = "write";
+          break;
+        default:
+          break;
+      }
+
+      return fmt::format("Access violation ({}) at 0x{:016X}", op_str,
+                         ex.fault_address());
+    }
+    case Exception::Code::kIllegalInstruction:
+      return "Illegal instruction";
+    default:
+      return "Unknown exception";
+  }
+}
+
+static std::string FormatCrashDump(kernel::XThread* thread,
+                                   const cpu::ppc::PPCContext* context,
+                                   uint32_t guest_pc,
+                                   std::string_view exception) {
+  std::string dump;
+  dump.append("==== CRASH DUMP ====\n");
+  dump.append(fmt::format("Thread ID (Host: 0x{:08X} / Guest: 0x{:08X})\n",
+                          thread->thread()->system_id(), thread->thread_id()));
+  dump.append(fmt::format("Thread Handle: 0x{:08X}\n", thread->handle()));
+  dump.append(fmt::format("PC: 0x{:08X}\n", guest_pc));
+  dump.append(
+      fmt::format("LR: 0x{:08X}\n", static_cast<uint32_t>(context->lr)));
+  dump.append(exception);
+  dump.push_back('\n');
+
+  dump.append("Registers:\n");
+
+  for (int i = 0; i < 32; i++) {
+    dump.append(fmt::format(" r{:<3} = {:016X}\n", i, context->r[i]));
+  }
+
+  for (int i = 0; i < 32; i++) {
+    dump.append(fmt::format(" f{:<3} = {:016X} = (double){} = (float){}\n", i,
+                            *reinterpret_cast<const uint64_t*>(&context->f[i]),
+                            context->f[i],
+                            *reinterpret_cast<const float*>(&context->f[i])));
+  }
+
+  for (int i = 0; i < 128; i++) {
+    dump.append(
+        fmt::format(" v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
+                    context->v[i].u32[0], context->v[i].u32[1],
+                    context->v[i].u32[2], context->v[i].u32[3]));
+  }
+
+  return dump;
+}
+
+void Emulator::ShowCrashDialog(ui::CrashReport report) {
+  if (!display_window_ || !imgui_drawer_) {
+    return;
+  }
+
+  std::vector<std::pair<std::string, std::string>> title_details;
+
+  if (is_title_open()) {
+    title_details.emplace_back(
+        "Title",
+        fmt::format("{} ({:08X})",
+                    title_name_.empty() ? "Unknown" : title_name_, title_id()));
+
+    if (!title_version_.empty()) {
+      title_details.emplace_back("Version", title_version_);
+    }
+
+    const xex2_opt_execution_info* exec_info =
+        kernel_state_->GetExecutionInfo();
+
+    if (exec_info) {
+      title_details.emplace_back(
+          "Media ID",
+          fmt::format("{:08X}", static_cast<uint32_t>(exec_info->media_id)));
+    }
+
+    const auto executable = kernel_state_->GetExecutableModule();
+
+    if (executable && executable->hash()) {
+      title_details.emplace_back(
+          "Module hash", fmt::format("{:016X}", executable->hash().value()));
+    }
+  }
+
+  report.details.insert(report.details.begin(), title_details.begin(),
+                        title_details.end());
+  report.details.emplace_back("Xenia build", XE_BUILD_BRANCH
+                              "@" XE_BUILD_COMMIT_SHORT " on " XE_BUILD_DATE);
+
+  display_window_->app_context().CallInUIThreadSynchronous([this, &report]() {
+    xe::ui::ShowCrashDialog(imgui_drawer_, std::move(report));
+  });
+}
+
 bool Emulator::ExceptionCallbackThunk(Exception* ex, void* data) {
   return reinterpret_cast<Emulator*>(data)->ExceptionCallback(ex);
 }
@@ -1413,64 +1523,53 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 
   auto context = current_thread->thread_state()->context();
 
-  std::string crash_msg;
-  crash_msg.append("==== CRASH DUMP ====\n");
-  crash_msg.append(fmt::format("Thread ID (Host: 0x{:08X} / Guest: 0x{:08X})\n",
-                               current_thread->thread()->system_id(),
-                               current_thread->thread_id()));
-  crash_msg.append(
-      fmt::format("Thread Handle: 0x{:08X}\n", current_thread->handle()));
-  crash_msg.append(
-      fmt::format("PC: 0x{:08X}\n",
-                  guest_function->MapMachineCodeToGuestAddress(ex->pc())));
-  if (ex->code() == Exception::Code::kAccessViolation) {
-    const char* op_str = "unknown";
-    if (ex->access_violation_operation() ==
-        Exception::AccessViolationOperation::kRead) {
-      op_str = "read";
-    } else if (ex->access_violation_operation() ==
-               Exception::AccessViolationOperation::kWrite) {
-      op_str = "write";
-    }
-    crash_msg.append(fmt::format("Access Violation: {} at 0x{:016X}\n", op_str,
-                                 ex->fault_address()));
-  } else if (ex->code() == Exception::Code::kIllegalInstruction) {
-    crash_msg.append("Illegal Instruction\n");
-  }
-  crash_msg.append("Registers:\n");
-  for (int i = 0; i < 32; i++) {
-    crash_msg.append(fmt::format(" r{:<3} = {:016X}\n", i, context->r[i]));
-  }
-  for (int i = 0; i < 32; i++) {
-    crash_msg.append(fmt::format(" f{:<3} = {:016X} = (double){} = (float){}\n",
-                                 i,
-                                 *reinterpret_cast<uint64_t*>(&context->f[i]),
-                                 context->f[i], *(float*)&context->f[i]));
-  }
-  for (int i = 0; i < 128; i++) {
-    crash_msg.append(
-        fmt::format(" v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
-                    context->v[i].u32[0], context->v[i].u32[1],
-                    context->v[i].u32[2], context->v[i].u32[3]));
-  }
-  XELOGE("{}", crash_msg);
+  const uint32_t guest_pc =
+      guest_function->MapMachineCodeToGuestAddress(ex->pc());
+  const std::string exception_str = DescribeException(*ex);
+  std::string crash_dump =
+      FormatCrashDump(current_thread, context, guest_pc, exception_str);
+
+  XELOGE("{}", crash_dump);
   FlushLog();
 
   // Pause the emulator and eat the exception.
   Pause();
 
-  std::string crash_dlg = fmt::format(
-      "The guest has crashed.\n\n"
-      "Xenia has now paused itself.\n\n"
-      "{}",
-      crash_msg);
-  // Display a dialog telling the user the guest has crashed.
-  if (display_window_ && imgui_drawer_) {
-    display_window_->app_context().CallInUIThreadSynchronous([this,
-                                                              &crash_dlg]() {
-      xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_, "Uh-oh!", crash_dlg);
-    });
+  std::string function_str =
+      guest_function->name().empty()
+          ? fmt::format("sub_{:08X}", guest_function->address())
+          : guest_function->name();
+
+  if (guest_function->module()) {
+    function_str =
+        fmt::format("{} ({})", function_str, guest_function->module()->name());
   }
+
+  std::string thread_str = fmt::format(
+      "0x{:08X} (host 0x{:08X}, handle 0x{:08X})", current_thread->thread_id(),
+      current_thread->thread()->system_id(), current_thread->handle());
+
+  if (!current_thread->name().empty()) {
+    thread_str = fmt::format("{} {}", current_thread->name(), thread_str);
+  }
+
+  xe::ui::CrashReport report;
+  report.heading = "The game has crashed";
+  report.description =
+      "Emulation has been paused. Copy the details or attach the log when "
+      "reporting this crash.";
+
+  report.details.emplace_back("Exception", exception_str);
+  report.details.emplace_back(
+      "Address", fmt::format("0x{:08X} in {}", guest_pc, function_str));
+  report.details.emplace_back(
+      "Return address",
+      fmt::format("0x{:08X}", static_cast<uint32_t>(context->lr)));
+  report.details.emplace_back("Thread", thread_str);
+
+  report.dump = std::move(crash_dump);
+
+  ShowCrashDialog(std::move(report));
 
   // Now suspend ourself (we should be a guest thread).
   current_thread->Suspend(nullptr);
