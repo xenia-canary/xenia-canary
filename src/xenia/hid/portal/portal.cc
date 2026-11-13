@@ -31,10 +31,14 @@ X_STATUS Portal::Read(std::span<uint8_t> data, uint32_t& bytes_read,
   X_STATUS status = ReadInternal(data, read_count);
 
   if (XSUCCEEDED(status)) {
-    // According to XAM decompilation logic here is reversed. Difference in
-    // status should return 1, but these values are taken from internal parts of
-    // xinput raw implementation, so it might be completely opposite.
-    state = previous_status_ == status;
+    if (UsesAsyncReads()) {
+      // Empty asynchronous polls complete successfully with no data. Signal
+      // state only when a packet was actually returned to the guest.
+      state = read_count > 0 ? 1 : 0;
+    } else {
+      // Preserve the original HID state behavior for legacy portals.
+      state = previous_status_ == status;
+    }
     bytes_read = read_count;
   }
 
