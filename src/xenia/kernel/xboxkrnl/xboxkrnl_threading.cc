@@ -823,7 +823,7 @@ dword_result_t NtReleaseSemaphore_entry(dword_t sem_handle,
   } else {
     result = X_STATUS_INVALID_HANDLE;
   }
-  if (previous_count_ptr) {
+  if (previous_count_ptr && XSUCCEEDED(result)) {
     *previous_count_ptr = (uint32_t)previous_count;
   }
 
