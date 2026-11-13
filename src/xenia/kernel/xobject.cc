@@ -55,9 +55,12 @@ XObject::~XObject() {
     uint32_t ptr = guest_object_ptr_ - sizeof(X_OBJECT_HEADER);
     auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(ptr);
 
-    // Free the object creation info
-    if (header->object_type_ptr) {
-      memory()->SystemHeapFree(header->object_type_ptr);
+    // Free the object type, unless it's one of the exported ones
+    const uint32_t type_ptr = header->object_type_ptr;
+    const uint32_t globals = kernel_state_->GetKernelGuestGlobals();
+    if (type_ptr && (type_ptr < globals ||
+                     type_ptr >= globals + sizeof(KernelGuestGlobals))) {
+      memory()->SystemHeapFree(type_ptr);
     }
 
     memory()->SystemHeapFree(ptr);
@@ -463,11 +466,16 @@ uint8_t* XObject::CreateNative(uint32_t size) {
 
   auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(mem);
 
-  auto object_type = memory()->SystemHeapAlloc(sizeof(X_OBJECT_TYPE));
-  if (object_type) {
-    // Set it up in the header.
-    // Some kernel method is accessing this struct and dereferencing a member
-    // @ offset 0x14
+  // The header points at the exported type, ExEventObjectType and the rest,
+  // as a title comparing them expects. A type with no export gets a blank one
+  // of its own, as some kernel method reads a member at 0x14.
+  auto& object_types =
+      kernel_state_->host_object_type_enum_to_guest_object_type_ptr_;
+  auto it = object_types.find(type_);
+  if (it != object_types.end()) {
+    header->object_type_ptr = it->second;
+  } else if (auto object_type =
+                 memory()->SystemHeapAlloc(sizeof(X_OBJECT_TYPE))) {
     header->object_type_ptr = object_type;
   }
 
