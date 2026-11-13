@@ -275,8 +275,7 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
 
         if (is_self_suspend) {
           XELOGD("Thread {:X} self-suspending", thread->handle());
-          suspend_count = thread->SelfSuspend();
-          result = X_STATUS_SUCCESS;
+          result = thread->SelfSuspend(&suspend_count);
           XELOGD("Thread {:X} resumed", thread->handle());
         } else {
           result = thread->Suspend(&suspend_count);

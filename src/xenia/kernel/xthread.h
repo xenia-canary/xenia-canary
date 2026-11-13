@@ -492,7 +492,7 @@ class XThread : public XObject, public cpu::Thread {
   // Performs self-suspension: increments suspend_count and blocks until
   // another thread calls Resume() and suspend_count reaches 0.
   // Returns the previous suspend_count value.
-  uint32_t SelfSuspend();
+  X_STATUS SelfSuspend(uint32_t* out_suspend_count);
 #endif
 
   xe::threading::Thread* thread() { return thread_.get(); }

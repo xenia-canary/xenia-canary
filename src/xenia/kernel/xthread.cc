@@ -958,6 +958,14 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
     *out_suspend_count = previous_suspend_count;
   }
 
+#if !XE_PLATFORM_WIN32
+  // Resume only resumes the host thread once the count is back to 0, so only
+  // suspend it when the count leaves 0.
+  if (previous_suspend_count) {
+    return X_STATUS_SUCCESS;
+  }
+#endif
+
   // If we are suspending ourselves, we can't hold the lock.
   uint32_t unused_host_suspend_count = 0;
 
@@ -969,14 +977,24 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
 }
 
 #if !XE_PLATFORM_WIN32
-uint32_t XThread::SelfSuspend() {
+X_STATUS XThread::SelfSuspend(uint32_t* out_suspend_count) {
   auto guest_thread = guest_object<X_KTHREAD>();
   std::unique_lock<std::mutex> lock(suspend_mutex_);
-  uint32_t previous = guest_thread->suspend_count;
+  uint8_t previous = guest_thread->suspend_count;
+
+  if (previous >= kMaxSuspendCount) {
+    return X_STATUS_SUSPEND_COUNT_EXCEEDED;
+  }
+
   guest_thread->suspend_count++;
+
+  if (out_suspend_count) {
+    *out_suspend_count = previous;
+  }
+
   suspend_cv_.wait(
       lock, [guest_thread]() { return guest_thread->suspend_count == 0; });
-  return previous;
+  return X_STATUS_SUCCESS;
 }
 #endif  // !XE_PLATFORM_WIN32
 
