@@ -30,6 +30,7 @@
 #include <climits>
 #include <cstddef>
 #include <ctime>
+#include <optional>
 
 #include "logging.h"
 
@@ -363,9 +364,18 @@ class PosixConditionBase {
   virtual ~PosixConditionBase() = default;
   virtual bool Signal() = 0;
 
-  WaitResult Wait(std::chrono::milliseconds timeout) {
+  // Counts the releases that free every waiter at once, such as setting a
+  // manual-reset event. A waiter that saw the count change is released even
+  // if the object was reset before it ran.
+  [[nodiscard]] uint64_t release_count() const {
+    return release_count_.load(std::memory_order_acquire);
+  }
+
+  // Pass since to keep counting releases from an earlier wait, as the slices
+  // of an alertable wait do.
+  WaitResult Wait(std::chrono::milliseconds timeout,
+                  std::optional<uint64_t> since = std::nullopt) {
     bool executed;
-    auto predicate = [this] { return this->signaled(); };
 
     // Handle robust mutex locking
     auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
@@ -378,6 +388,11 @@ class PosixConditionBase {
     }
 
     std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
+
+    const uint64_t start = since ? *since : release_count();
+    auto predicate = [this, start] {
+      return this->signaled() || release_count() != start;
+    };
 
     if (predicate()) {
       executed = true;
@@ -396,14 +411,20 @@ class PosixConditionBase {
     return WaitResult::kTimeout;
   }
 
+  // since holds each handle's release count from an earlier wait, as the
+  // slices of an alertable wait pass it.
   static std::pair<WaitResult, size_t> WaitMultiple(
       std::vector<PosixConditionBase*>&& handles, bool wait_all,
-      std::chrono::milliseconds timeout) {
+      std::chrono::milliseconds timeout,
+      const std::vector<uint64_t>* since = nullptr) {
     assert_true(!handles.empty());
+
+    const std::vector<uint64_t> start_counts =
+        since ? *since : ReleaseCounts(handles);
 
     // For single handle, just use the normal Wait path
     if (handles.size() == 1) {
-      auto result = handles[0]->Wait(timeout);
+      auto result = handles[0]->Wait(timeout, start_counts[0]);
       return std::make_pair(result, 0);
     }
 
@@ -479,9 +500,10 @@ class PosixConditionBase {
         }
         condition_met = all_signaled;
       } else {
-        // For wait_any, check if ANY is signaled
+        // For wait_any, check if ANY is signaled or was released
         for (size_t i = 0; i < handles.size(); ++i) {
-          if (handles[i]->signaled()) {
+          if (handles[i]->signaled() ||
+              handles[i]->release_count() != start_counts[i]) {
             first_signaled = i;
             condition_met = true;
             break;
@@ -529,6 +551,16 @@ class PosixConditionBase {
     }
   }
 
+  static std::vector<uint64_t> ReleaseCounts(
+      const std::vector<PosixConditionBase*>& handles) {
+    std::vector<uint64_t> counts;
+    counts.reserve(handles.size());
+    for (auto handle : handles) {
+      counts.push_back(handle->release_count());
+    }
+    return counts;
+  }
+
   [[nodiscard]] virtual void* native_handle() const {
     return const_cast<std::condition_variable&>(cond_).native_handle();
   }
@@ -543,6 +575,7 @@ class PosixConditionBase {
 
   std::condition_variable cond_;
   std::mutex mutex_;
+  std::atomic<uint64_t> release_count_{0};
 };
 
 // There really is no native POSIX handle for a single wait/signal construct
@@ -562,6 +595,9 @@ class PosixCondition<Event> : public PosixConditionBase {
   bool Signal() override {
     auto lock = std::unique_lock(mutex_);
     signal_ = true;
+    if (manual_reset_) {
+      release_count_.fetch_add(1, std::memory_order_release);
+    }
     cond_.notify_all();
     NotifyMultiObjectWaiters();
     return true;
@@ -1385,15 +1421,16 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
   if (posix_wait_handle == nullptr) {
     return WaitResult::kFailed;
   }
+  auto& condition = posix_wait_handle->condition();
   if (!is_alertable) {
-    return posix_wait_handle->condition().Wait(timeout);
+    return condition.Wait(timeout);
   }
 
+  const uint64_t since = condition.release_count();
   return AlertableWait(timeout,
                        [&](std::chrono::milliseconds slice) {
-                         return std::make_pair(
-                             posix_wait_handle->condition().Wait(slice),
-                             size_t(0));
+                         return std::make_pair(condition.Wait(slice, since),
+                                               size_t(0));
                        })
       .first;
 }
@@ -1414,17 +1451,17 @@ WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
     return result;
   }
 
+  auto& condition = posix_wait_handle_to_wait_on->condition();
   if (!is_alertable) {
-    return posix_wait_handle_to_wait_on->condition().Wait(timeout);
+    return condition.Wait(timeout);
   }
 
-  return AlertableWait(
-             timeout,
-             [&](std::chrono::milliseconds slice) {
-               return std::make_pair(
-                   posix_wait_handle_to_wait_on->condition().Wait(slice),
-                   size_t(0));
-             })
+  const uint64_t since = condition.release_count();
+  return AlertableWait(timeout,
+                       [&](std::chrono::milliseconds slice) {
+                         return std::make_pair(condition.Wait(slice, since),
+                                               size_t(0));
+                       })
       .first;
 }
 
@@ -1446,9 +1483,10 @@ std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
                                             timeout);
   }
 
+  const auto since = PosixConditionBase::ReleaseCounts(conditions);
   return AlertableWait(timeout, [&](std::chrono::milliseconds slice) {
     return PosixConditionBase::WaitMultiple(
-        std::vector<PosixConditionBase*>(conditions), wait_all, slice);
+        std::vector<PosixConditionBase*>(conditions), wait_all, slice, &since);
   });
 }
 
