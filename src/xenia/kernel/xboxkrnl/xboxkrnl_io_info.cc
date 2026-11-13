@@ -131,9 +131,14 @@ dword_result_t NtQueryInformationFile_entry(
       out_length = sizeof(*info);
       break;
     }
+    case XFileBasicInformation: {
+      status = X_STATUS_INVALID_PARAMETER;
+      out_length = 0;
+      break;
+    }
     default: {
-      // Unsupported, for now.
-      assert_always();
+      XELOGW("NtQueryInformationFile: unimplemented class {}",
+             static_cast<uint32_t>(info_class));
       status = X_STATUS_INVALID_PARAMETER;
       out_length = 0;
       break;
