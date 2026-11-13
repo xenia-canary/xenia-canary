@@ -510,7 +510,16 @@ dword_result_t NtQueryFullAttributesFile_entry(
     return X_STATUS_SUCCESS;
   }
 
-  return X_STATUS_NO_SUCH_FILE;
+  // A missing folder or drive on the way fails differently from a missing
+  // last name.
+  auto folder_path = xe::utf8::find_base_guest_path(target_path);
+
+  if (!folder_path.empty() &&
+      !kernel_state()->file_system()->ResolvePath(folder_path)) {
+    return X_STATUS_OBJECT_PATH_NOT_FOUND;
+  }
+
+  return X_STATUS_OBJECT_NAME_NOT_FOUND;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryFullAttributesFile, kFileSystem, kImplemented);
 
