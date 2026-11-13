@@ -216,6 +216,14 @@ uint32_t XObject::TimeoutTicksToMs(int64_t timeout_ticks) {
   }
 }
 
+std::optional<int64_t> XObject::MsToTimeoutTicks(uint32_t milliseconds) {
+  if (milliseconds == UINT32_MAX) {
+    return std::nullopt;
+  }
+
+  return int64_t(-10000) * milliseconds;
+}
+
 X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
                        uint32_t alertable, uint64_t* opt_timeout) {
   auto wait_handle = GetWaitHandle();

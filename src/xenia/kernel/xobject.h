@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include "xenia/base/threading.h"
@@ -225,6 +226,8 @@ class XObject {
                                uint32_t wait_type, uint32_t wait_reason,
                                uint32_t processor_mode, uint32_t alertable,
                                uint64_t* opt_timeout);
+
+  static std::optional<int64_t> MsToTimeoutTicks(uint32_t milliseconds);
 
   static object_ref<XObject> GetNativeObject(
       KernelState* kernel_state, void* native_ptr,

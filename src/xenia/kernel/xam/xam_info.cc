@@ -772,24 +772,24 @@ dword_result_t GetCurrentThreadId_entry() {
 }
 DECLARE_XAM_EXPORT1(GetCurrentThreadId, kNone, kImplemented);
 
-qword_result_t XapiFormatTimeOut_entry(lpqword_t result,
+dword_result_t XapiFormatTimeOut_entry(lpqword_t result,
                                        dword_t dwMilliseconds) {
-  if (dwMilliseconds == -1) {
+  auto timeout = XObject::MsToTimeoutTicks(dwMilliseconds);
+  if (!timeout) {
     return 0;
   }
 
-  *result = static_cast<int64_t>(-10000) * dwMilliseconds;
-  return result.host_address();
+  *result = static_cast<uint64_t>(*timeout);
+  return result.guest_address();
 }
 DECLARE_XAM_EXPORT1(XapiFormatTimeOut, kNone, kImplemented);
 
 dword_result_t WaitForSingleObjectEx_entry(dword_t hHandle,
                                            dword_t dwMilliseconds,
                                            dword_t bAlertable) {
-  // TODO(Gliniak): Figure it out to be less janky.
-  uint64_t timeout;
-  uint64_t* timeout_ptr = reinterpret_cast<uint64_t*>(
-      static_cast<uint64_t>(XapiFormatTimeOut_entry(&timeout, dwMilliseconds)));
+  auto timeout = XObject::MsToTimeoutTicks(dwMilliseconds);
+  uint64_t timeout_ticks = timeout ? static_cast<uint64_t>(*timeout) : 0;
+  uint64_t* timeout_ptr = timeout ? &timeout_ticks : nullptr;
 
   X_STATUS result =
       xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
@@ -799,8 +799,10 @@ dword_result_t WaitForSingleObjectEx_entry(dword_t hHandle,
         xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
   }
 
-  RtlSetLastNTError_entry(result);
-  result = -1;
+  if (XFAILED(result)) {
+    RtlSetLastNTError_entry(result);
+    return -1;
+  }
 
   return result;
 }
