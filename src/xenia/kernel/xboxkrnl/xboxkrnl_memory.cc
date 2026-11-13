@@ -717,7 +717,7 @@ DECLARE_XBOXKRNL_EXPORT1(MmMapIoSpace, kMemory, kImplemented);
 
 struct X_POOL_ALLOC_HEADER {
   uint8_t unk_0;
-  uint8_t unk_1;
+  uint8_t block_size;
   uint8_t unk_2;  // set this to 170
   uint8_t unk_3;
   xe::be<uint32_t> tag;
@@ -732,6 +732,8 @@ uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
         kernel_state()->memory()->SystemHeapAlloc(adjusted_size, 64);
 
     auto result_ptr = context->TranslateVirtual<X_POOL_ALLOC_HEADER*>(addr);
+    result_ptr->block_size = static_cast<uint8_t>(
+        xe::round_up(adjusted_size, kPoolBlockUnit) / kPoolBlockUnit);
     result_ptr->unk_2 = 170;
     result_ptr->tag = tag;
 

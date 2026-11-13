@@ -42,6 +42,8 @@ struct X_MM_QUERY_STATISTICS_RESULT {
 };
 static_assert_size(X_MM_QUERY_STATISTICS_RESULT, 104);
 
+constexpr uint32_t kPoolBlockUnit = 16;
+
 uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
                                       uint32_t protect_bits,
                                       uint32_t min_addr_range,
