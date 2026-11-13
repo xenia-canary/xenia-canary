@@ -388,8 +388,19 @@ class XThread : public XObject, public cpu::Thread {
  public:
   static const XObject::Type kObjectType = XObject::Type::Thread;
 
+  static constexpr uint32_t kStack4KBAddressRangeBegin = 0x30000000;
+  static constexpr uint32_t kSystemStack4KBAddressRangeBegin = 0x3A000000;
+  static constexpr uint32_t kStack4KBAddressRangeEnd = 0x3FFF0000;
   static constexpr uint32_t kStackAddressRangeBegin = 0x70000000;
+  static constexpr uint32_t kSystemStackAddressRangeBegin = 0x7A000000;
   static constexpr uint32_t kStackAddressRangeEnd = 0x7F000000;
+
+  struct StackRange {
+    uint32_t begin;
+    uint32_t end;
+  };
+
+  static StackRange GetStackRange(uint32_t size, bool system);
 
   static constexpr uint32_t kThreadKernelStackSize = 0xF0;
 

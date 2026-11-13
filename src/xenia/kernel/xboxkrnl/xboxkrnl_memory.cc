@@ -14,6 +14,7 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
 DEFINE_bool(
@@ -885,11 +886,12 @@ uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type) {
   }
 
   const uint32_t stack_size_aligned = xe::round_up(stack_size, 0x1000u);
-  auto heap = kernel_memory()->LookupHeap(0x70000000);
+  const auto range = XThread::GetStackRange(stack_size_aligned, type == 2);
+  auto heap = kernel_memory()->LookupHeap(range.begin);
 
   uint32_t stack_address;
   if (!heap->AllocRange(
-          0x70000000, 0x7F000000, stack_size_aligned, heap->page_size(),
+          range.begin, range.end, stack_size_aligned, heap->page_size(),
           kMemoryAllocationReserve | kMemoryAllocationCommit,
           kMemoryProtectRead | kMemoryProtectWrite, false, &stack_address)) {
     return 0;

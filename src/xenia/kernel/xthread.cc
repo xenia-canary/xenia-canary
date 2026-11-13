@@ -270,26 +270,41 @@ void XThread::InitializeGuestObject() {
                                   old_irql);
 }
 
+XThread::StackRange XThread::GetStackRange(uint32_t size, bool system) {
+  if (size & 0xFFFF) {
+    return system ? StackRange{kSystemStack4KBAddressRangeBegin,
+                               kStack4KBAddressRangeEnd}
+                  : StackRange{kStack4KBAddressRangeBegin,
+                               kSystemStack4KBAddressRangeBegin};
+  }
+
+  return system
+             ? StackRange{kSystemStackAddressRangeBegin, kStackAddressRangeEnd}
+             : StackRange{kStackAddressRangeBegin,
+                          kSystemStackAddressRangeBegin};
+}
+
 bool XThread::AllocateStack(uint32_t size) {
-  auto heap = memory()->LookupHeap(kStackAddressRangeBegin);
+  size = xe::round_up(size, uint32_t(0x1000));
+  const StackRange range = GetStackRange(size, false);
+  auto heap = memory()->LookupHeap(range.begin);
 
   auto alignment = heap->page_size();
   auto padding = heap->page_size() * 2;  // Guard page size * 2
-  size = xe::round_up(size, alignment);
-  auto actual_size = size + padding;
+  auto actual_size = xe::round_up(size, alignment) + padding;
 
   uint32_t address = 0;
-  if (!heap->AllocRange(
-          kStackAddressRangeBegin, kStackAddressRangeEnd, actual_size,
-          alignment, kMemoryAllocationReserve | kMemoryAllocationCommit,
-          kMemoryProtectRead | kMemoryProtectWrite, false, &address)) {
+  if (!heap->AllocRange(range.begin, range.end, actual_size, alignment,
+                        kMemoryAllocationReserve | kMemoryAllocationCommit,
+                        kMemoryProtectRead | kMemoryProtectWrite, false,
+                        &address)) {
     return false;
   }
 
   stack_alloc_base_ = address;
   stack_alloc_size_ = actual_size;
-  stack_limit_ = address + (padding / 2);
-  stack_base_ = stack_limit_ + size;
+  stack_base_ = address + actual_size - (padding / 2);
+  stack_limit_ = stack_base_ - size;
 
   // Setup the guard pages
   heap->Protect(stack_alloc_base_, padding / 2, kMemoryProtectNoAccess);
@@ -300,7 +315,7 @@ bool XThread::AllocateStack(uint32_t size) {
 
 void XThread::FreeStack() {
   if (stack_alloc_base_) {
-    auto heap = memory()->LookupHeap(kStackAddressRangeBegin);
+    auto heap = memory()->LookupHeap(stack_alloc_base_);
     heap->Release(stack_alloc_base_);
 
     stack_alloc_base_ = 0;
