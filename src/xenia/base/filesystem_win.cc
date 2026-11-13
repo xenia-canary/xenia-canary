@@ -190,7 +190,9 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
   if (desired_access & FileAccess::kFileAppendData) {
     open_access |= FILE_APPEND_DATA;
   }
-  DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE;
+  // FILE_SHARE_DELETE lets a title rename or delete a file it has open, as
+  // POSIX hosts already allow.
+  DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
   // We assume we've already created the file in the caller.
   DWORD creation_disposition = OPEN_EXISTING;
   HANDLE handle = CreateFileW(
