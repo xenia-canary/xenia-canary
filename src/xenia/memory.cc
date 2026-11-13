@@ -1723,16 +1723,23 @@ bool BaseHeap::QueryBaseAndSize(uint32_t* in_out_address, uint32_t* out_size) {
   return true;
 }
 
-bool BaseHeap::QueryProtect(uint32_t address, uint32_t* out_protect) {
+bool BaseHeap::QueryProtect(uint32_t address, uint32_t* out_protect,
+                            uint32_t* out_state) {
   uint32_t page_number = (address - heap_base_) >> page_size_shift_;
   if (page_number > page_table_.size()) {
     XELOGE("BaseHeap::QueryProtect base page out of range");
     *out_protect = 0;
+    if (out_state) {
+      *out_state = 0;
+    }
     return false;
   }
   auto global_lock = global_critical_region_.Acquire();
   auto page_entry = page_table_[page_number];
   *out_protect = page_entry.current_protect;
+  if (out_state) {
+    *out_state = page_entry.state;
+  }
   return true;
 }
 

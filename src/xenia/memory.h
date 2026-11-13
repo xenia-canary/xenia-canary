@@ -210,8 +210,9 @@ class BaseHeap {
   bool QueryBaseAndSize(uint32_t* in_out_address, uint32_t* out_size);
 
   // Queries the current protection mode of the region containing the given
-  // address.
-  bool QueryProtect(uint32_t address, uint32_t* out_protect);
+  // address, and its allocation state if out_state is set.
+  bool QueryProtect(uint32_t address, uint32_t* out_protect,
+                    uint32_t* out_state = nullptr);
 
   // Queries access across committed pages in the inclusive address range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,

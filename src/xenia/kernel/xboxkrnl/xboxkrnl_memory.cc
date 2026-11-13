@@ -334,7 +334,9 @@ dword_result_t NtQueryVirtualMemory_entry(
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  memory_basic_information_ptr->base_address = alloc_info.base_address;
+  // The queried address is rounded down to its page.
+  memory_basic_information_ptr->base_address =
+      alloc_info.base_address & ~(heap->page_size() - 1);
   memory_basic_information_ptr->allocation_base = alloc_info.allocation_base;
   memory_basic_information_ptr->allocation_protect =
       ToXdkProtectFlags(alloc_info.allocation_protect);
@@ -353,7 +355,9 @@ dword_result_t NtQueryVirtualMemory_entry(
     x_state = X_MEM_FREE;
   }
   memory_basic_information_ptr->state = x_state;
-  memory_basic_information_ptr->protect = ToXdkProtectFlags(alloc_info.protect);
+  // Only committed pages have a protection.
+  memory_basic_information_ptr->protect =
+      x_state == X_MEM_COMMIT ? ToXdkProtectFlags(alloc_info.protect) : 0;
   memory_basic_information_ptr->type = X_MEM_PRIVATE;
 
   return X_STATUS_SUCCESS;
@@ -527,7 +531,12 @@ DECLARE_XBOXKRNL_EXPORT1(MmFreePhysicalMemory, kMemory, kImplemented);
 dword_result_t MmQueryAddressProtect_entry(dword_t base_address) {
   auto heap = kernel_state()->memory()->LookupHeap(base_address);
   uint32_t access;
-  if (!heap->QueryProtect(base_address, &access)) {
+  uint32_t state = 0;
+  if (!heap->QueryProtect(base_address, &access, &state)) {
+    access = 0;
+  }
+  // Only committed pages have a protection.
+  if (!(state & kMemoryAllocationCommit)) {
     access = 0;
   }
   access = !access ? 0 : ToXdkProtectFlags(access);
