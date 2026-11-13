@@ -779,18 +779,25 @@ DECLARE_XBOXKRNL_EXPORT2(KeLockL2, kMemory, kImplemented, kSketchy);
 void KeUnlockL2_entry() {}
 DECLARE_XBOXKRNL_EXPORT1(KeUnlockL2, kMemory, kStub);
 
-uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t r4) {
-  auto stack_size_aligned = (stack_size + 0xFFF) & 0xFFFFF000;
-  uint32_t stack_alignment = (stack_size & 0xF000) ? 0x1000 : 0x10000;
+// Returns the top of a stack of the size rounded up to the page. Type 0 is
+// the caller's process, 1 a title's and 2 the system's; any other type gets
+// no stack.
+uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type) {
+  if (type > 2) {
+    return 0;
+  }
+
+  const uint32_t stack_size_aligned = xe::round_up(stack_size, 0x1000u);
+  auto heap = kernel_memory()->LookupHeap(0x70000000);
 
   uint32_t stack_address;
-  kernel_memory()
-      ->LookupHeap(0x70000000)
-      ->AllocRange(0x70000000, 0x7F000000, stack_size_aligned, stack_alignment,
-                   kMemoryAllocationReserve | kMemoryAllocationCommit,
-                   kMemoryProtectRead | kMemoryProtectWrite, false,
-                   &stack_address);
-  return stack_address + stack_size;
+  if (!heap->AllocRange(
+          0x70000000, 0x7F000000, stack_size_aligned, heap->page_size(),
+          kMemoryAllocationReserve | kMemoryAllocationCommit,
+          kMemoryProtectRead | kMemoryProtectWrite, false, &stack_address)) {
+    return 0;
+  }
+  return stack_address + stack_size_aligned;
 }
 dword_result_t MmCreateKernelStack_entry(dword_t stack_size, dword_t r4) {
   return xeMmCreateKernelStack(stack_size, r4);
@@ -800,7 +807,8 @@ DECLARE_XBOXKRNL_EXPORT1(MmCreateKernelStack, kMemory, kImplemented);
 dword_result_t MmDeleteKernelStack_entry(lpvoid_t stack_base,
                                          lpvoid_t stack_end) {
   // Release the stack (where stack_end is the low address)
-  if (kernel_memory()->LookupHeap(0x70000000)->Release(stack_end)) {
+  auto heap = kernel_memory()->LookupHeap(stack_end.guest_address());
+  if (heap && heap->Release(stack_end)) {
     return X_STATUS_SUCCESS;
   }
 
