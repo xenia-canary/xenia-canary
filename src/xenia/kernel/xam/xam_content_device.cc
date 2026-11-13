@@ -245,6 +245,94 @@ dword_result_t XamContentCreateDeviceEnumerator_entry(dword_t content_type,
 }
 DECLARE_XAM_EXPORT1(XamContentCreateDeviceEnumerator, kNone, kImplemented);
 
+dword_result_t XamNetworkStorageGetNetworkDevice_entry(
+    lpdword_t device_id_ptr) {
+  // We return device id of cloud storage
+  if (!device_id_ptr) {
+    return X_E_INVALIDARG;
+  }
+  return X_E_NOTFOUND;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageGetNetworkDevice, kContent, kStub);
+
+dword_result_t XamNetworkStorageDeviceHasCacheFile_entry(dword_t device_id) {
+  // checks if "\\Device\\NetworkStorageCache\\NetworkStorageCache.bin" exists
+  return X_E_DEVICE_NOT_CONNECTED;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageDeviceHasCacheFile, kContent, kStub);
+
+dword_result_t XamNetworkStorageDeleteCacheOnDevice_entry(dword_t device_id) {
+  // checks if "\\Device\\NetworkStorageCache\\NetworkStorageCache.bin" exists
+  return X_E_DEVICE_NOT_CONNECTED;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageDeleteCacheOnDevice, kContent, kStub);
+
+dword_result_t XamNetworkStorageGetStatus_entry(dword_t user_index,
+                                                lpdword_t status_ptr,
+                                                lpdword_t unk) {
+  // *status_ptr = 4, 2, *unk = 3, 4, 5, 6
+  if (!status_ptr) {
+    return X_E_INVALIDARG;
+  }
+  return X_E_NOTFOUND;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageGetStatus, kContent, kStub);
+
+dword_result_t XamNetworkStorageIsSupportedContentType_entry(
+    dword_t content_type) {
+  auto type = static_cast<XContentType>(content_type.value());
+  if (type == XContentType::kInvalid || type == XContentType::kSavedGame ||
+      type == XContentType::kMarketplaceContent ||
+      type == XContentType::kPublisher || type == XContentType::kAll ||
+      type == XContentType::kXNA || type == XContentType::kInstalledGame) {
+    return true;
+  }
+  return false;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageIsSupportedContentType, kContent,
+                    kImplemented);
+
+dword_result_t XamNetworkStorageGetUserProperties_entry(
+    dword_t user_index, lpqword_t unk1_ptr, lpqword_t unk2_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // unk1_ptr = total_bytes_ptr?, unk2_ptr = used_bytes_ptr?
+  auto run = [user_index, unk1_ptr, unk2_ptr](uint32_t& extended_error,
+                                              uint32_t& length) {
+    if (user_index > XUserMaxUserCount) {
+      return X_E_NO_SUCH_USER;
+    }
+    return X_E_FUNCTION_FAILED;
+  };
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageGetUserProperties, kContent, kStub);
+
+dword_result_t XamNetworkStorageGetTitleProperties_entry(
+    dword_t user_index, qword_t unk, dword_t title_id, lpvoid_t unk_struct_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto run = [user_index, unk, title_id, unk_struct_ptr](
+                 uint32_t& extended_error, uint32_t& length) {
+    if (!unk_struct_ptr) {
+      return X_E_INSUFFICIENT_BUFFER;
+    }
+    return X_E_FUNCTION_FAILED;
+  };
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  } else {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageGetTitleProperties, kContent, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
