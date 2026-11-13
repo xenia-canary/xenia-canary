@@ -476,6 +476,8 @@ class XThread : public XObject, public cpu::Thread {
   uint8_t active_cpu() const;
   void SetActiveCpu(uint8_t cpu_index);
 
+  // Slot n sits n + 1 words below the TLS pointer.
+  uint32_t TLSSlotAddress(uint32_t slot) const;
   bool GetTLSValue(uint32_t slot, uint32_t* value_out);
   bool SetTLSValue(uint32_t slot, uint32_t value);
 

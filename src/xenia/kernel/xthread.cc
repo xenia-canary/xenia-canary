@@ -90,7 +90,7 @@ XThread::~XThread() {
   if (thread_state_) {
     delete thread_state_;
   }
-  kernel_state()->memory()->SystemHeapFree(tls_static_address_);
+  kernel_state()->memory()->SystemHeapFree(tls_dynamic_address_);
   kernel_state()->memory()->SystemHeapFree(pcr_address_);
   FreeStack();
 
@@ -340,18 +340,19 @@ X_STATUS XThread::Create() {
 
   // Allocate both the slots and the extended data.
   // Some TLS is compiled with the binary (declspec(thread)) vars. The game
-  // will directly access those through 0(r13).
+  // will directly access those through 0(r13). The slots sit just below them,
+  // slot 0 first, counting down.
   uint32_t tls_slot_size = tls_slots * 4;
   tls_total_size_ = tls_slot_size + tls_extended_size;
-  tls_static_address_ = memory()->SystemHeapAlloc(tls_total_size_);
-  tls_dynamic_address_ = tls_static_address_ + tls_extended_size;
-  if (!tls_static_address_) {
+  tls_dynamic_address_ = memory()->SystemHeapAlloc(tls_total_size_);
+  if (!tls_dynamic_address_) {
     XELOGW("Unable to allocate thread local storage block");
     return X_STATUS_NO_MEMORY;
   }
+  tls_static_address_ = tls_dynamic_address_ + tls_slot_size;
 
   // Zero all of TLS.
-  memory()->Fill(tls_static_address_, tls_total_size_, 0);
+  memory()->Fill(tls_dynamic_address_, tls_total_size_, 0);
   if (tls_extended_size) {
     // If game has extended data, copy in the default values.
     assert_not_zero(tls_header->raw_data_address);
@@ -863,22 +864,26 @@ void XThread::SetActiveCpu(uint8_t cpu_index) {
   }
 }
 
+uint32_t XThread::TLSSlotAddress(uint32_t slot) const {
+  return tls_static_address_ - (slot + 1) * 4;
+}
+
 bool XThread::GetTLSValue(uint32_t slot, uint32_t* value_out) {
-  if (slot * 4 > tls_total_size_) {
+  if (slot >= (tls_static_address_ - tls_dynamic_address_) / 4) {
     return false;
   }
 
-  auto mem = memory()->TranslateVirtual(tls_dynamic_address_ + slot * 4);
+  auto mem = memory()->TranslateVirtual(TLSSlotAddress(slot));
   *value_out = xe::load_and_swap<uint32_t>(mem);
   return true;
 }
 
 bool XThread::SetTLSValue(uint32_t slot, uint32_t value) {
-  if (slot * 4 >= tls_total_size_) {
+  if (slot >= (tls_static_address_ - tls_dynamic_address_) / 4) {
     return false;
   }
 
-  auto mem = memory()->TranslateVirtual(tls_dynamic_address_ + slot * 4);
+  auto mem = memory()->TranslateVirtual(TLSSlotAddress(slot));
   xe::store_and_swap<uint32_t>(mem, value);
   return true;
 }
