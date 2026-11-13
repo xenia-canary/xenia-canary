@@ -42,7 +42,7 @@ HostPathEntry* HostPathEntry::Create(Device* device, Entry* parent,
   if (file_info.type == xe::filesystem::FileInfo::Type::kDirectory) {
     entry->attributes_ = kFileAttributeDirectory;
   } else {
-    entry->attributes_ = kFileAttributeNormal;
+    entry->attributes_ = 0;
     if (device->is_read_only()) {
       entry->attributes_ |= kFileAttributeReadOnly;
     }
