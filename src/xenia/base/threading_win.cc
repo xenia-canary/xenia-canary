@@ -222,8 +222,18 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
   if (bAlertable) {
     result = WaitForSingleObjectEx(handle, timeout_dw, bAlertable);
   } else {
+    // Windows restarts a relative timeout after a suspend, so use an absolute
+    // due time.
     LARGE_INTEGER timeout_big;
-    timeout_big.QuadPart = -10000LL * static_cast<int64_t>(timeout_dw);
+    if (timeout_dw && timeout_dw != INFINITE) {
+      FILETIME now;
+      GetSystemTimePreciseAsFileTime(&now);
+      timeout_big.QuadPart =
+          ((int64_t(now.dwHighDateTime) << 32) | now.dwLowDateTime) +
+          10000LL * static_cast<int64_t>(timeout_dw);
+    } else {
+      timeout_big.QuadPart = -10000LL * static_cast<int64_t>(timeout_dw);
+    }
 
     result = NtWaitForSingleObjectPointer.invoke<NTSTATUS>(
         handle, bAlertable, timeout_dw == INFINITE ? nullptr : &timeout_big);
