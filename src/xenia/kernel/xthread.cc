@@ -203,7 +203,7 @@ void XThread::InitializeGuestObject() {
   guest_thread->stack_limit = (this->stack_limit_);
   guest_thread->stack_kernel = (this->stack_base_ - 240);
   guest_thread->tls_address = (this->tls_dynamic_address_);
-  guest_thread->thread_state = KTHREAD_STATE_INITIALIZED;
+  guest_thread->thread_state = KTHREAD_STATE_READY;
   uint32_t process_info_block_address =
       creation_params_.guest_process ? creation_params_.guest_process
                                      : this->kernel_state_->GetTitleProcess();
@@ -480,11 +480,14 @@ X_STATUS XThread::Exit(int exit_code) {
   auto kthread = guest_object<X_KTHREAD>();
   auto cpu_context = thread_state_->context();
   kthread->terminated = 1;
+  kthread->may_queue_apcs = 0;
 
   // TODO(benvanik): dispatch events? waiters? etc?
   RundownAPCs();
 
   // Set exit code.
+  kthread->thread_state = KTHREAD_STATE_TERMINATED;
+  kthread->exit_time = Clock::QueryGuestSystemTime();
   kthread->header.signal_state = 1;
   kthread->exit_status = exit_code;
 
@@ -523,6 +526,10 @@ X_STATUS XThread::Terminate(int exit_code) {
 
   // Set exit code.
   X_KTHREAD* thread = guest_object<X_KTHREAD>();
+  thread->terminated = 1;
+  thread->may_queue_apcs = 0;
+  thread->thread_state = KTHREAD_STATE_TERMINATED;
+  thread->exit_time = Clock::QueryGuestSystemTime();
   thread->header.signal_state = 1;
   thread->exit_status = exit_code;
 
@@ -546,6 +553,7 @@ void XThread::Execute() {
               thread_id_, handle(), thread_name_, thread_->system_id());
   // Let the kernel know we are starting.
   kernel_state()->OnThreadExecute(this);
+  guest_object<X_KTHREAD>()->thread_state = KTHREAD_STATE_RUNNING;
 
   // Dispatch any APCs that were queued before the thread was created first.
   DeliverAPCs();
