@@ -299,7 +299,7 @@ struct X_KTHREAD {
   uint8_t wait_reason;                            // 0xA7
   TypedGuestPointer<X_KWAIT_BLOCK> wait_blocks;   // 0xA8
   uint8_t unk_AC[4];                              // 0xAC
-  int32_t apc_disable_count;                      // 0xB0
+  xe::be<int32_t> apc_disable_count;              // 0xB0
   xe::be<int32_t> quantum;                        // 0xB4
   uint8_t saturation_increment;                   // 0xB8
   uint8_t base_priority;                          // 0xB9
