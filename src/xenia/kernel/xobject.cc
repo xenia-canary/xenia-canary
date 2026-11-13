@@ -229,8 +229,21 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
                         TimeoutTicksToMs(*opt_timeout)))
                   : std::chrono::milliseconds::max();
 
-  auto result =
-      xe::threading::Wait(wait_handle, alertable ? true : false, timeout_ms);
+  // A wait on a signalled object is satisfied before user APCs are delivered,
+  // while an alertable host wait delivers them first, so check the object
+  // without alerting before waiting alertably.
+  auto result = xe::threading::WaitResult::kTimeout;
+
+  if (alertable) {
+    result =
+        xe::threading::Wait(wait_handle, false, std::chrono::milliseconds(0));
+  }
+
+  if (result != xe::threading::WaitResult::kSuccess &&
+      result != xe::threading::WaitResult::kAbandoned) {
+    result =
+        xe::threading::Wait(wait_handle, alertable ? true : false, timeout_ms);
+  }
 
   switch (result) {
     case xe::threading::WaitResult::kSuccess:
@@ -263,9 +276,25 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object,
                         TimeoutTicksToMs(*opt_timeout)))
                   : std::chrono::milliseconds::max();
 
-  auto result = xe::threading::SignalAndWait(
-      signal_object->GetWaitHandle(), wait_object->GetWaitHandle(),
-      alertable ? true : false, timeout_ms);
+  // As in Wait, a signalled object satisfies the wait before user APCs are
+  // delivered. Signal and check without alerting first, then wait alertably
+  // on the object alone.
+  xe::threading::WaitResult result;
+
+  if (alertable) {
+    result = xe::threading::SignalAndWait(signal_object->GetWaitHandle(),
+                                          wait_object->GetWaitHandle(), false,
+                                          std::chrono::milliseconds(0));
+
+    if (result == xe::threading::WaitResult::kTimeout) {
+      result =
+          xe::threading::Wait(wait_object->GetWaitHandle(), true, timeout_ms);
+    }
+  } else {
+    result = xe::threading::SignalAndWait(signal_object->GetWaitHandle(),
+                                          wait_object->GetWaitHandle(), false,
+                                          timeout_ms);
+  }
 
   switch (result) {
     case xe::threading::WaitResult::kSuccess:
@@ -309,8 +338,22 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
   X_STATUS status;
   uint32_t boost_increment = 0;
   if (wait_type) {
-    auto result = xe::threading::WaitAny(wait_handles, count,
-                                         alertable ? true : false, timeout_ms);
+    // As in Wait, check the objects without alerting before waiting
+    // alertably
+    auto result =
+        std::make_pair(xe::threading::WaitResult::kTimeout, size_t(0));
+
+    if (alertable) {
+      result = xe::threading::WaitAny(wait_handles, count, false,
+                                      std::chrono::milliseconds(0));
+    }
+
+    if (result.first != xe::threading::WaitResult::kSuccess &&
+        result.first != xe::threading::WaitResult::kAbandoned) {
+      result = xe::threading::WaitAny(wait_handles, count,
+                                      alertable ? true : false, timeout_ms);
+    }
+
     switch (result.first) {
       case xe::threading::WaitResult::kSuccess:
         objects[result.second]->WaitCallback();
@@ -333,8 +376,19 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
         break;
     }
   } else {
-    auto result = xe::threading::WaitAll(wait_handles, count,
-                                         alertable ? true : false, timeout_ms);
+    auto result = xe::threading::WaitResult::kTimeout;
+
+    if (alertable) {
+      result = xe::threading::WaitAll(wait_handles, count, false,
+                                      std::chrono::milliseconds(0));
+    }
+
+    if (result != xe::threading::WaitResult::kSuccess &&
+        result != xe::threading::WaitResult::kAbandoned) {
+      result = xe::threading::WaitAll(wait_handles, count,
+                                      alertable ? true : false, timeout_ms);
+    }
+
     switch (result) {
       case xe::threading::WaitResult::kSuccess:
         for (uint32_t i = 0; i < count; i++) {
