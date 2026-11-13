@@ -252,7 +252,7 @@ dword_result_t NtProtectVirtualMemory_entry(lpdword_t base_addr_ptr,
   *region_size_ptr = adjusted_size;
 
   if (old_protect) {
-    *old_protect = tmp_old_protect;
+    *old_protect = ToXdkProtectFlags(tmp_old_protect);
   }
 
   return X_STATUS_SUCCESS;
