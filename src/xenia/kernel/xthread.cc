@@ -483,6 +483,14 @@ X_STATUS XThread::Exit(int exit_code) {
   kthread->terminated = 1;
   kthread->may_queue_apcs = 0;
 
+  // A DPC this thread queued at a raised IRQL runs once the IRQL drops, which
+  // it never would after the thread has gone, so drop it now and run them.
+  auto kpcr = cpu_context->TranslateVirtualGPR<X_KPCR*>(cpu_context->r[13]);
+  if (!kpcr->prcb_data.dpc_active) {
+    kpcr->current_irql = 0;
+    kernel_state()->RunQueuedDpcs(cpu_context);
+  }
+
   // TODO(benvanik): dispatch events? waiters? etc?
   RundownAPCs();
 
