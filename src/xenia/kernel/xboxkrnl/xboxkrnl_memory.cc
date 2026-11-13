@@ -138,8 +138,9 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
                                ? -int32_t(region_size_ptr.value())
                                : region_size_ptr.value();
 
-  adjusted_size =
-      xe::round_up(adjusted_size, adjusted_base ? page_size : 64 * 1024);
+  // The size is in pages, while an allocation without a base starts on a
+  // 64 KB boundary whatever its page size.
+  adjusted_size = xe::round_up(adjusted_size, page_size);
 
   // Allocate.
   uint32_t allocation_type = 0;
@@ -175,7 +176,7 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   } else {
     bool top_down = !!(alloc_type & X_MEM_TOP_DOWN);
     heap = kernel_memory()->LookupHeapByType(false, page_size);
-    heap->Alloc(adjusted_size, page_size, allocation_type, protect, top_down,
+    heap->Alloc(adjusted_size, 64 * 1024, allocation_type, protect, top_down,
                 &address);
   }
   if (!address) {
