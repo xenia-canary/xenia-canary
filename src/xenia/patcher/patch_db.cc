@@ -14,9 +14,6 @@
 
 #include "xenia/patcher/patch_db.h"
 
-DEFINE_bool(apply_patches, true, "Enables custom patching functionality",
-            "General");
-
 namespace xe {
 namespace patcher {
 
@@ -28,10 +25,6 @@ PatchDB::PatchDB(const std::filesystem::path patches_root) {
 PatchDB::~PatchDB() {}
 
 void PatchDB::LoadPatches() {
-  if (!cvars::apply_patches) {
-    return;
-  }
-
   const std::filesystem::path patches_directory = patches_root_ / "patches";
   const std::vector<xe::filesystem::FileInfo> patch_files =
       filesystem::ListFiles(patches_directory);
