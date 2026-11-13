@@ -30,7 +30,8 @@ uint32_t ToXdkProtectFlags(uint32_t protect) {
     result = X_PAGE_NOACCESS;
   } else if ((protect & kMemoryProtectRead) &&
              !(protect & kMemoryProtectWrite)) {
-    result = X_PAGE_READONLY;
+    // A page made read-only reports PAGE_USER_READONLY too.
+    result = X_PAGE_READONLY | X_PAGE_USER_READONLY;
   } else {
     result = X_PAGE_READWRITE;
   }
