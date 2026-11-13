@@ -1802,6 +1802,8 @@ void ExReleaseReadWriteLock_entry(pointer_t<X_ERWLOCK> lock_ptr,
   }
 
   if (!lock_ptr->readers_entry_count) {
+    // The exclusive owner is releasing, so hand the lock to the waiting
+    // readers, or else to a waiting writer.
     auto readers_waiting_count = lock_ptr->readers_waiting_count;
     if (readers_waiting_count) {
       lock_ptr->readers_waiting_count = 0;
@@ -1811,10 +1813,8 @@ void ExReleaseReadWriteLock_entry(pointer_t<X_ERWLOCK> lock_ptr,
                            readers_waiting_count, 0);
       return;
     }
-  }
-
-  auto readers_entry_count = --lock_ptr->readers_entry_count;
-  if (readers_entry_count) {
+  } else if (--lock_ptr->readers_entry_count) {
+    // Other readers still hold the lock.
     xeKeKfReleaseSpinLock(ppc_context, &lock_ptr->spin_lock, old_irql);
     return;
   }
