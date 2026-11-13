@@ -405,15 +405,13 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   input_buffer_.fill(0);
 
-  // Detect if we're about to decode the loop end frame (before
-  // UpdateLoopStatus may reset the offset).
+  // Each pass decodes the loop end frame before jumping back to loop_start,
+  // so UpdateLoopStatus runs after it is decoded.
   bool is_loop_end_frame = false;
   if (data->loop_count > 0) {
     const uint32_t loop_end = std::max(kBitsPerPacketHeader, data->loop_end);
     is_loop_end_frame = (data->input_buffer_read_offset == loop_end);
   }
-
-  UpdateLoopStatus(data);
 
   if (!data->output_buffer_block_count) {
     XELOGE("XmaContext {}: Error - Received 0 for output_buffer_block_count!",
@@ -620,6 +618,11 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
       }
       loop_start_skip_pending_ = false;
     }
+  }
+
+  if (is_loop_end_frame) {
+    UpdateLoopStatus(data);
+    return;
   }
 
   // Compute where to go next.
