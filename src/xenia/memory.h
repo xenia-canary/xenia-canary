@@ -217,6 +217,9 @@ class BaseHeap {
   // Partial overlapping pages will also be released.
   virtual bool Release(uint32_t address, uint32_t* out_region_size = nullptr);
 
+  // Releases whole pages from inside one region, splitting the region.
+  bool ReleasePages(uint32_t address, uint32_t size);
+
   // Modifies the protection mode of pages within the given range.
   virtual bool Protect(uint32_t address, uint32_t size, uint32_t protect,
                        uint32_t* old_protect = nullptr);

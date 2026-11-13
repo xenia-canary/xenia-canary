@@ -1487,6 +1487,65 @@ bool BaseHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
   return true;
 }
 
+bool BaseHeap::ReleasePages(uint32_t address, uint32_t size) {
+  if (!size || address < heap_base_) {
+    return false;
+  }
+
+  uint32_t start_page_number = (address - heap_base_) >> page_size_shift_;
+  uint32_t page_count = get_page_count(size, page_size_);
+  uint32_t end_page_number = start_page_number + page_count;
+
+  if (end_page_number > page_table_.size()) {
+    return false;
+  }
+
+  auto global_lock = global_critical_region_.Acquire();
+
+  auto first_entry = page_table_[start_page_number];
+
+  if (!first_entry.state) {
+    return false;
+  }
+
+  uint32_t region_start = first_entry.base_address;
+  uint32_t region_end = region_start + first_entry.region_page_count;
+
+  if (end_page_number > region_end) {
+    return false;
+  }
+
+  for (uint32_t page_number = start_page_number; page_number < end_page_number;
+       ++page_number) {
+    auto& page_entry = page_table_[page_number];
+
+    if (!page_entry.state || page_entry.base_address != region_start) {
+      return false;
+    }
+  }
+
+  for (uint32_t page_number = region_start; page_number < start_page_number;
+       ++page_number) {
+    page_table_[page_number].region_page_count =
+        start_page_number - region_start;
+  }
+
+  for (uint32_t page_number = end_page_number; page_number < region_end;
+       ++page_number) {
+    page_table_[page_number].base_address = end_page_number;
+    page_table_[page_number].region_page_count = region_end - end_page_number;
+  }
+
+  for (uint32_t page_number = start_page_number; page_number < end_page_number;
+       ++page_number) {
+    page_table_[page_number].qword = 0;
+    unreserved_page_count_++;
+  }
+
+  InsertFreeBlock(start_page_number, page_count);
+  return true;
+}
+
 bool BaseHeap::Protect(uint32_t address, uint32_t size, uint32_t protect,
                        uint32_t* old_protect) {
   if (!size) {

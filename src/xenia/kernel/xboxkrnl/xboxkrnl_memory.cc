@@ -290,26 +290,76 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  auto heap = kernel_state()->memory()->LookupHeap(base_addr_value);
-  if (heap->heap_type() != HeapType::kGuestVirtual) {
+  if (free_type != X_MEM_DECOMMIT && free_type != X_MEM_RELEASE) {
     return X_STATUS_INVALID_PARAMETER;
   }
-  bool result = false;
-  if (free_type == X_MEM_DECOMMIT) {
-    // If zero, we may need to query size (free whole region).
-    assert_not_zero(region_size_value);
 
-    region_size_value = xe::round_up(region_size_value, heap->page_size());
-    result = heap->Decommit(base_addr_value, region_size_value);
-  } else {
-    result = heap->Release(base_addr_value, &region_size_value);
-  }
-  if (!result) {
-    return X_STATUS_UNSUCCESSFUL;
+  auto heap = kernel_state()->memory()->LookupHeap(base_addr_value);
+  if (!heap || heap->heap_type() != HeapType::kGuestVirtual) {
+    return X_STATUS_INVALID_PARAMETER;
   }
 
-  *base_addr_ptr = base_addr_value;
-  *region_size_ptr = region_size_value;
+  const uint32_t page_size = heap->page_size();
+
+  if (free_type == X_MEM_RELEASE && !region_size_value) {
+    HeapAllocationInfo info = {};
+
+    if (!heap->QueryRegionInfo(base_addr_value, &info) || !info.state) {
+      return X_STATUS_MEMORY_NOT_ALLOCATED;
+    }
+
+    if (info.allocation_base != base_addr_value) {
+      return X_STATUS_FREE_VM_NOT_AT_BASE;
+    }
+
+    if (!heap->Release(base_addr_value, &region_size_value)) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+
+    *base_addr_ptr = base_addr_value;
+    *region_size_ptr = region_size_value;
+    return X_STATUS_SUCCESS;
+  }
+
+  if (!IsTitleVirtualRange(base_addr_value, region_size_value)) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
+  const uint32_t start = xe::round_up(base_addr_value, page_size);
+  const uint32_t end =
+      region_size_value
+          ? xe::round_up(base_addr_value + region_size_value, page_size)
+          : start;
+
+  HeapAllocationInfo first = {};
+
+  if (!heap->QueryRegionInfo(start, &first) || !first.state) {
+    return X_STATUS_MEMORY_NOT_ALLOCATED;
+  }
+
+  const uint32_t allocation_base = first.allocation_base;
+
+  if (!heap->VisitPages(start, end,
+                        [allocation_base](uint32_t, uint32_t state,
+                                          uint32_t page_allocation_base) {
+                          return state &&
+                                 page_allocation_base == allocation_base;
+                        })) {
+    return X_STATUS_UNABLE_TO_FREE_VM;
+  }
+
+  if (end > start) {
+    bool result = free_type == X_MEM_DECOMMIT
+                      ? heap->Decommit(start, end - start)
+                      : heap->ReleasePages(start, end - start);
+
+    if (!result) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+  }
+
+  *base_addr_ptr = start;
+  *region_size_ptr = end - start;
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtFreeVirtualMemory, kMemory, kImplemented);
