@@ -389,6 +389,8 @@ class XThread : public XObject, public cpu::Thread {
 
   static constexpr uint32_t kThreadKernelStackSize = 0xF0;
 
+  static constexpr uint8_t kMaxSuspendCount = 0x7F;
+
   struct CreationParams {
     uint32_t stack_size;
     uint32_t xapi_thread_startup;

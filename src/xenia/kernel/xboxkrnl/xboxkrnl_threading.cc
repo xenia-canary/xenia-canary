@@ -292,7 +292,7 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
     return X_STATUS_INVALID_HANDLE;
   }
 
-  if (suspend_count_ptr) {
+  if (suspend_count_ptr && XSUCCEEDED(result)) {
     *suspend_count_ptr = suspend_count;
   }
 

@@ -944,20 +944,22 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
 
   X_KTHREAD* guest_thread = guest_object<X_KTHREAD>();
 
-  uint8_t previous_suspend_count =
-      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count)
-          ->fetch_add(1);
+  auto suspend_count =
+      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
+  uint8_t previous_suspend_count = suspend_count->load();
+  do {
+    if (previous_suspend_count >= kMaxSuspendCount) {
+      return X_STATUS_SUSPEND_COUNT_EXCEEDED;
+    }
+  } while (!suspend_count->compare_exchange_weak(previous_suspend_count,
+                                                 previous_suspend_count + 1));
+
   if (out_suspend_count) {
     *out_suspend_count = previous_suspend_count;
   }
+
   // If we are suspending ourselves, we can't hold the lock.
   uint32_t unused_host_suspend_count = 0;
-
-  // If we had suspend count wrap around and go back to 0 then thread is not
-  // suspended.
-  if (guest_thread->suspend_count == 0) {
-    return X_STATUS_SUCCESS;
-  }
 
   if (thread_->Suspend(&unused_host_suspend_count)) {
     return X_STATUS_SUCCESS;
