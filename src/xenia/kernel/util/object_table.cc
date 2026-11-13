@@ -245,9 +245,18 @@ X_STATUS ObjectTable::RemoveHandle(X_HANDLE handle) {
 
     XELOGD("Removed handle:{:08X} for {}", handle, typeid(*object).name());
 
-    // Remove object name from mapping to prevent naming collision.
+    // The name lasts while the object has a handle, so it moves to another
+    // handle, like a duplicate, before it's removed.
     if (!object->name().empty()) {
-      RemoveNameMapping(object->name());
+      auto it = name_table_.find(string_key_case(object->name()));
+
+      if (it != name_table_.end() && it->second == handle) {
+        if (object->handles().empty()) {
+          name_table_.erase(it);
+        } else {
+          it->second = object->handles().front();
+        }
+      }
     }
     // Release now that the object has been removed from the table.
     object->Release();
