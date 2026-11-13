@@ -11,6 +11,7 @@
 #define XENIA_MEMORY_H_
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -47,6 +48,12 @@ enum class HeapType : uint8_t {
 enum MemoryAllocationFlag : uint32_t {
   kMemoryAllocationReserve = 1 << 0,
   kMemoryAllocationCommit = 1 << 1,
+};
+
+enum class PageAllocResult : uint8_t {
+  kSuccess,
+  kConflictingAddresses,
+  kNoMemory,
 };
 
 enum MemoryProtectFlag : uint32_t {
@@ -216,6 +223,23 @@ class BaseHeap {
 
   // Queries information about the given region of pages.
   bool QueryRegionInfo(uint32_t base_address, HeapAllocationInfo* out_info);
+
+  // Visits each page in [start, end) until visit returns false.
+  bool VisitPages(uint32_t start, uint32_t end,
+                  const std::function<bool(uint32_t address, uint32_t state,
+                                           uint32_t allocation_base)>& visit);
+
+  // Whether every page in [start, end) has the state bits, or is free if 0.
+  bool PagesHaveState(uint32_t start, uint32_t end, uint32_t state);
+
+  // Zeroes pages, making them writable for the write if they aren't.
+  void ZeroPages(uint32_t address, uint32_t size, uint32_t protect);
+
+  // Reserves, commits or resets the whole pages of a range at a base, and
+  // returns the pages covered in address and size.
+  PageAllocResult AllocPagesAt(uint32_t* address, uint32_t* size,
+                               uint32_t allocation_type, uint32_t protect,
+                               bool reset, bool zero);
 
   // Queries the size of the region containing the given address.
   bool QuerySize(uint32_t address, uint32_t* out_size);

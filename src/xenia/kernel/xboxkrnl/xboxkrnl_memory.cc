@@ -162,29 +162,34 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   if (alloc_type & X_MEM_COMMIT) {
     allocation_type |= kMemoryAllocationCommit;
   }
-  if (alloc_type & X_MEM_RESET) {
-    XELOGE("X_MEM_RESET not implemented");
-    assert_always();
-  }
   uint32_t protect = FromXdkProtectFlags(protect_bits);
   uint32_t address = 0;
   BaseHeap* heap;
-  HeapAllocationInfo prev_alloc_info = {};
-  bool was_commited = false;
 
   if (adjusted_base != 0) {
-    heap = kernel_memory()->LookupHeap(adjusted_base);
-    if (heap->page_size() != page_size) {
-      // Specified the wrong page size for the wrong heap.
-      return X_STATUS_ACCESS_DENIED;
+    if (!IsTitleVirtualRange(*base_addr_ptr, *region_size_ptr)) {
+      return X_STATUS_INVALID_PARAMETER;
     }
-    was_commited = heap->QueryRegionInfo(adjusted_base, &prev_alloc_info) &&
-                   (prev_alloc_info.state & kMemoryAllocationCommit) != 0;
 
-    if (heap->AllocFixed(adjusted_base, adjusted_size, page_size,
-                         allocation_type, protect)) {
-      address = adjusted_base;
+    uint32_t base = *base_addr_ptr;
+    uint32_t size = *region_size_ptr;
+    heap = kernel_memory()->LookupHeap(base);
+
+    const PageAllocResult result = heap->AllocPagesAt(
+        &base, &size, allocation_type, protect, !!(alloc_type & X_MEM_RESET),
+        !(alloc_type & X_MEM_NOZERO));
+
+    if (result == PageAllocResult::kConflictingAddresses) {
+      return X_STATUS_CONFLICTING_ADDRESSES;
     }
+
+    if (result == PageAllocResult::kNoMemory) {
+      return X_STATUS_NO_MEMORY;
+    }
+
+    *base_addr_ptr = base;
+    *region_size_ptr = size;
+    return X_STATUS_SUCCESS;
   } else {
     bool top_down = !!(alloc_type & X_MEM_TOP_DOWN);
     heap = kernel_memory()->LookupHeapByType(false, page_size);
@@ -199,19 +204,8 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   }
 
   // Zero memory, if needed.
-  if (address && !(alloc_type & X_MEM_NOZERO)) {
-    if (alloc_type & X_MEM_COMMIT) {
-      if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, adjusted_size,
-                      kMemoryProtectRead | kMemoryProtectWrite);
-      }
-      if (!was_commited) {
-        kernel_memory()->Zero(address, adjusted_size);
-      }
-      if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, adjusted_size, protect);
-      }
-    }
+  if (!(alloc_type & X_MEM_NOZERO) && (alloc_type & X_MEM_COMMIT)) {
+    heap->ZeroPages(address, adjusted_size, protect);
   }
 
   XELOGD("NtAllocateVirtualMemory = {:08X}", address);

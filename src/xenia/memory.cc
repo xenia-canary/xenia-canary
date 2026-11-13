@@ -9,6 +9,7 @@
 
 #include "xenia/memory.h"
 
+#include <algorithm>
 #include <cstring>
 #include <random>
 
@@ -1637,6 +1638,112 @@ bool BaseHeap::Protect(uint32_t address, uint32_t size, uint32_t protect,
   }
 
   return true;
+}
+
+bool BaseHeap::VisitPages(
+    uint32_t start, uint32_t end,
+    const std::function<bool(uint32_t address, uint32_t state,
+                             uint32_t allocation_base)>& visit) {
+  if (start < heap_base_ || end < start ||
+      uint64_t(end) > uint64_t(heap_base_) + heap_size_) {
+    return false;
+  }
+
+  auto global_lock = global_critical_region_.Acquire();
+  const uint32_t first = (start - heap_base_) >> page_size_shift_;
+  const uint32_t last = (end - heap_base_ + page_size_ - 1) >> page_size_shift_;
+
+  for (uint32_t page_number = first;
+       page_number < last && page_number < page_table_.size(); ++page_number) {
+    auto page_entry = page_table_[page_number];
+    const uint32_t allocation_base =
+        page_entry.state
+            ? heap_base_ + (page_entry.base_address << page_size_shift_)
+            : 0;
+
+    if (!visit(heap_base_ + (page_number << page_size_shift_), page_entry.state,
+               allocation_base)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool BaseHeap::PagesHaveState(uint32_t start, uint32_t end, uint32_t state) {
+  return VisitPages(
+      start, end, [state](uint32_t, uint32_t page_state, uint32_t) {
+        return state ? (page_state & state) == state : page_state == 0;
+      });
+}
+
+void BaseHeap::ZeroPages(uint32_t address, uint32_t size, uint32_t protect) {
+  if (!size) {
+    return;
+  }
+
+  if (!(protect & kMemoryProtectWrite)) {
+    Protect(address, size, kMemoryProtectRead | kMemoryProtectWrite);
+  }
+
+  memory_->Zero(address, size);
+
+  if (!(protect & kMemoryProtectWrite)) {
+    Protect(address, size, protect);
+  }
+}
+
+PageAllocResult BaseHeap::AllocPagesAt(uint32_t* address, uint32_t* size,
+                                       uint32_t allocation_type,
+                                       uint32_t protect, bool reset,
+                                       bool zero) {
+  const uint32_t base = *address;
+  const uint32_t end = xe::round_up(base + *size, page_size_);
+
+  uint32_t start;
+
+  if (allocation_type & kMemoryAllocationReserve) {
+    start = base & ~uint32_t(64 * 1024 - 1);
+
+    if (!PagesHaveState(start, end, 0)) {
+      return PageAllocResult::kConflictingAddresses;
+    }
+  } else {
+    start = xe::round_up(base, page_size_);
+    const uint32_t needed =
+        reset ? kMemoryAllocationCommit : kMemoryAllocationReserve;
+
+    if (!PagesHaveState(start, std::max(end, start + page_size_), needed)) {
+      return PageAllocResult::kConflictingAddresses;
+    }
+  }
+
+  if (!reset && end > start) {
+    std::vector<uint32_t> new_pages;
+
+    if ((allocation_type & kMemoryAllocationCommit) && zero) {
+      VisitPages(start, end,
+                 [&new_pages](uint32_t page, uint32_t state, uint32_t) {
+                   if (!(state & kMemoryAllocationCommit)) {
+                     new_pages.push_back(page);
+                   }
+
+                   return true;
+                 });
+    }
+
+    if (!AllocFixed(start, end - start, page_size_, allocation_type, protect)) {
+      return PageAllocResult::kNoMemory;
+    }
+
+    for (uint32_t page : new_pages) {
+      ZeroPages(page, page_size_, protect);
+    }
+  }
+
+  *address = start;
+  *size = end - start;
+  return PageAllocResult::kSuccess;
 }
 
 bool BaseHeap::QueryRegionInfo(uint32_t base_address,
