@@ -539,6 +539,8 @@ DECLARE_XBOXKRNL_EXPORT1(RtlImageXexHeaderField, kNone, kImplemented);
 #pragma pack(push, 1)
 struct X_RTL_CRITICAL_SECTION {
   X_DISPATCH_HEADER header;
+  // Big-endian like the other fields, but kept as a plain int for the atomic
+  // operations; -1 and 0 read the same either way.
   int32_t lock_count;                          // 0x10 -1 -> 0 on first lock
   xe::be<int32_t> recursion_count;             // 0x14  0 -> 1 on first lock
   TypedGuestPointer<X_KTHREAD> owning_thread;  // 0x18 PKTHREAD 0 unless locked
@@ -589,6 +591,20 @@ dword_result_t RtlInitializeCriticalSectionAndSpinCount_entry(
 DECLARE_XBOXKRNL_EXPORT2(RtlInitializeCriticalSectionAndSpinCount, kNone,
                          kImplemented, kHighFrequency);
 
+// Adds to a critical section's big-endian LockCount and returns the new value.
+static int32_t CriticalSectionAddLockCount(X_RTL_CRITICAL_SECTION* cs,
+                                           int32_t delta) {
+  while (true) {
+    const int32_t old_raw =
+        *reinterpret_cast<volatile int32_t*>(&cs->lock_count);
+    const int32_t new_value = xe::byte_swap(old_raw) + delta;
+
+    if (xe::atomic_cas(old_raw, xe::byte_swap(new_value), &cs->lock_count)) {
+      return new_value;
+    }
+  }
+}
+
 static void CriticalSectionPrefetchW(const void* vp) {
 #if XE_ARCH_AMD64 == 1
   if (amd64::GetFeatureFlags() & amd64::kX64EmitPrefetchW) {
@@ -608,7 +624,7 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (cs->owning_thread == cur_thread) {
     // We already own the lock.
-    xe::atomic_inc(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, 1);
     cs->recursion_count++;
     return;
   }
@@ -623,7 +639,7 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
     }
   }
 
-  if (xe::atomic_inc(&cs->lock_count) != 0) {
+  if (CriticalSectionAddLockCount(cs, 1) != 0) {
     // Create a full waiter.
     xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
                             nullptr);
@@ -652,7 +668,7 @@ dword_result_t RtlTryEnterCriticalSection_entry(
     return 1;
   } else if (cs->owning_thread == thread) {
     // Already own the lock.
-    xe::atomic_inc(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, 1);
     ++cs->recursion_count;
     return 1;
   }
@@ -675,13 +691,13 @@ void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
   if (--cs->recursion_count != 0) {
     assert_true(cs->recursion_count >= 0);
 
-    xe::atomic_dec(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, -1);
     return;
   }
 
   // Not owned - unlock!
   cs->owning_thread = 0;
-  if (xe::atomic_dec(&cs->lock_count) != -1) {
+  if (CriticalSectionAddLockCount(cs, -1) != -1) {
     // There were waiters - wake one of them.
     xeKeSetEvent(reinterpret_cast<X_KEVENT*>(cs.host_address()), 1, 0);
   }
