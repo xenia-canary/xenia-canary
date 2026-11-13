@@ -892,11 +892,21 @@ X_STATUS XThread::Resume(uint32_t* out_suspend_count) {
   uint32_t unused_host_suspend_count = 0;
 
 #if XE_PLATFORM_WIN32
-  uint8_t previous_suspend_count =
-      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count)
-          ->fetch_sub(1);
+  // KeResumeThread leaves a count of 0 alone and returns 0.
+  auto suspend_count =
+      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
+  uint8_t previous_suspend_count = suspend_count->load();
+  while (previous_suspend_count &&
+         !suspend_count->compare_exchange_weak(previous_suspend_count,
+                                               previous_suspend_count - 1)) {
+  }
+
   if (out_suspend_count) {
     *out_suspend_count = previous_suspend_count;
+  }
+
+  if (!previous_suspend_count) {
+    return X_STATUS_SUCCESS;
   }
 
   if (thread_->Resume(&unused_host_suspend_count)) {

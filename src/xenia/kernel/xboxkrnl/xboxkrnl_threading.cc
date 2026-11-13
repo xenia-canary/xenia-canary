@@ -238,16 +238,14 @@ dword_result_t NtResumeThread_entry(dword_t handle,
 DECLARE_XBOXKRNL_EXPORT1(NtResumeThread, kThreading, kImplemented);
 
 dword_result_t KeResumeThread_entry(pointer_t<X_KTHREAD> thread_ptr) {
-  X_STATUS result = X_STATUS_SUCCESS;
+  uint32_t previous_suspend_count = 0;
   auto thread = XObject::GetNativeObject<XThread>(kernel_state(), thread_ptr,
                                                   ThreadObject);
   if (thread) {
-    result = thread->Resume();
-  } else {
-    result = X_STATUS_INVALID_HANDLE;
+    thread->Resume(&previous_suspend_count);
   }
 
-  return result;
+  return previous_suspend_count;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeResumeThread, kThreading, kImplemented);
 
