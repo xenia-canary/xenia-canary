@@ -621,15 +621,21 @@ dword_result_t NtOpenSymbolicLinkObject_entry(
 DECLARE_XBOXKRNL_EXPORT1(NtOpenSymbolicLinkObject, kFileSystem, kImplemented);
 
 // https://docs.microsoft.com/en-us/windows/win32/devnotes/ntquerysymboliclinkobject
-dword_result_t NtQuerySymbolicLinkObject_entry(
-    dword_t handle, pointer_t<X_ANSI_STRING> target) {
+dword_result_t NtQuerySymbolicLinkObject_entry(dword_t handle,
+                                               pointer_t<X_ANSI_STRING> target,
+                                               lpdword_t returned_length_ptr) {
   auto symlink =
       kernel_state()->object_table()->LookupObject<XSymbolicLink>(handle);
   if (!symlink) {
     return X_STATUS_NO_SUCH_FILE;
   }
-  auto length = std::min(static_cast<size_t>(target->maximum_length),
-                         symlink->target().size());
+  const auto length = static_cast<uint32_t>(symlink->target().size());
+  if (returned_length_ptr) {
+    *returned_length_ptr = length;
+  }
+  if (length > target->maximum_length) {
+    return X_STATUS_BUFFER_TOO_SMALL;
+  }
   if (length > 0) {
     auto target_buf = kernel_memory()->TranslateVirtual(target->pointer);
     std::memcpy(target_buf, symlink->target().c_str(), length);
