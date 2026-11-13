@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include "xenia/base/chrono.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/info/file.h"
 #include "xenia/kernel/info/volume.h"
@@ -200,22 +201,39 @@ dword_result_t NtSetInformationFile_entry(
   switch (info_class) {
     case XFileBasicInformation: {
       auto info = info_ptr.as<X_FILE_BASIC_INFORMATION*>();
+      auto entry = file->entry();
 
-      bool basic_result = true;
-      if (info->creation_time) {
-        basic_result &= file->entry()->SetCreateTimestamp(info->creation_time);
+      const uint32_t attributes = info->attributes;
+      if ((attributes & vfs::kFileAttributeDirectory) &&
+          !(entry->attributes() & vfs::kFileAttributeDirectory)) {
+        return X_STATUS_INVALID_PARAMETER;
       }
 
-      if (info->last_access_time) {
+      // Times are kept to the even second below, as FAT keeps them, and the
+      // access time reads back as the write time.
+      constexpr uint64_t kTimeResolution =
+          xe::chrono::hundrednanoseconds(std::chrono::seconds(2)).count();
+      bool basic_result = true;
+      if (info->creation_time) {
+        const uint64_t time = info->creation_time;
         basic_result &=
-            file->entry()->SetAccessTimestamp(info->last_access_time);
+            entry->SetCreateTimestamp(time - time % kTimeResolution);
       }
 
       if (info->last_write_time) {
-        basic_result &= file->entry()->SetWriteTimestamp(info->last_write_time);
+        const uint64_t time = info->last_write_time;
+        basic_result &= entry->SetWriteTimestamp(time - time % kTimeResolution);
+        basic_result &=
+            entry->SetAccessTimestamp(time - time % kTimeResolution);
       }
 
-      basic_result &= file->entry()->SetAttributes(info->attributes);
+      // 0 leaves the attributes alone, and FILE_ATTRIBUTE_NORMAL is dropped,
+      // so on its own it clears them.
+      if (attributes) {
+        basic_result &=
+            entry->SetAttributes(attributes & ~vfs::kFileAttributeNormal);
+      }
+
       if (!basic_result) {
         result = X_STATUS_UNSUCCESSFUL;
       }

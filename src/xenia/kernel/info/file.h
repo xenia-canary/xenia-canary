@@ -66,7 +66,8 @@ struct X_FILE_BASIC_INFORMATION {
   be<uint64_t> last_access_time;
   be<uint64_t> last_write_time;
   be<uint64_t> change_time;
-  be<uint64_t> attributes;
+  be<uint32_t> attributes;
+  be<uint32_t> padding;
 };
 static_assert_size(X_FILE_BASIC_INFORMATION, 0x28);
 

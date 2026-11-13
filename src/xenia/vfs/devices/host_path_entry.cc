@@ -161,7 +161,13 @@ bool HostPathEntry::SetAttributes(uint64_t attributes) {
   if (device_->is_read_only()) {
     return false;
   }
-  return xe::filesystem::SetAttributes(host_path_, attributes);
+
+  // Kept on the entry only, so a title can't make the host's own file
+  // read-only, hidden or system.
+  attributes_ = (attributes_ & kFileAttributeDirectory) |
+                static_cast<uint32_t>(attributes);
+
+  return true;
 }
 
 bool HostPathEntry::SetCreateTimestamp(uint64_t timestamp) {
@@ -171,8 +177,7 @@ bool HostPathEntry::SetCreateTimestamp(uint64_t timestamp) {
         __FUNCTION__, name_, timestamp);
     return false;
   }
-  XELOGI("{} - Tried to change creation timestamp for file: {} to: {}",
-         __FUNCTION__, name_, timestamp);
+  create_timestamp_ = timestamp;
   return true;
 }
 
@@ -183,8 +188,7 @@ bool HostPathEntry::SetAccessTimestamp(uint64_t timestamp) {
         __FUNCTION__, name_, timestamp);
     return false;
   }
-  XELOGI("{} - Tried to change access timestamp for file: {} to: {}",
-         __FUNCTION__, name_, timestamp);
+  access_timestamp_ = timestamp;
   return true;
 }
 
@@ -194,8 +198,7 @@ bool HostPathEntry::SetWriteTimestamp(uint64_t timestamp) {
            __FUNCTION__, name_, timestamp);
     return false;
   }
-  XELOGI("{} - Tried to change write timestamp for file: {} to: {}",
-         __FUNCTION__, name_, timestamp);
+  write_timestamp_ = timestamp;
   return true;
 }
 
