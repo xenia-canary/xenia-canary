@@ -18,7 +18,7 @@
 
 namespace xe {
 namespace kernel {
-enum class X_WSAError : uint32_t {
+enum X_WSAError : uint32_t {
   X_WSA_INVALID_PARAMETER = 0x0057,
   X_WSAEFAULT = 0x271E,
   X_WSAEINVAL = 0x2726,
