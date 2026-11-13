@@ -11,12 +11,16 @@
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/string.h"
+#include "xenia/base/utf8.h"
 #include "xenia/base/xxhash.h"
 #include "xenia/cpu/elf_module.h"
 #include "xenia/emulator.h"
 
 namespace xe {
 namespace kernel {
+
+constexpr uint32_t kLoadFlagTitleProcess = 1;
 
 UserModule::UserModule(KernelState* kernel_state)
     : XModule(kernel_state, ModuleType::kUserModule) {}
@@ -248,8 +252,29 @@ X_STATUS UserModule::LoadContinue() {
 
   ldr_data->dll_base = 0;  // GetProcAddress will read this.
   ldr_data->xex_header_base = guest_xex_header_;
+  ldr_data->image_size = security_header->image_size;
   ldr_data->full_image_size = security_header->image_size;
   ldr_data->image_base = this->xex_module()->base_address();
+  ldr_data->load_count = 1;
+  if (!is_dll_module_) {
+    ldr_data->load_flags = kLoadFlagTitleProcess;
+  }
+
+  // The file name, extension included, as a counted UTF-16 string.
+  const auto base_name = xe::to_utf16(
+      path_.empty() ? name_ : utf8::find_name_from_guest_path(path_));
+  const uint32_t name_bytes = uint32_t(base_name.size() * 2);
+  const uint32_t name_ptr = memory()->SystemHeapAlloc(name_bytes + 2);
+  if (name_ptr) {
+    auto name_chars = memory()->TranslateVirtual<xe::be<uint16_t>*>(name_ptr);
+    for (size_t i = 0; i < base_name.size(); ++i) {
+      name_chars[i] = base_name[i];
+    }
+    name_chars[base_name.size()] = 0;
+    ldr_data->base_dll_name.length = uint16_t(name_bytes);
+    ldr_data->base_dll_name.maximum_length = uint16_t(name_bytes + 2);
+    ldr_data->base_dll_name.pointer = name_ptr;
+  }
 
   ldr_data->entry_point = entry_point_;
 
@@ -267,6 +292,16 @@ X_STATUS UserModule::Unload() {
 
   if (module_format_ == kModuleFormatXex && processor_module_ &&
       xex_module()->Unload()) {
+    if (hmodule_ptr_) {
+      auto ldr_data =
+          memory()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule_ptr_);
+      if (ldr_data->base_dll_name.pointer) {
+        memory()->SystemHeapFree(ldr_data->base_dll_name.pointer);
+        ldr_data->base_dll_name.pointer = 0;
+        ldr_data->base_dll_name.length = 0;
+        ldr_data->base_dll_name.maximum_length = 0;
+      }
+    }
     OnUnload();
     return X_STATUS_SUCCESS;
   }
