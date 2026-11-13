@@ -652,6 +652,13 @@ struct X_PARTITION_INFO {
 };
 static_assert_size(X_PARTITION_INFO, 0x10);
 
+// relates to partition0
+struct X_PARTITION_UNK {
+  xe::be<uint32_t> unk1;  // 0 to 8
+  xe::be<uint32_t> unk2[0x2FF];
+};
+static_assert_size(X_PARTITION_UNK, 0xC00);
+
 // todo: this should fill in the io status block and queue the apc
 dword_result_t NtDeviceIoControlFile_entry(
     dword_t handle, dword_t event_handle, dword_t apc_routine,
