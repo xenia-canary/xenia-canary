@@ -68,16 +68,16 @@ void XEvent::InitializeNative(void* native_ptr,
   SetNativePointer(memory()->HostToGuestVirtual(native_ptr), true);
 }
 
+// Returns the signal state before the set, as KeSetEvent does.
 int32_t XEvent::Set(uint32_t priority_increment, bool wait) {
   set_priority_increment(priority_increment);
-  {
-    std::lock_guard<std::mutex> lock(state_lock_);
-    memory()->TranslateVirtual<X_KEVENT*>(guest_object())->header.signal_state =
-        1;
-    host_signaled_ = true;
-    event_->Set();
-  }
-  return 1;
+  std::lock_guard<std::mutex> lock(state_lock_);
+  auto* kevent = memory()->TranslateVirtual<X_KEVENT*>(guest_object());
+  const int32_t old_signal_state = kevent->header.signal_state;
+  kevent->header.signal_state = 1;
+  host_signaled_ = true;
+  event_->Set();
+  return old_signal_state;
 }
 
 int32_t XEvent::Pulse(uint32_t priority_increment, bool wait) {
@@ -93,13 +93,15 @@ int32_t XEvent::Pulse(uint32_t priority_increment, bool wait) {
   return old_signal_state;
 }
 
+// Returns the signal state before the reset, as KeResetEvent does.
 int32_t XEvent::Reset() {
   std::lock_guard<std::mutex> lock(state_lock_);
-  memory()->TranslateVirtual<X_KEVENT*>(guest_object())->header.signal_state =
-      0;
+  auto* kevent = memory()->TranslateVirtual<X_KEVENT*>(guest_object());
+  const int32_t old_signal_state = kevent->header.signal_state;
+  kevent->header.signal_state = 0;
   host_signaled_ = false;
   event_->Reset();
-  return 1;
+  return old_signal_state;
 }
 
 void XEvent::WaitCallback() {
