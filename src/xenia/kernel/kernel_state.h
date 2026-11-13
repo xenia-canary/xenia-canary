@@ -310,6 +310,9 @@ class KernelState {
       uint32_t overlapped_ptr, std::function<void()> pre_callback = nullptr,
       std::function<void()> post_callback = nullptr);
 
+  // Runs fn on the dispatch thread, which has a guest context.
+  void Dispatch(std::function<void()> fn);
+
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
 

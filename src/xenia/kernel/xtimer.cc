@@ -10,6 +10,8 @@
 #include "xenia/kernel/xtimer.h"
 
 #include "xenia/base/logging.h"
+#include "xenia/cpu/thread_state.h"
+#include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xthread.h"
 
 namespace xe {
@@ -63,11 +65,14 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
   // This callback will only be issued when the timer is fired.
   // Capture values by value to avoid racing with a future SetTimer() call.
   std::function<void()> callback = nullptr;
-  if (callback_routine_) {
-    auto cb_thread = callback_thread_;
+  if (callback_routine_ && callback_thread_) {
+    // Keeps the thread alive for a dispatched callback
+    auto cb_thread = retain_object(callback_thread_);
     auto cb_routine = callback_routine_;
     auto cb_routine_arg = callback_routine_arg_;
-    callback = [cb_thread, cb_routine, cb_routine_arg]() {
+    auto cb_kernel_state = kernel_state();
+
+    callback = [cb_kernel_state, cb_thread, cb_routine, cb_routine_arg]() {
       // Queue APC to call back routine with (arg, low, high).
       // It'll be executed on the thread that requested the timer.
       uint64_t time = xe::Clock::QueryGuestSystemTime();
@@ -76,7 +81,24 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
       XELOGI(
           "XTimer enqueuing timer callback to {:08X}({:08X}, {:08X}, {:08X})",
           cb_routine, cb_routine_arg, time_low, time_high);
-      cb_thread->EnqueueApc(cb_routine, cb_routine_arg, time_low, time_high);
+
+      auto enqueue = [cb_thread, cb_routine, cb_routine_arg, time_low,
+                      time_high]() {
+        // An exited thread takes no more APCs
+        if (cb_thread->guest_object<X_KTHREAD>()->terminated) {
+          return;
+        }
+
+        cb_thread->EnqueueApc(cb_routine, cb_routine_arg, time_low, time_high);
+      };
+      // Queuing an APC needs a guest context. Windows runs this on the thread
+      // that set the timer, but other hosts run it on their timer thread, so
+      // hand it to the dispatch thread there.
+      if (cpu::ThreadState::Get()) {
+        enqueue();
+      } else {
+        cb_kernel_state->Dispatch(std::move(enqueue));
+      }
     };
   }
 
