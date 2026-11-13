@@ -144,6 +144,9 @@ struct KernelGuestGlobals {
   X_KEVENT UsbdBootEnumerationDoneEvent;
   X_KEVENT UsbdDriverLoadRequiredEvent;
   X_KEVENT StfsDeviceErrorEvent;
+
+  // Every loaded module's loader entry, by InLoadOrderLinks, in load order
+  X_LIST_ENTRY loaded_modules;
 };
 struct DPCImpersonationScope {
   uint8_t previous_irql_;
