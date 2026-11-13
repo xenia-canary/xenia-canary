@@ -143,6 +143,15 @@ dword_result_t xeXexLoadImage(
   } else {
     // Not found; attempt to load as a user module.
     auto user_module = load_callback();
+    // A title's own DLL only loads into the title process.
+    if (user_module && user_module->xex_module() &&
+        (user_module->xex_module()->xex_header()->module_flags &
+         XEX_MODULE_TITLE) &&
+        !(module_flags & TITLE_PROCESS)) {
+      kernel_state()->UnloadUserModule(user_module, false);
+      *hmodule_ptr = 0;
+      return X_STATUS_ACCESS_DENIED;
+    }
     if (user_module) {
       kernel_state()->ApplyTitleUpdate(user_module);
       kernel_state()->FinishLoadingUserModule(user_module);
