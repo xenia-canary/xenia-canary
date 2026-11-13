@@ -268,6 +268,10 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+
+  // Flushing keeps the decoder's overlap history, so recreate the decoder for
+  // the next stream.
+  reset_decoder_ = true;
 }
 
 void XmaContextNew::Disable() { set_is_enabled(false); }
@@ -917,8 +921,9 @@ int XmaContextNew::PrepareDecoder(int sample_rate, bool is_two_channel) {
 
   // Re-initialize the context with new sample rate and channels.
   uint32_t channels = is_two_channel ? 2 : 1;
-  if (av_context_->sample_rate != sample_rate ||
+  if (reset_decoder_ || av_context_->sample_rate != sample_rate ||
       av_context_->ch_layout.nb_channels != (int)channels) {
+    reset_decoder_ = false;
     XELOGAPU("XmaContext {}: Codec reinit: rate {} -> {}, channels {} -> {}",
              id(), av_context_->sample_rate, sample_rate,
              av_context_->ch_layout.nb_channels, channels);

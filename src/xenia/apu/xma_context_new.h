@@ -138,6 +138,9 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+
+  // Set by Clear to recreate the decoder on the next frame.
+  bool reset_decoder_ = false;
 };
 
 }  // namespace apu
