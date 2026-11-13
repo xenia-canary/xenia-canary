@@ -63,6 +63,12 @@ uint32_t FromXdkProtectFlags(uint32_t protect) {
   return result;
 }
 
+static bool IsTitleVirtualRange(uint32_t address, uint32_t size) {
+  const uint64_t end = uint64_t(address) + size;
+  return (address >= kTitle4KBLow && end <= kTitle4KBEnd) ||
+         (address >= kTitle64KBLow && end <= kTitle64KBEnd);
+}
+
 dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
                                              lpdword_t region_size_ptr,
                                              dword_t alloc_type,
@@ -93,10 +99,16 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   // The xe_memory_ref object is used to actually get the memory, and although
   // it's simple today we could extend it to do better things in the future.
 
-  // Must request a size.
-  if (!base_addr_ptr || !region_size_ptr || !*region_size_ptr) {
+  // Must request a positive size.
+  if (!base_addr_ptr || !region_size_ptr || !*region_size_ptr ||
+      int32_t(*region_size_ptr) < 0) {
     return X_STATUS_INVALID_PARAMETER;
   }
+
+  if (*base_addr_ptr && !IsTitleVirtualRange(*base_addr_ptr, 1)) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
   // Check allocation type.
   if (!(alloc_type & (X_MEM_COMMIT | X_MEM_RESET | X_MEM_RESERVE))) {
     return X_STATUS_INVALID_PARAMETER;
@@ -136,10 +148,7 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
 
   // Round the base address down to the nearest page boundary.
   uint32_t adjusted_base = *base_addr_ptr - (*base_addr_ptr % page_size);
-  // For some reason, some games pass in negative sizes.
-  uint32_t adjusted_size = int32_t(*region_size_ptr) < 0
-                               ? -int32_t(region_size_ptr.value())
-                               : region_size_ptr.value();
+  uint32_t adjusted_size = region_size_ptr.value();
 
   // The size is in pages, while an allocation without a base starts on a
   // 64 KB boundary whatever its page size.
@@ -179,8 +188,10 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   } else {
     bool top_down = !!(alloc_type & X_MEM_TOP_DOWN);
     heap = kernel_memory()->LookupHeapByType(false, page_size);
-    heap->Alloc(adjusted_size, 64 * 1024, allocation_type, protect, top_down,
-                &address);
+    const bool large = page_size == 64 * 1024;
+    heap->AllocRange(large ? kTitle64KBLow : kTitle4KBLow,
+                     (large ? kTitle64KBEnd : kTitle4KBEnd) - 1, adjusted_size,
+                     64 * 1024, allocation_type, protect, top_down, &address);
   }
   if (!address) {
     // Failed - assume no memory available.
@@ -280,8 +291,9 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
   // Set to TRUE when freeing external devkit memory.
   assert_true(debug_memory == 0);
 
-  if (!base_addr_value) {
-    return X_STATUS_MEMORY_NOT_ALLOCATED;
+  if (!IsTitleVirtualRange(base_addr_value, 1) ||
+      int32_t(region_size_value) < 0) {
+    return X_STATUS_INVALID_PARAMETER;
   }
 
   auto heap = kernel_state()->memory()->LookupHeap(base_addr_value);

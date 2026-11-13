@@ -44,6 +44,11 @@ static_assert_size(X_MM_QUERY_STATISTICS_RESULT, 104);
 
 constexpr uint32_t kPoolBlockUnit = 16;
 
+constexpr uint32_t kTitle4KBLow = 0x00010000;
+constexpr uint32_t kTitle4KBEnd = 0x2FFF0000;
+constexpr uint32_t kTitle64KBLow = 0x40000000;
+constexpr uint32_t kTitle64KBEnd = 0x6FFF0000;
+
 uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
                                       uint32_t protect_bits,
                                       uint32_t min_addr_range,
