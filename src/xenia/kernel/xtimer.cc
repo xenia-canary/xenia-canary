@@ -53,8 +53,9 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
     auto after = xe::chrono::hundrednanoseconds(-due_time);
     due_tp = date::clock_cast<WinSystemClock>(XSystemClock::now() + after);
   } else {
-    due_tp = date::clock_cast<WinSystemClock>(
-        XSystemClock::from_file_time(due_time));
+    auto due = XSystemClock::from_file_time(due_time);
+    due_tp =
+        date::clock_cast<WinSystemClock>(std::max(due, XSystemClock::now()));
   }
 
   // Stash routine for callback.
