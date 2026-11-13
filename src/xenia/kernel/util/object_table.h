@@ -41,6 +41,9 @@ class ObjectTable {
   X_STATUS ReleaseHandle(X_HANDLE handle);
   X_STATUS ReleaseHandleInLock(X_HANDLE handle);
   X_STATUS RemoveHandle(X_HANDLE handle);
+  // Writes the object's handles, and the references held on them, into its
+  // object header
+  void UpdateNativeCountsInLock(XObject* object);
 
   // Track guest opens separately from pointer references held on the slot.
   // The optional generation rejects a slot recycled during a close callback.

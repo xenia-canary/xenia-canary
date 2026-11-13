@@ -199,6 +199,9 @@ class XObject {
 
   void RetainHandle();
   bool ReleaseHandle();
+  // Copies the counts into the object header, when the object has one of
+  // its own from CreateNative
+  void SetNativeCounts(int32_t pointer_count, int32_t handle_count);
   void Retain();
   void Release();
   X_STATUS Delete();

@@ -87,6 +87,16 @@ bool XObject::ReleaseHandle() {
                                   handles_[0]) == X_STATUS_SUCCESS;
 }
 
+void XObject::SetNativeCounts(int32_t pointer_count, int32_t handle_count) {
+  if (!allocated_guest_object_ || !guest_object_ptr_) {
+    return;
+  }
+  auto header = memory()->TranslateVirtual<X_OBJECT_HEADER*>(
+      guest_object_ptr_ - sizeof(X_OBJECT_HEADER));
+  header->pointer_count = pointer_count;
+  header->handle_count = handle_count;
+}
+
 void XObject::Retain() { ++pointer_ref_count_; }
 
 void XObject::Release() {
@@ -478,6 +488,10 @@ uint8_t* XObject::CreateNative(uint32_t size) {
                  memory()->SystemHeapAlloc(sizeof(X_OBJECT_TYPE))) {
     header->object_type_ptr = object_type;
   }
+
+  // The handles opened so far, each holding one reference
+  const auto handle_count = static_cast<int32_t>(handles_.size());
+  SetNativeCounts(handle_count, handle_count);
 
   return memory()->TranslateVirtual(guest_object_ptr_);
 }
