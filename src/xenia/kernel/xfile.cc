@@ -78,6 +78,8 @@ X_STATUS XFile::QueryDirectory(X_FILE_DIRECTORY_INFORMATION* out_info,
     }
   }
 
+  entry->update();
+
   auto end = reinterpret_cast<uint8_t*>(out_info) + length;
   const auto& entry_name = entry->name();
   if (reinterpret_cast<uint8_t*>(&out_info->file_name[0]) + entry_name.size() >

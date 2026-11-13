@@ -498,6 +498,7 @@ dword_result_t NtQueryFullAttributesFile_entry(
   auto entry = kernel_state()->file_system()->ResolvePath(target_path);
   if (entry) {
     // Found.
+    entry->update();
     file_info->creation_time = entry->create_timestamp();
     file_info->last_access_time = entry->access_timestamp();
     file_info->last_write_time = entry->write_timestamp();
