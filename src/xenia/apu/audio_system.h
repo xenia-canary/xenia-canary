@@ -47,6 +47,8 @@ class AudioSystem {
   X_STATUS RegisterClient(uint32_t callback, uint32_t callback_arg,
                           size_t* out_index);
   void UnregisterClient(size_t index);
+  // Unregisters every client, used when the title registering them exits.
+  void UnregisterAllClients();
   void SubmitFrame(size_t index, float* samples);
 
   // Creates an independent, non-registered driver instance.

@@ -10,6 +10,7 @@
 #ifndef XENIA_EMULATOR_H_
 #define XENIA_EMULATOR_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -194,8 +195,39 @@ class Emulator {
       std::function<std::vector<std::unique_ptr<hid::InputDriver>>(ui::Window*)>
           input_driver_factory);
 
-  // Terminates the currently running title.
+  // Terminates the currently running title and releases everything it used,
+  // so that another title can be launched.
   X_STATUS TerminateTitle();
+
+  enum class TitleExitRequest {
+    kNone,
+    // Launch the executable described by the XAM loader data (xex swap).
+    kLaunchNext,
+    // The title exited to the dashboard.
+    kDashboard,
+  };
+
+  // Requested by the title through XAM, before it terminates itself with
+  // KernelState::TerminateTitle. That makes WaitUntilExit return through
+  // SignalTitleExit, the title must then be terminated from the host and the
+  // request handled.
+  void RequestTitleExit(TitleExitRequest request) {
+    title_exit_request_ = request;
+  }
+
+  // Wakes WaitUntilExit if the title requested to exit. Called once the host
+  // can see the thread terminating the title, so it waits for that thread
+  // rather than tearing the title down under it.
+  void SignalTitleExit() {
+    if (title_exit_request_ != TitleExitRequest::kNone) {
+      title_exit_event_->Set();
+    }
+  }
+
+  TitleExitRequest ConsumeTitleExitRequest() {
+    title_exit_event_->Reset();
+    return title_exit_request_.exchange(TitleExitRequest::kNone);
+  }
 
   const std::unique_ptr<vfs::Device> CreateVfsDevice(
       const std::filesystem::path& path, const std::string_view mount_path);
@@ -375,6 +407,11 @@ class Emulator {
   kernel::object_ref<kernel::XThread> main_thread_;
   kernel::object_ref<kernel::XHostThread> plugin_loader_thread_;
   std::optional<uint32_t> title_id_;  // Currently running title ID
+  // VFS device the running title was mounted from.
+  std::string title_mount_path_;
+  std::atomic<TitleExitRequest> title_exit_request_ = TitleExitRequest::kNone;
+  std::unique_ptr<threading::Event> title_exit_event_ =
+      threading::Event::CreateManualResetEvent(false);
   std::unique_ptr<kernel::util::GameInfoDatabase> game_info_database_;
 
   bool paused_;

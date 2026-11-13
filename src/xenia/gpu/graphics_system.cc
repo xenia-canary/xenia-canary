@@ -422,8 +422,38 @@ void GraphicsSystem::SetInterruptCallback(uint32_t callback,
 }
 
 void GraphicsSystem::DispatchInterruptCallback(uint32_t source, uint32_t cpu) {
+  // Counted before the callback is read, for DetachTitle.
+  interrupt_dispatch_count_.fetch_add(1);
   kernel_state()->EmulateCPInterruptDPC(interrupt_callback_,
                                         interrupt_callback_data_, source, cpu);
+  interrupt_dispatch_count_.fetch_sub(1);
+}
+
+void GraphicsSystem::DetachTitle() {
+  SetInterruptCallback(0, 0);
+  // Let a callback already being dispatched finish.
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (interrupt_dispatch_count_.load() != 0) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      XELOGW("GraphicsSystem: Interrupt callback is still running");
+      break;
+    }
+    xe::threading::Sleep(std::chrono::milliseconds(1));
+  }
+  if (command_processor_) {
+    command_processor_->DisableReadPointerWriteBack();
+  }
+}
+
+void GraphicsSystem::ClearGuestOutput() {
+  if (!presenter_ || !command_processor_) {
+    return;
+  }
+  // Guest output is refreshed from the command processor thread. A zero size
+  // disables it, presenting a black screen until the next title swaps.
+  command_processor_->CallInThread(
+      [this]() { presenter_->RefreshGuestOutput(0, 0, 0, 0, nullptr); });
 }
 
 void GraphicsSystem::MarkVblank() {

@@ -22,6 +22,7 @@
 #include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
+#include "xenia/cpu/backend/code_cache.h"
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/export_resolver.h"
@@ -179,13 +180,15 @@ bool Processor::AddModule(std::unique_ptr<Module> module) {
   return true;
 }
 
-void Processor::RemoveModule(const std::string_view name) {
+void Processor::RemoveModule(const Module* module) {
   auto global_lock = global_critical_region_.Acquire();
 
+  // Matched by identity, a title update module shares the name of the module
+  // it patches.
   auto itr = std::ranges::find_if(
       std::as_const(modules_),
-      [name](std::unique_ptr<xe::cpu::Module> const& module) {
-        return module->name() == name;
+      [module](std::unique_ptr<xe::cpu::Module> const& entry) {
+        return entry.get() == module;
       });
 
   if (itr != modules_.cend()) {
@@ -251,6 +254,24 @@ std::vector<Function*> Processor::FindFunctionsWithAddress(uint32_t address) {
 
 void Processor::RemoveFunctionByAddress(uint32_t address) {
   entry_table_.Delete(address);
+}
+
+void Processor::ResetGuestCode() {
+  auto global_lock = global_critical_region_.Acquire();
+  for (const auto& module : modules_) {
+    if (dynamic_cast<XexModule*>(module.get())) {
+      XELOGW("Processor: Module {} outlived its title", module->name());
+    }
+    module->ForEachFunction([this](Function* function) {
+      if (function->is_guest() &&
+          function->status() == Symbol::Status::kDefined) {
+        entry_table_.Delete(function->address());
+        function->set_status(Symbol::Status::kDeclared);
+      }
+    });
+  }
+  entry_table_.DeleteFailed();
+  backend_->code_cache()->ResetGuestCode();
 }
 
 Function* Processor::ResolveFunction(uint32_t address) {

@@ -43,6 +43,9 @@ class X64CodeCache : public CodeCacheBase<X64CodeCache> {
                          const EmitFunctionInfo& func_info,
                          void* code_execute_address,
                          UnwindReservation unwind_reservation) {}
+  // Record and roll back the unwind info of the guest code.
+  virtual void MarkGuestUnwindStart() {}
+  virtual void ResetGuestUnwind() {}
 
  protected:
   X64CodeCache() = default;

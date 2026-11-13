@@ -365,9 +365,38 @@ X_STATUS Emulator::TerminateTitle() {
   }
 
   kernel_state_->TerminateTitle();
+
+  // Don't keep showing the last frame of the title.
+  if (graphics_system_) {
+    graphics_system_->ClearGuestOutput();
+  }
+
+  // Destroying the main thread frees its stack and TLS, so it must happen
+  // before the title memory is released.
+  main_thread_.reset();
+
+  // Release everything the title allocated, keeping the memory of host threads
+  // created while it was running.
+  memory_->ReleaseTitleAllocations(
+      kernel_state_->GetHostThreadGuestAddresses());
+
+  // Unmount the title so another one can be mounted in its place.
+  file_system_->UnregisterSymbolicLink(kDefaultPartitionSymbolicLink);
+  file_system_->UnregisterSymbolicLink(kDefaultGameSymbolicLink);
+  if (!title_mount_path_.empty()) {
+    file_system_->UnregisterDevice(title_mount_path_);
+    title_mount_path_.clear();
+  }
+
+  plugin_loader_->UnloadTitlePlugins();
+  patcher_->Reset();
+
   title_id_ = std::nullopt;
   title_name_ = "";
   title_version_ = "";
+  if (display_window_) {
+    display_window_->ResetIcon();
+  }
   on_terminate();
   return X_STATUS_SUCCESS;
 }
@@ -466,6 +495,7 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
     XELOGE("Unable to register the input file to {}.", mount_path);
     return X_STATUS_NO_SUCH_FILE;
   }
+  title_mount_path_ = mpath;
 
   file_system_->UnregisterSymbolicLink(kDefaultPartitionSymbolicLink);
   file_system_->UnregisterSymbolicLink(kDefaultGameSymbolicLink);
@@ -1582,7 +1612,16 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 void Emulator::WaitUntilExit() {
   while (true) {
     if (main_thread_) {
-      xe::threading::Wait(main_thread_->thread(), false);
+      // The title may also request to exit (launch another executable or
+      // return to the dashboard) from any of its threads, it is then
+      // terminated from the host.
+      xe::threading::WaitHandle* wait_handles[] = {main_thread_->thread(),
+                                                   title_exit_event_.get()};
+      xe::threading::WaitAny(wait_handles, xe::countof(wait_handles), false);
+    }
+
+    if (title_exit_request_ != TitleExitRequest::kNone) {
+      break;
     }
 
     if (restoring_) {
@@ -1702,6 +1741,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                      std::string("\\Cache1")};
   auto null_device =
       std::make_unique<vfs::NullDevice>("\\Device\\Harddisk0", null_paths);
+  // Registered by a previously launched title.
+  file_system_->UnregisterDevice(null_device->mount_path());
   if (null_device->Initialize()) {
     file_system_->RegisterDevice(std::move(null_device));
   }
@@ -1714,6 +1755,12 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
   // Allow xam to request module loads.
   auto xam = kernel_state()->GetKernelModule<kernel::xam::XamModule>("xam.xex");
+
+  // Anything allocated from now on belongs to titles and is released when
+  // they are terminated.
+  if (!memory_->has_system_allocations()) {
+    memory_->CaptureSystemAllocations();
+  }
 
   XELOGI("Loading module {}", module_path);
   auto module = kernel_state_->LoadUserModule(module_path);

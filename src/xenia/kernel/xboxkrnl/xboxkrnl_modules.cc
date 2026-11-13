@@ -144,7 +144,8 @@ dword_result_t xeXexLoadImage(
       kernel_state()->ApplyTitleUpdate(user_module);
       kernel_state()->FinishLoadingUserModule(user_module);
       // Give up object ownership, this reference will be released by the last
-      // XexUnloadImage call
+      // XexUnloadImage call (or by title termination)
+      user_module->has_guest_load_reference_ = true;
       auto user_module_raw = user_module.release();
       hmodule = user_module_raw->hmodule_ptr();
       result = X_STATUS_SUCCESS;
@@ -207,9 +208,13 @@ dword_result_t XexUnloadImage_entry(lpvoid_t hmodule) {
     auto ldr_data = hmodule.as<X_LDR_DATA_TABLE_ENTRY*>();
     if (--ldr_data->load_count == 0) {
       // No more references, free it.
-      module->Release();
-      kernel_state()->UnloadUserModule(object_ref<UserModule>(
-          reinterpret_cast<UserModule*>(module.release())));
+      auto user_module = object_ref<UserModule>(
+          reinterpret_cast<UserModule*>(module.release()));
+      if (user_module->has_guest_load_reference_) {
+        user_module->has_guest_load_reference_ = false;
+        user_module->Release();
+      }
+      kernel_state()->UnloadUserModule(user_module);
     }
   }
 

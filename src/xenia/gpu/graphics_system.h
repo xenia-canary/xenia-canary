@@ -70,6 +70,11 @@ class GraphicsSystem {
   virtual void SetInterruptCallback(uint32_t callback, uint32_t user_data);
   void DispatchInterruptCallback(uint32_t source, uint32_t cpu);
 
+  // Stops calling into and writing to the memory of a title that is exiting.
+  void DetachTitle();
+  // Replaces the last frame of a terminated title with a black screen.
+  void ClearGuestOutput();
+
   virtual void ClearCaches();
 
   void InitializeShaderStorage(
@@ -117,8 +122,10 @@ class GraphicsSystem {
   ui::WindowedAppContext* app_context_ = nullptr;
   std::unique_ptr<ui::GraphicsProvider> provider_;
 
-  uint32_t interrupt_callback_ = 0;
-  uint32_t interrupt_callback_data_ = 0;
+  std::atomic<uint32_t> interrupt_callback_ = 0;
+  std::atomic<uint32_t> interrupt_callback_data_ = 0;
+  // Interrupt callbacks being dispatched.
+  std::atomic<uint32_t> interrupt_dispatch_count_ = 0;
 
   std::atomic<bool> frame_limiter_worker_running_;
   kernel::object_ref<kernel::XHostThread> frame_limiter_worker_thread_;

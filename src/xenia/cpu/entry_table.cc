@@ -105,6 +105,15 @@ void EntryTable::Delete(uint32_t address) {
   }
 }
 
+void EntryTable::DeleteFailed() {
+  auto global_lock = global_critical_region_.Acquire();
+  for (uint32_t idx = map_.size(); idx-- > 0;) {
+    if (map_.Values()[idx]->status == Entry::STATUS_FAILED) {
+      map_.EraseAt(idx);
+    }
+  }
+}
+
 std::vector<Function*> EntryTable::FindWithAddress(uint32_t address) {
   auto global_lock = global_critical_region_.Acquire();
   std::vector<Function*> fns;
