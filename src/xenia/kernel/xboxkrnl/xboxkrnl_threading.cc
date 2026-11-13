@@ -725,6 +725,7 @@ DECLARE_XBOXKRNL_EXPORT2(NtClearEvent, kThreading, kImplemented,
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff552150(v=vs.85).aspx
 void KeInitializeSemaphore_entry(pointer_t<X_KSEMAPHORE> semaphore_ptr,
                                  dword_t count, dword_t limit) {
+  semaphore_ptr.Zero();
   semaphore_ptr->header.type = SemaphoreObject;
   semaphore_ptr->header.signal_state = (uint32_t)count;
   semaphore_ptr->limit = (uint32_t)limit;
