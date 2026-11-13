@@ -56,6 +56,7 @@ XENIA_TARGETS = [
     "xenia-cpu",
     "xenia-cpu-backend-x64",
     "xenia-debug-ui",
+    "xenia-debug-gdb",
     "xenia-gpu",
     "xenia-gpu-null",
     "xenia-gpu-vulkan",
