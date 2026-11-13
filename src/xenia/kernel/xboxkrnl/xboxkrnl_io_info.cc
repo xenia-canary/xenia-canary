@@ -226,8 +226,8 @@ dword_result_t NtSetInformationFile_entry(
     case XFileRenameInformation: {
       auto info = info_ptr.as<X_FILE_RENAME_INFORMATION*>();
       // Compute path, possibly attrs relative.
-      std::filesystem::path target_path =
-          util::TranslateAnsiPath(kernel_memory(), &info->ansi_string);
+      std::filesystem::path target_path = std::string(StripDosDevicesPrefix(
+          util::TranslateAnsiPath(kernel_memory(), &info->ansi_string)));
 
       // Place IsValidPath in path from where it can be accessed everywhere
       if (!IsValidPath(target_path.string(), false)) {

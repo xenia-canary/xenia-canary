@@ -17,6 +17,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
+#include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
@@ -456,9 +457,13 @@ dword_result_t ObCreateSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr,
 DECLARE_XBOXKRNL_EXPORT1(ObCreateSymbolicLink, kNone, kImplemented);
 
 dword_result_t ObDeleteSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr) {
-  auto path = util::TranslateAnsiPath(kernel_memory(), path_ptr);
+  // Named the way ObCreateSymbolicLink registered it.
+  auto path = xe::utf8::canonicalize_guest_path(
+      util::TranslateAnsiPath(kernel_memory(), path_ptr));
+  path = std::string(StripDosDevicesPrefix(path));
+
   if (!kernel_state()->file_system()->UnregisterSymbolicLink(path)) {
-    return X_STATUS_UNSUCCESSFUL;
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
   }
 
   return X_STATUS_SUCCESS;

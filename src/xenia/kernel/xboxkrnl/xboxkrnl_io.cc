@@ -61,7 +61,8 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
   vfs::Entry* root_entry = nullptr;
 
   // Compute path, possibly attrs relative.
-  auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
+  auto target_path = std::string(StripDosDevicesPrefix(
+      util::TranslateAnsiPath(kernel_memory(), object_name)));
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
@@ -485,7 +486,8 @@ dword_result_t NtQueryFullAttributesFile_entry(
     assert_always();
   }
 
-  auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
+  auto target_path = std::string(StripDosDevicesPrefix(
+      util::TranslateAnsiPath(kernel_memory(), object_name)));
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
@@ -581,7 +583,8 @@ dword_result_t NtOpenSymbolicLinkObject_entry(
   auto object_name =
       kernel_memory()->TranslateVirtual<X_ANSI_STRING*>(object_attrs->name_ptr);
 
-  auto target_path = util::TranslateAnsiPath(kernel_memory(), object_name);
+  auto target_path = std::string(StripDosDevicesPrefix(
+      util::TranslateAnsiPath(kernel_memory(), object_name)));
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
@@ -592,14 +595,10 @@ dword_result_t NtOpenSymbolicLinkObject_entry(
     assert_always();
   }
 
-  if (utf8::starts_with(target_path, "\\??\\")) {
-    target_path = target_path.substr(4);  // Strip the full qualifier
-  }
-
   std::string link_path;
   if (!kernel_state()->file_system()->FindSymbolicLink(target_path,
                                                        link_path)) {
-    return X_STATUS_NO_SUCH_FILE;
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
   }
 
   object_ref<XSymbolicLink> symlink(new XSymbolicLink(kernel_state()));
