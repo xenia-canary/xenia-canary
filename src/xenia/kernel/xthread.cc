@@ -973,10 +973,11 @@ X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable,
   int64_t timeout_ticks = interval;
   uint32_t timeout_ms;
   if (timeout_ticks > 0) {
-    // Absolute time, based on January 1, 1601.
-    // TODO(benvanik): convert time to relative time.
-    assert_always();
-    timeout_ms = 0;
+    // Absolute time, based on January 1, 1601. A time that has passed
+    // returns at once.
+    uint64_t now = Clock::QueryGuestSystemTime();
+    uint64_t due = static_cast<uint64_t>(timeout_ticks);
+    timeout_ms = due > now ? uint32_t((due - now) / 10000) : 0;
   } else if (timeout_ticks < 0) {
     // Relative time.
     timeout_ms = uint32_t(-timeout_ticks / 10000);  // Ticks -> MS
