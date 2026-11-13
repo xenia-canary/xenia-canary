@@ -35,8 +35,9 @@ class XIOCompletion : public XObject {
 
   void QueueNotification(IONotification& notification);
 
-  // Returns true if the wait ended because a notification was received.
-  bool WaitForNotification(uint64_t wait_ticks, IONotification* notify);
+  // Returns true if the wait ended because a notification was received. A null
+  // timeout waits forever.
+  bool WaitForNotification(const uint64_t* timeout, IONotification* notify);
 
  private:
   static constexpr uint32_t kMaxNotifications = 1024;

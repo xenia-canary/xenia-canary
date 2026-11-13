@@ -27,9 +27,11 @@ void XIOCompletion::QueueNotification(IONotification& notification) {
   notification_semaphore_->Release(1, nullptr);
 }
 
-bool XIOCompletion::WaitForNotification(uint64_t wait_ticks,
+bool XIOCompletion::WaitForNotification(const uint64_t* timeout,
                                         IONotification* notify) {
-  auto ms = std::chrono::milliseconds(TimeoutTicksToMs(wait_ticks));
+  auto ms = timeout ? std::chrono::milliseconds(TimeoutTicksToMs(*timeout))
+                    : std::chrono::milliseconds::max();
+
   auto res = threading::Wait(notification_semaphore_.get(), false, ms);
   if (res == threading::WaitResult::kSuccess) {
     std::unique_lock<std::mutex> lock(notification_lock_);
