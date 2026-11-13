@@ -29,6 +29,9 @@ using hundrednanoseconds = std::chrono::duration<int64_t, hundrednano>;
 static constexpr std::chrono::seconds seconds_1601_to_1970 =
     (396 * 365 + 89) * std::chrono::seconds(60 * 60 * 24);
 
+static constexpr date::sys_days filetime_epoch{date::year{1601} /
+                                               date::January / 1};
+
 // TODO(JoelLinn) define xstead_clock xsystem_clock etc.
 
 namespace internal {
