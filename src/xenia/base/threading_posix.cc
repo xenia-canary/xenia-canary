@@ -391,7 +391,7 @@ class PosixConditionBase {
     }
     if (executed) {
       post_execution();
-      return WaitResult::kSuccess;
+      return TakeAbandoned() ? WaitResult::kAbandoned : WaitResult::kSuccess;
     }
     return WaitResult::kTimeout;
   }
@@ -492,11 +492,22 @@ class PosixConditionBase {
       if (condition_met) {
         // Execute post_execution for the signaled handle(s)
         if (wait_all) {
+          size_t abandoned = std::numeric_limits<size_t>::max();
           for (size_t i = 0; i < handles.size(); ++i) {
             handles[i]->post_execution();
+            if (handles[i]->TakeAbandoned() &&
+                abandoned == std::numeric_limits<size_t>::max()) {
+              abandoned = i;
+            }
+          }
+          if (abandoned != std::numeric_limits<size_t>::max()) {
+            return std::make_pair(WaitResult::kAbandoned, abandoned);
           }
         } else {
           handles[first_signaled]->post_execution();
+          if (handles[first_signaled]->TakeAbandoned()) {
+            return std::make_pair(WaitResult::kAbandoned, first_signaled);
+          }
         }
         return std::make_pair(WaitResult::kSuccess, first_signaled);
       }
@@ -525,6 +536,11 @@ class PosixConditionBase {
  protected:
   [[nodiscard]] inline virtual bool signaled() const = 0;
   inline virtual void post_execution() = 0;
+
+  // True once for the wait that takes a mutant left by a thread that exited
+  // holding it.
+  virtual bool TakeAbandoned() { return false; }
+
   std::condition_variable cond_;
   std::mutex mutex_;
 };
@@ -607,6 +623,55 @@ class PosixCondition<Semaphore> final : public PosixConditionBase {
   const uint32_t maximum_count_;
 };
 
+// The mutants a thread holds. When the thread exits, the ones it still holds
+// are abandoned, and the next wait to take each returns kAbandoned, as on
+// Windows. The lists are changed under one lock, which is never held while
+// taking a mutant's own lock, since waits take that lock first. An exiting
+// thread pins its mutants until it has abandoned them, so one destroyed
+// meanwhile waits.
+std::mutex owned_mutants_mutex;
+std::condition_variable owned_mutants_unpinned;
+
+// Threads can be cancelled at any point, so cancellation is held off while
+// owned_mutants_mutex is held, or a thread cancelled holding it would leave
+// every other thread's mutants stuck. Declare one before taking the lock.
+class OwnedMutantsCancelGuard {
+ public:
+  OwnedMutantsCancelGuard() {
+#if !XE_PLATFORM_ANDROID
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &previous_state_);
+#endif
+  }
+  ~OwnedMutantsCancelGuard() {
+#if !XE_PLATFORM_ANDROID
+    pthread_setcancelstate(previous_state_, nullptr);
+#endif
+  }
+
+ private:
+  int previous_state_ = 0;
+};
+
+template <>
+class PosixCondition<Mutant>;
+
+class OwnedMutants {
+ public:
+  ~OwnedMutants();
+
+  void Add(PosixCondition<Mutant>* mutant) { mutants_.push_back(mutant); }
+
+  void Remove(PosixCondition<Mutant>* mutant) {
+    mutants_.erase(std::remove(mutants_.begin(), mutants_.end(), mutant),
+                   mutants_.end());
+  }
+
+ private:
+  std::vector<PosixCondition<Mutant>*> mutants_;
+};
+
+thread_local OwnedMutants owned_mutants_;
+
 template <>
 class PosixCondition<Mutant> final : public PosixConditionBase {
  public:
@@ -614,7 +679,17 @@ class PosixCondition<Mutant> final : public PosixConditionBase {
     if (initial_owner) {
       count_ = 1;
       owner_ = std::this_thread::get_id();
+      SetOwnerList(&owned_mutants_);
     }
+  }
+
+  ~PosixCondition() override {
+    OwnedMutantsCancelGuard cancel_guard;
+    std::unique_lock lock(owned_mutants_mutex);
+    if (owner_list_) {
+      owner_list_->Remove(this);
+    }
+    owned_mutants_unpinned.wait(lock, [this] { return pins_ == 0; });
   }
 
   bool Signal() override { return Release(); }
@@ -625,12 +700,30 @@ class PosixCondition<Mutant> final : public PosixConditionBase {
       --count_;
       // Free to be acquired by another thread
       if (count_ == 0) {
+        SetOwnerList(nullptr);
         cond_.notify_all();
         NotifyMultiObjectWaiters();
       }
       return true;
     }
     return false;
+  }
+
+  // Pin and Unpin are called with owned_mutants_mutex held.
+  void Pin() {
+    owner_list_ = nullptr;
+    ++pins_;
+  }
+
+  void Unpin() { --pins_; }
+
+  void Abandon() {
+    std::lock_guard lock(mutex_);
+    count_ = 0;
+    owner_ = std::thread::id();
+    abandoned_ = true;
+    cond_.notify_all();
+    NotifyMultiObjectWaiters();
   }
 
   [[nodiscard]] void* native_handle() const override {
@@ -641,13 +734,59 @@ class PosixCondition<Mutant> final : public PosixConditionBase {
   [[nodiscard]] bool signaled() const override {
     return count_ == 0 || owner_ == std::this_thread::get_id();
   }
+
   void post_execution() override {
+    if (count_ == 0) {
+      SetOwnerList(&owned_mutants_);
+    }
     count_++;
     owner_ = std::this_thread::get_id();
   }
+
+  bool TakeAbandoned() override { return std::exchange(abandoned_, false); }
+
+  void SetOwnerList(OwnedMutants* list) {
+    OwnedMutantsCancelGuard cancel_guard;
+    std::lock_guard lock(owned_mutants_mutex);
+    if (owner_list_) {
+      owner_list_->Remove(this);
+    }
+    owner_list_ = list;
+    if (owner_list_) {
+      owner_list_->Add(this);
+    }
+  }
+
   uint32_t count_;
   std::thread::id owner_;
+  OwnedMutants* owner_list_ = nullptr;
+  uint32_t pins_ = 0;
+  bool abandoned_ = false;
 };
+
+OwnedMutants::~OwnedMutants() {
+  OwnedMutantsCancelGuard cancel_guard;
+  std::vector<PosixCondition<Mutant>*> mutants;
+  {
+    std::lock_guard lock(owned_mutants_mutex);
+    mutants.swap(mutants_);
+    for (auto mutant : mutants) {
+      mutant->Pin();
+    }
+  }
+
+  for (auto mutant : mutants) {
+    mutant->Abandon();
+  }
+
+  {
+    std::lock_guard lock(owned_mutants_mutex);
+    for (auto mutant : mutants) {
+      mutant->Unpin();
+    }
+  }
+  owned_mutants_unpinned.notify_all();
+}
 
 template <>
 class PosixCondition<Timer> final : public PosixConditionBase {

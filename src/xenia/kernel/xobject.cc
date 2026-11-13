@@ -269,8 +269,11 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
     case xe::threading::WaitResult::kTimeout:
       xe::threading::MaybeYield();
       return X_STATUS_TIMEOUT;
-    default:
+    // An abandoned mutant is still taken, now by this thread
     case xe::threading::WaitResult::kAbandoned:
+      WaitCallback();
+      return X_STATUS_ABANDONED_WAIT_0;
+    default:
     case xe::threading::WaitResult::kFailed:
       return X_STATUS_ABANDONED_WAIT_0;
   }
@@ -320,8 +323,10 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object,
     case xe::threading::WaitResult::kTimeout:
       xe::threading::MaybeYield();
       return X_STATUS_TIMEOUT;
-    default:
     case xe::threading::WaitResult::kAbandoned:
+      wait_object->WaitCallback();
+      return X_STATUS_ABANDONED_WAIT_0;
+    default:
     case xe::threading::WaitResult::kFailed:
       return X_STATUS_ABANDONED_WAIT_0;
   }
@@ -376,6 +381,7 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
         status = X_STATUS_TIMEOUT;
         break;
       case xe::threading::WaitResult::kAbandoned:
+        objects[result.second]->WaitCallback();
         status = X_STATUS(X_STATUS_ABANDONED_WAIT_0 + result.second);
         break;
       default:
@@ -415,8 +421,13 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
         xe::threading::MaybeYield();
         status = X_STATUS_TIMEOUT;
         break;
-      default:
       case xe::threading::WaitResult::kAbandoned:
+        for (uint32_t i = 0; i < count; i++) {
+          objects[i]->WaitCallback();
+        }
+        status = X_STATUS_ABANDONED_WAIT_0;
+        break;
+      default:
       case xe::threading::WaitResult::kFailed:
         status = X_STATUS_ABANDONED_WAIT_0;
         break;
