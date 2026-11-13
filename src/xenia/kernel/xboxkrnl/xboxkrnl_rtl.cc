@@ -336,11 +336,15 @@ dword_result_t RtlUnicodeStringToAnsiString_entry(
     if (buffer_capacity < ansi_str.size() + 1) {
       // Too large - we just write what we can.
       result = X_STATUS_BUFFER_OVERFLOW;
-      memcpy(buffer_ptr, ansi_str.data(), buffer_capacity - 1);
+      if (buffer_capacity) {
+        memcpy(buffer_ptr, ansi_str.data(), buffer_capacity - 1);
+        buffer_ptr[buffer_capacity - 1] = 0;
+        destination_ptr->length = static_cast<uint16_t>(buffer_capacity - 1);
+      }
     } else {
       memcpy(buffer_ptr, ansi_str.data(), ansi_str.size() + 1);
+      destination_ptr->length = static_cast<uint16_t>(ansi_str.size());
     }
-    buffer_ptr[buffer_capacity - 1] = 0;  // \0
   }
   return result;
 }
