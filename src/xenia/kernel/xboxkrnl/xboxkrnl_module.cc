@@ -199,6 +199,14 @@ XboxkrnlModule::XboxkrnlModule(Emulator* emulator, KernelState* kernel_state)
   std::memcpy(lpExLoadedCommandLine, command_line.c_str(),
               command_line.length());
 
+  // XboxKrnlBaseVersion (8b): the version of the first release.
+  const uint32_t XboxKrnlBaseVersion = 0x80040454;
+  auto lpXboxKrnlBaseVersion = memory_->TranslateVirtual(XboxKrnlBaseVersion);
+  export_resolver_->SetVariableMapping(
+      "xboxkrnl.exe", ordinals::XboxKrnlBaseVersion, XboxKrnlBaseVersion);
+  const KernelVersion base_version(kBaseKernelBuildVersion);
+  std::memcpy(lpXboxKrnlBaseVersion, &base_version, sizeof(KernelVersion));
+
   // XboxKrnlVersion (8b)
   // Kernel version, looks like 2b.2b.2b.2b.
   // I've only seen games check >=, so we just fake something here.
