@@ -67,5 +67,12 @@ uint64_t Clock::QueryHostUptimeMillis() {
   return host_tick_count_platform() * 1000 / host_tick_frequency_platform();
 }
 
-uint64_t Clock::QueryHostInterruptTime() { return host_tick_count_platform(); }
+// In 100 ns units, as Windows' interrupt time is.
+uint64_t Clock::QueryHostInterruptTime() {
+  constexpr uint64_t units_per_second = 10000000ull;
+  const uint64_t ticks = host_tick_count_platform();
+  const uint64_t frequency = host_tick_frequency_platform();
+  return ticks / frequency * units_per_second +
+         ticks % frequency * units_per_second / frequency;
+}
 }  // namespace xe
