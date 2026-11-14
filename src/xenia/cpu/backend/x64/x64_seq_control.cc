@@ -20,53 +20,171 @@ namespace backend {
 namespace x64 {
 
 volatile int anchor_control = 0;
-template <typename T>
-static void EmitFusedBranch(X64Emitter& e, const T& i) {
-  bool valid = i.instr->prev && i.instr->prev->dest == i.src1.value;
-  auto opcode = valid ? i.instr->prev->opcode->num : -1;
-  if (valid) {
-    std::string name = i.src2.value->GetIdString();
-    switch (opcode) {
-      case OPCODE_COMPARE_EQ:
-        e.je(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_NE:
-        e.jne(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_SLT:
-        e.jl(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_SLE:
-        e.jle(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_SGT:
-        e.jg(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_SGE:
-        e.jge(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_ULT:
-        e.jb(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_ULE:
-        e.jbe(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_UGT:
-        e.ja(std::move(name), e.T_NEAR);
-        break;
-      case OPCODE_COMPARE_UGE:
-        e.jae(std::move(name), e.T_NEAR);
-        break;
-      default:
-        e.test(i.src1, i.src1);
-        e.jnz(std::move(name), e.T_NEAR);
-        break;
-    }
-  } else {
-    e.test(i.src1, i.src1);
-    e.jnz(i.src2.value->GetIdString(), e.T_NEAR);
+
+enum class BranchCondition {
+  kEqual,
+  kNotEqual,
+  kLess,
+  kLessEqual,
+  kGreater,
+  kGreaterEqual,
+  kBelow,
+  kBelowEqual,
+  kAbove,
+  kAboveEqual,
+};
+
+static BranchCondition InvertCondition(BranchCondition condition) {
+  switch (condition) {
+    case BranchCondition::kEqual:
+      return BranchCondition::kNotEqual;
+    case BranchCondition::kNotEqual:
+      return BranchCondition::kEqual;
+    case BranchCondition::kLess:
+      return BranchCondition::kGreaterEqual;
+    case BranchCondition::kLessEqual:
+      return BranchCondition::kGreater;
+    case BranchCondition::kGreater:
+      return BranchCondition::kLessEqual;
+    case BranchCondition::kGreaterEqual:
+      return BranchCondition::kLess;
+    case BranchCondition::kBelow:
+      return BranchCondition::kAboveEqual;
+    case BranchCondition::kBelowEqual:
+      return BranchCondition::kAbove;
+    case BranchCondition::kAbove:
+      return BranchCondition::kBelowEqual;
+    case BranchCondition::kAboveEqual:
+    default:
+      return BranchCondition::kBelow;
   }
 }
+
+static void EmitConditionalJump(X64Emitter& e, BranchCondition condition,
+                                std::string label) {
+  switch (condition) {
+    case BranchCondition::kEqual:
+      e.je(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kNotEqual:
+      e.jne(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kLess:
+      e.jl(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kLessEqual:
+      e.jle(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kGreater:
+      e.jg(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kGreaterEqual:
+      e.jge(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kBelow:
+      e.jb(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kBelowEqual:
+      e.jbe(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kAbove:
+      e.ja(std::move(label), e.T_NEAR);
+      break;
+    case BranchCondition::kAboveEqual:
+      e.jae(std::move(label), e.T_NEAR);
+      break;
+  }
+}
+
+// Gets the condition of the integer compare whose flags the branch can reuse,
+// skipping markers that leave the flags alone. A constant src1 swaps the
+// operands, so only EQ and NE fuse then. Float compares never fuse.
+static bool GetFusableCondition(X64Emitter& e, const hir::Instr* branch,
+                                const hir::Value* condition_value,
+                                BranchCondition* out_condition) {
+  const hir::Instr* producer = branch->prev;
+  while (producer) {
+    const auto opcode = producer->opcode->num;
+    if (opcode == OPCODE_CONTEXT_BARRIER || opcode == OPCODE_NOP ||
+        (opcode == OPCODE_SOURCE_OFFSET && e.SourceOffsetsPreserveFlags())) {
+      producer = producer->prev;
+      continue;
+    }
+    break;
+  }
+
+  if (!producer || producer->dest != condition_value) {
+    return false;
+  }
+
+  const auto opcode = producer->opcode->num;
+  if (opcode < OPCODE_COMPARE_EQ || opcode > OPCODE_COMPARE_UGE) {
+    return false;
+  }
+
+  // src1 is only a value once we know this is a compare.
+  const hir::Value* src1 = producer->src1.value;
+  if (!src1 || !hir::IsScalarIntegralType(src1->type)) {
+    return false;
+  }
+
+  const bool swapped = src1->IsConstant();
+  switch (opcode) {
+    case OPCODE_COMPARE_EQ:
+      *out_condition = BranchCondition::kEqual;
+      return true;
+    case OPCODE_COMPARE_NE:
+      *out_condition = BranchCondition::kNotEqual;
+      return true;
+    case OPCODE_COMPARE_SLT:
+      *out_condition = BranchCondition::kLess;
+      return !swapped;
+    case OPCODE_COMPARE_SLE:
+      *out_condition = BranchCondition::kLessEqual;
+      return !swapped;
+    case OPCODE_COMPARE_SGT:
+      *out_condition = BranchCondition::kGreater;
+      return !swapped;
+    case OPCODE_COMPARE_SGE:
+      *out_condition = BranchCondition::kGreaterEqual;
+      return !swapped;
+    case OPCODE_COMPARE_ULT:
+      *out_condition = BranchCondition::kBelow;
+      return !swapped;
+    case OPCODE_COMPARE_ULE:
+      *out_condition = BranchCondition::kBelowEqual;
+      return !swapped;
+    case OPCODE_COMPARE_UGT:
+      *out_condition = BranchCondition::kAbove;
+      return !swapped;
+    case OPCODE_COMPARE_UGE:
+      *out_condition = BranchCondition::kAboveEqual;
+      return !swapped;
+    default:
+      return false;
+  }
+}
+
+template <typename T>
+static void EmitFusedBranch(X64Emitter& e, const T& i, bool branch_if_true) {
+  std::string label = i.src2.value->GetIdString();
+
+  BranchCondition condition;
+  if (GetFusableCondition(e, i.instr, i.src1.value, &condition)) {
+    EmitConditionalJump(e,
+                        branch_if_true ? condition : InvertCondition(condition),
+                        std::move(label));
+    return;
+  }
+
+  e.test(i.src1, i.src1);
+  if (branch_if_true) {
+    e.jnz(std::move(label), e.T_NEAR);
+  } else {
+    e.jz(std::move(label), e.T_NEAR);
+  }
+}
+
 // ============================================================================
 // OPCODE_DEBUG_BREAK
 // ============================================================================
@@ -511,25 +629,25 @@ EMITTER_OPCODE_TABLE(OPCODE_BRANCH, BRANCH);
 struct BRANCH_TRUE_I8
     : Sequence<BRANCH_TRUE_I8, I<OPCODE_BRANCH_TRUE, VoidOp, I8Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitFusedBranch(e, i);
+    EmitFusedBranch(e, i, true);
   }
 };
 struct BRANCH_TRUE_I16
     : Sequence<BRANCH_TRUE_I16, I<OPCODE_BRANCH_TRUE, VoidOp, I16Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitFusedBranch(e, i);
+    EmitFusedBranch(e, i, true);
   }
 };
 struct BRANCH_TRUE_I32
     : Sequence<BRANCH_TRUE_I32, I<OPCODE_BRANCH_TRUE, VoidOp, I32Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitFusedBranch(e, i);
+    EmitFusedBranch(e, i, true);
   }
 };
 struct BRANCH_TRUE_I64
     : Sequence<BRANCH_TRUE_I64, I<OPCODE_BRANCH_TRUE, VoidOp, I64Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    EmitFusedBranch(e, i);
+    EmitFusedBranch(e, i, true);
   }
 };
 struct BRANCH_TRUE_F32
@@ -566,32 +684,28 @@ EMITTER_OPCODE_TABLE(OPCODE_BRANCH_TRUE, BRANCH_TRUE_I8, BRANCH_TRUE_I16,
 struct BRANCH_FALSE_I8
     : Sequence<BRANCH_FALSE_I8, I<OPCODE_BRANCH_FALSE, VoidOp, I8Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.test(i.src1, i.src1);
-    e.jz(i.src2.value->GetIdString(), e.T_NEAR);
+    EmitFusedBranch(e, i, false);
   }
 };
 struct BRANCH_FALSE_I16
     : Sequence<BRANCH_FALSE_I16,
                I<OPCODE_BRANCH_FALSE, VoidOp, I16Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.test(i.src1, i.src1);
-    e.jz(i.src2.value->GetIdString(), e.T_NEAR);
+    EmitFusedBranch(e, i, false);
   }
 };
 struct BRANCH_FALSE_I32
     : Sequence<BRANCH_FALSE_I32,
                I<OPCODE_BRANCH_FALSE, VoidOp, I32Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.test(i.src1, i.src1);
-    e.jz(i.src2.value->GetIdString(), e.T_NEAR);
+    EmitFusedBranch(e, i, false);
   }
 };
 struct BRANCH_FALSE_I64
     : Sequence<BRANCH_FALSE_I64,
                I<OPCODE_BRANCH_FALSE, VoidOp, I64Op, LabelOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    e.test(i.src1, i.src1);
-    e.jz(i.src2.value->GetIdString(), e.T_NEAR);
+    EmitFusedBranch(e, i, false);
   }
 };
 struct BRANCH_FALSE_F32

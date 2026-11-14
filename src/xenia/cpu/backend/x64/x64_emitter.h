@@ -308,6 +308,11 @@ class X64Emitter : public Xbyak::CodeGenerator {
   Xbyak::Reg64 GetContextReg() const;
   Xbyak::Reg64 GetMembaseReg() const;
   bool CanUseMembaseLow32As0() const { return may_use_membase32_as_zero_reg_; }
+  // Whether SOURCE_OFFSET emits nothing that changes the flags.
+  bool SourceOffsetsPreserveFlags() const {
+    return !(debug_info_flags_ &
+             DebugInfoFlags::kDebugInfoTraceFunctionCoverage);
+  }
   void ReloadMembase();
 
   void nop(size_t length = 1);
