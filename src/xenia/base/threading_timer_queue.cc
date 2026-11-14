@@ -211,7 +211,7 @@ void TimerQueueWaitItem::Disarm() {
     spinner.spin_once();
   }
 }
-// unused
+// Used by one-shot Timers on POSIX
 std::weak_ptr<WaitItem> QueueTimerOnce(std::function<void(void*)> callback,
                                        void* userdata,
                                        WaitItem::clock::time_point due) {
@@ -219,7 +219,7 @@ std::weak_ptr<WaitItem> QueueTimerOnce(std::function<void(void*)> callback,
       std::make_shared<WaitItem>(std::move(callback), userdata, &timer_queue_,
                                  due, WaitItem::clock::duration::zero()));
 }
-// only used by HighResolutionTimer
+// Used by HighResolutionTimer and periodic Timers
 std::weak_ptr<WaitItem> QueueTimerRecurring(
     std::function<void(void*)> callback, void* userdata,
     WaitItem::clock::time_point due, WaitItem::clock::duration interval) {

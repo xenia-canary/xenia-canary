@@ -372,8 +372,9 @@ class Timer : public WaitHandle {
   static std::unique_ptr<Timer> CreateSynchronizationTimer();
 
   // Activates the specified waitable timer. When the due time arrives, the
-  // timer is signaled and the thread that set the timer calls the optional
-  // completion routine.
+  // timer is signaled and the optional completion routine is called, on
+  // Windows by the setting thread in an alertable wait, elsewhere by the timer
+  // queue's thread.
   // Returns true on success.
   virtual bool SetOnceAfter(xe::chrono::hundrednanoseconds rel_time,
                             std::function<void()> opt_callback = nullptr) = 0;
@@ -383,9 +384,9 @@ class Timer : public WaitHandle {
                          std::function<void()> opt_callback = nullptr) = 0;
 
   // Activates the specified waitable timer. When the due time arrives, the
-  // timer is signaled and the thread that set the timer calls the optional
-  // completion routine. A periodic timer automatically reactivates each time
-  // the period elapses, until the timer is canceled or reset.
+  // timer is signaled and the timer queue's thread calls the optional
+  // completion routine. A periodic timer reactivates one period after its
+  // previous due time, until the timer is canceled or reset.
   // Returns true on success.
   virtual bool SetRepeatingAfter(
       xe::chrono::hundrednanoseconds rel_time, std::chrono::milliseconds period,

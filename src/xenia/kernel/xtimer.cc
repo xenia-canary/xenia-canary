@@ -91,9 +91,9 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
 
         cb_thread->EnqueueApc(cb_routine, cb_routine_arg, time_low, time_high);
       };
-      // Queuing an APC needs a guest context. Windows runs this on the thread
-      // that set the timer, but other hosts run it on their timer thread, so
-      // hand it to the dispatch thread there.
+
+      // Queuing an APC needs a guest context, which only a one-shot timer on
+      // Windows has here, so otherwise hand it to the dispatch thread.
       if (cpu::ThreadState::Get()) {
         enqueue();
       } else {
