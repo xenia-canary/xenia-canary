@@ -877,7 +877,7 @@ int InstrEmit_ldarx(PPCHIRBuilder& f, const InstrData& i) {
     f.StoreGPR(i.X.RT, f.ByteSwap(f.Load(ea, INT64_TYPE)));
 
   } else {
-    f.MemoryBarrier();
+    f.MemoryBarrier(MEMORY_BARRIER_RESERVATION);
 
     Value* rt = f.ByteSwap(f.LoadWithReserve(ea, INT64_TYPE));
     f.StoreGPR(i.X.RT, rt);
@@ -904,7 +904,7 @@ int InstrEmit_lwarx(PPCHIRBuilder& f, const InstrData& i) {
                f.ZeroExtend(f.ByteSwap(f.Load(ea, INT32_TYPE)), INT64_TYPE));
 
   } else {
-    f.MemoryBarrier();
+    f.MemoryBarrier(MEMORY_BARRIER_RESERVATION);
 
     Value* rt =
         f.ZeroExtend(f.ByteSwap(f.LoadWithReserve(ea, INT32_TYPE)), INT64_TYPE);
@@ -946,7 +946,7 @@ int InstrEmit_stdcx(PPCHIRBuilder& f, const InstrData& i) {
   // Issue memory barrier for when we go out of lock and want others to see our
   // updates.
   if (!cvars::no_reserved_ops) {
-    f.MemoryBarrier();
+    f.MemoryBarrier(MEMORY_BARRIER_RESERVATION);
   }
   return 0;
 }
@@ -985,7 +985,7 @@ int InstrEmit_stwcx(PPCHIRBuilder& f, const InstrData& i) {
   // Issue memory barrier for when we go out of lock and want others to see our
   // updates.
   if (!cvars::no_reserved_ops) {
-    f.MemoryBarrier();
+    f.MemoryBarrier(MEMORY_BARRIER_RESERVATION);
   }
 
   return 0;

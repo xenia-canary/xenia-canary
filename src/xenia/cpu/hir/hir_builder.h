@@ -207,7 +207,7 @@ class HIRBuilder {
   void Memset(Value* address, Value* value, Value* length);
   void CacheControl(Value* address, size_t cache_line_size,
                     CacheControlType type);
-  void MemoryBarrier();
+  void MemoryBarrier(uint32_t flags = 0);
   void DelayExecution();
   void SetRoundingMode(Value* value);
   Value* Max(Value* value1, Value* value2);

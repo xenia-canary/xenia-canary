@@ -1353,7 +1353,9 @@ void HIRBuilder::CacheControl(Value* address, size_t cache_line_size,
   i->src3.value = NULL;
 }
 
-void HIRBuilder::MemoryBarrier() { AppendInstr(OPCODE_MEMORY_BARRIER_info, 0); }
+void HIRBuilder::MemoryBarrier(uint32_t flags) {
+  AppendInstr(OPCODE_MEMORY_BARRIER_info, flags);
+}
 
 void HIRBuilder::DelayExecution() {
   AppendInstr(OPCODE_DELAY_EXECUTION_info, 0);

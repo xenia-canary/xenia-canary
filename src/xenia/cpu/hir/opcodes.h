@@ -39,6 +39,12 @@ enum LoadStoreFlags {
   LOAD_STORE_BYTE_SWAP = 1 << 0,
 };
 
+enum MemoryBarrierFlags {
+  // Around lwarx/stwcx., which don't order anything themselves. A backend
+  // whose reserved store is a full fence may skip it.
+  MEMORY_BARRIER_RESERVATION = 1 << 0,
+};
+
 enum CacheControlType {
   CACHE_CONTROL_TYPE_DATA_TOUCH,
   CACHE_CONTROL_TYPE_DATA_TOUCH_FOR_STORE,

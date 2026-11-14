@@ -2035,7 +2035,14 @@ EMITTER_OPCODE_TABLE(OPCODE_CACHE_CONTROL, CACHE_CONTROL);
 // ============================================================================
 struct MEMORY_BARRIER
     : Sequence<MEMORY_BARRIER, I<OPCODE_MEMORY_BARRIER, VoidOp>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) { e.mfence(); }
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    // The reserved store's lock cmpxchg is already a full fence.
+    if (i.instr->flags & MEMORY_BARRIER_RESERVATION) {
+      return;
+    }
+
+    e.mfence();
+  }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MEMORY_BARRIER, MEMORY_BARRIER);
 
