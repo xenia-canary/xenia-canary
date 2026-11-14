@@ -1074,12 +1074,9 @@ struct VECTOR_SHL_V128
           e.vpmovzxbd(e.ymm0, i.src1);
           e.vpmovzxbd(e.ymm1, e.xmm1);
 
+          // constmask is already masked to 3 bits.
           e.vpmovzxbd(e.ymm2, e.xmm2);
           e.vpmovzxbd(e.ymm3, e.xmm3);
-
-          e.vpbroadcastd(e.ymm4, e.GetXmmConstPtr(XMMXOPByteShiftMask));
-          e.vpand(e.ymm2, e.ymm2, e.ymm4);
-          e.vpand(e.ymm3, e.ymm3, e.ymm4);
 
           e.vpsllvd(e.ymm0, e.ymm0, e.ymm2);
           e.vpsllvd(e.ymm1, e.ymm1, e.ymm3);
