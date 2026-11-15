@@ -137,11 +137,17 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
     normalized_path = resolved_path;
   }
 
-  // Find the device.
-  auto it = std::ranges::find_if(std::as_const(devices_), [&](const auto& d) {
-    return xe::utf8::starts_with(normalized_path, d->mount_path());
-  });
-  if (it == devices_.cend()) {
+  // Find the device. The longest mount path wins, so a device mounted inside
+  // another device's tree (e.g. under the \Device\Harddisk0 NullDevice) is
+  // reachable regardless of registration order.
+  Device* device = nullptr;
+  for (const auto& d : devices_) {
+    if (xe::utf8::starts_with(normalized_path, d->mount_path()) &&
+        (!device || d->mount_path().size() > device->mount_path().size())) {
+      device = d.get();
+    }
+  }
+  if (!device) {
     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is
     // not an actual problem nor something we care about.
     if (path != "ShaderDumpxe:\\CompareBackEnds") {
@@ -150,7 +156,6 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
     return nullptr;
   }
 
-  const auto& device = *it;
   auto relative_path = normalized_path.substr(device->mount_path().size());
   return device->ResolvePath(relative_path);
 }
