@@ -231,13 +231,17 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
   if (!base_path.empty()) {
     parent_entry = !root_entry ? ResolvePath(base_path)
                                : root_entry->ResolvePath(base_path);
-    if (!parent_entry) {
-      *out_action = FileAction::kDoesNotExist;
-      return X_STATUS_OBJECT_PATH_NOT_FOUND;
+    if (parent_entry) {
+      auto file_name = xe::utf8::find_name_from_guest_path(path);
+      entry = parent_entry->GetChild(file_name);
+    } else {
+      // The path can be a device's mount path, whose parent no device holds.
+      entry = !root_entry ? ResolvePath(path) : nullptr;
+      if (!entry) {
+        *out_action = FileAction::kDoesNotExist;
+        return X_STATUS_OBJECT_PATH_NOT_FOUND;
+      }
     }
-
-    auto file_name = xe::utf8::find_name_from_guest_path(path);
-    entry = parent_entry->GetChild(file_name);
   } else {
     entry = !root_entry ? ResolvePath(path) : root_entry->GetChild(path);
   }
