@@ -34,7 +34,8 @@ namespace xam {
 
 bool ProfileManager::DecryptAccountFile(const uint8_t* data,
                                         X_XAMACCOUNTINFO* output, bool devkit) {
-  uint8_t* key = const_cast<uint8_t*>(xboxkrnl::XeKeysGetKeyData(0x19, devkit));
+  uint8_t* key =
+      const_cast<uint8_t*>(xboxkrnl::XeKeysGetKeyData(0x19, devkit).data());
   if (!key) {
     return false;  // this shouldn't happen...
   }
@@ -66,7 +67,8 @@ bool ProfileManager::DecryptAccountFile(const uint8_t* data,
 
 void ProfileManager::EncryptAccountFile(const X_XAMACCOUNTINFO* input,
                                         uint8_t* output, bool devkit) {
-  uint8_t* key = const_cast<uint8_t*>(xboxkrnl::XeKeysGetKeyData(0x19, devkit));
+  uint8_t* key =
+      const_cast<uint8_t*>(xboxkrnl::XeKeysGetKeyData(0x19, devkit).data());
   if (!key) {
     return;  // this shouldn't happen...
   }
