@@ -585,11 +585,13 @@ X_RESULT ContentManager::DeleteContent(const uint64_t xuid,
   }
 
   auto package_path = ResolvePackagePath(xuid, data);
-  if (std::filesystem::remove_all(package_path) > 0) {
-    return X_ERROR_SUCCESS;
-  } else {
+  if (std::filesystem::remove_all(package_path) == 0) {
     return X_ERROR_FILE_NOT_FOUND;
   }
+
+  std::error_code ec;
+  std::filesystem::remove(ComputeHeaderPath(package_path), ec);
+  return X_ERROR_SUCCESS;
 }
 
 bool ContentManager::IsContentOpen(const XCONTENT_DATA_INTERNAL& data) const {

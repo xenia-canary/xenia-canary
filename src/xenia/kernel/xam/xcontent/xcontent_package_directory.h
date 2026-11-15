@@ -31,6 +31,9 @@ namespace xam {
 
 static std::string_view kGameContentHeaderDirName = "Headers";
 
+std::filesystem::path ComputeHeaderPath(
+    const std::filesystem::path& package_path);
+
 class SpaInfo;
 
 class ContentPackageDirectory final : public ContentPackage {
