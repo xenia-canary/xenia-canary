@@ -105,10 +105,9 @@ dword_result_t xeXamContentResolve(
       return result;
     };
 
-    if (root_name_ptr) {
-      // Check if root_name is valid.
-      // root_device_path = std::string(root_name_ptr);
-      // Unsupported for now.
+    // A root name is only supported for HDD content for now.
+    if (root_name_ptr &&
+        content_data.device_id != static_cast<uint32_t>(DummyDeviceId::HDD)) {
       return X_ERROR_INVALID_PARAMETER;
     }
 
@@ -127,6 +126,24 @@ dword_result_t xeXamContentResolve(
       // Titles open this path themselves.
       path = kernel_state()->content_manager()->ResolveHddContentPath(
           xuid, content_data, create_directory != 0);
+
+      if (root_name_ptr) {
+        // A root name mounts a drive at the partition, and the path goes
+        // through it. The path is still returned when the name is taken.
+        constexpr std::string_view kHddPartition =
+            "\\Device\\Harddisk0\\Partition1";
+        const std::string root_name = std::string(root_name_ptr.value()) + ':';
+        auto file_system = kernel_state()->file_system();
+
+        if (file_system->IsSymbolicLinkRegistered(root_name)) {
+          result = X_ERROR_ALREADY_EXISTS;
+        } else {
+          file_system->RegisterSymbolicLink(root_name,
+                                            std::string(kHddPartition) + '\\');
+        }
+
+        path = root_name + path.substr(kHddPartition.size());
+      }
     } else if (content_data.device_id ==
                static_cast<uint32_t>(DummyDeviceId::ODD)) {
       // Or GAME, but D: usually means DVD drive meanwhile GAME always
@@ -146,7 +163,7 @@ dword_result_t xeXamContentResolve(
     // Check if it exists and try to mount that package
     // Result of buffer_ptr is sent to RtlInitAnsiString.
     // buffer_size is usually 260 (max path).
-    return X_ERROR_SUCCESS;
+    return result;
   };
 
   if (!overlapped_ptr) {
