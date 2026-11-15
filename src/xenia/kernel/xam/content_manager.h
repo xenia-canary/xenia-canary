@@ -86,6 +86,12 @@ class ContentManager {
 
   bool ContentExists(const uint64_t xuid, const XCONTENT_DATA_INTERNAL& data);
 
+  // Returns the raw HDD path of the content and mounts its directory,
+  // creating the directory if create_directory is set.
+  std::string ResolveHddContentPath(const uint64_t xuid,
+                                    const XCONTENT_DATA_INTERNAL& data,
+                                    const bool create_directory);
+
   X_RESULT CreateContent(const std::string_view root_name, const uint64_t xuid,
                          const XCONTENT_DATA_INTERNAL& data);
   X_RESULT OpenContent(const std::string_view root_name, const uint64_t xuid,
@@ -129,6 +135,8 @@ class ContentManager {
       const XContentType content_type) const;
   std::filesystem::path ResolvePackagePath(const uint64_t xuid,
                                            const XCONTENT_DATA_INTERNAL& data);
+  void MountHddPackageRoot(const std::string& mount_path,
+                           const std::filesystem::path& package_root);
   std::unordered_set<uint32_t> FindPublisherTitleIds(
       const uint64_t xuid,
       uint32_t base_title_id = kCurrentlyRunningTitleId) const;

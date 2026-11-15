@@ -30,6 +30,8 @@ namespace kernel {
 namespace xam {
 
 static std::string_view kSpaFilename = "spa.bin";
+static std::string_view kHddContentDevicePath =
+    "\\Device\\Harddisk0\\Partition1\\Content";
 
 ContentManager::ContentManager(KernelState* kernel_state,
                                const std::filesystem::path& root_path)
@@ -421,6 +423,63 @@ bool ContentManager::ContentExists(const uint64_t xuid,
                                    const XCONTENT_DATA_INTERNAL& data) {
   auto path = ResolvePackagePath(xuid, data);
   return std::filesystem::exists(path);
+}
+
+std::string ContentManager::ResolveHddContentPath(
+    const uint64_t xuid, const XCONTENT_DATA_INTERNAL& data,
+    const bool create_directory) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  // Derived from the host path, so the content is found again when listed.
+  const auto package_path = ResolvePackagePath(xuid, data);
+  const auto package_root = package_path.parent_path();
+
+  std::string mount_path(kHddContentDevicePath);
+  for (const auto& part : package_root.lexically_relative(root_path_)) {
+    mount_path += '\\';
+    mount_path += xe::path_to_utf8(part);
+  }
+
+  if (create_directory) {
+    std::error_code ec;
+    std::filesystem::create_directories(package_root, ec);
+    if (ec) {
+      XELOGE("ContentManager: Failed to create {}: {}",
+             xe::path_to_utf8(package_root), ec.message());
+    }
+  }
+
+  MountHddPackageRoot(mount_path, package_root);
+
+  return mount_path + '\\' + xe::path_to_utf8(package_path.filename());
+}
+
+void ContentManager::MountHddPackageRoot(
+    const std::string& mount_path, const std::filesystem::path& package_root) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  // The file system can be cleared behind our back, so ask it.
+  auto file_system = kernel_state_->file_system();
+  const auto entry = file_system->ResolvePath(mount_path);
+  if (entry && entry->device()->mount_path() == mount_path) {
+    return;
+  }
+
+  // A writable HostPathDevice would create it.
+  std::error_code ec;
+  if (!std::filesystem::is_directory(package_root, ec)) {
+    return;
+  }
+
+  // Per package root, as the device snapshots its tree on mount.
+  auto device =
+      std::make_unique<vfs::HostPathDevice>(mount_path, package_root, false);
+  if (!device->Initialize()) {
+    XELOGE("ContentManager: Failed to mount {} at {}",
+           xe::path_to_utf8(package_root), mount_path);
+    return;
+  }
+  file_system->RegisterDevice(std::move(device));
 }
 
 X_RESULT ContentManager::CreateContent(const std::string_view root_name,
