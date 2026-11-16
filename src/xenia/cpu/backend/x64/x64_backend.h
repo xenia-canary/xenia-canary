@@ -61,8 +61,11 @@ static constexpr uint32_t MAX_GUEST_TRAMPOLINES =
 // https://codalogic.com/blog/2022/12/06/Exploring-PowerPCs-read-modify-write-operations
 // Xenon reservation granule is one 128 byte cache line.
 static constexpr uint32_t RESERVE_GRANULE_SHIFT = 7;
-// A generation counter per granule, hashed. stwcx. bumps its granule to kill
-// other threads' reservations. Colliding granules only cost a spurious failure.
+// A generation counter per granule, hashed. stwcx. makes it odd while it
+// stores, then moves it on to the next even value to kill other threads'
+// reservations. Colliding granules only cost a spurious failure. Other stwcx.
+// on the granule fail while it's odd, so a thread suspended or terminated
+// mid-store holds them off until it resumes.
 static constexpr uint32_t RESERVE_NUM_ENTRIES = 1u << 20;
 static constexpr uint32_t RESERVE_ENTRY_MASK = RESERVE_NUM_ENTRIES - 1;
 

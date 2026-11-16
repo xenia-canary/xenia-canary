@@ -1609,9 +1609,16 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   // get exclusive access to the counter we're about to bump
   prefetchw(ptr[rcx]);
 
-  // a store to this granule since our lwarx kills the reservation
-  mov(edx, dword[rcx]);
-  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)), edx);
+  // An odd generation is a store in progress, so the reservation is lost
+  mov(eax, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)));
+  test(al, 1);
+  jnz(fail);
+
+  // Claim the granule if nothing stored to it since our lwarx. A plain check
+  // would let the value go A-B-A between it and the store.
+  lea(edx, ptr[rax + 1]);
+  lock();
+  cmpxchg(dword[rcx], edx);
   jnz(fail);
 
   mov(rax,
@@ -1623,11 +1630,13 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   } else {
     cmpxchg(ptr[r9], r8d);
   }
-  jnz(fail);
 
-  // the store landed, so kill other reservations on this granule
-  lock();
-  inc(dword[rcx]);
+  // Release the granule past our snapshot, killing other reservations on it.
+  // mov and lea leave ZF from the cmpxchg.
+  mov(edx, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)));
+  lea(edx, ptr[rdx + 2]);
+  mov(dword[rcx], edx);
+  jnz(fail);
 
   xor_(eax, eax);  // ZF = 1
   ret();
@@ -1681,21 +1690,27 @@ bool ReservedStoreImpl(X64BackendContext* bctx, ppc::PPCContext* context,
     return false;
   }
 
+  // An odd generation is a store in progress, so the reservation is lost
+  uint32_t generation = bctx->reserve_generation;
+  if (generation & 1) {
+    return false;
+  }
+
+  // Claim the granule if nothing stored to it since our load. A plain check
+  // would let the value go A-B-A between it and the store.
   auto& granule = ReserveGranule(bctx->reserve_helper_, address);
-  // a store to this granule since our load kills the reservation
-  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
+  if (!granule.compare_exchange_strong(generation, generation + 1,
+                                       std::memory_order_acquire)) {
     return false;
   }
 
-  if (!xe::atomic_cas(static_cast<T>(bctx->cached_reserve_value_),
-                      xe::byte_swap(value),
-                      context->TranslateVirtual<T*>(address))) {
-    return false;
-  }
+  const bool stored = xe::atomic_cas(
+      static_cast<T>(bctx->cached_reserve_value_), xe::byte_swap(value),
+      context->TranslateVirtual<T*>(address));
 
-  // the store landed, so kill other reservations on this granule
-  granule.fetch_add(1, std::memory_order_release);
-  return true;
+  // Release the granule past our snapshot, killing other reservations on it
+  granule.store(bctx->reserve_generation + 2, std::memory_order_release);
+  return stored;
 }
 
 }  // namespace
