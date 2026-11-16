@@ -13,11 +13,34 @@
 
 #include "xenia/base/atomic.h"
 #include "xenia/base/byte_order.h"
+#include "xenia/base/platform.h"
+#include "xenia/base/threading.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 
 namespace xe {
 namespace cpu {
 namespace backend {
+
+uint32_t AwaitReserveGranule(const std::atomic<uint32_t>& granule) {
+  // Bounded so a claim that never ends leaves the guest loop at its safepoint.
+  constexpr uint32_t kSpinsPerYield = 64;
+  constexpr uint32_t kYields = 4;
+  uint32_t generation = granule.load(std::memory_order_acquire);
+  for (uint32_t yields = 0; (generation & 1) && yields < kYields; ++yields) {
+    for (uint32_t spins = 0; (generation & 1) && spins < kSpinsPerYield;
+         ++spins) {
+#if XE_ARCH_AMD64 == 1
+      _mm_pause();
+#endif
+      generation = granule.load(std::memory_order_acquire);
+    }
+    if (generation & 1) {
+      threading::MaybeYield();
+      generation = granule.load(std::memory_order_acquire);
+    }
+  }
+  return generation;
+}
 
 Backend::Backend() { std::memset(&machine_info_, 0, sizeof(machine_info_)); }
 Backend::~Backend() = default;

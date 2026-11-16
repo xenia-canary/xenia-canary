@@ -400,6 +400,24 @@ bool MMIOHandler::ExceptionCallbackThunk(Exception* ex, void* data) {
 }
 
 bool MMIOHandler::ExceptionCallback(Exception* ex) {
+  // Before anything here can wait on the global lock, which a thread retrying a
+  // stwcx. on the claimed granule may hold.
+  uint64_t reserved_store_fail_pc = 0;
+  if (reserved_store_fault_callback_ &&
+      ex->code() == Exception::Code::kAccessViolation) {
+    reserved_store_fail_pc =
+        reserved_store_fault_callback_(reserved_store_fault_context_, ex);
+  }
+  if (!HandleAccessViolation(ex)) {
+    return false;
+  }
+  if (reserved_store_fail_pc) {
+    ex->set_resume_pc(reserved_store_fail_pc);
+  }
+  return true;
+}
+
+bool MMIOHandler::HandleAccessViolation(Exception* ex) {
   if (ex->code() != Exception::Code::kAccessViolation) {
     return false;
   }

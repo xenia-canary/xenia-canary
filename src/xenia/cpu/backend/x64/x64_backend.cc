@@ -15,7 +15,6 @@
 #include "third_party/capstone/include/capstone/capstone.h"
 #include "third_party/capstone/include/capstone/x86.h"
 
-#include "xenia/base/atomic.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/exception_handler.h"
 #include "xenia/base/logging.h"
@@ -27,6 +26,7 @@
 #include "xenia/cpu/backend/x64/x64_sequences.h"
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
 #include "xenia/cpu/breakpoint.h"
+#include "xenia/cpu/mmio_handler.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
 #include "xenia/cpu/xex_module.h"
@@ -120,7 +120,8 @@ class X64HelperEmitter : public X64Emitter {
       void* sync_func, unsigned stack_element_size);
 
   void* EmitTryAcquireReservationHelper();
-  void* EmitReservedStoreHelper(bool bit64 = false);
+  void* EmitReservedStoreHelper(bool bit64, ReservedStoreFaultSite& fault_site);
+  ReservedStoreThunk EmitReservedStoreThunk(void* helper);
 
   void* EmitScalarVRsqrteHelper();
   void* EmitVectorVRsqrteHelper(void* scalar_helper);
@@ -191,6 +192,10 @@ X64Backend::~X64Backend() {
 
   X64Emitter::FreeConstData(emitter_data_);
   ExceptionHandler::Uninstall(&ExceptionCallbackThunk, this);
+  // gone if Memory was torn down first
+  if (auto mmio_handler = MMIOHandler::global_handler()) {
+    mmio_handler->SetReservedStoreFaultCallback(nullptr, nullptr);
+  }
   if (guest_trampoline_memory_) {
     memory::DeallocFixed(
         guest_trampoline_memory_,
@@ -333,8 +338,14 @@ bool X64Backend::Initialize(Processor* processor) {
   }
   try_acquire_reservation_helper_ =
       thunk_emitter.EmitTryAcquireReservationHelper();
-  reserved_store_32_helper = thunk_emitter.EmitReservedStoreHelper(false);
-  reserved_store_64_helper = thunk_emitter.EmitReservedStoreHelper(true);
+  reserved_store_32_helper = thunk_emitter.EmitReservedStoreHelper(
+      false, reserved_store_fault_sites_[0]);
+  reserved_store_64_helper = thunk_emitter.EmitReservedStoreHelper(
+      true, reserved_store_fault_sites_[1]);
+  reserved_store_32_thunk_ =
+      thunk_emitter.EmitReservedStoreThunk(reserved_store_32_helper);
+  reserved_store_64_thunk_ =
+      thunk_emitter.EmitReservedStoreThunk(reserved_store_64_helper);
   vrsqrtefp_scalar_helper = thunk_emitter.EmitScalarVRsqrteHelper();
   vrsqrtefp_vector_helper =
       thunk_emitter.EmitVectorVRsqrteHelper(vrsqrtefp_scalar_helper);
@@ -350,6 +361,10 @@ bool X64Backend::Initialize(Processor* processor) {
 
   // Setup exception callback
   ExceptionHandler::Install(&ExceptionCallbackThunk, this);
+  if (auto mmio_handler = MMIOHandler::global_handler()) {
+    mmio_handler->SetReservedStoreFaultCallback(ReleaseFaultingReservedStore,
+                                                this);
+  }
   if (cvars::record_mmio_access_exceptions) {
     processor->memory()->SetMMIOExceptionRecordingCallback(
         ForwardMMIOAccessForRecording, (void*)this);
@@ -1562,6 +1577,7 @@ void* X64HelperEmitter::EmitFrsqrteHelper() {
 
 // ecx = guest addr
 // rax holds the host addr and must survive the call
+// ZF is clear if a stwcx. had the granule claimed
 void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
@@ -1576,6 +1592,7 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
   mov(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_address)), ecx);
   // lwarx replaces any reservation this thread already held
   bts(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
+  test(r9b, 1);
   ret();
 
   code_offsets.prolog_stack_alloc = getSize();
@@ -1588,10 +1605,12 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
 // r9 = host addr
 // r8 = value
 // if ZF is set, we succeeded
-void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
+void* X64HelperEmitter::EmitReservedStoreHelper(
+    bool bit64, ReservedStoreFaultSite& fault_site) {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
   Xbyak::Label fail;
+  Xbyak::Label release_fail;
 
   // stwcx. always clears the reservation, stored or not
   btr(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
@@ -1624,23 +1643,30 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   mov(rax,
       GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_value_)));
 
+  // A fault here leaves the claim in rcx and edx for the handler
+  const size_t access_offset = getSize();
   lock();
   if (bit64) {
     cmpxchg(ptr[r9], r8);
   } else {
     cmpxchg(ptr[r9], r8d);
   }
+  jnz(release_fail);
 
   // Release the granule past our snapshot, killing other reservations on it.
-  // mov and lea leave ZF from the cmpxchg.
-  mov(edx, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)));
-  lea(edx, ptr[rdx + 2]);
+  // A plain store releases under TSO.
+  inc(edx);
   mov(dword[rcx], edx);
-  jnz(fail);
 
   xor_(eax, eax);  // ZF = 1
   ret();
 
+  // Claimed, so release even on failure
+  L(release_fail);
+  inc(edx);
+  mov(dword[rcx], edx);
+
+  const size_t fail_offset = getSize();
   L(fail);
   or_(eax, 1);  // ZF = 0
   ret();
@@ -1649,10 +1675,46 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   code_offsets.body = getSize();
   code_offsets.epilog = getSize();
   code_offsets.tail = getSize();
-  return EmitCurrentForOffsets(code_offsets);
+  auto helper = reinterpret_cast<uint8_t*>(EmitCurrentForOffsets(code_offsets));
+  fault_site.first_access = reinterpret_cast<uint64_t>(helper + access_offset);
+  fault_site.last_access = fault_site.first_access;
+  fault_site.fail = reinterpret_cast<uint64_t>(helper + fail_offset);
+  return helper;
 }
 
-// Host counterpart of the two helpers above, on the same state and table.
+// Puts host arguments where the stwcx. helper takes them, so a fault in a host
+// store is released the same way as one in guest code.
+ReservedStoreThunk X64HelperEmitter::EmitReservedStoreThunk(void* helper) {
+  _code_offsets code_offsets = {};
+  code_offsets.prolog = getSize();
+
+#if XE_PLATFORM_WIN32
+  // ecx = guest addr, rdx = context, r8 = value, r9 = host addr
+  // rsi is nonvolatile here and the helper leaves r10 alone
+  mov(r10, GetContextReg());
+  mov(GetContextReg(), rdx);
+  call(helper);
+  mov(GetContextReg(), r10);
+#else
+  // edi = guest addr, rsi = context, rdx = value, rcx = host addr
+  mov(r9, rcx);
+  mov(r8, rdx);
+  mov(ecx, edi);
+  call(helper);
+#endif
+  setz(al);
+  movzx(eax, al);
+  ret();
+
+  code_offsets.prolog_stack_alloc = getSize();
+  code_offsets.body = getSize();
+  code_offsets.epilog = getSize();
+  code_offsets.tail = getSize();
+  return reinterpret_cast<ReservedStoreThunk>(
+      EmitCurrentForOffsets(code_offsets));
+}
+
+// Host counterpart of the lwarx helper above, on the same state and table.
 namespace {
 
 std::atomic<uint32_t>& ReserveGranule(ReserveHelper* reserve_helper,
@@ -1666,9 +1728,9 @@ T ReservedLoadImpl(X64BackendContext* bctx, ppc::PPCContext* context,
                    uint32_t address) {
   T* host_address = context->TranslateVirtual<T*>(address);
   swcache::PrefetchW(host_address);
-  auto& granule = ReserveGranule(bctx->reserve_helper_, address);
   // snapshot the generation first, the acquire pins the value read below
-  bctx->reserve_generation = granule.load(std::memory_order_acquire);
+  bctx->reserve_generation =
+      AwaitReserveGranule(ReserveGranule(bctx->reserve_helper_, address));
   bctx->reserve_address = address;
   // lwarx replaces any reservation this thread already held
   bctx->flags |= 1U << kX64BackendHasReserveBit;
@@ -1678,42 +1740,31 @@ T ReservedLoadImpl(X64BackendContext* bctx, ppc::PPCContext* context,
   return xe::byte_swap(raw);
 }
 
-template <typename T>
-bool ReservedStoreImpl(X64BackendContext* bctx, ppc::PPCContext* context,
-                       uint32_t address, T value) {
-  const uint32_t reserve_flag = 1U << kX64BackendHasReserveBit;
-  const bool had_reservation = (bctx->flags & reserve_flag) != 0;
-  // stwcx. always clears the reservation, stored or not
-  bctx->flags &= ~reserve_flag;
-  // the reservation must be for the address we're storing to
-  if (!had_reservation || bctx->reserve_address != address) {
-    return false;
-  }
+}  // namespace
 
-  // An odd generation is a store in progress, so the reservation is lost
-  uint32_t generation = bctx->reserve_generation;
-  if (generation & 1) {
-    return false;
-  }
-
-  // Claim the granule if nothing stored to it since our load. A plain check
-  // would let the value go A-B-A between it and the store.
-  auto& granule = ReserveGranule(bctx->reserve_helper_, address);
-  if (!granule.compare_exchange_strong(generation, generation + 1,
-                                       std::memory_order_acquire)) {
-    return false;
-  }
-
-  const bool stored = xe::atomic_cas(
-      static_cast<T>(bctx->cached_reserve_value_), xe::byte_swap(value),
-      context->TranslateVirtual<T*>(address));
-
-  // Release the granule past our snapshot, killing other reservations on it
-  granule.store(bctx->reserve_generation + 2, std::memory_order_release);
-  return stored;
+uint64_t X64Backend::AwaitReservation(void* raw_context,
+                                      uint64_t guest_address) {
+  auto* bctx = reinterpret_cast<X64BackendContext*>(
+      reinterpret_cast<uint8_t*>(raw_context) - sizeof(X64BackendContext));
+  bctx->reserve_generation = AwaitReserveGranule(
+      ReserveGranule(bctx->reserve_helper_, uint32_t(guest_address)));
+  return 0;
 }
 
-}  // namespace
+uint64_t X64Backend::ReleaseFaultingReservedStore(void* data, Exception* ex) {
+  auto* backend = reinterpret_cast<X64Backend*>(data);
+  for (const auto& site : backend->reserved_store_fault_sites_) {
+    if (ex->pc() < site.first_access || ex->pc() > site.last_access) {
+      continue;
+    }
+    // rcx = the claimed granule, edx = its odd generation
+    const HostThreadContext& context = *ex->thread_context();
+    reinterpret_cast<std::atomic<uint32_t>*>(context.rcx)
+        ->store(uint32_t(context.rdx) + 1, std::memory_order_release);
+    return site.fail;
+  }
+  return 0;
+}
 
 uint32_t X64Backend::ReservedLoad32(ppc::PPCContext* context,
                                     uint32_t address) {
@@ -1729,14 +1780,16 @@ uint64_t X64Backend::ReservedLoad64(ppc::PPCContext* context,
 
 bool X64Backend::ReservedStore32(ppc::PPCContext* context, uint32_t address,
                                  uint32_t value) {
-  return ReservedStoreImpl<uint32_t>(BackendContextForGuestContext(context),
-                                     context, address, value);
+  return reserved_store_32_thunk_(
+      address, context, xe::byte_swap(value),
+      context->TranslateVirtual<uint32_t*>(address));
 }
 
 bool X64Backend::ReservedStore64(ppc::PPCContext* context, uint32_t address,
                                  uint64_t value) {
-  return ReservedStoreImpl<uint64_t>(BackendContextForGuestContext(context),
-                                     context, address, value);
+  return reserved_store_64_thunk_(
+      address, context, xe::byte_swap(value),
+      context->TranslateVirtual<uint64_t*>(address));
 }
 
 void X64HelperEmitter::EmitSaveVolatileRegs() {

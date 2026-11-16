@@ -43,6 +43,11 @@ class X64CodeCache;
 typedef void* (*HostToGuestThunk)(void* target, void* arg0, void* arg1);
 typedef void* (*GuestToHostThunk)(void* target, void* arg0, void* arg1);
 typedef void (*ResolveFunctionThunk)();
+// Host entry to a stwcx. helper, returns 1 if the store landed. The value is
+// guest endian.
+typedef uint32_t (*ReservedStoreThunk)(uint32_t guest_address,
+                                       ppc::PPCContext* context, uint64_t value,
+                                       void* host_address);
 
 /*
     place guest trampolines in the memory range that the HV normally occupies.
@@ -186,6 +191,8 @@ class X64Backend : public Backend {
     return reinterpret_cast<X64BackendContext*>(
         reinterpret_cast<intptr_t>(ctx) - sizeof(X64BackendContext));
   }
+  // lwarx found the granule claimed, refreshes the generation it took.
+  static uint64_t AwaitReservation(void* raw_context, uint64_t guest_address);
   virtual uint32_t CreateGuestTrampoline(GuestTrampolineProc proc,
                                          void* userdata1, void* userdata2,
                                          bool long_term) override;
@@ -214,6 +221,7 @@ class X64Backend : public Backend {
  private:
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
+  static uint64_t ReleaseFaultingReservedStore(void* data, Exception* ex);
 
   uintptr_t capstone_handle_ = 0;
 
@@ -234,6 +242,9 @@ class X64Backend : public Backend {
   void* try_acquire_reservation_helper_ = nullptr;
   void* reserved_store_32_helper = nullptr;
   void* reserved_store_64_helper = nullptr;
+  ReservedStoreThunk reserved_store_32_thunk_ = nullptr;
+  ReservedStoreThunk reserved_store_64_thunk_ = nullptr;
+  ReservedStoreFaultSite reserved_store_fault_sites_[2] = {};
   void* vrsqrtefp_vector_helper = nullptr;
   void* vrsqrtefp_scalar_helper = nullptr;
   void* frsqrtefp_helper = nullptr;

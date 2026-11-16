@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_BACKEND_H_
 #define XENIA_CPU_BACKEND_BACKEND_H_
 
+#include <atomic>
 #include <memory>
 
 #include "xenia/cpu/backend/machine_info.h"
@@ -171,6 +172,19 @@ struct GuestTrampolineGroup
     return _NewTrampoline(proc, false);
   }
 };
+
+// Where a stwcx. helper touches guest memory while it holds the granule claim,
+// and the exit that fails it without publishing again.
+struct ReservedStoreFaultSite {
+  uint64_t first_access;
+  uint64_t last_access;
+  uint64_t fail;
+};
+
+// lwarx on a granule a stwcx. has claimed waits a bounded time for the publish,
+// then yields the host thread in case the claimer was preempted. Returns the
+// generation last read, still odd if the claim outlasted the wait.
+uint32_t AwaitReserveGranule(const std::atomic<uint32_t>& granule);
 
 }  // namespace backend
 }  // namespace cpu

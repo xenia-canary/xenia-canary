@@ -438,6 +438,17 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVR, STVR_V128);
 
+// Follows try_acquire_reservation_helper_, which leaves ZF clear if a stwcx.
+// had the granule claimed. The wait clobbers rax, so it recomputes the address.
+static void EmitAwaitClaimedGranule(X64Emitter& e, const I64Op& src) {
+  Xbyak::Label& unclaimed = e.NewCachedLabel();
+  e.jz(unclaimed, X64Emitter::T_NEAR);
+  e.mov(e.GetNativeParam(0).cvt32(), e.ecx);
+  e.CallNativeSafe(reinterpret_cast<void*>(X64Backend::AwaitReservation));
+  e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, src)]);
+  e.L(unclaimed);
+}
+
 struct RESERVED_LOAD_INT32
     : Sequence<RESERVED_LOAD_INT32, I<OPCODE_RESERVED_LOAD, I32Op, I64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
@@ -455,6 +466,7 @@ struct RESERVED_LOAD_INT32
       e.mov(e.ecx, i.src1.reg().cvt32());
     }
     e.call(e.backend()->try_acquire_reservation_helper_);
+    EmitAwaitClaimedGranule(e, i.src1);
     e.mov(i.dest, e.dword[e.rax]);
 
     e.mov(
@@ -479,6 +491,7 @@ struct RESERVED_LOAD_INT64
     e.prefetchw(e.ptr[e.rax]);
 
     e.call(e.backend()->try_acquire_reservation_helper_);
+    EmitAwaitClaimedGranule(e, i.src1);
     e.mov(i.dest, e.qword[e.rax]);
 
     e.mov(
