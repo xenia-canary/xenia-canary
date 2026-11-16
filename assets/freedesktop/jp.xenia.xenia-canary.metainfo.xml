@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>jp.xenia.xenia-canary</id>
+  <name>Xenia Canary</name>
+  <developer id="jp.xenia.xenia-canary">
+    <name>Xenia Contributors</name>
+    <url>https://github.com/xenia-canary/xenia-canary/graphs/contributors</url>
+  </developer>
+  <summary>Experimental Xbox 360 emulator</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSD-3-Clause</project_license>
+  <launchable type="desktop-id">jp.xenia.xenia-canary.desktop</launchable>
+  <url type="homepage">https://xenia.jp/</url>
+  <url type="vcs-browser">https://github.com/xenia-canary/xenia-canary/</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#ffd85f</color>
+    <color type="primary" scheme_preference="dark">#555555</color>
+  </branding>
+  <description>
+    <p>Xenia is an experimental Xbox 360 emulator originally conceived as a research project by Ben Vanik
+      and has since evolved to being able to run a number of games. This is the "canary" fork, which
+      receives more frequent updates but may be experimental.</p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://rainsunflower.wordpress.com/wp-content/uploads/2024/01/screenshot-2023-12-31-05-20-33.png</image>
+      <caption>Lost Odyssey</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://xenia.jp/images/posts/2022-01-29-presenting-the-presentation-update-amd-fidelityfx-fsr-fxaa-cas-vrr/fsr_bknb_on.jpg</image>
+      <caption>Banjo-Kazooie Nuts'n'Bolts</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://xenia.jp/images/posts/2022-01-29-presenting-the-presentation-update-amd-fidelityfx-fsr-fxaa-cas-vrr/fsr_vp_on.jpg</image>
+      <caption>Viva Piñata</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://xenia.jp/images/posts/2022-01-29-presenting-the-presentation-update-amd-fidelityfx-fsr-fxaa-cas-vrr/resolution_halo3_1x1.jpg</image>
+      <caption>Halo 3</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://xenia.jp/images/posts/2021-04-27-leaving-no-pixel-behind-new-render-target-cache-3x3-resolution-scaling/3x3_sonic_intro.jpg</image>
+      <caption>Sonic the Hedgeog 2006</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://xenia.jp/images/posts/2021-04-27-leaving-no-pixel-behind-new-render-target-cache-3x3-resolution-scaling/3x3_tales.jpg</image>
+      <caption>Tales of Vesperia</caption>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <supports>
+    <control>keyboard</control>
+  </supports>
+  <recommends>
+    <control>gamepad</control>
+  </recommends>
+  <provides>
+    <binary>xenia-canary</binary>
+  </provides>
+  <keywords>
+    <keyword>emulator</keyword>
+    <keyword>xbox 360</keyword>
+  </keywords>
+  <releases>
+    <release version="experimental" date="2025-01-26" />
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

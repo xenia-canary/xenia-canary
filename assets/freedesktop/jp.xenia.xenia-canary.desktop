@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=Game
+Comment=Experimental Xbox 360 emulator
+Exec=xenia_canary
+Icon=jp.xenia.xenia-canary
+Keywords=emulator;retro
+Name=Xenia Canary
+StartupNotify=true
+Terminal=false
+Type=Application
