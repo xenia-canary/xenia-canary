@@ -511,6 +511,12 @@ void GetScissor(const RegisterFile& XE_RESTRICT regs,
                 bool clamp_to_surface_pitch = true,
                 bool window_offset_in_edram = false);
 
+// Whether a draw must wait for its pipeline being created asynchronously: the
+// surface is at most this wide (160 pixels without MSAA). Small surfaces are
+// mostly data kept past the frame, like 1x1 eye adaptation history.
+inline constexpr uint32_t kAsyncPipelineWaitMaxPitchTiles = 2;
+bool IsAsyncPipelineWaitNeededForDraw(const RegisterFile& XE_RESTRICT regs);
+
 // Returns the window offset in 32bpp tiles, doubled for 64bpp color, when it
 // can be moved into the render target bases. The vertices and scissor can then
 // use window offset 0, with PsParamGen getting the original offset back in the

@@ -8,7 +8,9 @@
  */
 
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
+#include <chrono>
 #include <cstring>
+#include <thread>
 #include "xenia/apu/audio_system.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
@@ -2813,6 +2815,16 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   }
 
   if (cvars::async_shader_compilation) {
+    // A skipped draw to a small target or with memexport may never be redone,
+    // so wait for the pipeline.
+    if (pipeline_cache_->IsPipelineCreationPendingByHandle(pipeline_handle) &&
+        (memexport_used || draw_util::IsAsyncPipelineWaitNeededForDraw(regs))) {
+      do {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+      } while (
+          pipeline_cache_->IsPipelineCreationPendingByHandle(pipeline_handle));
+    }
+
     if (zpd_hybrid &&
         pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
       zpd_hybrid = false;

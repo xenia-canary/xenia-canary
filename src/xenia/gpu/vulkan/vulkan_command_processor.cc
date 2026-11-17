@@ -9,8 +9,10 @@
 
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 
 #include "xenia/apu/audio_system.h"
 #include "xenia/base/assert.h"
@@ -2716,6 +2718,17 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
   }
+
+  // A placeholder draw to a small target, or in place of a pixel shader with
+  // memexport, may never be redone, so wait for the real pipeline.
+  if (pipeline->is_placeholder.load(std::memory_order_acquire) &&
+      ((pixel_shader && pixel_shader->memexport_eM_written() != 0) ||
+       draw_util::IsAsyncPipelineWaitNeededForDraw(regs))) {
+    do {
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    } while (pipeline->is_placeholder.load(std::memory_order_acquire));
+  }
+
   // If async mode is active, this may be a placeholder pipeline. The real
   // pipeline will be swapped in by the creation thread when ready.
   // We re-load the handle to pick up any swap that may have happened.

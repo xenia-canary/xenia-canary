@@ -117,6 +117,12 @@ class PipelineCache {
   }
   ID3D12PipelineState* AwaitD3D12PipelineByHandle(void* handle);
 
+  // False once creation has finished, even if it failed.
+  bool IsPipelineCreationPendingByHandle(void* handle) const {
+    return reinterpret_cast<const Pipeline*>(handle)->creation_pending.load(
+        std::memory_order_acquire);
+  }
+
   ID3D12RootSignature* GetRootSignatureByHandle(void* handle) const {
     return reinterpret_cast<const Pipeline*>(handle)
         ->description.root_signature;
@@ -402,6 +408,8 @@ class PipelineCache {
   struct Pipeline {
     // nullptr if creation has failed or still pending.
     std::atomic<ID3D12PipelineState*> state{nullptr};
+    // Queued or being created. Cleared even if creation fails.
+    std::atomic<bool> creation_pending{false};
     PipelineRuntimeDescription description;
     // For background creation: stores the untranslated shaders.
     // Background thread translates both VS and PS together, then creates the

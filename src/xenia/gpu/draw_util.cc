@@ -922,6 +922,23 @@ void GetScissor(const RegisterFile& XE_RESTRICT regs,
   }
 }
 
+bool IsAsyncPipelineWaitNeededForDraw(const RegisterFile& XE_RESTRICT regs) {
+  auto rb_surface_info = regs.Get<reg::RB_SURFACE_INFO>();
+  uint32_t pitch_pixels = rb_surface_info.surface_pitch;
+
+  if (!pitch_pixels) {
+    return false;
+  }
+
+  uint32_t msaa_samples_x_log2 =
+      uint32_t(rb_surface_info.msaa_samples >= xenos::MsaaSamples::k4X);
+  uint32_t pitch_tiles_at_32bpp = ((pitch_pixels << msaa_samples_x_log2) +
+                                   (xenos::kEdramTileWidthSamples - 1)) /
+                                  xenos::kEdramTileWidthSamples;
+
+  return pitch_tiles_at_32bpp <= kAsyncPipelineWaitMaxPitchTiles;
+}
+
 int32_t GetWindowOffsetTiles(const RegisterFile& XE_RESTRICT regs,
                              reg::RB_DEPTHCONTROL normalized_depth_control,
                              uint32_t normalized_color_mask,

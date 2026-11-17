@@ -453,6 +453,7 @@ void PipelineCache::InitializeShaderStorage(
       COUNT_profile_set("gpu/pipeline_cache/pipelines", pipelines_.size());
       if (!creation_threads_.empty()) {
         // Submit the pipeline for creation to any available thread.
+        new_pipeline->creation_pending.store(true, std::memory_order_release);
         {
           std::lock_guard<xe_mutex> lock(creation_request_lock_);
           creation_queue_.push(new_pipeline);
@@ -910,6 +911,8 @@ bool PipelineCache::ConfigurePipeline(
           bound_rts, pixel_shader->shader().writes_color_targets(),
           pixel_shader->shader().writes_depth());
     }
+
+    new_pipeline->creation_pending.store(true, std::memory_order_release);
     {
       std::lock_guard<xe_mutex> lock(creation_request_lock_);
       creation_queue_.push(new_pipeline);
@@ -3440,6 +3443,9 @@ void PipelineCache::CreationThread(size_t thread_index) {
                  : 0);
     }
 
+    pipeline_to_create->creation_pending.store(false,
+                                               std::memory_order_release);
+
     // Pipeline created - the thread is not busy anymore, safe to set the
     // completion event if needed (at the next iteration, or in some other
     // thread).
@@ -3479,6 +3485,9 @@ void PipelineCache::CreateQueuedPipelinesOnProcessorThread() {
     } else {
       XELOGW("ProcessorThread: Pipeline creation failed");
     }
+
+    pipeline_to_create->creation_pending.store(false,
+                                               std::memory_order_release);
   }
 }
 
