@@ -39,6 +39,7 @@ class HostPathEntry : public Entry {
                                            size_t offset,
                                            size_t length) override;
   void update() override;
+  bool is_empty_folder() const override;
 
   bool SetAttributes(uint64_t attributes) override;
   bool SetCreateTimestamp(uint64_t timestamp) override;

@@ -151,6 +151,12 @@ void HostPathEntry::update() {
   }
 }
 
+bool HostPathEntry::is_empty_folder() const {
+  std::error_code error;
+  const bool empty = std::filesystem::is_empty(host_path_, error);
+  return error ? Entry::is_empty_folder() : empty;
+}
+
 bool HostPathEntry::SetAttributes(uint64_t attributes) {
   if (device_->is_read_only()) {
     return false;

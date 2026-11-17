@@ -134,6 +134,7 @@ class Entry {
     return nullptr;
   }
   virtual void update() { return; }
+  virtual bool is_empty_folder() const { return children_.empty(); }
 
  protected:
   Entry(Device* device, Entry* parent, const std::string_view path);

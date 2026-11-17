@@ -245,6 +245,13 @@ dword_result_t NtSetInformationFile_entry(
     case XFileDispositionInformation: {
       auto info = info_ptr.as<X_FILE_DISPOSITION_INFORMATION*>();
       bool delete_on_close = info->delete_file ? true : false;
+
+      if (delete_on_close &&
+          (file->entry()->attributes() & vfs::kFileAttributeDirectory) &&
+          !file->entry()->is_empty_folder()) {
+        return X_STATUS_DIRECTORY_NOT_EMPTY;
+      }
+
       file->entry()->SetForDeletion(static_cast<bool>(info->delete_file));
       out_length = 0;
       XELOGW("NtSetInformationFile set deleting flag for {} on close to: {}",
