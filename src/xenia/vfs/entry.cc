@@ -11,9 +11,11 @@
 
 #include <utility>
 
+#include "xenia/base/assert.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/string.h"
 #include "xenia/vfs/device.h"
+#include "xenia/vfs/file.h"
 
 namespace xe {
 namespace vfs {
@@ -106,6 +108,37 @@ Entry* Entry::CreateEntry(const std::string_view name, uint32_t attributes) {
   return children_.back().get();
 }
 
+File::File(uint32_t file_access, Entry* entry)
+    : file_access_(file_access), entry_(entry) {
+  if (entry_) {
+    auto global_lock = entry_->global_critical_region_.Acquire();
+    ++entry_->open_file_count_;
+  }
+}
+
+File::~File() {
+  if (entry_) {
+    auto global_lock = entry_->global_critical_region_.Acquire();
+    assert_not_zero(entry_->open_file_count_);
+    --entry_->open_file_count_;
+  }
+}
+
+bool Entry::HasOpenFiles() const {
+  auto global_lock = global_critical_region_.Acquire();
+  if (open_file_count_) {
+    return true;
+  }
+
+  for (const auto& child : children_) {
+    if (child->HasOpenFiles()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool Entry::Delete(Entry* entry) {
   auto global_lock = global_critical_region_.Acquire();
   if (is_read_only()) {
@@ -114,6 +147,12 @@ bool Entry::Delete(Entry* entry) {
   if (entry->parent() != this) {
     return false;
   }
+
+  // Open files would be left pointing at a freed entry.
+  if (entry->HasOpenFiles()) {
+    return false;
+  }
+
   if (!DeleteEntryInternal(entry)) {
     return false;
   }

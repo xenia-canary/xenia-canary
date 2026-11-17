@@ -22,10 +22,14 @@ HostPathFile::HostPathFile(
 HostPathFile::~HostPathFile() = default;
 
 void HostPathFile::Destroy() {
-  if (entry_ && entry_->delete_on_close()) {
-    entry()->Delete();
-  }
+  Entry* entry = entry_;
+  auto global_lock = xe::global_critical_region::AcquireDirect();
   delete this;
+
+  // As on NT, delete when the last handle closes.
+  if (entry && entry->delete_on_close() && !entry->open_file_count()) {
+    entry->Delete();
+  }
 }
 
 X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,

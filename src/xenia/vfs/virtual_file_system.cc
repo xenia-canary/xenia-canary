@@ -199,6 +199,15 @@ bool VirtualFileSystem::DeletePath(const std::string_view path) {
     // Can't delete root.
     return false;
   }
+
+  auto global_lock = xe::global_critical_region::AcquireDirect();
+
+  // As on NT, delete when the last handle closes.
+  if (entry->open_file_count()) {
+    entry->SetForDeletion(true);
+    return true;
+  }
+
   return parent->Delete(entry);
 }
 

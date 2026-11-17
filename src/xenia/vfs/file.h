@@ -23,9 +23,9 @@ class Entry;
 
 class File {
  public:
-  File(uint32_t file_access, Entry* entry)
-      : file_access_(file_access), entry_(entry) {}
-  virtual ~File() = default;
+  // Defined in entry.cc.
+  File(uint32_t file_access, Entry* entry);
+  virtual ~File();
 
   virtual void Destroy() = 0;
 

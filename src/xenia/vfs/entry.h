@@ -94,6 +94,8 @@ class Entry {
   uint64_t access_timestamp() const { return access_timestamp_; }
   uint64_t write_timestamp() const { return write_timestamp_; }
   bool delete_on_close() const { return delete_on_close_; }
+  uint32_t open_file_count() const { return open_file_count_; }
+  bool HasOpenFiles() const;
 
   virtual bool SetAttributes(uint64_t attributes) { return false; }
   virtual bool SetCreateTimestamp(uint64_t timestamp) { return false; }
@@ -158,6 +160,11 @@ class Entry {
   uint64_t write_timestamp_;
   bool delete_on_close_;
   std::vector<std::unique_ptr<Entry>> children_;
+
+ private:
+  friend class File;
+
+  uint32_t open_file_count_ = 0;
 };
 
 }  // namespace vfs
