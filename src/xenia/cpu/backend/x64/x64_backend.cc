@@ -1030,8 +1030,8 @@ void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   jmp(looper, T_NEAR);
   L(loopout);
   Xbyak::Label skip_adjust{};
-  cmp(r12d, 1);  // should never happen?
-  jle(skip_adjust, T_NEAR);
+  test(r12d, r12d);
+  jz(skip_adjust, T_NEAR);
   Xbyak::Label we_good{};
 
   // now we need to make sure that the return address matches
@@ -1043,6 +1043,7 @@ void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
 
   Xbyak::Label search_for_retaddr{};
   Xbyak::Label we_good_but_increment{};
+  Xbyak::Label checkbp{};
   L(search_for_retaddr);
 
   imul(edx, ecx, sizeof(X64BackendStackpoint));
@@ -1050,6 +1051,10 @@ void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   cmp(r10d, ptr[rbx + rdx + offsetof(X64BackendStackpoint, guest_stack_)]);
 
   jnz(we_good_but_increment, T_NEAR);
+  // The bottom stackpoint has no caller. Keep it as the oldest match
+  // without reading past the stackpoint table or trying to pop it.
+  test(ecx, ecx);
+  jz(checkbp, T_NEAR);
 
   cmp(r9d,
       ptr[rbx + rdx + offsetof(X64BackendStackpoint, guest_return_address_)]);
@@ -1057,7 +1062,6 @@ void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
                         // our destination stack
   dec(ecx);
   jmp(search_for_retaddr, T_NEAR);
-  Xbyak::Label checkbp{};
 
   L(we_good_but_increment);
   add(edx, sizeof(X64BackendStackpoint));

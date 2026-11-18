@@ -521,19 +521,14 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
               uintptr_t host_address = 0;
               for (auto&& entry : ones_with_address) {
                 X64Function* xfunc = static_cast<X64Function*>(entry);
-
+                // A separate function at the target has a source mapping
+                // after its prologue too. Match an interior guest address.
+                if (xfunc->address() == target_address) {
+                  continue;
+                }
                 host_address = xfunc->MapGuestAddressToMachineCode(
                     static_cast<uint32_t>(target_address));
-                // host address does exist within the function, and that host
-                // function is not the start of the function, it is instead
-                // somewhere within its existing body
-                // i originally did not have this (xfunc->machine_code() !=
-                // reinterpret_cast<const uint8_t*>(host_address))) condition
-                // here when i distributed builds for testing, no issues arose
-                // related to it but i wanted to be more explicit
-                if (host_address &&
-                    xfunc->machine_code() !=
-                        reinterpret_cast<const uint8_t*>(host_address)) {
+                if (host_address) {
                   candidate = xfunc;
                   break;
                 }
@@ -564,15 +559,9 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
                     static_cast<uint32_t>(guest_context->r[1]);
                 uint32_t num_frames_bigger = 0;
 
-                /*
-                        if the current guest stack pointer is bigger than the
-                   recorded pointer for this stack thats fine, plenty of
-                   functions restore the original stack pointer early
-
-                        if more than 1... we're longjmping and sure of it at
-                   this point (jumping to a return site that has already been
-                   emitted)
-                */
+                // Count abandoned frames. One such frame can also occur
+                // on ordinary epilogue paths, so for that case require an
+                // exact match to an older guest stack pointer.
                 while (current_stackpoint_index != 0xFFFFFFFF) {
                   if (current_guest_stackpointer >
                       stackpoints[current_stackpoint_index].guest_stack_) {
@@ -653,7 +642,11 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
 
                  */
 
-                if (num_frames_bigger > 1) {
+                if (num_frames_bigger > 1 ||
+                    (num_frames_bigger == 1 &&
+                     current_stackpoint_index != UINT32_MAX &&
+                     current_guest_stackpointer ==
+                         stackpoints[current_stackpoint_index].guest_stack_)) {
                   /*
                    * can't do anything about this right now :(
                    * epic mickey is quite slow due to having to call resolve on
@@ -853,6 +846,25 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
       mov(ebx, reg.cvt32());
     }
     mov(eax, dword[ebx]);
+
+    if (cvars::enable_host_guest_stack_synchronization &&
+        (instr->flags & hir::CALL_TAIL) &&
+        (instr->flags & hir::CALL_POSSIBLE_RETURN)) {
+      // A return to a different address with a restored guest stack pointer
+      // may be a longjmp. Use the resolver even when the target is cached as
+      // a separate function, so it can find the active continuation.
+      Xbyak::Label use_cached_target;
+      mov(r8d, GetBackendCtxPtr(
+                   offsetof(X64BackendContext, current_stackpoint_depth)));
+      imul(r8d, r8d, sizeof(X64BackendStackpoint));
+      mov(r9, GetBackendCtxPtr(offsetof(X64BackendContext, stackpoints)));
+      mov(r10d, dword[GetContextReg() + offsetof(ppc::PPCContext, r[1])]);
+      cmp(r10d, dword[r9 + r8 - sizeof(X64BackendStackpoint) +
+                      offsetof(X64BackendStackpoint, guest_stack_)]);
+      jbe(use_cached_target);
+      mov(rax, reinterpret_cast<uint64_t>(backend()->resolve_function_thunk()));
+      L(use_cached_target);
+    }
   } else {
     // Old-style resolve.
     // Not too important because indirection table is almost always available.
