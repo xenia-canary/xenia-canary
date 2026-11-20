@@ -67,28 +67,8 @@ DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kImplemented);
 dword_result_t XamGetStagingMode_entry() { return cvars::staging_mode; }
 DECLARE_XAM_EXPORT1(XamGetStagingMode, kNone, kStub);
 
-// Empty stub schema binary.
-uint8_t schema_bin[] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00,
-    0x00, 0x2C, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x2C, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18,
-};
-
 dword_result_t XamGetOnlineSchema_entry() {
-  static uint32_t schema_guest = 0;
-
-  if (!schema_guest) {
-    schema_guest =
-        kernel_state()->memory()->SystemHeapAlloc(8 + sizeof(schema_bin));
-    auto schema = kernel_state()->memory()->TranslateVirtual(schema_guest);
-    std::memcpy(schema + 8, schema_bin, sizeof(schema_bin));
-    xe::store_and_swap<uint32_t>(schema + 0, schema_guest + 8);
-    xe::store_and_swap<uint32_t>(schema + 4, sizeof(schema_bin));
-  }
-
-  // return pointer to the schema ptr/schema size struct
-  return schema_guest;
+  return kernel_state()->xam_state()->GetOnlineSchemaAddress();
 }
 DECLARE_XAM_EXPORT1(XamGetOnlineSchema, kNone, kImplemented);
 
