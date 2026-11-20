@@ -990,110 +990,25 @@ ResolveFunctionThunk X64HelperEmitter::EmitResolveFunctionThunk() {
   return (ResolveFunctionThunk)fn;
 }
 // r11 = size of callers stack, r8 = return address w/ adjustment
-// i'm not proud of this code, but it shouldn't be executed frequently at all
+// Reached when code after a call finds the host stack misaligned, which only
+// happens when ResolveFunction sent a longjmp to a return site. It set the
+// stackpoint depth to just past the call of the function being continued, so
+// put rsp back in that function's frame: its entry rsp less its stack size.
 void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
-  push(rbx);
-  mov(rbx, GetBackendCtxPtr(offsetof(X64BackendContext, stackpoints)));
   mov(eax,
       GetBackendCtxPtr(offsetof(X64BackendContext, current_stackpoint_depth)));
-
-  lea(ecx, ptr[eax - 1]);
-  mov(r9d, ptr[GetContextReg() + offsetof(ppc::PPCContext, r[1])]);
-
-  Xbyak::Label looper{};
-  Xbyak::Label loopout{};
-  Xbyak::Label signed_underflow{};
-  xor_(r12d, r12d);
-
-  // todo: should use Loop instruction here if hasFastLoop,
-  // currently xbyak does not support it but its super easy to modify xbyak to
-  //  have it
-  L(looper);
-  imul(edx, ecx, sizeof(X64BackendStackpoint));
-  mov(r10d, ptr[rbx + rdx + offsetof(X64BackendStackpoint, guest_stack_)]);
-
-  cmp(r10d, r9d);
-
-  jge(loopout, T_NEAR);
-
-  inc(r12d);
-
-  if (IsFeatureEnabled(kX64FlagsIndependentVars)) {
-    dec(ecx);
-  } else {
-    sub(ecx, 1);
-  }
-  js(signed_underflow, T_NEAR);  // should be impossible!!
-
-  jmp(looper, T_NEAR);
-  L(loopout);
-  Xbyak::Label skip_adjust{};
-  cmp(r12d, 1);  // should never happen?
-  jle(skip_adjust, T_NEAR);
-  Xbyak::Label we_good{};
-
-  // now we need to make sure that the return address matches
-
-  // mov(r9d, ptr[GetContextReg() + offsetof(ppc::PPCContext, lr)]);
-  pop(r9);  // guest retaddr
-  // r10d = the guest_stack
-  // while guest_stack is equal and return address is not equal, decrement
-
-  Xbyak::Label search_for_retaddr{};
-  Xbyak::Label we_good_but_increment{};
-  L(search_for_retaddr);
-
-  imul(edx, ecx, sizeof(X64BackendStackpoint));
-
-  cmp(r10d, ptr[rbx + rdx + offsetof(X64BackendStackpoint, guest_stack_)]);
-
-  jnz(we_good_but_increment, T_NEAR);
-
-  cmp(r9d,
-      ptr[rbx + rdx + offsetof(X64BackendStackpoint, guest_return_address_)]);
-  jz(we_good, T_NEAR);  // stack is equal, return address is equal, we've got
-                        // our destination stack
-  dec(ecx);
-  jmp(search_for_retaddr, T_NEAR);
-  Xbyak::Label checkbp{};
-
-  L(we_good_but_increment);
-  add(edx, sizeof(X64BackendStackpoint));
-  inc(ecx);
-  jmp(checkbp, T_NEAR);
-  L(we_good);
-  // we're popping this return address, so go down by one
-  sub(edx, sizeof(X64BackendStackpoint));
-  dec(ecx);
-  L(checkbp);
-  mov(rsp, ptr[rbx + rdx + offsetof(X64BackendStackpoint, host_stack_)]);
-  if (IsFeatureEnabled(kX64FlagsIndependentVars)) {
-    inc(ecx);
-  } else {
-    add(ecx, 1);
-  }
-
-  sub(rsp, r11);  // adjust stack
-
-  mov(GetBackendCtxPtr(offsetof(X64BackendContext, current_stackpoint_depth)),
-      ecx);  // set next stackpoint index to be after the one we restored to
+  mov(rcx, GetBackendCtxPtr(offsetof(X64BackendContext, stackpoints)));
+  dec(eax);
+  imul(eax, eax, sizeof(X64BackendStackpoint));
+  mov(rsp, ptr[rcx + rax + offsetof(X64BackendStackpoint, host_stack_)]);
+  sub(rsp, r11);
   jmp(r8);
-  L(skip_adjust);
-  pop(rbx);
-  jmp(r8);  // return to caller
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
   code_offsets.epilog = getSize();
   code_offsets.tail = getSize();
-
-  L(signed_underflow);
-  // find a good, compact way to signal error here
-  //  maybe an invalid opcode that we execute, then detect in an exception
-  // handler?
-
-  this->DebugBreak();
   return EmitCurrentForOffsets(code_offsets);
 }
 
