@@ -10,7 +10,6 @@
 #include "xenia/cpu/entry_table.h"
 
 #include "xenia/base/profiling.h"
-#include "xenia/base/threading.h"
 
 namespace xe {
 namespace cpu {
@@ -54,17 +53,11 @@ Entry::Status EntryTable::GetOrCreate(uint32_t address, Entry** out_entry) {
                      : nullptr;
   Entry::Status status;
   if (entry) {
-    // If we aren't ready yet spin and wait.
+    // Release the global lock until the compiling thread publishes a result.
     if (entry->status == Entry::STATUS_COMPILING) {
-      // chrispy: i think this is dead code, if we are compiling we're holding
-      // the global lock, arent we? so we wouldnt be executing here
-      // Still compiling, so spin.
-      do {
-        global_lock.unlock();
-        // TODO(benvanik): sleep for less time?
-        xe::threading::Sleep(std::chrono::microseconds(10));
-        global_lock.lock();
-      } while (entry->status == Entry::STATUS_COMPILING);
+      status_changed_.wait(global_lock, [entry] {
+        return entry->status != Entry::STATUS_COMPILING;
+      });
     }
     status = entry->status;
   } else {
@@ -85,15 +78,21 @@ Entry::Status EntryTable::GetOrCreate(uint32_t address, Entry** out_entry) {
 
 void EntryTable::MarkReady(Entry* entry, Function* function,
                            uint32_t end_address) {
-  auto global_lock = global_critical_region_.Acquire();
-  entry->function = function;
-  entry->end_address = end_address;
-  entry->status = Entry::STATUS_READY;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    entry->function = function;
+    entry->end_address = end_address;
+    entry->status = Entry::STATUS_READY;
+  }
+  status_changed_.notify_all();
 }
 
 void EntryTable::MarkFailed(Entry* entry) {
-  auto global_lock = global_critical_region_.Acquire();
-  entry->status = Entry::STATUS_FAILED;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    entry->status = Entry::STATUS_FAILED;
+  }
+  status_changed_.notify_all();
 }
 
 void EntryTable::Delete(uint32_t address) {
