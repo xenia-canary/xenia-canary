@@ -12,7 +12,9 @@ if(XENIA_BUILD_MISC)
     ${PROJECT_SOURCE_DIR}/src/xenia/ui/windowed_app_main_win.cc
   )
   target_link_libraries(xenia-ui-window-d3d12-demo PRIVATE
-    fmt imgui xenia-base xenia-ui xenia-ui-d3d12
+    fmt imgui xenia-base xenia-core xenia-gpu xenia-kernel xenia-patcher xenia-ui xenia-ui-d3d12
+    $<$<BOOL:${XE_TARGET_X86_64}>:xenia-cpu-backend-x64>
+    $<$<BOOL:${XE_TARGET_AARCH64}>:xenia-cpu-backend-a64>
   )
   xe_target_defaults(xenia-ui-window-d3d12-demo)
 endif()
