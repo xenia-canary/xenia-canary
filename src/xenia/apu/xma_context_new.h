@@ -138,6 +138,11 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+  // Read offset this decoder last stored, to tell when the game set a decode
+  // position. XMAPlaybackSetDecodePosition writes a frame bit offset plus a
+  // start subframe (DWORD 1 bits 24-26, output_buffer_padding here); the next
+  // frame decoded drops that many subframes and the count is cleared.
+  uint32_t last_stored_read_offset_ = UINT32_MAX;
 
   // Set by Clear to recreate the decoder on the next frame.
   bool reset_decoder_ = false;
