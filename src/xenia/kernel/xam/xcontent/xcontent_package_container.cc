@@ -155,12 +155,17 @@ std::unique_ptr<vfs::Device> ContentPackageContainer::MountPackage() {
   }
 
   const size_t package_data_offset =
-      xe::round_up(header_.content_header.header_size,
+      xe::round_up(size_t(header_.content_header.header_size),
                    vfs::XContentContainerDevice::kBlockSize);
 
   std::unique_ptr<vfs::Device> device = nullptr;
   switch (header_.content_metadata.volume_type) {
     case XContentVolumeType::kStfs:
+      if (package_data_offset > package_->size()) {
+        XELOGE("STFS data offset is outside the package");
+        return nullptr;
+      }
+
       device = std::make_unique<vfs::StfsContainerDevice>(
           device_path_, &header_.content_metadata.volume_descriptor.stfs,
           package_->Slice(package_data_offset,
