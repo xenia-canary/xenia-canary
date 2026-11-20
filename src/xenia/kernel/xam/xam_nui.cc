@@ -370,6 +370,28 @@ void XamNuiPlayerEngagementUpdate_entry(
 }
 DECLARE_XAM_EXPORT1(XamNuiPlayerEngagementUpdate, kNone, kStub);
 
+dword_result_t XamKinectGetHardwareType_entry(lpdword_t type1,
+                                              lpdword_t type2) {
+  auto nui_ = kernel_state()->nui();
+  *type1 = nui_->GetHardwareType(0);
+  *type2 = nui_->GetHardwareType(1);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamKinectGetHardwareType, kNone, kImplemented);
+
+dword_result_t XamNuiGetSupportString_entry(lpstring_t buffer_ptr,
+                                            dword_t buffer_size) {
+  auto nui_ = kernel_state()->nui();
+  auto type1 = nui_->GetHardwareType(0);
+  auto type2 = nui_->GetHardwareType(1);
+  auto format =
+      fmt::format("K:{:02d}:{:02d}:{:02d}:{:02d}.{:02d}.{:04d}.{:02d}:{:12}",
+                  type1, type2, 0, 0, 0, 0, 0, "00000000000");
+  xe::string_util::copy_truncating(buffer_ptr, format, buffer_size);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamNuiGetSupportString, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
