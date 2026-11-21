@@ -32,10 +32,83 @@ DEFINE_bool(
 
 namespace xe {
 
-static void RequestWin32HighResolutionTimer() {
+namespace {
+
+struct Win32TimerStatus {
+  bool throttling_opt_out_skipped = false;
+  DWORD throttling_opt_out_error = ERROR_SUCCESS;
+  ULONG resolution = 0;
+};
+
+Win32TimerStatus timer_status;
+
+}  // namespace
+
+static bool IsBeforeWindows11(HMODULE ntdll_module) {
+  constexpr DWORD kWindows11BuildNumber = 22000;
+
+  // clang-format off
+  NTSTATUS (NTAPI* rtl_get_version)(OUT PRTL_OSVERSIONINFOW VersionInformation);
+  // clang-format on
+  rtl_get_version = reinterpret_cast<decltype(rtl_get_version)>(
+      GetProcAddress(ntdll_module, "RtlGetVersion"));
+
+  if (!rtl_get_version) {
+    return false;
+  }
+
+  RTL_OSVERSIONINFOW version_info = {};
+  version_info.dwOSVersionInfoSize = sizeof(version_info);
+
+  if (rtl_get_version(&version_info) < 0) {
+    return false;
+  }
+
+  return version_info.dwBuildNumber < kWindows11BuildNumber;
+}
+
+static DWORD OptOutOfWin32TimerResolutionThrottling() {
+  HMODULE kernel32_module = GetModuleHandleW(L"kernel32.dll");
+
+  if (!kernel32_module) {
+    return ERROR_SUCCESS;
+  }
+
+  // clang-format off
+  BOOL (WINAPI* set_process_information)(
+      HANDLE hProcess, PROCESS_INFORMATION_CLASS ProcessInformationClass,
+      LPVOID ProcessInformation, DWORD ProcessInformationSize);
+  // clang-format on
+  set_process_information = reinterpret_cast<decltype(set_process_information)>(
+      GetProcAddress(kernel32_module, "SetProcessInformation"));
+
+  if (!set_process_information) {
+    return ERROR_SUCCESS;
+  }
+
+  // PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, missing from older SDKs
+  constexpr ULONG kIgnoreTimerResolution = 0x4;
+
+  PROCESS_POWER_THROTTLING_STATE throttling_state = {};
+  throttling_state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+  throttling_state.ControlMask = kIgnoreTimerResolution;
+  throttling_state.StateMask = 0;
+
+  if (!set_process_information(GetCurrentProcess(), ProcessPowerThrottling,
+                               &throttling_state, sizeof(throttling_state))) {
+    return GetLastError();
+  }
+
+  return ERROR_SUCCESS;
+}
+
+static Win32TimerStatus RequestWin32HighResolutionTimer() {
+  Win32TimerStatus status;
+
   HMODULE ntdll_module = GetModuleHandleW(L"ntdll.dll");
+
   if (!ntdll_module) {
-    return;
+    return status;
   }
 
   // clang-format off
@@ -51,47 +124,18 @@ static void RequestWin32HighResolutionTimer() {
           GetProcAddress(ntdll_module, "NtQueryTimerResolution"));
   nt_set_timer_resolution = reinterpret_cast<decltype(nt_set_timer_resolution)>(
       GetProcAddress(ntdll_module, "NtSetTimerResolution"));
+
   if (!nt_query_timer_resolution || !nt_set_timer_resolution) {
-    return;
+    return status;
   }
 
   // Windows 11 may ignore the resolution request while the window is occluded
   // or minimized, falling back to the 15.625 ms tick, which halves the speed
   // of titles paced by a 16 ms timer. Opt out of that throttling.
-  {
-    HMODULE kernel32_module = GetModuleHandleW(L"kernel32.dll");
-
-    // clang-format off
-    BOOL (WINAPI* set_process_information)(
-        HANDLE hProcess, PROCESS_INFORMATION_CLASS ProcessInformationClass,
-        LPVOID ProcessInformation, DWORD ProcessInformationSize) = nullptr;
-    // clang-format on
-
-    if (kernel32_module) {
-      set_process_information =
-          reinterpret_cast<decltype(set_process_information)>(
-              GetProcAddress(kernel32_module, "SetProcessInformation"));
-    }
-
-    if (set_process_information) {
-      // PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, missing from older
-      // SDKs
-      constexpr ULONG kIgnoreTimerResolution = 0x4;
-
-      PROCESS_POWER_THROTTLING_STATE throttling_state = {};
-      throttling_state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
-      throttling_state.ControlMask = kIgnoreTimerResolution;
-      throttling_state.StateMask = 0;
-
-      if (!set_process_information(GetCurrentProcess(), ProcessPowerThrottling,
-                                   &throttling_state,
-                                   sizeof(throttling_state))) {
-        XELOGW(
-            "Failed to opt out of timer resolution throttling (error {}); "
-            "guest timers may run slow while the window is not visible",
-            GetLastError());
-      }
-    }
+  if (IsBeforeWindows11(ntdll_module)) {
+    status.throttling_opt_out_skipped = true;
+  } else {
+    status.throttling_opt_out_error = OptOutOfWin32TimerResolutionThrottling();
   }
 
   ULONG minimum_resolution, maximum_resolution, current_resolution;
@@ -99,7 +143,9 @@ static void RequestWin32HighResolutionTimer() {
                             &current_resolution);
   nt_set_timer_resolution(maximum_resolution, true, &current_resolution);
 
-  XELOGI("Host timer resolution set to {} x 100 ns", current_resolution);
+  status.resolution = current_resolution;
+
+  return status;
 }
 
 static void RequestWin32MMCSS() {
@@ -174,13 +220,28 @@ int InitializeWin32App(const std::string_view app_name) {
 
   // Request high-performance timing and scheduling.
   if (cvars::win32_high_resolution_timer) {
-    RequestWin32HighResolutionTimer();
+    timer_status = RequestWin32HighResolutionTimer();
   }
   if (cvars::win32_mmcss) {
     RequestWin32MMCSS();
   }
 
   return 0;
+}
+
+void LogWin32StartupStatus() {
+  if (timer_status.throttling_opt_out_skipped) {
+    XELOGI("Timer resolution throttling opt-out not needed before Windows 11");
+  } else if (timer_status.throttling_opt_out_error != ERROR_SUCCESS) {
+    XELOGW(
+        "Failed to opt out of timer resolution throttling (error {}); "
+        "guest timers may run slow while the window is not visible",
+        timer_status.throttling_opt_out_error);
+  }
+
+  if (timer_status.resolution) {
+    XELOGI("Host timer resolution set to {} x 100 ns", timer_status.resolution);
+  }
 }
 
 void ShutdownWin32App() { xe::ShutdownLogging(); }

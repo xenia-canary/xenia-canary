@@ -22,6 +22,7 @@ bool ParseWin32LaunchArguments(
     std::vector<std::string>* args_out);
 // InitializeWin32App uses cvars, call ParseWin32LaunchArguments before.
 int InitializeWin32App(const std::string_view app_name);
+void LogWin32StartupStatus();
 void ShutdownWin32App();
 
 }  // namespace xe

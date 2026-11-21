@@ -66,6 +66,10 @@
 #endif  // XE_PLATFORM_WIN32
 
 #if XE_PLATFORM_WIN32
+#include "xenia/base/main_win.h"
+#endif  // XE_PLATFORM_WIN32
+
+#if XE_PLATFORM_WIN32
 #define APU_OPTIONS "[any, nop, sdl, xaudio2]"
 #define GPU_OPTIONS "[any, d3d12, vulkan, null]"
 #define HID_OPTIONS "[any, nop, sdl, keyboard, xinput]"
@@ -532,6 +536,10 @@ bool EmulatorApp::OnInitialize() {
   }
   cache_root = std::filesystem::absolute(cache_root);
   XELOGI("Host cache root: {}", cache_root);
+
+#if XE_PLATFORM_WIN32
+  xe::LogWin32StartupStatus();
+#endif  // XE_PLATFORM_WIN32
 
   if (cvars::discord) {
     discord::DiscordPresence::Initialize();
