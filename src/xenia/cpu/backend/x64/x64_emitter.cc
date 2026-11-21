@@ -514,6 +514,13 @@ static uint64_t ResolveLongjmpTarget(ppc::PPCContext_s* guest_context,
   }
 
   uint32_t resumed = frame - 1;
+
+  // A longjmp restores r1 to at least where the function made its last call.
+  // Below that, the callee's frame is still in use, so it's an ordinary branch.
+  if (guest_stack < stackpoints[resumed + 1].guest_stack_) {
+    return 0;
+  }
+
   uint64_t next_host_stack = stackpoints[resumed + 1].host_stack_;
 
   if (!next_host_stack) {
