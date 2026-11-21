@@ -288,7 +288,8 @@ void ContentListDialog::ExecutePendingDeletion() {
     return;
   }
 
-  std::filesystem::remove_all(file_to_delete);
+  std::error_code ec;
+  std::filesystem::remove_all(file_to_delete, ec);
 
   // Remove header file for "directory" type packages
   if (is_directory_package) {
@@ -297,22 +298,29 @@ void ContentListDialog::ExecutePendingDeletion() {
         kernel::xam::kGameContentHeaderDirName /
         fmt::format("{:08X}", static_cast<uint32_t>(type)) /
         (file_to_delete.filename() += ".header");
-    std::error_code ec;
     std::filesystem::remove(header_path, ec);  // fine if it doesn't exist
   }
 
   for (auto path = file_to_delete.parent_path();
-       path.filename() != kernel::xam::kCommonContentDirectory;
+       path.filename() != kernel::xam::kCommonContentDirectory &&
+       path != path.parent_path();
        path = path.parent_path()) {
+    if (!std::filesystem::exists(path, ec)) {
+      continue;
+    }
+
     const auto dirs = xe::filesystem::ListDirectories(path);
     const bool header_dir =
         dirs.size() == 1 && xe::path_to_utf8(dirs[0].name.filename()) ==
                                 kernel::xam::kGameContentHeaderDirName;
 
-    if (!std::filesystem::is_empty(path) && !header_dir) {
+    const bool is_empty = std::filesystem::is_empty(path, ec);
+
+    if (ec || (!is_empty && !header_dir)) {
       break;
     }
-    std::filesystem::remove_all(path);
+
+    std::filesystem::remove_all(path, ec);
   }
 }
 
