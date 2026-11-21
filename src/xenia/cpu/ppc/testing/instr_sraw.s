@@ -195,3 +195,60 @@ test_sraw_9_constant:
   #_ REGISTER_OUT r4 0xFFFFFFFFFFFFFFFF
   #_ REGISTER_OUT r5 32
   #_ REGISTER_OUT r6 1
+
+# Only the low word's sign bit set: every bit shifted out for 32 or more sets CA
+
+test_sraw_10:
+  #_ REGISTER_IN r4 0x0000000080000000
+  #_ REGISTER_IN r5 32
+  sraw r3, r4, r5
+  adde r6, r0, r0
+  blr
+  #_ REGISTER_OUT r3 0xffffffffffffffff
+  #_ REGISTER_OUT r4 0x0000000080000000
+  #_ REGISTER_OUT r5 32
+  #_ REGISTER_OUT r6 1
+
+test_sraw_11:
+  #_ REGISTER_IN r4 0x0000000080000000
+  #_ REGISTER_IN r5 63
+  sraw r3, r4, r5
+  adde r6, r0, r0
+  blr
+  #_ REGISTER_OUT r3 0xffffffffffffffff
+  #_ REGISTER_OUT r4 0x0000000080000000
+  #_ REGISTER_OUT r5 63
+  #_ REGISTER_OUT r6 1
+
+test_sraw_12:
+  #_ REGISTER_IN r4 0x0000000080000000
+  #_ REGISTER_IN r5 31
+  sraw r3, r4, r5
+  adde r6, r0, r0
+  blr
+  #_ REGISTER_OUT r3 0xffffffffffffffff
+  #_ REGISTER_OUT r4 0x0000000080000000
+  #_ REGISTER_OUT r5 31
+  #_ REGISTER_OUT r6 0
+
+test_sraw_13:
+  #_ REGISTER_IN r4 0x0000000040000000
+  #_ REGISTER_IN r5 32
+  sraw r3, r4, r5
+  adde r6, r0, r0
+  blr
+  #_ REGISTER_OUT r3 0
+  #_ REGISTER_OUT r4 0x0000000040000000
+  #_ REGISTER_OUT r5 32
+  #_ REGISTER_OUT r6 0
+
+test_sraw_14:
+  #_ REGISTER_IN r4 0xFFFFFFFF80000000
+  #_ REGISTER_IN r5 64
+  sraw r3, r4, r5
+  adde r6, r0, r0
+  blr
+  #_ REGISTER_OUT r3 0xffffffff80000000
+  #_ REGISTER_OUT r4 0xFFFFFFFF80000000
+  #_ REGISTER_OUT r5 64
+  #_ REGISTER_OUT r6 0

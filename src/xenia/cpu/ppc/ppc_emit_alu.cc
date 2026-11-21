@@ -1190,9 +1190,11 @@ int InstrEmit_sradx(PPCHIRBuilder& f, const InstrData& i) {
   Value* v = f.Sha(rt, clamp_sh);
 
   // CA is set if any bits are shifted out of the right and if the result
-  // is negative.
-  Value* ca =
-      f.And(f.IsTrue(f.Shr(rt, 63)), f.CompareNE(f.Shl(v, clamp_sh), rt));
+  // is negative. A shift of 64 or more shifts out every bit, which the
+  // clamped compare misses for 0x8000000000000000.
+  Value* ca = f.And(f.IsTrue(f.Shr(rt, 63)),
+                    f.Or(f.CompareNE(f.Shl(v, clamp_sh), rt),
+                         f.CompareUGT(sh, f.LoadConstantInt8(0x3F))));
   f.StoreCA(ca);
 
   f.StoreGPR(i.X.RA, v);
@@ -1247,12 +1249,14 @@ int InstrEmit_srawx(PPCHIRBuilder& f, const InstrData& i) {
   Value* sh =
       f.And(f.Truncate(f.LoadGPR(i.X.RB), INT8_TYPE), f.LoadConstantInt8(0x3F));
   Value* clamp_sh = f.Min(sh, f.LoadConstantInt8(0x1F));
-  Value* v = f.Sha(rt, f.Min(sh, clamp_sh));
+  Value* v = f.Sha(rt, clamp_sh);
 
   // CA is set if any bits are shifted out of the right and if the result
-  // is negative.
-  Value* ca =
-      f.And(f.IsTrue(f.Shr(rt, 31)), f.CompareNE(f.Shl(v, clamp_sh), rt));
+  // is negative. A shift of 32 or more shifts out every bit, which the
+  // clamped compare misses for 0x80000000.
+  Value* ca = f.And(f.IsTrue(f.Shr(rt, 31)),
+                    f.Or(f.CompareNE(f.Shl(v, clamp_sh), rt),
+                         f.CompareUGT(sh, f.LoadConstantInt8(0x1F))));
   f.StoreCA(ca);
 
   v = f.SignExtend(v, INT64_TYPE);
