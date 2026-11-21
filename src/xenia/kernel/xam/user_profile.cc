@@ -183,14 +183,18 @@ bool UserProfile::WriteGpd(const uint32_t title_id) {
       nullptr, mounted_path, vfs::FileDisposition::kOverwriteIf,
       vfs::FileAccess::kGenericWrite, false, true, &file, &action);
 
-  if (result != X_STATUS_SUCCESS) {
+  if (result != X_STATUS_SUCCESS || !file) {
     return false;
   }
 
   size_t written_bytes = 0;
-  file->WriteSync(std::span<uint8_t>(data.data(), data.size()), 0,
-                  &written_bytes);
+  const X_STATUS write_result = file->WriteSync(data, 0, &written_bytes);
   file->Destroy();
+  if (write_result != X_STATUS_SUCCESS || written_bytes != data.size()) {
+    XELOGE("GPD write failed: status {:08X}, wrote {} of {} bytes",
+           write_result, written_bytes, data.size());
+    return false;
+  }
   return true;
 }
 

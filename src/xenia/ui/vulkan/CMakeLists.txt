@@ -28,7 +28,9 @@ if(XENIA_BUILD_MISC)
     ${PROJECT_SOURCE_DIR}/third_party/Vulkan-Headers/include
   )
   target_link_libraries(xenia-ui-window-vulkan-demo PRIVATE
-    fmt imgui xenia-base xenia-ui xenia-ui-vulkan
+    fmt imgui xenia-base xenia-core xenia-gpu xenia-kernel xenia-patcher xenia-ui xenia-ui-vulkan
+    $<$<BOOL:${XE_TARGET_X86_64}>:xenia-cpu-backend-x64>
+    $<$<BOOL:${XE_TARGET_AARCH64}>:xenia-cpu-backend-a64>
   )
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(xenia-ui-window-vulkan-demo PRIVATE X11 xcb X11-xcb)

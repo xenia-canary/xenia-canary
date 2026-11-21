@@ -245,7 +245,7 @@ class CodeCacheBase : public CodeCache {
     uint32_t key = uint32_t(host_pc - code_base);
     void* fn_entry = std::bsearch(
         &key, generated_code_map_.data(), generated_code_map_.size(),
-        sizeof(std::pair<uint32_t, Function*>),
+        sizeof(generated_code_map_.front()),
         [](const void* key_ptr, const void* element_ptr) {
           auto key = *reinterpret_cast<const uint32_t*>(key_ptr);
           auto element =
@@ -253,7 +253,7 @@ class CodeCacheBase : public CodeCache {
                   element_ptr);
           if (key < (element->first >> 32)) {
             return -1;
-          } else if (key > uint32_t(element->first)) {
+          } else if (key >= uint32_t(element->first)) {
             return 1;
           } else {
             return 0;

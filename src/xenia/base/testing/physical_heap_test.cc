@@ -161,16 +161,22 @@ TEST_CASE("PhysicalHeap vE0000000 alignment", "[memory]") {
     REQUIRE(translation_offset % heap.page_size() == 0);
   }
 
-  SECTION("alloc with alignment larger than page_size is rejected") {
-    // vE0000000 has a 0x1000 physical translation offset, so the host
-    // alignment check in PhysicalHeap::Alloc, which tests
-    // (address + host_address_offset_) % alignment, cannot be satisfied for
-    // an alignment above the page size where that offset is 0.
+  SECTION("alloc with alignment larger than page_size follows host offset") {
+    // The parent allocation is physically aligned. Whether the translated
+    // address is host-aligned depends on the host offset compensating for the
+    // 0x1000 physical translation offset.
     uint32_t alignment = 0x10000;  // 64KB
     uint32_t addr = 0;
     bool ok = heap.Alloc(0x10000, alignment, kMemoryAllocationReserve,
                          kMemoryProtectRead, false, &addr);
-    REQUIRE_FALSE(ok);
+    if (heap.host_address_offset() == physical_base) {
+      REQUIRE(ok);
+      REQUIRE(heap.GetPhysicalAddress(addr) % alignment == 0);
+      REQUIRE((addr + heap.host_address_offset()) % alignment == 0);
+    } else {
+      REQUIRE_FALSE(ok);
+      REQUIRE(addr == 0);
+    }
   }
 }
 
@@ -192,19 +198,25 @@ TEST_CASE("PhysicalHeap vE0000000 AllocRange alignment", "[memory]") {
     REQUIRE(addr % 0x1000 == 0);
   }
 
-  SECTION("AllocRange with large alignment succeeds via bottom-up") {
-    // Bottom-up search picks a low parent address that translates to a
-    // guest address inside the child heap, so BaseHeap::AllocFixed accepts
-    // it. The PhysicalHeap alignment check is host-based
-    // ((addr + host_address_offset_) % alignment), so the misalignment of
-    // the guest address itself is not rejected here.
+  SECTION("AllocRange with large alignment follows host offset") {
+    // The parent address is physically aligned, but the translated child
+    // address is host-aligned only when the host offset compensates for the
+    // physical translation offset.
     uint32_t alignment = 0x10000;
     uint32_t addr = 0;
     bool ok = heap.AllocRange(0xE0000000, 0xFFFCFFFF, 0x10000, alignment,
                               kMemoryAllocationReserve, kMemoryProtectRead,
                               false, &addr);
-    REQUIRE(ok);
-    REQUIRE(addr >= 0xE0000000);
+    if (heap.host_address_offset() ==
+        heap.GetPhysicalAddress(heap.heap_base())) {
+      REQUIRE(ok);
+      REQUIRE(addr >= 0xE0000000);
+      REQUIRE(heap.GetPhysicalAddress(addr) % alignment == 0);
+      REQUIRE((addr + heap.host_address_offset()) % alignment == 0);
+    } else {
+      REQUIRE_FALSE(ok);
+      REQUIRE(addr == 0);
+    }
   }
 }
 

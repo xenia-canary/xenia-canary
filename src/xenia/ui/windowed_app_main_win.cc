@@ -13,9 +13,13 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/main_win.h"
 #include "xenia/base/platform_win.h"
-#include "xenia/kernel/kernel_state.cc"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_win.h"
+
+#ifdef XE_WINDOWED_APP_EMULATOR
+#include "xenia/emulator.h"
+#include "xenia/kernel/kernel_state.h"
+#endif
 
 #include "version.h"
 
@@ -191,18 +195,20 @@ static bool exception_pointers_handler(HostExceptionReport* report) {
 
   std::string title_info = "Title not started yet.";
 
-  if (xe::kernel::kernel_state()) {
-    if (xe::kernel::kernel_state()->emulator()->is_title_open()) {
-      const uint32_t title_id = xe::kernel::kernel_state()->title_id();
+#ifdef XE_WINDOWED_APP_EMULATOR
+  if (xe::kernel::KernelState::shared()) {
+    if (xe::kernel::KernelState::shared()->emulator()->is_title_open()) {
+      const uint32_t title_id = xe::kernel::KernelState::shared()->title_id();
       const std::string title_name =
-          xe::kernel::kernel_state()->emulator()->title_name();
+          xe::kernel::KernelState::shared()->emulator()->title_name();
       const std::string title_version =
-          xe::kernel::kernel_state()->emulator()->title_version();
+          xe::kernel::KernelState::shared()->emulator()->title_version();
 
       title_info =
           fmt::format("{} ({:08X}) - {}", title_name, title_id, title_version);
     }
   }
+#endif
 
   const std::string except_message = fmt::format(
       "Exception encountered!\nTitle Info: {}\nBuild: {}\nException address: "
