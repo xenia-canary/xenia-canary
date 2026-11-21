@@ -12,6 +12,7 @@
 #include <initializer_list>
 
 #include "third_party/catch/include/catch.hpp"
+#include "xenia/cpu/thread_state.h"
 #include "xenia/kernel/testing/kernel_state_test.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
@@ -29,7 +30,7 @@ class ObjectManagerTest : public KernelStateTest {
   static constexpr uint32_t kType = 0x90011000;
   static constexpr uint32_t kOutput = 0x90012000;
 
-  ObjectManagerTest() {
+  ObjectManagerTest() : thread_(processor(), 0x100) {
     xboxkrnl::XboxkrnlModule::RegisterExportTable(
         processor()->export_resolver());
     REQUIRE(memory()->LookupHeap(kBody)->AllocFixed(
@@ -47,9 +48,13 @@ class ObjectManagerTest : public KernelStateTest {
   }
 
   uint32_t Call(uint16_t ordinal, std::initializer_list<uint32_t> args) {
-    cpu::ppc::PPCContext context = {};
-    context.virtual_membase = memory()->virtual_membase();
-    context.processor = processor();
+    // A thread's own context, not one on the host stack: on Windows
+    // PPCContext::TranslateVirtual takes the 0xE0000000 boundary from the low
+    // half of the context's address, which ThreadState arranges. With a
+    // stack context every guest address at or above the low half of the
+    // stack address is translated 0x1000 too far, so these cases passed or
+    // failed with wherever the stack happened to be.
+    cpu::ppc::PPCContext& context = *thread_.context();
     size_t index = 3;
     for (uint32_t arg : args) {
       context.r[index++] = arg;
@@ -84,6 +89,9 @@ class ObjectManagerTest : public KernelStateTest {
     return kernel_state()->GetKernelGuestGlobals() +
            offsetof(KernelGuestGlobals, ExEventObjectType);
   }
+
+ private:
+  cpu::ThreadState thread_;
 };
 
 TEST_CASE_METHOD(ObjectManagerTest,
