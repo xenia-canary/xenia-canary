@@ -134,6 +134,11 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   void SwitchToPhysicalMouseAndUpdateMousePosition(const MouseEvent& e);
 
   bool IsDrawingDialogs() const { return dialog_loop_next_index_ != SIZE_MAX; }
+
+  bool HasAnythingToDraw() const {
+    return !dialogs_.empty() || !notifications_.empty();
+  }
+
   void DetachIfLastWindowRemoved();
   void UpdateGamepads();
 
@@ -152,6 +157,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   // All queued notifications. Notification at index 0 is currently presented
   // one.
   std::vector<ImGuiNotification*> notifications_;
+
+  bool is_input_listener_added_ = false;
+
   // Using an index, not an iterator, because after the erasure, the adjustment
   // must be done for the vector element indices that would be in the iterator
   // range that would be invalidated.
