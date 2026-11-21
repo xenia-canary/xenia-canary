@@ -1581,7 +1581,29 @@ uint32_t xeKeInsertQueueApc(XAPC* apc, uint32_t arg1, uint32_t arg2,
 dword_result_t KeInsertQueueApc_entry(pointer_t<XAPC> apc, lpvoid_t arg1,
                                       lpvoid_t arg2, dword_t priority_increment,
                                       const ppc_context_t& context) {
-  return xeKeInsertQueueApc(apc, arg1, arg2, priority_increment, context);
+  // Queuing a user-mode APC to a thread in an alertable wait ends that wait
+  // with STATUS_USER_APC, so the APC is delivered at once. Look the target
+  // up before the insert publishes the APC: once queued, it may be
+  // delivered, and its kernel routine free it, before the insert returns.
+  object_ref<XThread> target;
+  if (apc->apc_mode == 1 && apc->thread_ptr) {
+    target = XObject::GetNativeObject<XThread>(
+        kernel_state(), context->TranslateVirtual<X_KTHREAD*>(apc->thread_ptr),
+        ThreadObject);
+  }
+  uint32_t result =
+      xeKeInsertQueueApc(apc, arg1, arg2, priority_increment, context);
+  // The same wake as xeNtQueueApcThread (a no-op host APC). Not the current
+  // thread: it delivers at its next alertable wait anyway.
+  // Known limitations, shared with xeNtQueueApcThread: if the target is not
+  // waiting, the no-op host APC stays queued and can end a later alertable
+  // wait early with nothing delivered; and a KernelMode alertable wait is
+  // woken too (Xenia does not tell the two wait modes apart).
+  if (result && target && target.get() != XThread::GetCurrentThread() &&
+      target->thread()) {
+    target->thread()->QueueUserCallback([]() {});
+  }
+  return result;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeInsertQueueApc, kThreading, kImplemented);
 
