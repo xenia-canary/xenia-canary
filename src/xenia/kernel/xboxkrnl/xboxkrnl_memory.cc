@@ -593,7 +593,7 @@ dword_result_t xeMmQueryStatistics(
   const uint32_t size = sizeof(X_MM_QUERY_STATISTICS_RESULT);
 
   if (stats_ptr->size != size) {
-    return X_STATUS_BUFFER_TOO_SMALL;
+    return X_STATUS_INVALID_PARAMETER;
   }
 
   // Zero out the struct.
