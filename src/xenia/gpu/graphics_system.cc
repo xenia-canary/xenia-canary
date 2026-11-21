@@ -184,6 +184,8 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
 #endif
 
             while (frame_limiter_worker_running_) {
+              ClearStaleFrameRate();
+
               // If there is no title running then there is no need for guest
               // frame limiter thread.
               if (!kernel_state_->is_title_open()) {
@@ -436,6 +438,79 @@ void GraphicsSystem::MarkVblank() {
   //     something wrong and the CP will block waiting for code that
   //     needs to be run in the interrupt.
   DispatchInterruptCallback(0, 2);
+}
+
+void GraphicsSystem::OnGuestSwap() {
+  const uint64_t now = Clock::QueryHostTickCount();
+
+  if (!frame_rate_tick_frequency_) {
+    frame_rate_tick_frequency_ =
+        std::max<uint64_t>(Clock::QueryHostTickFrequency(), 1);
+  }
+
+  frame_rate_last_swap_ticks_.store(now, std::memory_order_relaxed);
+
+  const uint64_t previous_swap_ticks = frame_rate_previous_swap_ticks_;
+  frame_rate_previous_swap_ticks_ = now;
+
+  // First swap, or first after a stall: restart the period.
+  if (!previous_swap_ticks ||
+      now - previous_swap_ticks >=
+          frame_rate_tick_frequency_ * kFrameRateStallMs / 1000) {
+    frame_rate_period_start_ticks_ = now;
+    frame_rate_period_swaps_ = 0;
+    return;
+  }
+
+  ++frame_rate_period_swaps_;
+
+  const uint64_t elapsed_ticks = now - frame_rate_period_start_ticks_;
+  if (elapsed_ticks < frame_rate_tick_frequency_ * kFrameRatePeriodMs / 1000) {
+    return;
+  }
+
+  PublishFrameRate(float(double(frame_rate_period_swaps_) *
+                         double(frame_rate_tick_frequency_) /
+                         double(elapsed_ticks)));
+
+  frame_rate_period_start_ticks_ = now;
+  frame_rate_period_swaps_ = 0;
+}
+
+void GraphicsSystem::SetFrameRateCallback(std::function<void()> callback) {
+  std::lock_guard<std::mutex> lock(frame_rate_mutex_);
+  frame_rate_callback_ = std::move(callback);
+}
+
+void GraphicsSystem::PublishFrameRate(float frames_per_second) {
+  std::lock_guard<std::mutex> lock(frame_rate_mutex_);
+
+  frame_rate_frames_per_second_.store(frames_per_second,
+                                      std::memory_order_relaxed);
+
+  if (frame_rate_callback_) {
+    frame_rate_callback_();
+  }
+}
+
+void GraphicsSystem::ClearStaleFrameRate() {
+  if (frame_rate_frames_per_second_.load(std::memory_order_relaxed) == 0.0f) {
+    return;
+  }
+
+  if (kernel_state_->is_title_open()) {
+    const uint64_t last_swap_ticks =
+        frame_rate_last_swap_ticks_.load(std::memory_order_relaxed);
+    const uint64_t now = Clock::QueryHostTickCount();
+    const uint64_t stall_ticks =
+        Clock::QueryHostTickFrequency() * kFrameRateStallMs / 1000;
+
+    if (now < last_swap_ticks || now - last_swap_ticks < stall_ticks) {
+      return;
+    }
+  }
+
+  PublishFrameRate(0.0f);
 }
 
 void GraphicsSystem::ClearCaches() {

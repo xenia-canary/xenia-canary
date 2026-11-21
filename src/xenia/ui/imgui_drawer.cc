@@ -151,6 +151,20 @@ void ImGuiDrawer::RemoveNotification(ImGuiNotification* dialog) {
   DetachIfLastWindowRemoved();
 }
 
+void ImGuiDrawer::SetOverlay(std::function<void()> draw_overlay) {
+  overlay_ = std::move(draw_overlay);
+
+  if (!overlay_) {
+    DetachIfLastWindowRemoved();
+    return;
+  }
+
+  if (presenter_) {
+    presenter_->AddUIDrawerFromUIThread(this, z_order_);
+    presenter_->RequestUIPaintFromUIThread();
+  }
+}
+
 #ifdef XE_PLATFORM_LINUX
 static void SetClipboardText(ImGuiContext* ctx, const char* text) {
   GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
@@ -755,6 +769,11 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
 
   ImGui::NewFrame();
 
+  // Repainted with the guest output, not continuously.
+  if (overlay_) {
+    overlay_();
+  }
+
   assert_true(!IsDrawingDialogs());
   dialog_loop_next_index_ = 0;
   while (dialog_loop_next_index_ < dialogs_.size()) {
@@ -1055,7 +1074,7 @@ void ImGuiDrawer::DetachIfLastWindowRemoved() {
     return;
   }
 
-  // Only dialogs take input, even if notifications remain.
+  // Only dialogs take input, even if notifications or the overlay remain.
   if (is_input_listener_added_) {
     window_->RemoveInputListener(this);
     is_input_listener_added_ = false;

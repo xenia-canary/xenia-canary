@@ -97,6 +97,17 @@ class GraphicsSystem {
     scaled_aspect_y_ = y;
   };
 
+  // Command processor thread.
+  void OnGuestSwap();
+
+  // Measured from guest swaps, not host paints.
+  float GetFramesPerSecond() const {
+    return frame_rate_frames_per_second_.load(std::memory_order_relaxed);
+  }
+
+  // Called on a GPU thread; must only post work elsewhere.
+  void SetFrameRateCallback(std::function<void()> callback);
+
  protected:
   GraphicsSystem();
 
@@ -134,6 +145,29 @@ class GraphicsSystem {
   uint32_t scaled_aspect_y_ = 0;
 
  private:
+  static constexpr uint64_t kFrameRatePeriodMs = 500;
+  // A longer gap between swaps shows zero and restarts the period.
+  static constexpr uint64_t kFrameRateStallMs = 1000;
+
+  void PublishFrameRate(float frames_per_second);
+
+  // Frame limiter thread. Zero once the title stops swapping or exits.
+  void ClearStaleFrameRate();
+
+  // Command processor thread only.
+  uint64_t frame_rate_tick_frequency_ = 0;
+  uint64_t frame_rate_period_start_ticks_ = 0;
+  uint64_t frame_rate_period_swaps_ = 0;
+  uint64_t frame_rate_previous_swap_ticks_ = 0;
+
+  std::atomic<uint64_t> frame_rate_last_swap_ticks_{0};
+
+  std::atomic<float> frame_rate_frames_per_second_{0.0f};
+
+  // Publishing happens on two threads.
+  std::mutex frame_rate_mutex_;
+  std::function<void()> frame_rate_callback_;
+
   std::unique_ptr<ui::Presenter> presenter_;
 
   std::atomic_flag host_gpu_loss_reported_;

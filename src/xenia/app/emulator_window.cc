@@ -146,6 +146,8 @@ DEFINE_bool(
     "depends on the 10bpc displaying capabilities of the actual display used.",
     "Display");
 
+DEFINE_bool(fps_overlay, false, "Show an FPS overlay.", "Display");
+
 DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
@@ -234,6 +236,17 @@ void EmulatorWindow::SetupGraphicsSystemPresenterPainting() {
 
   ApplyDisplayConfigForCvars();
 
+  emulator_->graphics_system()->SetFrameRateCallback([this]() {
+    if (frame_rate_update_pending_.exchange(true)) {
+      return;
+    }
+
+    app_context_.CallInUIThread([this]() {
+      frame_rate_update_pending_ = false;
+      OnFrameRateUpdated();
+    });
+  });
+
   window_->SetPresenter(presenter);
 
   immediate_drawer_ =
@@ -244,10 +257,29 @@ void EmulatorWindow::SetupGraphicsSystemPresenterPainting() {
                                                   immediate_drawer_.get());
     Profiler::SetUserIO(kZOrderProfiler, window_.get(), presenter,
                         immediate_drawer_.get());
+    ApplyFrameRateOverlay();
   }
 }
 
+void EmulatorWindow::ApplyFrameRateOverlay() {
+  if (cvars::fps_overlay && immediate_drawer_) {
+    imgui_drawer_->SetOverlay([this]() { DrawFrameRateOverlay(); });
+  } else {
+    imgui_drawer_->SetOverlay(nullptr);
+  }
+}
+
+void EmulatorWindow::ToggleFrameRateOverlay() {
+  OVERRIDE_bool(fps_overlay, !cvars::fps_overlay);
+  ApplyFrameRateOverlay();
+}
+
 void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
+  if (gpu::GraphicsSystem* graphics_system = emulator_->graphics_system()) {
+    graphics_system->SetFrameRateCallback(nullptr);
+  }
+
+  imgui_drawer_->SetOverlay(nullptr);
   Profiler::SetUserIO(kZOrderProfiler, window_.get(), nullptr, nullptr);
   imgui_drawer_->SetPresenterAndImmediateDrawer(nullptr, nullptr);
   immediate_drawer_.reset();
@@ -885,6 +917,9 @@ bool EmulatorWindow::Initialize() {
     display_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "&Fullscreen", "F11",
                          std::bind(&EmulatorWindow::ToggleFullscreen, this)));
+    display_menu->AddChild(MenuItem::Create(
+        MenuItem::Type::kString, "Toggle FPS &Overlay", "",
+        std::bind(&EmulatorWindow::ToggleFrameRateOverlay, this)));
     display_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "&Take Screenshot", "F12",
                          std::bind(&EmulatorWindow::TakeScreenshot, this)));
@@ -1810,6 +1845,10 @@ void EmulatorWindow::UpdateTitle() {
       sb.Append(graphics_name);
       sb.Append(">");
     }
+
+    if (emulator()->is_title_open()) {
+      sb.AppendFormat(" | {:.2f} FPS", graphics_system->GetFramesPerSecond());
+    }
   }
 
   if (Clock::guest_time_scalar() != 1.0) {
@@ -1831,6 +1870,50 @@ void EmulatorWindow::UpdateTitle() {
   }
 
   window_->SetTitle(sb.to_string_view());
+}
+
+void EmulatorWindow::OnFrameRateUpdated() {
+  UpdateTitle();
+
+  if (!cvars::fps_overlay) {
+    return;
+  }
+
+  // Repaint even if the title isn't swapping.
+  if (ui::Presenter* presenter = GetGraphicsSystemPresenter()) {
+    presenter->RequestUIPaintFromUIThread();
+  }
+}
+
+void EmulatorWindow::DrawFrameRateOverlay() {
+  if (!emulator()->is_title_open()) {
+    return;
+  }
+
+  GraphicsSystem* graphics_system = emulator()->graphics_system();
+  if (!graphics_system) {
+    return;
+  }
+
+  // Fits every reading below 100 FPS, so the box doesn't resize as it changes.
+  const float min_width = ImGui::CalcTextSize("00.00 FPS").x +
+                          ImGui::GetStyle().WindowPadding.x * 2.0f;
+
+  ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+  ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 0.0f),
+                                      ImVec2(FLT_MAX, FLT_MAX));
+  ImGui::SetNextWindowBgAlpha(0.5f);
+
+  if (ImGui::Begin("##FrameRateOverlay", nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                       ImGuiWindowFlags_NoNav |
+                       ImGuiWindowFlags_NoFocusOnAppearing |
+                       ImGuiWindowFlags_NoBringToFrontOnFocus |
+                       ImGuiWindowFlags_NoSavedSettings |
+                       ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("%.2f FPS", graphics_system->GetFramesPerSecond());
+  }
+  ImGui::End();
 }
 
 void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {

@@ -297,6 +297,11 @@ class EmulatorWindow {
 
   void ClearDialogs();
 
+  void OnFrameRateUpdated();
+  void DrawFrameRateOverlay();
+  void ApplyFrameRateOverlay();
+  void ToggleFrameRateOverlay();
+
   Emulator* emulator_;
   ui::WindowedAppContext& app_context_;
   EmulatorWindowListener window_listener_;
@@ -312,6 +317,8 @@ class EmulatorWindow {
 
   std::string base_title_;
   bool initializing_shader_storage_ = false;
+
+  std::atomic<bool> frame_rate_update_pending_ = false;
 
   std::unique_ptr<DisplayConfigDialog> display_config_dialog_;
   std::unique_ptr<ConsoleSettingsDialog> console_settings_dialog_;

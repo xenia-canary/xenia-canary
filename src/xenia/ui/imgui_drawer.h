@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -61,6 +62,10 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   void AddNotification(ImGuiNotification* notification);
   void RemoveNotification(ImGuiNotification* notification);
+
+  // Drawn under the dialogs, taking no input. While set, the presenter
+  // composites on the UI thread. Null removes it.
+  void SetOverlay(std::function<void()> draw_overlay);
 
   // SetPresenter may be called from the destructor.
   void SetPresenter(Presenter* new_presenter);
@@ -136,7 +141,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   bool IsDrawingDialogs() const { return dialog_loop_next_index_ != SIZE_MAX; }
 
   bool HasAnythingToDraw() const {
-    return !dialogs_.empty() || !notifications_.empty();
+    return !dialogs_.empty() || !notifications_.empty() || overlay_;
   }
 
   void DetachIfLastWindowRemoved();
@@ -157,6 +162,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   // All queued notifications. Notification at index 0 is currently presented
   // one.
   std::vector<ImGuiNotification*> notifications_;
+
+  std::function<void()> overlay_;
 
   bool is_input_listener_added_ = false;
 
