@@ -644,11 +644,19 @@ X_RESULT ContentManager::DeleteContent(const uint64_t xuid,
   }
 
   auto package_path = ResolvePackagePath(xuid, data);
-  if (std::filesystem::remove_all(package_path) == 0) {
+  std::error_code ec;
+  const auto removed = std::filesystem::remove_all(package_path, ec);
+
+  if (ec) {
+    XELOGE("ContentManager: Failed to delete {}: {}",
+           xe::path_to_utf8(package_path), ec.message());
+    return X_ERROR_ACCESS_DENIED;
+  }
+
+  if (removed == 0) {
     return X_ERROR_FILE_NOT_FOUND;
   }
 
-  std::error_code ec;
   std::filesystem::remove(ComputeHeaderPath(package_path), ec);
   return X_ERROR_SUCCESS;
 }

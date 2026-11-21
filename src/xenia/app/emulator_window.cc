@@ -1471,9 +1471,7 @@ void EmulatorWindow::ExtractZarchive() {
       if (result != X_STATUS_SUCCESS) {
         std::error_code ec;
 
-        if (!std::filesystem::is_empty(abs_extract_dir)) {
-          std::filesystem::remove(abs_extract_dir, ec);
-        }
+        std::filesystem::remove(abs_extract_dir, ec);
 
         summary += fmt::format("\nFailed: {}", zarchive_file_path);
 
