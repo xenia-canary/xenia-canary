@@ -3618,6 +3618,7 @@ bool VulkanCommandProcessor::IssueCopy() {
                                                &downscale_copy_region);
     } else {
       shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+      SubmitBarriers(true);
 
       VkBufferCopy copy_region = {};
       copy_region.srcOffset = written_address;
