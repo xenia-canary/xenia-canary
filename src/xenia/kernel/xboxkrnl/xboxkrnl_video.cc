@@ -554,18 +554,13 @@ void RegisterVideoExports(xe::cpu::ExportResolver* export_resolver,
                           KernelState* kernel_state) {
   auto memory = kernel_state->memory();
 
-  // Allocate single page that stores all pointers instead of separate pages.
-  const uint32_t baseAllocation =
-      memory->SystemHeapAlloc(40, 32, kSystemHeapPhysical);  // 40 bytes
-
   // VdGlobalDevice (4b)
-  // Pointer to a global D3D device. Games only seem to set this, so we don't
-  // have to do anything. We may want to read it back later, though.
+  // Pointer to the title's D3D device. D3D stores the device here when it
+  // creates it and checks it's null before, so it starts null.
   const uint32_t pVdGlobalDevice = 0x801E6FC4;
   export_resolver->SetVariableMapping("xboxkrnl.exe", ordinals::VdGlobalDevice,
                                       pVdGlobalDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice),
-                               baseAllocation);
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice), 0);
 
   // VdGlobalXamDevice (4b)
   // Pointer to the XAM D3D device, which we don't have.
