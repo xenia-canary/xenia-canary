@@ -16,7 +16,8 @@ import os
 from re import findall as re_findall
 from re import fullmatch as re_fullmatch
 import platform
-from shutil import rmtree
+import xml.etree.ElementTree as ET
+from shutil import rmtree, which
 import subprocess
 import sys
 import stat
@@ -226,15 +227,15 @@ def import_vs_environment():
         version = int(vswhere[0].get("catalog", {}).get("productLineVersion", VSVERSION_MINIMUM))
         install_path = vswhere[0].get("installationPath", None)
 
+    if not version or not install_path:
+        return None
+
     vsdevcmd_path = os.path.join(install_path, "Common7", "Tools", "VsDevCmd.bat")
     if os.access(vsdevcmd_path, os.X_OK):
         env_tool_args = [vsdevcmd_path, "-arch=amd64", "-host_arch=amd64", "&&", "set"]
     else:
         vcvars_path = os.path.join(install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
         env_tool_args = [vcvars_path, "x64", "&&", "set"]
-
-    if not version:
-        return None
 
     global vs_install_path
     vs_install_path = install_path
@@ -2112,6 +2113,201 @@ class StubCommand(Command):
         run_cmake_configure()
         return 0
 
+
+def find_devenv_binary():
+    """Returns the full path of devenv.exe if a VS IDE is installed, else None.
+
+    BuildTools-only installs provide the compiler but no devenv.exe.
+    Never raises.
+    """
+    try:
+        path = get_bin("devenv")
+        if path:
+            return path
+        vswhere = os.path.join(self_path, "tools", "vswhere", "vswhere.exe")
+        out = subprocess.check_output(
+            [vswhere, "-version", "[17,)", "-latest", "-prerelease",
+             "-products",
+             "Microsoft.VisualStudio.Product.Enterprise",
+             "Microsoft.VisualStudio.Product.Professional",
+             "Microsoft.VisualStudio.Product.Community",
+             "-find", "Common7\\IDE\\devenv.exe", "-utf8"],
+            encoding="utf-8",
+        ).strip().splitlines()
+        if out and out[0].strip() and os.path.exists(out[0].strip()):
+            return out[0].strip()
+    except Exception:
+        pass
+    return None
+
+
+def get_vs_ide_instance(devenv_bin):
+    """Returns (install_path, product_line_version) for the VS IDE owning devenv.exe.
+
+    Solution generation must use the IDE's own instance: a newer Build Tools
+    installation can win vswhere's -latest while the IDE is an older version,
+    and the older IDE cannot build a solution generated for the newer VS.
+    Returns (None, None) if unknown. Never raises.
+    """
+    try:
+        install_path = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(devenv_bin))))
+        vswhere = os.path.join(self_path, "tools", "vswhere", "vswhere.exe")
+        out = subprocess.check_output(
+            # -path cannot be combined with selection options like -prerelease.
+            [vswhere, "-path", install_path, "-format", "json", "-utf8"],
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL,
+        )
+        instances = jsonloads(out) if out else []
+        if instances:
+            version = int(instances[0].get("catalog", {}).get(
+                "productLineVersion", VSVERSION_MINIMUM))
+            return install_path, version
+    except Exception:
+        pass
+    return None, None
+
+
+def find_clion_binary():
+    """Returns the full path of the CLion launcher if found on PATH, else None.
+
+    Uses shutil.which so Windows PATHEXT resolution applies: this prefers
+    clion64.exe / clion.cmd (e.g. JetBrains Toolbox scripts) over Toolbox's
+    extensionless bash stub, which Windows cannot execute (a shadowing
+    extensionless file could still resolve - the manual-open fallback covers it).
+    """
+    candidates = ("clion", "clion64") if sys.platform == "win32" else ("clion", "clion.sh", "clion64")
+    for candidate in candidates:
+        path = which(candidate)
+        if path:
+            return path
+    return None
+
+
+def resolve_clion_binary(clion_path=None):
+    """Returns (path, error) for the CLion launcher.
+
+    An explicit path is validated; otherwise PATH discovery is used.
+    """
+    if clion_path:
+        path = os.path.abspath(os.path.expanduser(clion_path))
+        if not os.path.isfile(path):
+            return None, f"CLion launcher not found: {path}"
+        return path, None
+    return find_clion_binary(), None
+
+
+def launch_clion(clion_bin):
+    """Opens the project in CLion.
+
+    Returns None if the launcher process was spawned, else a description of
+    the failure.
+    """
+    if not clion_bin:
+        return "no launcher was found"
+    if sys.platform == "win32" and not clion_bin.lower().endswith(".exe"):
+        # Batch wrappers (e.g. Toolbox's clion.cmd) need cmd.exe; running
+        # them directly via CreateProcess fails with WinError 193. The outer
+        # quotes with /s keep paths containing cmd metacharacters (&) intact.
+        # This must stay a raw string: passing a list makes subprocess escape
+        # the quotes with backslashes, which cmd does not understand.
+        comspec = os.environ.get("COMSPEC", "cmd.exe")
+        cmd = f'"{comspec}" /d /s /c ""{clion_bin}" "{self_path}""'
+    else:
+        cmd = [clion_bin, self_path]
+    # Python 3.6 on Windows rejects close_fds when any standard stream is
+    # redirected; all three are redirected here, so nothing is inherited.
+    close_fds = sys.platform != "win32" or sys.version_info >= (3, 7)
+    try:
+        # Detached: don't block xb until the IDE exits.
+        if sys.platform == "win32":
+            proc = subprocess.Popen(
+                cmd, close_fds=close_fds,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+        else:
+            proc = subprocess.Popen(
+                cmd, close_fds=close_fds,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+    # Wrapper scripts (e.g. Toolbox's clion.cmd) can fail after Popen returns;
+    # give them a moment so an immediate failure is not reported as success.
+    if not clion_bin.lower().endswith(".exe"):
+        try:
+            exit_code = proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            if exit_code != 0:
+                return f"launcher exited with code {exit_code}"
+    return None
+
+
+def get_clion_msvc_toolchains():
+    """Returns [(name, path)] for CLion's MSVC toolchains, [] if none, None if unknown.
+
+    Read-only check of CLion's global config; never raises.
+    """
+    if sys.platform != "win32":
+        return None
+    appdata = os.environ.get("APPDATA", "")
+    if not appdata:
+        return None
+    try:
+        configs = glob(os.path.join(appdata, "JetBrains", "CLion*",
+                                    "options", "windows", "toolchains.xml"))
+        if not configs:
+            return None
+        # Newest install by mtime — lexicographic sort breaks on 2025.10 vs 2025.2.
+        latest = max(configs, key=os.path.getmtime)
+        root = ET.parse(latest).getroot()
+    except Exception:
+        return None
+    toolchains = []
+    seen_any = False
+    seen_kind = False
+    for tc in root.iter("toolchain"):
+        seen_any = True
+        if tc.get("toolSetKind") is not None:
+            seen_kind = True
+        if tc.get("toolSetKind") != "MSVC":
+            continue
+        toolchains.append((tc.get("name", ""), tc.get("toolSetPath", "")))
+    # empty/mismatched schema -> unknown (None), not "missing",
+    # to avoid false warnings; genuine no-MSVC (seen non-MSVC) still warns.
+    if not seen_any or not seen_kind:
+        return None
+    return toolchains
+
+
+def clion_toolchain_status():
+    """Returns the state of CLion's MSVC toolchain: "stale", "missing", or None.
+
+    "stale" means it points at a removed or incomplete VS installation
+    (CLion fails with "Cannot locate vcvarsall.bat"); "missing" means no MSVC
+    toolchain exists. None means usable or unknown. Read-only check of
+    CLion's global config.
+    """
+    toolchains = get_clion_msvc_toolchains()
+    if toolchains is None:
+        return None
+    if len(toolchains) == 0:
+        return "missing"
+    # A VS install root is usable only if the C++ workload put vcvarsall.bat
+    # there; a leftover directory without it fails the same way a removed
+    # install does. An empty path is a broken entry, not a usable one.
+    def usable(path):
+        return bool(path) and os.path.isfile(
+            os.path.join(path, "VC", "Auxiliary", "Build", "vcvarsall.bat"))
+    if all(not usable(p) for _, p in toolchains):
+        return "stale"
+    return None
+
+
 class DevenvCommand(Command):
     """'devenv' command.
     """
@@ -2125,29 +2321,108 @@ class DevenvCommand(Command):
         self.parser.add_argument(
             "--target-arch", type=normalize_target_arch, default=None,
             help="Target architecture (arm64/aarch64, x64/amd64/x86_64/x86).")
+        self.parser.add_argument(
+            "--ide", choices=["auto", "vs", "clion"], default="auto",
+            help="IDE to launch (default: auto, i.e. VS IDE if installed, else CLion if installed).")
+        self.parser.add_argument(
+            "--clion-path", default=None,
+            help="Path to the CLion launcher to use instead of PATH discovery "
+                 "(implies CLion when --ide=auto).")
 
     def execute(self, args, pass_args, cwd):
-        if sys.platform == "win32":
-            if not vs_version:
-                print_error("Visual Studio is not installed.");
-                return 1
-            print("Launching Visual Studio...")
-        elif has_bin("clion") or has_bin("clion.sh"):
-            print("Launching CLion...")
-            create_clion_workspace()
-        else:
-            print("IDE not detected. CMakeLists.txt is in the project root.")
+        ide = args.get("ide", "auto")
+        clion_path = args.get("clion_path", None)
+        if clion_path and ide == "auto":
+            # An explicit launcher means the user wants CLion, even if VS is
+            # installed.
+            ide = "clion"
+        clion_bin = None
+        clion_error = None
+        if ide != "vs":
+            clion_bin, clion_error = resolve_clion_binary(clion_path)
+        devenv_bin = find_devenv_binary() if sys.platform == "win32" else None
+        if ide == "auto":
+            if sys.platform == "win32":
+                if devenv_bin:
+                    ide = "vs"
+                elif clion_bin:
+                    ide = "clion"
+                else:
+                    ide = "none"
+            else:
+                ide = "clion" if clion_bin else "none"
 
         target_arch = args.get("target_arch", None)
 
-        # Visual Studio opens its own solution below, so the Ninja build tree
-        # is left for the build command to configure.
-        if sys.platform != "win32":
+        if ide == "clion":
+            if clion_error:
+                print_error(clion_error)
+                return 1
+            print("Preparing CLion...")
+            if sys.platform == "win32" and not vs_version:
+                print_warning("MSVC Build Tools not detected on PATH. "
+                              "CLion still needs them for the MSVC toolchain - "
+                              "install via the Visual Studio Installer.")
+            create_clion_workspace()
+            toolchain_status = clion_toolchain_status()
+            if toolchain_status == "stale":
+                print_warning("CLion's Visual Studio toolchain points at a removed or incomplete "
+                              "VS installation (e.g. uninstalled VS IDE or missing C++ workload). "
+                              "In CLion: Settings > Build, Execution, Deployment > Toolchains > "
+                              "remove the stale entry so it redetects the current install, "
+                              "then reload.")
+            elif toolchain_status == "missing":
+                print_warning("CLion has no MSVC (Visual Studio) toolchain configured. In CLion: "
+                              "Settings > Build, Execution, Deployment > Toolchains > "
+                              "add (+) a Visual Studio toolchain, then reload.")
+            clion_build_dir = get_build_dir(target_arch)
+            if target_arch is not None and clion_build_dir != "build":
+                print_warning(
+                    f"--target-arch={target_arch} configures the "
+                    f"'{clion_build_dir}' directory, but the generated CLion "
+                    f"workspace profiles always use 'build'. CLion will not "
+                    f"use this configuration unless you configure "
+                    f"'{clion_build_dir}' as a profile manually.")
             print("\n- running cmake configure...")
-            run_cmake_configure(target_arch=target_arch)
+            ret = run_cmake_configure(target_arch=target_arch)
+            if ret:
+                if toolchain_status in ("stale", "missing"):
+                    print_warning("Configure failed — fix the toolchain above, then re-run.")
+                return ret
+            print("\n- launching CLion...")
+            if clion_bin:
+                error = launch_clion(clion_bin)
+                if error is None:
+                    print("If CLion does not open, open the project root manually.")
+                    print("")
+                    return 0
+                print_warning(f"Failed to launch '{clion_bin}': {error}")
+            else:
+                print("CLion launcher not found on PATH (expected 'clion' or 'clion64').")
+            print("Open the project root in CLion manually.")
+            print("CMakeLists.txt and CMakePresets.json are in the project root.")
+            print("")
+            # No launcher is the documented manual-open fallback; failing to
+            # spawn one that was found is an error.
+            return 1 if clion_bin else 0
 
-        print("\n- launching devenv...")
-        if sys.platform == "win32":
+        if ide == "vs":
+            if sys.platform != "win32":
+                print_error("Visual Studio is only available on Windows. Use --ide=clion instead.")
+                return 1
+            if not vs_version:
+                print_error("Visual Studio is not installed.")
+                return 1
+            if not devenv_bin:
+                clion_hint = " or use --ide=clion" if clion_bin else ""
+                print_error("Full Visual Studio IDE (devenv.exe) not found"
+                            " (only Build Tools detected)."
+                            f" Install VS Community/Professional/Enterprise{clion_hint}.")
+                return 1
+            print("Launching Visual Studio...")
+            # Visual Studio opens its own solution below, so the Ninja build
+            # tree is left for the build command to configure.
+            print("\n- launching devenv...")
             # Generate a VS .sln for IDE use (normal builds still use Ninja)
             is_native_arm64 = platform.machine() in ("ARM64", "aarch64")
             # Determine the effective target architecture
@@ -2222,12 +2497,18 @@ class DevenvCommand(Command):
                 # variable (commonly set to Ninja), which rejects -A and fails
                 # with "Generator Ninja does not support platform
                 # specification".
-                vs_generator, toolset = get_vs_generator(vs_install_path, vs_version, "x64")
+                # Generate with the instance that will open the solution (the
+                # IDE owning devenv.exe), not necessarily the newest install.
+                ide_path, ide_version = get_vs_ide_instance(devenv_bin)
+                generator_path = ide_path or vs_install_path
+                generator_version = ide_version or vs_version
+                vs_generator, toolset = get_vs_generator(
+                    generator_path, generator_version, "x64")
                 cmake_args += ["-G", vs_generator]
                 if toolset:
                     cmake_args += ["-T", toolset]
-                if vs_install_path:
-                    cmake_args.append(f"-DCMAKE_GENERATOR_INSTANCE={vs_install_path}")
+                if generator_path:
+                    cmake_args.append(f"-DCMAKE_GENERATOR_INSTANCE={generator_path}")
 
             ret = subprocess.call(cmake_args)
             if ret == 0:
@@ -2240,14 +2521,20 @@ class DevenvCommand(Command):
                 print_error(f"Failed to generate VS solution. Check cmake output above.")
                 return 1
             print(f"Opening {sln_path} in Visual Studio...")
-            shell_call(["devenv", sln_path])
-        elif has_bin("clion"):
-            shell_call(["clion", "."])
-        elif has_bin("clion.sh"):
-            shell_call(["clion.sh", "."])
-        else:
-            print("No supported IDE found. Open the project root in your IDE.")
-            print("CMakeLists.txt and CMakePresets.json are in the project root.")
+            shell_call([devenv_bin, sln_path])
+            print("")
+
+            return 0
+
+        # Fallback: no IDE detected/resolved (e.g. auto on Linux without CLion).
+        print("IDE not detected. CMakeLists.txt is in the project root.")
+        print("\n- running cmake configure...")
+        ret = run_cmake_configure(target_arch=target_arch)
+        if ret:
+            return ret
+        print("")
+        print("No supported IDE found. Open the project root in your IDE.")
+        print("CMakeLists.txt and CMakePresets.json are in the project root.")
         print("")
 
         return 0
