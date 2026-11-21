@@ -459,6 +459,8 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
             COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE(packet, count);
         break;
       case PM4_EVENT_WRITE_SHD:
+      // Cache flush done event. Same initiator/address/value layout as SHD.
+      case PM4_EVENT_WRITE_CFL:
         result = COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(packet,
                                                                        count);
         break;

@@ -274,6 +274,22 @@ bool PacketDisassembler::DisasmPacketType3(const uint8_t* base_ptr,
       out_actions.emplace_back(std::move(evws_action));
       break;
     }
+    case PM4_EVENT_WRITE_CFL: {
+      // generate a cache flush done event (same layout as SHD)
+      static constexpr PacketTypeInfo op_info = {PacketCategory::kGeneric,
+                                                 "PM4_EVENT_WRITE_CFL"};
+      out_info->type_info = &op_info;
+      PacketAction evws_action;
+      evws_action.type = Type::kEventWriteSHD;
+      auto& evws = evws_action.event_write_shd;
+
+      evws.initiator = xe::load_and_swap<uint32_t>(ptr + 0);
+      evws.address = xe::load_and_swap<uint32_t>(ptr + 4);
+      evws.value = xe::load_and_swap<uint32_t>(ptr + 8);
+
+      out_actions.emplace_back(std::move(evws_action));
+      break;
+    }
     case PM4_EVENT_WRITE_EXT: {
       // generate a screen extent event
       static constexpr PacketTypeInfo op_info = {PacketCategory::kGeneric,
