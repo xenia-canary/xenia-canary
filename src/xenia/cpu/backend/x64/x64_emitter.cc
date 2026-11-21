@@ -1067,6 +1067,7 @@ static const vec128_t xmm_consts[] = {
     vec128i(0x09080B0Au, 0x0D0C0F0Eu, 0xFFFFFFFFu, 0xFFFFFFFFu),
     /* XMMPackSHORT_Min       */ vec128i(0x403F8001u),
     /* XMMPackSHORT_Max       */ vec128i(0x40407FFFu),
+    /* XMMPackSHORT_NaN       */ vec128i(0x403F8000u),
     /* XMMPackSHORT_2         */
     vec128i(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x01000504u),
     /* XMMPackSHORT_4         */
@@ -1080,6 +1081,8 @@ static const vec128_t xmm_consts[] = {
     vec128i(0x403FFE01u, 0x403FFE01u, 0x403FFE01u, 0x40400000u),
     /* XMMPackUINT_2101010_MaxUnpacked */
     vec128i(0x404001FFu, 0x404001FFu, 0x404001FFu, 0x40400003u),
+    /* XMMPackUINT_2101010_NaN */
+    vec128i(0x403FFE00u, 0x403FFE00u, 0x403FFE00u, 0x40400000u),
     /* XMMPackUINT_2101010_MaskUnpacked */
     vec128i(0x3FFu, 0x3FFu, 0x3FFu, 0x3u),
     /* XMMPackUINT_2101010_MaskPacked */
@@ -1090,6 +1093,8 @@ static const vec128_t xmm_consts[] = {
     vec128i(0x40380001u, 0x40380001u, 0x40380001u, 0x40400000u),
     /* XMMPackULONG_4202020_MaxUnpacked */
     vec128i(0x4047FFFFu, 0x4047FFFFu, 0x4047FFFFu, 0x4040000Fu),
+    /* XMMPackULONG_4202020_NaN */
+    vec128i(0x40380000u, 0x40380000u, 0x40380000u, 0x40400000u),
     /* XMMPackULONG_4202020_MaskUnpacked */
     vec128i(0xFFFFFu, 0xFFFFFu, 0xFFFFFu, 0xFu),
     /* XMMPackULONG_4202020_PermuteXZ */

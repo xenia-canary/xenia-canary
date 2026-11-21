@@ -2809,9 +2809,12 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     } else {
       src = i.src1;
     }
-    // Saturate.
+    // Saturate. A NaN packs as 0x8000, the minimum that unpacks back to a NaN,
+    // where the clamp would give 0x8001.
+    e.vcmpunordps(e.xmm2, src, src);
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
     e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_NaN), e.xmm2);
     // Pack.
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_2));
   }
@@ -2824,9 +2827,12 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     } else {
       src = i.src1;
     }
-    // Saturate.
+    // Saturate. A NaN packs as 0x8000, the minimum that unpacks back to a NaN,
+    // where the clamp would give 0x8001.
+    e.vcmpunordps(e.xmm2, src, src);
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
     e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_NaN), e.xmm2);
     // Pack.
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_4));
   }
@@ -2841,9 +2847,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     } else {
       src = i.src1;
     }
-    // Saturate.
+    // Saturate. A NaN packs as the minimum, 0x200, which unpacks back to a
+    // NaN, where the clamp would give 0x201 (and 0 for W).
+    e.vcmpunordps(e.xmm2, src, src);
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackUINT_2101010_MinUnpacked));
     e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_MaxUnpacked));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_NaN),
+                e.xmm2);
     // Remove the unneeded bits of the floats.
     e.vpand(i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_MaskUnpacked));
     if (e.IsFeatureEnabled(kX64EmitAVX2)) {
@@ -2876,10 +2886,14 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     } else {
       src = i.src1;
     }
-    // Saturate.
+    // Saturate. A NaN packs as the minimum, 0x80000, which unpacks back to a
+    // NaN, where the clamp would give 0x80001 (and 0 for W).
+    e.vcmpunordps(e.xmm2, src, src);
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackULONG_4202020_MinUnpacked));
     e.vminps(i.dest, i.dest,
              e.GetXmmConstPtr(XMMPackULONG_4202020_MaxUnpacked));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackULONG_4202020_NaN),
+                e.xmm2);
     // Remove the unneeded bits of the floats (so excess nibbles will also be
     // cleared).
     e.vpand(i.dest, e.GetXmmConstPtr(XMMPackULONG_4202020_MaskUnpacked));
