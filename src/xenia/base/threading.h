@@ -140,6 +140,12 @@ SleepResult AlertableSleep(std::chrono::duration<Rep, Period> duration) {
       std::chrono::duration_cast<std::chrono::microseconds>(duration));
 }
 
+// Code a thread can be terminated in: JIT code, which holds no host locks and
+// has unwind info. Thread::IsAtTerminationSafePoint accepts it besides waits
+// and sleeps, and on POSIX a terminated thread exits at such points.
+using TerminationSafeCodeCheck = bool (*)(uintptr_t host_pc);
+void SetTerminationSafeCodeCheck(TerminationSafeCodeCheck check);
+
 typedef uint32_t TlsHandle;
 constexpr TlsHandle kInvalidTlsHandle = UINT_MAX;
 
@@ -488,10 +494,16 @@ class Thread : public WaitHandle {
   // Suspends the specified thread.
   virtual bool Suspend(uint32_t* out_previous_suspend_count = nullptr) = 0;
 
-  // Terminates the thread.
-  // No destructors are called, and this function does not return.
-  // The state of the thread object becomes signaled, releasing any other
-  // threads that had been waiting for the thread to terminate.
+  // Whether the suspended thread can be terminated without leaving host locks
+  // held (a CRT stream lock, the heap lock): it is in a wait, a sleep or code
+  // accepted by the TerminationSafeCodeCheck.
+  virtual bool IsAtTerminationSafePoint() { return true; }
+
+  // Terminates the thread. Does not return when called on the current thread.
+  // On Windows the thread is killed immediately and no destructors are called.
+  // On POSIX the thread is asked to exit and unwinds from a safe point (see
+  // IsAtTerminationSafePoint). The thread object becomes signaled once the
+  // thread has exited.
   virtual void Terminate(int exit_code) = 0;
 
  protected:
