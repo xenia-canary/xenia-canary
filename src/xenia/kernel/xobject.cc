@@ -557,6 +557,21 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
     global_critical_region::mutex().lock();
   }
 
+  // XEnumerator has no X_DISPATCH_HEADER: its Initialize writes close_message
+  // and user_index over the handle signature at +8/+12. Resolve it by guest
+  // address before interpreting the memory as a dispatch header.
+  if (as_type == X_OBJECT_TYPES::UndefinedObject) {
+    const uint32_t guest_ptr =
+        kernel_state->memory()->HostToGuestVirtual(native_ptr);
+    if (auto enumerator =
+            XEnumerator::RetainByGuestObject(kernel_state, guest_ptr)) {
+      if (!already_locked) {
+        global_critical_region::mutex().unlock();
+      }
+      return enumerator;
+    }
+  }
+
   XObject* result = nullptr;
 
   auto header = reinterpret_cast<X_DISPATCH_HEADER*>(native_ptr);
