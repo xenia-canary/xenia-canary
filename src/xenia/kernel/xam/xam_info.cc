@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <filesystem>
+
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
@@ -491,6 +493,18 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
   // Translate the launch path to a full path.
   if (raw_name_ptr && !raw_name_ptr.value().empty()) {
     loader_data.launch_path = xe::path_to_utf8(raw_name_ptr.value());
+    xam->SaveLoaderData();
+    title = "Title was restarted";
+    message =
+        "Title closed with new launch data. \nPlease restart Xenia. "
+        "Game will be loaded automatically.";
+  } else if (raw_name_ptr && !loader_data.host_path.empty()) {
+    // An empty non-null name is XLAUNCH_KEYWORD_DEFAULT_APP: relaunch the
+    // current title's own default executable (only nullptr exits to dashboard).
+    const std::filesystem::path host_path(loader_data.host_path);
+    loader_data.launch_path = host_path.extension() == ".xex"
+                                  ? xe::path_to_utf8(host_path.filename())
+                                  : std::string();
     xam->SaveLoaderData();
     title = "Title was restarted";
     message =
