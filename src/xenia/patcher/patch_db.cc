@@ -82,12 +82,12 @@ PatchFileEntry PatchDB::ReadPatchFile(
   patch_file.title_name = title_name->get();
   ReadHashes(patch_file, hashes_node);
 
-  auto patch_array = patch_toml_fields.get("patch");
-  if (!patch_array->is_array()) {
+  const auto patch_array = patch_toml_fields.get_as<toml::array>("patch");
+  if (!patch_array) {
     return patch_file;
   }
 
-  for (const auto& patch_entry : *patch_array->as_array()) {
+  for (const auto& patch_entry : *patch_array) {
     if (!patch_entry.is_table()) {
       continue;
     }
@@ -112,40 +112,78 @@ bool PatchDB::ReadPatchData(std::vector<PatchDataEntry>& patch_data,
       continue;
     }
 
-    auto table = patch_data_table.as_table();
-    auto address =
-        static_cast<uint32_t>(table->get_as<int64_t>("address")->get());
+    const auto table = patch_data_table.as_table();
+    const auto address_field = table->get_as<int64_t>("address");
+    if (!address_field) {
+      XELOGW("PatchDB: {} entry has no integer address! Skipping",
+             data_type.first);
+      return false;
+    }
+    const auto address = static_cast<uint32_t>(address_field->get());
     size_t alloc_size = (size_t)data_type.second.size;
+
+    const auto value_field = table->get("value");
+    if (!value_field) {
+      XELOGW("PatchDB: {} entry for address {:08X} has no value! Skipping",
+             data_type.first, address);
+      return false;
+    }
+
+    const auto int_value = value_field->value_exact<int64_t>();
+    const auto string_value = value_field->value_exact<std::string>();
+
+    switch (data_type.second.type) {
+      case PatchDataType::kBE8:
+      case PatchDataType::kBE16:
+      case PatchDataType::kBE32:
+      case PatchDataType::kBE64:
+        if (!int_value) {
+          XELOGW(
+              "PatchDB: {} value for address {:08X} is not an integer! "
+              "Skipping",
+              data_type.first, address);
+          return false;
+        }
+        break;
+      case PatchDataType::kString:
+      case PatchDataType::kU16String:
+      case PatchDataType::kByteArray:
+        if (!string_value) {
+          XELOGW(
+              "PatchDB: {} value for address {:08X} is not a string! Skipping",
+              data_type.first, address);
+          return false;
+        }
+        break;
+      default:
+        break;
+    }
 
     switch (data_type.second.type) {
       case PatchDataType::kBE8: {
-        uint16_t value =
-            static_cast<uint16_t>(table->get_as<int64_t>("value")->get());
+        uint16_t value = static_cast<uint16_t>(*int_value);
         patch_data.push_back({address, PatchDataValue(alloc_size, value)});
         break;
       }
       case PatchDataType::kBE16: {
-        uint16_t value =
-            static_cast<uint16_t>(table->get_as<int64_t>("value")->get());
+        uint16_t value = static_cast<uint16_t>(*int_value);
         patch_data.push_back(
             {address, PatchDataValue(alloc_size, xe::byte_swap(value))});
         break;
       }
       case PatchDataType::kBE32: {
-        uint32_t value =
-            static_cast<uint32_t>(table->get_as<int64_t>("value")->get());
+        uint32_t value = static_cast<uint32_t>(*int_value);
         patch_data.push_back(
             {address, PatchDataValue(alloc_size, xe::byte_swap(value))});
         break;
       }
       case PatchDataType::kBE64: {
-        uint64_t value = table->get_as<int64_t>("value")->get();
+        uint64_t value = static_cast<uint64_t>(*int_value);
         patch_data.push_back(
             {address, PatchDataValue(alloc_size, xe::byte_swap(value))});
         break;
       }
       case PatchDataType::kF64: {
-        const auto value_field = table->get("value");
         double value = 0.0;
         if (value_field->is_floating_point()) {
           value = value_field->as_floating_point()->get();
@@ -159,7 +197,6 @@ bool PatchDB::ReadPatchData(std::vector<PatchDataEntry>& patch_data,
         break;
       }
       case PatchDataType::kF32: {
-        const auto value_field = table->get("value");
         float value = 0.0f;
         if (value_field->is_floating_point()) {
           value = static_cast<float>(value_field->as_floating_point()->get());
@@ -173,19 +210,17 @@ bool PatchDB::ReadPatchData(std::vector<PatchDataEntry>& patch_data,
         break;
       }
       case PatchDataType::kString: {
-        std::string value = table->get_as<std::string>("value")->get();
-        patch_data.push_back({address, PatchDataValue(value)});
+        patch_data.push_back({address, PatchDataValue(*string_value)});
         break;
       }
       case PatchDataType::kU16String: {
-        std::u16string value =
-            xe::to_utf16(table->get_as<std::string>("value")->get());
+        std::u16string value = xe::to_utf16(*string_value);
         patch_data.push_back({address, PatchDataValue(value)});
         break;
       }
       case PatchDataType::kByteArray: {
         std::vector<uint8_t> data;
-        const std::string value = table->get_as<std::string>("value")->get();
+        const std::string& value = *string_value;
 
         bool success = string_util::hex_string_to_array(data, value);
         if (!success) {
@@ -251,37 +286,22 @@ void PatchDB::ReadHashes(PatchFileEntry& patch_entry,
 
 void PatchDB::ReadPatchHeader(PatchInfoEntry& patch_info,
                               const toml::table* patch_fields) const {
-  std::string patch_name = {};
-  std::string patch_desc = {};
-  std::string patch_author = {};
-  bool is_enabled = false;
-
-  if (patch_fields->contains("name")) {
-    patch_name = patch_fields->get_as<std::string>("name")->get();
-  }
-  if (patch_fields->contains("desc")) {
-    patch_desc = patch_fields->get_as<std::string>("desc")->get();
-  }
-  if (patch_fields->contains("author")) {
-    patch_author = patch_fields->get_as<std::string>("author")->get();
-  }
-  if (patch_fields->contains("is_enabled")) {
-    is_enabled = patch_fields->get_as<bool>("is_enabled")->get();
-  }
+  const toml::table& fields = *patch_fields;
 
   patch_info.id = 0;  // Todo(Gliniak): Implement id for future GUI stuff
-  patch_info.patch_name = patch_name;
-  patch_info.patch_desc = patch_desc;
-  patch_info.patch_author = patch_author;
-  patch_info.is_enabled = is_enabled;
+  patch_info.patch_name =
+      fields["name"].value_exact<std::string>().value_or("");
+  patch_info.patch_desc =
+      fields["desc"].value_exact<std::string>().value_or("");
+  patch_info.patch_author =
+      fields["author"].value_exact<std::string>().value_or("");
+  patch_info.is_enabled =
+      fields["is_enabled"].value_exact<bool>().value_or(false);
 
   // Iterate through all available data sizes
   for (const auto& patch_data_type : patch_data_types_size_) {
-    bool success =
-        ReadPatchData(patch_info.patch_data, patch_data_type, patch_fields);
-
-    if (!success) {
-      XELOGE("PatchDB: Cannot read patch {}", patch_name);
+    if (!ReadPatchData(patch_info.patch_data, patch_data_type, patch_fields)) {
+      XELOGE("PatchDB: Cannot read patch {}", patch_info.patch_name);
       break;
     }
   }
