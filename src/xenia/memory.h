@@ -77,6 +77,20 @@ inline xe::memory::PageAccess ToPageAccess(uint32_t protect) {
   }
 }
 
+// A region of the encrypted 64k xex pages that NtAllocateEncryptedMemory
+// allocates from.
+struct EncryptedMemoryRegion {
+  uint32_t base;
+  uint32_t size;
+
+  bool Contains(uint32_t address) const { return address - base < size; }
+};
+
+constexpr EncryptedMemoryRegion kSystemEncryptedMemoryRegion = {0x8C000000,
+                                                                0x01000000};
+constexpr EncryptedMemoryRegion kTitleEncryptedMemoryRegion = {0x8D000000,
+                                                               0x03000000};
+
 // Equivalent to the Win32 MEMORY_BASIC_INFORMATION struct.
 struct HeapAllocationInfo {
   // A pointer to the base address of the region of pages.

@@ -12,6 +12,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/xbox.h"
 
 DEFINE_bool(
@@ -364,30 +365,38 @@ dword_result_t NtQueryVirtualMemory_entry(
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryVirtualMemory, kMemory, kImplemented);
 
-dword_result_t NtAllocateEncryptedMemory_entry(dword_t unk, dword_t region_size,
-                                               lpdword_t base_addr_ptr) {
-  if (!region_size) {
+dword_result_t NtAllocateEncryptedMemory_entry(dword_t region_type,
+                                               dword_t region_size,
+                                               lpdword_t base_addr_ptr,
+                                               const ppc_context_t& context) {
+  if (region_type > X_PROCTYPE_SYSTEM) {
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  const uint32_t region_size_adjusted =
-      xe::round_up(region_size, 64 * 1024, true);
+  const EncryptedMemoryRegion& region =
+      (region_type ? uint32_t(region_type)
+                   : xeKeGetCurrentProcessType(context)) == X_PROCTYPE_TITLE
+          ? kTitleEncryptedMemoryRegion
+          : kSystemEncryptedMemoryRegion;
 
-  if (region_size_adjusted > 16 * 1024 * 1024) {
+  auto heap = kernel_memory()->LookupHeap(region.base);
+  const uint32_t region_size_adjusted =
+      xe::round_up(region_size, heap->page_size(), false);
+
+  if (!region_size_adjusted || region_size_adjusted > region.size) {
     return X_STATUS_INVALID_PARAMETER;
   }
 
   uint32_t out_address = 0;
-  auto heap = kernel_memory()->LookupHeap(0x8C000000);
-  const bool result =
-      heap->AllocRange(0x8C000000, 0x8FFFFFFF, region_size_adjusted, 64 * 1024,
-                       MemoryAllocationFlag::kMemoryAllocationCommit,
-                       MemoryProtectFlag::kMemoryProtectRead |
-                           MemoryProtectFlag::kMemoryProtectWrite,
-                       false, &out_address);
+  const bool result = heap->AllocRange(
+      region.base, region.base + region.size - 1, region_size_adjusted,
+      heap->page_size(), MemoryAllocationFlag::kMemoryAllocationCommit,
+      MemoryProtectFlag::kMemoryProtectRead |
+          MemoryProtectFlag::kMemoryProtectWrite,
+      false, &out_address);
 
   if (!result) {
-    return X_STATUS_UNSUCCESSFUL;
+    return X_STATUS_NO_MEMORY;
   }
 
   XELOGD("NtAllocateEncryptedMemory = {:08X}", out_address);
@@ -397,22 +406,40 @@ dword_result_t NtAllocateEncryptedMemory_entry(dword_t unk, dword_t region_size,
 DECLARE_XBOXKRNL_EXPORT1(NtAllocateEncryptedMemory, kMemory, kImplemented);
 
 dword_result_t NtFreeEncryptedMemory_entry(dword_t region_type,
-                                           lpdword_t base_address_ptr) {
-  if (!base_address_ptr) {
+                                           dword_t base_address,
+                                           const ppc_context_t& context) {
+  if (region_type > X_PROCTYPE_SYSTEM) {
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  auto heap = kernel_state()->memory()->LookupHeap(0x80000000);
-  const uint32_t encrypt_address =
-      heap->heap_base() + heap->page_size() * (*base_address_ptr);
+  const EncryptedMemoryRegion& region =
+      (region_type ? uint32_t(region_type)
+                   : xeKeGetCurrentProcessType(context)) == X_PROCTYPE_TITLE
+          ? kTitleEncryptedMemoryRegion
+          : kSystemEncryptedMemoryRegion;
 
-  auto encrypt_heap = kernel_state()->memory()->LookupHeap(encrypt_address);
-
-  if (encrypt_heap->heap_type() != HeapType::kGuestXex) {
+  if (!region.Contains(base_address)) {
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  kernel_state()->memory()->SystemHeapFree(encrypt_address);
+  auto heap = kernel_memory()->LookupHeap(region.base);
+
+  // The page the address rounds up to has to start an allocation.
+  const uint32_t page_address =
+      xe::round_up(uint32_t(base_address), heap->page_size());
+  HeapAllocationInfo info;
+
+  if (!region.Contains(page_address) ||
+      !heap->QueryRegionInfo(page_address, &info) || !info.state ||
+      info.allocation_base != page_address) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+
+  if (base_address != page_address) {
+    return X_STATUS_FREE_VM_NOT_AT_BASE;
+  }
+
+  heap->Release(page_address);
 
   return X_STATUS_SUCCESS;
 }
