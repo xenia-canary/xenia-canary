@@ -68,6 +68,10 @@ DEFINE_int32(
     "maintain aspect ratio without letterboxing or stretching.",
     "Display");
 
+DEFINE_bool(fps_overlay, false,
+            "Show the frame rate in the top left corner of the window.",
+            "Display");
+
 namespace xe {
 namespace ui {
 
@@ -1070,6 +1074,101 @@ void Presenter::ExecuteUIDrawersFromUIThread(UIDrawContext& ui_draw_context) {
   }
   is_executing_ui_drawers_ = false;
   ++ui_draw_current_;
+}
+
+void Presenter::ToggleFrameRateOverlay() {
+  OVERRIDE_bool(fps_overlay, !cvars::fps_overlay);
+}
+
+const std::vector<Presenter::GuestOutputPaintFlow::ClearRectangle>&
+Presenter::LayOutFrameRateOverlay(uint32_t surface_width,
+                                  uint32_t surface_height,
+                                  size_t& shadow_count_out) {
+  frame_rate_overlay_rectangles_.clear();
+  shadow_count_out = 0;
+
+  if (!cvars::fps_overlay || !frame_rate_source_) {
+    return frame_rate_overlay_rectangles_;
+  }
+
+  // The overlay's 5x7 font, a byte per row with the leftmost column in bit 4.
+  struct FrameRateOverlayGlyph {
+    char character;
+    uint8_t rows[7];
+  };
+
+  static constexpr FrameRateOverlayGlyph kFrameRateOverlayGlyphs[] = {
+      {'0', {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}},
+      {'1', {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+      {'2', {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}},
+      {'3', {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E}},
+      {'4', {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}},
+      {'5', {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E}},
+      {'6', {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E}},
+      {'7', {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
+      {'8', {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
+      {'9', {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C}},
+      {'.', {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C}},
+      {'F', {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10}},
+      {'P', {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}},
+      {'S', {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}},
+  };
+
+  char text[32];
+  const char* const text_end =
+      fmt::format_to_n(text, sizeof(text), "{:.2f} FPS", frame_rate_source_())
+          .out;
+
+  // A font pixel is 3 surface pixels at 1080p.
+  const uint32_t scale = std::max(uint32_t(1), (surface_height + 180) / 360);
+  const uint32_t margin = 4 * scale;
+
+  // The shadow is the text a font pixel down and to the right.
+  for (const uint32_t offset : {scale, uint32_t(0)}) {
+    uint32_t glyph_x = margin + offset;
+    for (const char* c = text; c != text_end; ++c, glyph_x += 6 * scale) {
+      const auto glyph = std::ranges::find(kFrameRateOverlayGlyphs, *c,
+                                           &FrameRateOverlayGlyph::character);
+
+      if (glyph == std::end(kFrameRateOverlayGlyphs)) {
+        continue;
+      }
+
+      for (uint32_t row = 0; row < 7; ++row) {
+        const uint32_t y = margin + offset + row * scale;
+        const uint32_t bits = glyph->rows[row];
+
+        // A rectangle per run of lit columns.
+        uint32_t column = 0;
+        while (column < 5) {
+          if (!(bits & (0x10 >> column))) {
+            ++column;
+            continue;
+          }
+
+          uint32_t run_end = column + 1;
+          while (run_end < 5 && (bits & (0x10 >> run_end))) {
+            ++run_end;
+          }
+
+          const uint32_t x = glyph_x + column * scale;
+          if (x < surface_width && y < surface_height) {
+            frame_rate_overlay_rectangles_.push_back(
+                {x, y, std::min((run_end - column) * scale, surface_width - x),
+                 std::min(scale, surface_height - y)});
+          }
+
+          column = run_end;
+        }
+      }
+    }
+
+    if (offset) {
+      shadow_count_out = frame_rate_overlay_rectangles_.size();
+    }
+  }
+
+  return frame_rate_overlay_rectangles_;
 }
 
 void Presenter::SetPaintModeFromUIThread(PaintMode new_mode) {

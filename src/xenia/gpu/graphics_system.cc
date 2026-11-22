@@ -102,6 +102,10 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
             OnHostGpuLossFromAnyThread(is_responsible);
           });
     }
+
+    if (presenter_) {
+      presenter_->SetFrameRateSource([this]() { return GetFramesPerSecond(); });
+    }
   }
 
   // Create command processor. This will spin up a thread to process all

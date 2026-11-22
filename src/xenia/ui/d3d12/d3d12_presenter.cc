@@ -1039,6 +1039,40 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
     back_buffer_clear_needed = false;
   }
 
+  // The frame rate overlay goes over the guest output, under the UI.
+  if (guest_output_resource) {
+    size_t shadow_count;
+    const std::vector<GuestOutputPaintFlow::ClearRectangle>& overlay =
+        LayOutFrameRateOverlay(paint_context_.swap_chain_width,
+                               paint_context_.swap_chain_height, shadow_count);
+
+    frame_rate_overlay_rects_.clear();
+    for (const GuestOutputPaintFlow::ClearRectangle& rectangle : overlay) {
+      frame_rate_overlay_rects_.push_back(
+          {LONG(rectangle.x), LONG(rectangle.y),
+           LONG(rectangle.x + rectangle.width),
+           LONG(rectangle.y + rectangle.height)});
+    }
+
+    constexpr float kOverlayShadowColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    constexpr float kOverlayTextColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    // Nvidia's driver copies a clear's rectangles into a fixed stack buffer,
+    // which the overlay's overran in a single clear.
+    constexpr size_t kOverlayRectsPerClear = 16;
+    size_t i = 0;
+    while (i < frame_rate_overlay_rects_.size()) {
+      const size_t end = std::min(
+          i < shadow_count ? shadow_count : frame_rate_overlay_rects_.size(),
+          i + kOverlayRectsPerClear);
+      command_list->ClearRenderTargetView(
+          back_buffer_rtv,
+          i < shadow_count ? kOverlayShadowColor : kOverlayTextColor,
+          UINT(end - i), frame_rate_overlay_rects_.data() + i);
+      i = end;
+    }
+  }
+
   if (execute_ui_drawers) {
     // Draw the UI.
     if (!back_buffer_bound) {

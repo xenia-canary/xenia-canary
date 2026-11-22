@@ -337,6 +337,14 @@ class Presenter {
   // Requests (re)painting with the UI if there's UI to draw.
   void RequestUIPaintFromUIThread();
 
+  // The frame rate the overlay shows, set before painting starts.
+  void SetFrameRateSource(std::function<float()> source) {
+    frame_rate_source_ = std::move(source);
+  }
+
+  // Turns the frame rate overlay on or off in the global config.
+  static void ToggleFrameRateOverlay();
+
  protected:
   enum class PaintResult {
     kPresented,
@@ -698,6 +706,13 @@ class Presenter {
   // For calling from the painting implementations if requested.
   void ExecuteUIDrawersFromUIThread(UIDrawContext& ui_draw_context);
 
+  // The frame rate overlay's rectangles in surface pixels for the painting
+  // thread, none while it's off. The first shadow_count_out are the shadow,
+  // filled before the text.
+  const std::vector<GuestOutputPaintFlow::ClearRectangle>&
+  LayOutFrameRateOverlay(uint32_t surface_width, uint32_t surface_height,
+                         size_t& shadow_count_out);
+
  private:
   enum class PaintMode {
     // Don't paint at all.
@@ -968,6 +983,10 @@ class Presenter {
   // Accessible only by refreshing, whether the last refresh contained an image
   // rather than being blank.
   bool guest_output_active_last_refresh_ = false;
+
+  std::function<float()> frame_rate_source_;
+  std::vector<GuestOutputPaintFlow::ClearRectangle>
+      frame_rate_overlay_rectangles_;
 
   // Ordered by the Z order, and then by the time of addition.
   // Note: All the iteration logic involving this Z ordering must be the same as

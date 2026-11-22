@@ -499,6 +499,9 @@ class VulkanPresenter final : public Presenter {
   // DisconnectPaintingFromSurfaceFromUIThreadImpl) by the thread doing it, as
   // well as by presenter initialization and shutdown.
   PaintContext paint_context_;
+
+  // The frame rate overlay's rectangles, for painting.
+  std::vector<VkClearRect> frame_rate_overlay_rects_;
 };
 
 }  // namespace vulkan

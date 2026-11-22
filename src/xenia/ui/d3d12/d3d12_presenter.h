@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "xenia/base/math.h"
 #include "xenia/ui/d3d12/d3d12_gpu_completion_timeline.h"
@@ -335,6 +336,9 @@ class D3D12Presenter final : public Presenter {
   // DisconnectPaintingFromSurfaceFromUIThreadImpl) by the thread doing it, as
   // well as by presenter initialization and shutdown.
   PaintContext paint_context_;
+
+  // The frame rate overlay's rectangles, for painting.
+  std::vector<D3D12_RECT> frame_rate_overlay_rects_;
 };
 
 }  // namespace d3d12

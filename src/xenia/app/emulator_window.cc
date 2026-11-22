@@ -146,8 +146,6 @@ DEFINE_bool(
     "depends on the 10bpc displaying capabilities of the actual display used.",
     "Display");
 
-DEFINE_bool(fps_overlay, false, "Show an FPS overlay.", "Display");
-
 DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
@@ -257,21 +255,11 @@ void EmulatorWindow::SetupGraphicsSystemPresenterPainting() {
                                                   immediate_drawer_.get());
     Profiler::SetUserIO(kZOrderProfiler, window_.get(), presenter,
                         immediate_drawer_.get());
-    ApplyFrameRateOverlay();
-  }
-}
-
-void EmulatorWindow::ApplyFrameRateOverlay() {
-  if (cvars::fps_overlay && immediate_drawer_) {
-    imgui_drawer_->SetOverlay([this]() { DrawFrameRateOverlay(); });
-  } else {
-    imgui_drawer_->SetOverlay(nullptr);
   }
 }
 
 void EmulatorWindow::ToggleFrameRateOverlay() {
-  OVERRIDE_bool(fps_overlay, !cvars::fps_overlay);
-  ApplyFrameRateOverlay();
+  ui::Presenter::ToggleFrameRateOverlay();
 }
 
 void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
@@ -279,7 +267,6 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
     graphics_system->SetFrameRateCallback(nullptr);
   }
 
-  imgui_drawer_->SetOverlay(nullptr);
   Profiler::SetUserIO(kZOrderProfiler, window_.get(), nullptr, nullptr);
   imgui_drawer_->SetPresenterAndImmediateDrawer(nullptr, nullptr);
   immediate_drawer_.reset();
@@ -1872,49 +1859,7 @@ void EmulatorWindow::UpdateTitle() {
   window_->SetTitle(sb.to_string_view());
 }
 
-void EmulatorWindow::OnFrameRateUpdated() {
-  UpdateTitle();
-
-  if (!cvars::fps_overlay) {
-    return;
-  }
-
-  // Repaint even if the title isn't swapping.
-  if (ui::Presenter* presenter = GetGraphicsSystemPresenter()) {
-    presenter->RequestUIPaintFromUIThread();
-  }
-}
-
-void EmulatorWindow::DrawFrameRateOverlay() {
-  if (!emulator()->is_title_open()) {
-    return;
-  }
-
-  GraphicsSystem* graphics_system = emulator()->graphics_system();
-  if (!graphics_system) {
-    return;
-  }
-
-  // Fits every reading below 100 FPS, so the box doesn't resize as it changes.
-  const float min_width = ImGui::CalcTextSize("00.00 FPS").x +
-                          ImGui::GetStyle().WindowPadding.x * 2.0f;
-
-  ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
-  ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 0.0f),
-                                      ImVec2(FLT_MAX, FLT_MAX));
-  ImGui::SetNextWindowBgAlpha(0.5f);
-
-  if (ImGui::Begin("##FrameRateOverlay", nullptr,
-                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-                       ImGuiWindowFlags_NoNav |
-                       ImGuiWindowFlags_NoFocusOnAppearing |
-                       ImGuiWindowFlags_NoBringToFrontOnFocus |
-                       ImGuiWindowFlags_NoSavedSettings |
-                       ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("%.2f FPS", graphics_system->GetFramesPerSecond());
-  }
-  ImGui::End();
-}
+void EmulatorWindow::OnFrameRateUpdated() { UpdateTitle(); }
 
 void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
   if (initializing_shader_storage_ == initializing) {

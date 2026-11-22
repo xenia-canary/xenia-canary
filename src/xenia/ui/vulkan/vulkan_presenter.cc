@@ -2020,6 +2020,45 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
     swapchain_image_clear_needed = false;
   }
 
+  // The frame rate overlay goes over the guest output, under the UI.
+  if (guest_output_image) {
+    size_t shadow_count;
+    const std::vector<GuestOutputPaintFlow::ClearRectangle>& overlay =
+        LayOutFrameRateOverlay(paint_context_.swapchain_extent.width,
+                               paint_context_.swapchain_extent.height,
+                               shadow_count);
+
+    frame_rate_overlay_rects_.clear();
+    for (const GuestOutputPaintFlow::ClearRectangle& rectangle : overlay) {
+      VkClearRect& rect = frame_rate_overlay_rects_.emplace_back();
+      rect.rect.offset.x = int32_t(rectangle.x);
+      rect.rect.offset.y = int32_t(rectangle.y);
+      rect.rect.extent.width = rectangle.width;
+      rect.rect.extent.height = rectangle.height;
+      rect.baseArrayLayer = 0;
+      rect.layerCount = 1;
+    }
+
+    VkClearAttachment overlay_attachment;
+    overlay_attachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    overlay_attachment.colorAttachment = 0;
+
+    if (shadow_count) {
+      overlay_attachment.clearValue.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+      dfn.vkCmdClearAttachments(draw_command_buffer, 1, &overlay_attachment,
+                                uint32_t(shadow_count),
+                                frame_rate_overlay_rects_.data());
+    }
+
+    if (frame_rate_overlay_rects_.size() > shadow_count) {
+      overlay_attachment.clearValue.color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+      dfn.vkCmdClearAttachments(
+          draw_command_buffer, 1, &overlay_attachment,
+          uint32_t(frame_rate_overlay_rects_.size() - shadow_count),
+          frame_rate_overlay_rects_.data() + shadow_count);
+    }
+  }
+
   if (execute_ui_drawers) {
     // Draw the UI.
     VulkanUIDrawContext ui_draw_context(
