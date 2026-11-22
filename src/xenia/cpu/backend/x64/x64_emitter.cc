@@ -515,9 +515,11 @@ static uint64_t ResolveLongjmpTarget(ppc::PPCContext_s* guest_context,
 
   uint32_t resumed = frame - 1;
 
-  // A longjmp restores r1 to at least where the function made its last call.
-  // Below that, the callee's frame is still in use, so it's an ordinary branch.
-  if (guest_stack < stackpoints[resumed + 1].guest_stack_) {
+  // A longjmp restores r1 to the frame the function had when it called
+  // setjmp, which is the r1 every call it makes from that frame records,
+  // including its last. Below that, the callee's frame is still in use, and
+  // anywhere else isn't a frame of the function, so it's an ordinary branch.
+  if (guest_stack != stackpoints[resumed + 1].guest_stack_) {
     return 0;
   }
 
@@ -557,6 +559,7 @@ static uint64_t ResolveLongjmpTarget(ppc::PPCContext_s* guest_context,
     // EmitGuestAndHostSynchronizeStackHelper then moves it to this
     // stackpoint's frame.
     backend_context->current_stackpoint_depth = resumed + 1;
+    backend_context->flags |= 1U << kX64BackendLongjmpPendingBit;
     return host_address;
   }
 

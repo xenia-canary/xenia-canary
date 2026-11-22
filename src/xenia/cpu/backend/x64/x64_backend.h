@@ -101,6 +101,9 @@ enum : uint32_t {
       2,  // non-java mode bit is currently set. for use in software fp routines
   kX64BackendNonIEEEMode =
       3,  // non-ieee mode is currently enabled for scalar fpu.
+  // ResolveFunction sent a longjmp to a return site, for
+  // EmitGuestAndHostSynchronizeStackHelper to put rsp back in its frame.
+  kX64BackendLongjmpPendingBit = 4,
 };
 // located prior to the ctx register
 // some things it would be nice to have be per-emulator instance instead of per

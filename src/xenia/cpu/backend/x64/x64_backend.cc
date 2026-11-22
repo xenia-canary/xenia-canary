@@ -990,13 +990,18 @@ ResolveFunctionThunk X64HelperEmitter::EmitResolveFunctionThunk() {
   return (ResolveFunctionThunk)fn;
 }
 // r11 = size of callers stack, r8 = return address w/ adjustment
-// Reached when code after a call finds the host stack misaligned, which only
-// happens when ResolveFunction sent a longjmp to a return site. It set the
-// stackpoint depth to just past the call of the function being continued, so
-// put rsp back in that function's frame: its entry rsp less its stack size.
+// Reached when code after a call finds the host stack misaligned. When
+// ResolveFunction sent a longjmp to a return site, it set the stackpoint depth
+// to just past the call of the function being continued, so put rsp back in
+// that function's frame: its entry rsp less its stack size. Anything else
+// misaligned is left as it is, as the newest stackpoint may not be this
+// function's.
 void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
+  Xbyak::Label no_longjmp;
+  btr(GetBackendFlagsPtr(), kX64BackendLongjmpPendingBit);
+  jnc(no_longjmp, T_NEAR);
   mov(eax,
       GetBackendCtxPtr(offsetof(X64BackendContext, current_stackpoint_depth)));
   mov(rcx, GetBackendCtxPtr(offsetof(X64BackendContext, stackpoints)));
@@ -1004,6 +1009,8 @@ void* X64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   imul(eax, eax, sizeof(X64BackendStackpoint));
   mov(rsp, ptr[rcx + rax + offsetof(X64BackendStackpoint, host_stack_)]);
   sub(rsp, r11);
+  jmp(r8);
+  L(no_longjmp);
   jmp(r8);
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
