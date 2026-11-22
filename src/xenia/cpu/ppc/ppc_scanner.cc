@@ -34,8 +34,25 @@ PPCScanner::PPCScanner(PPCFrontend* frontend) : frontend_(frontend) {}
 PPCScanner::~PPCScanner() {}
 
 bool PPCScanner::IsRestGprLr(uint32_t address) {
-  auto function = frontend_->processor()->QueryFunction(address);
-  return function && function->behavior() == Function::Behavior::kEpilogReturn;
+  // XexModule::FindSaveRest declares the __restgprlr_* functions, but they're
+  // only compiled with enable_early_precompilation (calls to them are inlined),
+  // so look for the declared symbol rather than a compiled function. Without
+  // this, a function ending in a branch to one runs on into the functions
+  // after it.
+  auto module = frontend_->processor()->LookupModule(address);
+
+  if (!module) {
+    return false;
+  }
+
+  auto symbol = module->LookupSymbol(address, false);
+
+  if (!symbol || symbol->type() != Symbol::Type::kFunction) {
+    return false;
+  }
+
+  return static_cast<Function*>(symbol)->behavior() ==
+         Function::Behavior::kEpilogReturn;
 }
 
 bool PPCScanner::Scan(GuestFunction* function, FunctionDebugInfo* debug_info) {
