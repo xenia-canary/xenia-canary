@@ -39,7 +39,15 @@ uint64_t PPCContext::cr() const {
 }
 
 void PPCContext::set_cr(uint64_t value) {
-  assert_always("not yet implemented");
+  // Each field is held as four bytes of 0 or 1, LT first, as cr() reads them.
+  for (int i = 0; i < 8; ++i) {
+    const uint32_t bits = static_cast<uint32_t>(value >> ((7 - i) * 4)) & 0xF;
+    uint8_t* field = reinterpret_cast<uint8_t*>(&cr0.value + i);
+    field[0] = (bits >> 3) & 0x1;
+    field[1] = (bits >> 2) & 0x1;
+    field[2] = (bits >> 1) & 0x1;
+    field[3] = bits & 0x1;
+  }
 }
 
 uint32_t PPCContext::xer() const {
