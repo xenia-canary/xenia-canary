@@ -7,13 +7,12 @@
  ******************************************************************************
  */
 
-#include "xenia/ui/console_window.h"
+#include "xenia/base/console_window.h"
 
 DEFINE_bool(enable_console, false, "Open a console window with the main window",
             "Logging");
 
 namespace xe {
-namespace ui {
 
 void ConsoleWindow::OpenIfEnabled() {
   if (!cvars::enable_console) {
@@ -25,5 +24,4 @@ void ConsoleWindow::OpenIfEnabled() {
   }
 }
 
-}  // namespace ui
 }  // namespace xe

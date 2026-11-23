@@ -10,11 +10,11 @@
 #include <cstdlib>
 
 #include "xenia/base/console.h"
+#include "xenia/base/console_window.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/main_win.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/kernel/kernel_state.cc"
-#include "xenia/ui/console_window.h"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_win.h"
 
@@ -341,7 +341,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
     xe::InitializeWin32App(app->GetName());
 
     if (app->OnInitialize()) {
-      xe::ui::ConsoleWindow::OpenIfEnabled();
+      xe::ConsoleWindow::OpenIfEnabled();
       result = app_context.RunMainMessageLoop();
     } else {
       result = EXIT_FAILURE;

@@ -8,10 +8,9 @@
  */
 
 #include "xenia/base/console.h"
-#include "xenia/ui/console_window.h"
+#include "xenia/base/console_window.h"
 
 namespace xe {
-namespace ui {
 
 namespace {
 
@@ -29,5 +28,4 @@ std::unique_ptr<ConsoleWindow> ConsoleWindow::Create() {
   return std::make_unique<Win32ConsoleWindow>();
 }
 
-}  // namespace ui
 }  // namespace xe

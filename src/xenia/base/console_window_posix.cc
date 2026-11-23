@@ -20,13 +20,12 @@
 #include <thread>
 #include <vector>
 
+#include "xenia/base/console_window.h"
 #include "xenia/base/logging.h"
-#include "xenia/ui/console_window.h"
 
 extern char** environ;
 
 namespace xe {
-namespace ui {
 
 namespace {
 
@@ -292,5 +291,4 @@ std::unique_ptr<ConsoleWindow> ConsoleWindow::Create() {
   return std::make_unique<TerminalConsoleWindow>();
 }
 
-}  // namespace ui
 }  // namespace xe

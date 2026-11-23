@@ -7,8 +7,8 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_UI_CONSOLE_WINDOW_H_
-#define XENIA_UI_CONSOLE_WINDOW_H_
+#ifndef XENIA_BASE_CONSOLE_WINDOW_H_
+#define XENIA_BASE_CONSOLE_WINDOW_H_
 
 #include <memory>
 
@@ -17,7 +17,6 @@
 DECLARE_bool(enable_console);
 
 namespace xe {
-namespace ui {
 
 // Shows the stdout and stderr output of the process in a console window.
 class ConsoleWindow {
@@ -38,7 +37,6 @@ class ConsoleWindow {
   ConsoleWindow() = default;
 };
 
-}  // namespace ui
 }  // namespace xe
 
-#endif  // XENIA_UI_CONSOLE_WINDOW_H_
+#endif  // XENIA_BASE_CONSOLE_WINDOW_H_
