@@ -7,8 +7,6 @@
  ******************************************************************************
  */
 
-#include <fcntl.h>
-#include <io.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -47,14 +45,8 @@ void AttachConsole() {
 
   has_console_attached_ = true;
 
-  auto std_handle = (intptr_t)GetStdHandle(STD_OUTPUT_HANDLE);
-  auto con_handle = _open_osfhandle(std_handle, _O_TEXT);
-  auto fp = _fdopen(con_handle, "w");
+  FILE* fp;
   freopen_s(&fp, "CONOUT$", "w", stdout);
-
-  std_handle = (intptr_t)GetStdHandle(STD_ERROR_HANDLE);
-  con_handle = _open_osfhandle(std_handle, _O_TEXT);
-  fp = _fdopen(con_handle, "w");
   freopen_s(&fp, "CONOUT$", "w", stderr);
 }
 
