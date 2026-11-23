@@ -14,15 +14,13 @@
 #include "xenia/base/main_win.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/kernel/kernel_state.cc"
+#include "xenia/ui/console_window.h"
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context_win.h"
 
 #include "version.h"
 
 #include <Psapi.h>
-
-DEFINE_bool(enable_console, false, "Open a console window with the main window",
-            "Logging");
 
 static uintptr_t g_xenia_exe_base = 0;
 static size_t g_xenia_exe_size = 0;
@@ -343,12 +341,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
     xe::InitializeWin32App(app->GetName());
 
     if (app->OnInitialize()) {
-      // TODO(Triang3l): Rework this, need to initialize the console properly,
-      // disable has_console_attached_ by default in windowed apps, and attach
-      // only if needed.
-      if (cvars::enable_console) {
-        xe::AttachConsole();
-      }
+      xe::ui::ConsoleWindow::OpenIfEnabled();
       result = app_context.RunMainMessageLoop();
     } else {
       result = EXIT_FAILURE;
