@@ -244,7 +244,6 @@ struct X_KWAIT_BLOCK {
   // WAIT_ALL or WAIT_ANY
   xe::be<X_KWAIT_REASON> wait_type;
 };
-
 static_assert_size(X_KWAIT_BLOCK, 0x18);
 
 struct X_KTIMER {
