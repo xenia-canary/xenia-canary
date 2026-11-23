@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <cstddef>
+
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
@@ -36,8 +38,16 @@ void HandleSetThreadName(pointer_t<X_EXCEPTION_RECORD> record) {
   // SetThreadName. FFS.
   // https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx
 
-  // TODO(benvanik): check record->number_parameters to make sure it's a
-  // correct size.
+  // Flags isn't read, so only the words up to it are needed.
+  constexpr uint32_t kRequiredParameters =
+      offsetof(X_THREADNAME_INFO, flags) / sizeof(uint32_t);
+
+  if (record->number_parameters < kRequiredParameters) {
+    XELOGW("SetThreadName called with {} parameters",
+           static_cast<uint32_t>(record->number_parameters));
+    return;
+  }
+
   auto thread_info =
       reinterpret_cast<X_THREADNAME_INFO*>(&record->exception_information[0]);
 
