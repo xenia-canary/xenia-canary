@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/util/guest_object_table.h"
+#include "xenia/base/memory.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
@@ -73,7 +74,8 @@ bool GrowHandleTable(uint32_t table_ptr, PPCContext* context) {
   }
 
   uint32_t new_bucket = xboxkrnl::xeAllocatePoolTypeWithTag(
-      context, SIZE_PER_HANDLE_BUCKET, 'tHbO', table->unk_pool_arg_34);
+      context, SIZE_PER_HANDLE_BUCKET, make_fourcc_le("ObHt"),
+      table->unk_pool_arg_34);
   if (!new_bucket) {
     return false;
   }
@@ -90,7 +92,7 @@ bool GrowHandleTable(uint32_t table_ptr, PPCContext* context) {
         context,
         sizeof(uint32_t) * ((new_bucket_handle_base / SIZE_PER_HANDLE_BUCKET) +
                             BUCKET_SLOT_GROWTH),
-        'rHbO', table->unk_pool_arg_34);
+        make_fourcc_le("ObHr"), table->unk_pool_arg_34);
     if (new_dynamic_buckets) {
       /*
         copy old bucket list contents to new, larger bucket list

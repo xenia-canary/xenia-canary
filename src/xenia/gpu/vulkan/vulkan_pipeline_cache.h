@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "xenia/base/hash.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/threading.h"
 #include "xenia/base/xxhash.h"
@@ -289,7 +290,8 @@ class VulkanPipelineCache {
 
   // Pipeline storage constants.
   static constexpr uint32_t kPipelineStorageVersionWithoutAPI = 0x20201219;
-  static constexpr uint32_t kPipelineStorageAPIMagicVulkan = 'VLKN';
+  static constexpr fourcc_t kPipelineStorageAPIMagicVulkan =
+      make_fourcc("VLKN");
 
   // Pipeline storage description.
   XEPACKEDSTRUCT(PipelineStoredDescription, {

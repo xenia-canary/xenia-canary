@@ -38,16 +38,16 @@ constexpr fourcc_t kXdbfSignatureXrpt = make_fourcc("XRPT");
 constexpr fourcc_t kXdbfSignatureXpbm = make_fourcc("XPBM");
 
 constexpr uint64_t kXdbfIdTitle = 0x8000;
-constexpr uint64_t kXdbfIdXstc = 0x58535443;
-constexpr uint64_t kXdbfIdXach = 0x58414348;
-constexpr uint64_t kXdbfIdXprp = 0x58505250;
-constexpr uint64_t kXdbfIdXctx = 0x58435854;
-constexpr uint64_t kXdbfIdXvc2 = 0x58564332;
-constexpr uint64_t kXdbfIdXmat = 0x584D4154;
-constexpr uint64_t kXdbfIdXsrc = 0x58535243;
-constexpr uint64_t kXdbfIdXthd = 0x58544844;
-constexpr uint64_t kXdbfIdXpbm = 0x5850424D;
-constexpr uint64_t kXdbfIdXrpt = 0x58525054;
+constexpr uint64_t kXdbfIdXstc = make_fourcc("XSTC");
+constexpr uint64_t kXdbfIdXach = make_fourcc("XACH");
+constexpr uint64_t kXdbfIdXprp = make_fourcc("XPRP");
+constexpr uint64_t kXdbfIdXctx = make_fourcc("XCXT");
+constexpr uint64_t kXdbfIdXvc2 = make_fourcc("XVC2");
+constexpr uint64_t kXdbfIdXmat = make_fourcc("XMAT");
+constexpr uint64_t kXdbfIdXsrc = make_fourcc("XSRC");
+constexpr uint64_t kXdbfIdXthd = make_fourcc("XTHD");
+constexpr uint64_t kXdbfIdXpbm = make_fourcc("XPBM");
+constexpr uint64_t kXdbfIdXrpt = make_fourcc("XRPT");
 
 #pragma pack(push, 1)
 struct XdbfHeader {

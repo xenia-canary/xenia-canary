@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/memory.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -314,7 +315,7 @@ dword_result_t XexLoadImageHeaders_entry(pointer_t<X_ANSI_STRING> path,
     return result_status;
   }
 
-  if (header->magic != 'XEX2') {
+  if (header->magic != make_fourcc("XEX2")) {
     vfs_file->Destroy();
     return X_STATUS_INVALID_IMAGE_FORMAT;
   }

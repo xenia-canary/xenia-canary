@@ -13,6 +13,7 @@
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/memory.h"
 #include "xenia/emulator.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/user_module.h"
@@ -1714,7 +1715,7 @@ void KernelState::InitializeKernelGuestGlobals() {
       block->XboxKernelDefaultObject.wait_list.flink_ptr;
 
   // init thread object
-  block->ExThreadObjectType.pool_tag = 0x65726854;
+  block->ExThreadObjectType.pool_tag = make_fourcc_le("Thre");
   block->ExThreadObjectType.allocate_proc =
       kernel_trampoline_group_.NewLongtermTrampoline(AllocateThread);
 
@@ -1729,29 +1730,29 @@ void KernelState::InitializeKernelGuestGlobals() {
       kernel_trampoline_group_.NewLongtermTrampoline(SimpleForwardFreePool);
 
   // init event object
-  block->ExEventObjectType.pool_tag = 0x76657645;
+  block->ExEventObjectType.pool_tag = make_fourcc_le("Evev");
   block->ExEventObjectType.allocate_proc = trampoline_allocatepool;
   block->ExEventObjectType.free_proc = trampoline_freepool;
 
   // init mutant object
-  block->ExMutantObjectType.pool_tag = 0x6174754D;
+  block->ExMutantObjectType.pool_tag = make_fourcc_le("Muta");
   block->ExMutantObjectType.allocate_proc = trampoline_allocatepool;
   block->ExMutantObjectType.free_proc = trampoline_freepool;
 
   block->ExMutantObjectType.delete_proc =
       kernel_trampoline_group_.NewLongtermTrampoline(DeleteMutant);
   // init semaphore obj
-  block->ExSemaphoreObjectType.pool_tag = 0x616D6553;
+  block->ExSemaphoreObjectType.pool_tag = make_fourcc_le("Sema");
   block->ExSemaphoreObjectType.allocate_proc = trampoline_allocatepool;
   block->ExSemaphoreObjectType.free_proc = trampoline_freepool;
   // init timer obj
-  block->ExTimerObjectType.pool_tag = 0x656D6954;
+  block->ExTimerObjectType.pool_tag = make_fourcc_le("Time");
   block->ExTimerObjectType.allocate_proc = trampoline_allocatepool;
   block->ExTimerObjectType.free_proc = trampoline_freepool;
   block->ExTimerObjectType.delete_proc =
       kernel_trampoline_group_.NewLongtermTrampoline(DeleteTimer);
   // iocompletion object
-  block->IoCompletionObjectType.pool_tag = 0x706D6F43;
+  block->IoCompletionObjectType.pool_tag = make_fourcc_le("Comp");
   block->IoCompletionObjectType.allocate_proc = trampoline_allocatepool;
   block->IoCompletionObjectType.free_proc = trampoline_freepool;
   block->IoCompletionObjectType.delete_proc =
@@ -1759,7 +1760,7 @@ void KernelState::InitializeKernelGuestGlobals() {
   block->IoCompletionObjectType.unknown_size_or_object_ = oddobject_offset;
 
   // iodevice object
-  block->IoDeviceObjectType.pool_tag = 0x69766544;
+  block->IoDeviceObjectType.pool_tag = make_fourcc_le("Devi");
   block->IoDeviceObjectType.allocate_proc = trampoline_allocatepool;
   block->IoDeviceObjectType.free_proc = trampoline_freepool;
   block->IoDeviceObjectType.unknown_size_or_object_ = oddobject_offset;
@@ -1767,7 +1768,7 @@ void KernelState::InitializeKernelGuestGlobals() {
       kernel_trampoline_group_.NewLongtermTrampoline(UnknownProcIoDevice);
 
   // file object
-  block->IoFileObjectType.pool_tag = 0x656C6946;
+  block->IoFileObjectType.pool_tag = make_fourcc_le("File");
   block->IoFileObjectType.allocate_proc = trampoline_allocatepool;
   block->IoFileObjectType.free_proc = trampoline_freepool;
   block->IoFileObjectType.unknown_size_or_object_ =
@@ -1780,13 +1781,13 @@ void KernelState::InitializeKernelGuestGlobals() {
       kernel_trampoline_group_.NewLongtermTrampoline(UnknownFileProc);
 
   // directory object
-  block->ObDirectoryObjectType.pool_tag = 0x65726944;
+  block->ObDirectoryObjectType.pool_tag = make_fourcc_le("Dire");
   block->ObDirectoryObjectType.allocate_proc = trampoline_allocatepool;
   block->ObDirectoryObjectType.free_proc = trampoline_freepool;
   block->ObDirectoryObjectType.unknown_size_or_object_ = oddobject_offset;
 
   // symlink object
-  block->ObSymbolicLinkObjectType.pool_tag = 0x626D7953;
+  block->ObSymbolicLinkObjectType.pool_tag = make_fourcc_le("Symb");
   block->ObSymbolicLinkObjectType.allocate_proc = trampoline_allocatepool;
   block->ObSymbolicLinkObjectType.free_proc = trampoline_freepool;
   block->ObSymbolicLinkObjectType.unknown_size_or_object_ = oddobject_offset;

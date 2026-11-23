@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include "xenia/base/byte_order.h"
+#include "xenia/base/memory.h"
 
 namespace xe {
 namespace kernel {
@@ -68,7 +69,7 @@ enum X_TILT_STATUS_FLAGS : uint32_t {
 
 struct X_NUI_TILT_STATUS {
   be<uint32_t> buffer_size;
-  be<uint32_t> signature;  // 'XtSs'
+  be<fourcc_t> signature;  // 'XtSs'
   be<uint32_t> unknown_08[6];
   // Gravity direction.
   be<int32_t> gravity_long_avg[3];

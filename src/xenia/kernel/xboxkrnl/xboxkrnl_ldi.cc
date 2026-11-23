@@ -13,6 +13,7 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/ldi_decompressor.h"
@@ -41,7 +42,7 @@ constexpr uint32_t kLdiCompressedFrameGrowth = 0x1800;
 constexpr uint32_t kLdiContextSize = 0x2FF8;
 // Seen with a 32 KiB window
 constexpr uint32_t kLdiWindowExtra = 0x105;
-constexpr uint32_t kLdiMagic = 0x4349444C;  // 'CIDL'
+constexpr fourcc_t kLdiMagic = make_fourcc("CIDL");
 // Accepted window sizes. lzxd only decodes 32 KiB to 2 MiB, so LDIDecompress
 // fails outside that.
 constexpr uint32_t kLdiMinWindowBits = 12;

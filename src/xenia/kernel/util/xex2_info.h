@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "xenia/base/byte_order.h"
+#include "xenia/base/memory.h"
 
 // https://github.com/emoose/xbox-reversing/blob/5f85b9ec8c771577532ca1cfa20c691e9033f2c2/templates/xbox-360/XEX2FlagsAndEnums.bt#L9
 enum xex2_header_keys : uint32_t {
@@ -829,7 +830,7 @@ struct xex2_opt_header {
 };
 
 struct xex2_header {
-  xe::be<uint32_t> magic;                  // 0x0 'XEX2'
+  xe::be<fourcc_t> magic;                  // 0x0 'XEX2'
   xe::be<xex2_module_flags> module_flags;  // 0x4
   xe::be<uint32_t> header_size;            // 0x8
   xe::be<uint32_t> reserved;               // 0xC

@@ -26,6 +26,7 @@
 #include "xenia/base/byte_order.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/threading.h"
 #include "xenia/base/xxhash.h"
@@ -39,7 +40,7 @@ namespace gpu {
 // Stores guest shader microcode (Xbox 360 bytecode) for persistent caching.
 
 // File magic: 'XESH'
-constexpr uint32_t kShaderStorageMagic = 0x48534558;
+constexpr fourcc_t kShaderStorageMagic = make_fourcc_le("XESH");
 
 // Header for each stored shader entry.
 XEPACKEDSTRUCT(ShaderStoredHeader, {
@@ -54,7 +55,7 @@ XEPACKEDSTRUCT(ShaderStoredHeader, {
 
 // Pipeline storage file format (.xpso) - API-specific but with shared header.
 // File magic: 'XEPS'
-constexpr uint32_t kPipelineStorageMagic = 0x53504558;
+constexpr fourcc_t kPipelineStorageMagic = make_fourcc_le("XEPS");
 
 // Storage directory structure:
 //   <cache_root>/shaders/
@@ -185,7 +186,7 @@ class ShaderStorageWriter {
   // Configuration for pipeline storage files.
   struct PipelineStorageConfig {
     std::string file_suffix;  // e.g., ".fsi.vk.xpso" or ".rov.d3d12.xpso"
-    uint32_t api_magic;       // e.g., 'VKPS' or 'DXRO'
+    fourcc_t api_magic;       // e.g., 'VKPS' or 'DXRO'
     uint32_t version;         // Pipeline description version
   };
 

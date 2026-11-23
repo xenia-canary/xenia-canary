@@ -22,6 +22,7 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
 #include "xenia/base/string_buffer.h"
@@ -262,7 +263,8 @@ void PipelineCache::InitializeShaderStorage(
   pipeline_config.file_suffix = fmt::format(
       ".{}{}.d3d12.xpso", edram_rov_used ? "rov" : "rtv",
       edram_rov_used && cvars::occlusion_query_full_counters ? "-fc" : "");
-  pipeline_config.api_magic = edram_rov_used ? 0x4F525844 : 0x54525844;
+  pipeline_config.api_magic =
+      edram_rov_used ? make_fourcc_le("DXRO") : make_fourcc_le("DXRT");
   pipeline_config.version =
       std::max(PipelineDescription::kVersion,
                DxbcShaderTranslator::Modification::kVersion);

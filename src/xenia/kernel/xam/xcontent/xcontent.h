@@ -12,6 +12,7 @@
 
 #include <cstdint>
 
+#include "xenia/base/memory.h"
 #include "xenia/base/string_util.h"
 #include "xenia/kernel/util/xex2_info.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
@@ -29,9 +30,9 @@ struct XCONTENT_DATA_AGGREGATE;
 struct XCONTENT_DATA_INTERNAL;
 
 enum class XContentPackageType : uint32_t {
-  kCon = 0x434F4E20,
-  kPirs = 0x50495253,
-  kLive = 0x4C495645,
+  kCon = make_fourcc("CON "),
+  kPirs = make_fourcc("PIRS"),
+  kLive = make_fourcc("LIVE"),
 };
 
 enum class XContentVolumeType : uint32_t {

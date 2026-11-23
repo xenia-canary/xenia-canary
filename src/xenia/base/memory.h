@@ -494,6 +494,15 @@ constexpr inline fourcc_t make_fourcc(const std::string_view fourcc) {
   return make_fourcc(fourcc[0], fourcc[1], fourcc[2], fourcc[3]);
 }
 
+// Get FourCC whose bytes, stored little-endian, read as the given characters
+// make_fourcc_le("abcd") == make_fourcc("dcba") == 0x64636261
+constexpr inline fourcc_t make_fourcc_le(const std::string_view fourcc) {
+  if (fourcc.length() != 4) {
+    throw std::runtime_error("Invalid fourcc length");
+  }
+  return make_fourcc(fourcc[3], fourcc[2], fourcc[1], fourcc[0]);
+}
+
 // chrispy::todo:use for command stream vector, resize happens a ton and has to
 // call memset
 template <size_t sz>

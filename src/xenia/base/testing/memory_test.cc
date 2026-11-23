@@ -585,6 +585,13 @@ TEST_CASE("make_fourcc", "[fourcc]") {
     REQUIRE(fourcc == fourcc_host);
   }
 
+  SECTION("little-endian 'ABcd'") {
+    const uint32_t fourcc_host = 0x64634241;
+    constexpr fourcc_t fourcc = make_fourcc_le("ABcd");
+    REQUIRE(fourcc == fourcc_host);
+    REQUIRE(fourcc == make_fourcc("dcBA"));
+  }
+
   SECTION("length()!=4") {
     REQUIRE_THROWS(make_fourcc("AB\0\0"));
     REQUIRE_THROWS(make_fourcc("AB\0\0AB"));
