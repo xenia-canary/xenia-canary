@@ -229,6 +229,11 @@ enum X_KWAIT_REASON : uint16_t {
   WaitUnk3 = 3,
 };
 
+enum X_KPROCESSOR_MODE : uint32_t {
+  KernelMode = 0,
+  UserMode = 1,
+};
+
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/ntos/ke_x/kwait_block.htm
 //  pretty much the vista KWAIT_BLOCK verbatim, except that sparebyte is gone
 //  and WaitType is 2 bytes instead of 1

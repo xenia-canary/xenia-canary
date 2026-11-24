@@ -1246,7 +1246,8 @@ object_ref<XThread> XThread::Restore(KernelState* kernel_state,
       // Acquire any mutants
       for (auto mutant : thread->pending_mutant_acquires_) {
         uint64_t timeout = 0;
-        auto status = mutant->Wait(0, 0, 0, &timeout);
+        auto status =
+            mutant->Wait(0, X_KPROCESSOR_MODE::KernelMode, 0, &timeout);
         assert_true(status == X_STATUS_SUCCESS);
       }
       thread->pending_mutant_acquires_.clear();

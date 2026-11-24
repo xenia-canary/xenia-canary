@@ -641,8 +641,8 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (CriticalSectionAddLockCount(cs, 1) != 0) {
     // Create a full waiter.
-    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
-                            nullptr);
+    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8,
+                            X_KPROCESSOR_MODE::KernelMode, 0, nullptr);
   }
 
   assert_true(cs->owning_thread == 0);

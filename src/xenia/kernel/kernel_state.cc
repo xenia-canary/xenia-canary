@@ -100,7 +100,7 @@ KernelState::~KernelState() {
   if (dispatch_thread_running_) {
     dispatch_thread_running_ = false;
     dispatch_cond_.notify_all();
-    dispatch_thread_->Wait(0, 0, 0, nullptr);
+    dispatch_thread_->Wait(0, X_KPROCESSOR_MODE::KernelMode, 0, nullptr);
   }
 
   executable_module_.reset();

@@ -240,7 +240,7 @@ void CommandProcessor::Shutdown() {
 
   worker_running_ = false;
   write_ptr_index_event_->Set();
-  worker_thread_->Wait(0, 0, 0, nullptr);
+  worker_thread_->Wait(0, kernel::X_KPROCESSOR_MODE::KernelMode, 0, nullptr);
   worker_thread_.reset();
 }
 

@@ -90,7 +90,7 @@ dword_result_t XMsgCancelIORequest_entry(
     auto ev =
         kernel_state()->object_table()->LookupObject<XEvent>(event_handle);
     if (ev) {
-      ev->Wait(0, 0, true, nullptr);
+      ev->Wait(0, X_KPROCESSOR_MODE::KernelMode, true, nullptr);
     }
   }
 
@@ -117,7 +117,7 @@ dword_result_t XamGetOverlappedResult_entry(
   } else if (wait && overlapped_ptr->event) {
     auto ev = kernel_state()->object_table()->LookupObject<XEvent>(
         overlapped_ptr->event);
-    result = ev->Wait(3, 1, 0, nullptr);
+    result = ev->Wait(3, X_KPROCESSOR_MODE::UserMode, 0, nullptr);
   } else {
     result = X_STATUS_TIMEOUT;
   }

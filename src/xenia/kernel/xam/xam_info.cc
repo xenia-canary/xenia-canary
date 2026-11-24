@@ -55,9 +55,6 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
-// https://github.com/tpn/winsdk-10/blob/master/Include/10.0.14393.0/km/wdm.h#L15539
-typedef enum _MODE { KernelMode, UserMode, MaximumMode } MODE;
-
 dword_result_t XamFeatureEnabled_entry(qword_t feature_bit) {
   const std::bitset<36> feature(0x40ffffffff);
   if (feature.test(feature_bit)) {
@@ -629,13 +626,13 @@ dword_result_t RtlSleep_entry(dword_t dwMilliseconds, dword_t bAlertable) {
   delay = dwMilliseconds == -1 ? LLONG_MAX
                                : static_cast<int64_t>(-10000) * dwMilliseconds;
 
-  X_STATUS result = xboxkrnl::KeDelayExecutionThread(MODE::UserMode, bAlertable,
-                                                     &delay, nullptr);
+  X_STATUS result = xboxkrnl::KeDelayExecutionThread(
+      X_KPROCESSOR_MODE::UserMode, bAlertable, &delay, nullptr);
 
   // If the delay was interrupted by an APC, keep delaying the thread
   while (bAlertable && result == X_STATUS_ALERTED) {
-    result = xboxkrnl::KeDelayExecutionThread(MODE::UserMode, bAlertable,
-                                              &delay, nullptr);
+    result = xboxkrnl::KeDelayExecutionThread(X_KPROCESSOR_MODE::UserMode,
+                                              bAlertable, &delay, nullptr);
   }
 
   return result == X_STATUS_SUCCESS ? X_STATUS_SUCCESS : X_STATUS_USER_APC;
@@ -791,12 +788,12 @@ dword_result_t WaitForSingleObjectEx_entry(dword_t hHandle,
   uint64_t timeout_ticks = timeout ? static_cast<uint64_t>(*timeout) : 0;
   uint64_t* timeout_ptr = timeout ? &timeout_ticks : nullptr;
 
-  X_STATUS result =
-      xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
+  X_STATUS result = xboxkrnl::NtWaitForSingleObjectEx(
+      hHandle, X_KPROCESSOR_MODE::UserMode, bAlertable, timeout_ptr);
 
   while (bAlertable && result == X_STATUS_ALERTED) {
-    result =
-        xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
+    result = xboxkrnl::NtWaitForSingleObjectEx(
+        hHandle, X_KPROCESSOR_MODE::UserMode, bAlertable, timeout_ptr);
   }
 
   if (XFAILED(result)) {

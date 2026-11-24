@@ -211,7 +211,7 @@ void AudioSystem::Shutdown() {
   worker_running_ = false;
   pending_work_event_->Set();
   if (worker_thread_) {
-    worker_thread_->Wait(0, 0, 0, nullptr);
+    worker_thread_->Wait(0, kernel::X_KPROCESSOR_MODE::KernelMode, 0, nullptr);
     worker_thread_.reset();
   }
 
