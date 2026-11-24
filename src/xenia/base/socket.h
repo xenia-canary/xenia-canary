@@ -46,6 +46,9 @@ class Socket {
   // Returns true if the client is connected and can send/receive data.
   virtual bool is_connected() = 0;
 
+  // Sets socket non-blocking mode
+  virtual void set_nonblocking(bool nonblocking) = 0;
+
   // Closes the socket.
   // This will signal the wait handle.
   virtual void Close() = 0;
