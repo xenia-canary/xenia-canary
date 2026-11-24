@@ -44,6 +44,17 @@ uint64_t NUIController::GetNUIVersion(uint32_t index) {
 void NUIController::SetNUIVersion(uint64_t version, uint32_t index) {
   nui_versions_[index] = version;
 }
+uint32_t NUIController::GetHardwareType(uint32_t index) {
+  if (index > 1) {
+    // You set index out of bounds
+    assert_always();
+    return 0;
+  }
+  return nui_hardware_[index];
+}
+void NUIController::SetHardwareType(uint64_t type, uint32_t index) {
+  nui_hardware_[index] = type;
+}
 uint64_t NUIController::GetSessionId() { return session_id; }
 void NUIController::SetSessionId(uint64_t id) { session_id = id; }
 
