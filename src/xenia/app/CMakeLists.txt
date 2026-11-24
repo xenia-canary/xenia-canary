@@ -47,6 +47,7 @@ endif()
 target_compile_definitions(xenia-app PRIVATE
   XBYAK_NO_OP_NAMES
   XBYAK_ENABLE_OMITTED_OPERAND
+  XE_WINDOWED_APP_EMULATOR
 )
 
 # Core libraries (all platforms)

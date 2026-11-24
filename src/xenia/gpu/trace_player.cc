@@ -162,6 +162,7 @@ void TracePlayer::PlayTraceOnThread(const uint8_t* trace_data,
         }
         if (pending_break) {
           playing_trace_ = false;
+          playback_event_->Set();
           return;
         }
         break;

@@ -240,7 +240,9 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   auto global_lock = global_critical_region_.Acquire();
 
   auto index = FindFreeClient();
-  assert_true(index >= 0);
+  if (index < 0) {
+    return X_STATUS_NO_MEMORY;
+  }
 
   auto client_semaphore = client_semaphores_[index].get();
   auto ret = client_semaphore->Release(kMaximumQueuedFrames, nullptr);
