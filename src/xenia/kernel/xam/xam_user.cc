@@ -1030,16 +1030,12 @@ dword_result_t XamWriteGamerTile_entry(
     return X_ERROR_FUNCTION_FAILED;
   }
 
-  // What is 0x10 flag?
-  const uint32_t flags = (for_enumerate != 0 ? 0 : 0x10) | 1;
-
-  const WriteTileType tile_type = static_cast<WriteTileType>((flags & 0xF));
-
-  auto WriteGamerTileByKey = [=](uint32_t& extended_error, uint32_t& length) {
+  auto write_gamer_tile = [=](uint32_t& extended_error,
+                              uint32_t& length) -> X_RESULT {
     extended_error = X_ERROR_SUCCESS;
     length = 0;
 
-    auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
+    const auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
     if (!user) {
       extended_error = X_E_INVALIDARG;
       return X_ERROR_FUNCTION_FAILED;
@@ -1052,70 +1048,50 @@ dword_result_t XamWriteGamerTile_entry(
         fmt::format("{:08x}{:08x}{:08x}", content_title_id, big_tile_id.value(),
                     small_tile_id.value());
 
-    const std::string big_gamerpic_filename =
-        fmt::format("64_{}.png", gamerpic_key);
-
-    const std::string small_gamerpic_filename =
-        fmt::format("32_{}.png", gamerpic_key);
-
-    const std::string common_content_str = fmt::format("{:016X}", 0);
-    const std::string content_type_str =
-        fmt::format("{:08X}", uint32_t(XContentType::kGamerPicture));
-    const std::string content_title_id_str =
+    // Gamer pictures are common content owned by the dashboard.
+    const std::filesystem::path storage_path =
+        kernel_state()->emulator()->content_root() / fmt::format("{:016X}", 0) /
+        kDashboardStringID /
+        fmt::format("{:08X}", uint32_t(XContentType::kGamerPicture)) /
         fmt::format("{:08x}", content_title_id);
 
-    const std::filesystem::path gamer_pictures_storage_path =
-        kernel_state()->emulator()->content_root() / common_content_str /
-        kDashboardStringID / content_type_str / content_title_id_str;
-
-    const std::filesystem::path big_gamerpic_path =
-        gamer_pictures_storage_path / big_gamerpic_filename;
-
-    const std::filesystem::path small_gamerpic_path =
-        gamer_pictures_storage_path / small_gamerpic_filename;
-
-    const auto gamerpic_big_png =
-        kernel_state()->xam_state()->spa_info()->GetIcon(big_tile_id);
-
-    const auto gamerpic_small_png =
-        kernel_state()->xam_state()->spa_info()->GetIcon(small_tile_id);
-
-    const std::error_code ec =
-        xe::filesystem::CreateFolder(gamer_pictures_storage_path);
-
-    FILE* big_gamerpic_file = xe::filesystem::OpenFile(big_gamerpic_path, "ab");
-    FILE* small_gamerpic_file =
-        xe::filesystem::OpenFile(small_gamerpic_path, "ab");
-
-    X_RESULT result = X_ERROR_SUCCESS;
-
-    if (ec || !big_gamerpic_file || !small_gamerpic_file) {
+    if (xe::filesystem::CreateFolder(storage_path)) {
       extended_error = X_E_FUNCTION_FAILED;
       return X_ERROR_FUNCTION_FAILED;
     }
 
-    fwrite(gamerpic_big_png.data(), 1, gamerpic_big_png.size(),
-           big_gamerpic_file);
-    fclose(big_gamerpic_file);
+    const auto write_tile = [&](uint32_t tile_id, uint32_t size) {
+      const std::span<const uint8_t> png =
+          kernel_state()->xam_state()->spa_info()->GetIcon(tile_id);
 
-    fwrite(gamerpic_small_png.data(), 1, gamerpic_small_png.size(),
-           small_gamerpic_file);
-    fclose(small_gamerpic_file);
+      FILE* file = xe::filesystem::OpenFile(
+          storage_path / fmt::format("{}_{}.png", size, gamerpic_key), "wb");
 
-    XELOGI("Player: {} Unlocked Gamerpic: {}", user->name(),
-           big_gamerpic_filename);
+      if (!file) {
+        return false;
+      }
 
-    return result;
+      fwrite(png.data(), 1, png.size(), file);
+      fclose(file);
+
+      return true;
+    };
+
+    if (!write_tile(big_tile_id, 64) || !write_tile(small_tile_id, 32)) {
+      extended_error = X_E_FUNCTION_FAILED;
+      return X_ERROR_FUNCTION_FAILED;
+    }
+
+    XELOGI("{} unlocked gamerpic: {}", user->name(), gamerpic_key);
+    return X_ERROR_SUCCESS;
   };
 
   if (!overlapped_ptr) {
     uint32_t extended_error, length;
-    X_RESULT result = WriteGamerTileByKey(extended_error, length);
-
-    return result == X_ERROR_SUCCESS ? result : extended_error;
+    return write_gamer_tile(extended_error, length);
   }
 
-  kernel_state()->CompleteOverlappedDeferredEx(WriteGamerTileByKey,
+  kernel_state()->CompleteOverlappedDeferredEx(write_gamer_tile,
                                                overlapped_ptr);
   return X_ERROR_IO_PENDING;
 }
