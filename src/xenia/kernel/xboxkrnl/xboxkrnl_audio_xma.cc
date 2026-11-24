@@ -381,16 +381,8 @@ DECLARE_XBOXKRNL_EXPORT2(XMADisableContext, kAudio, kImplemented,
                          kHighFrequency);
 
 dword_result_t XMABlockWhileInUse_entry(lpvoid_t context_ptr) {
-  do {
-    XMA_CONTEXT_DATA context(context_ptr);
-    if (!context.input_buffer_0_valid && !context.input_buffer_1_valid) {
-      break;
-    }
-    if (!context.work_buffer_ptr) {
-      break;
-    }
-    xe::threading::Sleep(std::chrono::milliseconds(1));
-  } while (true);
+  kernel_state()->emulator()->audio_system()->xma_decoder()->BlockOnContext(
+      context_ptr, false);
   return 0;
 }
 DECLARE_XBOXKRNL_EXPORT2(XMABlockWhileInUse, kAudio, kImplemented,
