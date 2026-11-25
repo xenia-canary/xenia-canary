@@ -256,22 +256,114 @@ dword_result_t XNetLogonGetMachineID_entry(lpqword_t machine_id_ptr) {
 }
 DECLARE_XAM_EXPORT1(XNetLogonGetMachineID, kNetworking, kStub);
 
-dword_result_t NetDll_XNetGetOpt_entry(dword_t one, dword_t option_id,
+struct X_NET_ARP_ENTRY {
+  xe::be<uint32_t> status;
+  in_addr ip;
+  uint8_t mac_address[6];
+  uint8_t pad[2];
+};
+static_assert_size(X_NET_ARP_ENTRY, 0x10);
+
+struct X_NET_ROUTE_ENTRY {
+  xe::be<uint32_t> flag;
+  xe::be<uint32_t> type;
+  in_addr dest;
+  in_addr gateway;
+  in_addr addr_interface;
+  in_addr unk;
+};
+static_assert_size(X_NET_ROUTE_ENTRY, 0x18);
+
+dword_result_t NetDll_XNetGetOpt_entry(dword_t caller, dword_t option_id,
                                        lpvoid_t buffer_ptr,
                                        lpdword_t buffer_size) {
-  assert_true(one == 1);
+  assert_true(caller == 1);
   switch (option_id) {
-    case 1:
+    case 1:  // Get startup params
       if (*buffer_size < sizeof(XNetStartupParams)) {
         *buffer_size = sizeof(XNetStartupParams);
-        return uint32_t(X_WSAError::X_WSAEMSGSIZE);
+        return X_WSAError::X_WSAEMSGSIZE;
       }
       std::memcpy(buffer_ptr, &xnet_startup_params, sizeof(XNetStartupParams));
       return 0;
+    case 2: {  // Transmited Bytes
+      XELOGD("NetDll_XNetGetOpt: Transmited Bytes Stubbed");
+      if (*buffer_size < sizeof(uint64_t)) {
+        *buffer_size = sizeof(uint64_t);
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      uint64_t* buffer_data_ptr = buffer_ptr.as<uint64_t*>();
+      *buffer_data_ptr = 0;
+      return 0;
+    }
+    case 3: {  // Transmited Frames
+      XELOGD("NetDll_XNetGetOpt: Transmited Frames Stubbed");
+      if (*buffer_size < 4) {
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      uint32_t* buffer_data_ptr = buffer_ptr.as<uint32_t*>();
+      *buffer_data_ptr = 0;
+      return 0;
+    }
+    case 4: {  // Received Bytes
+      XELOGD("NetDll_XNetGetOpt: Received Bytes Stubbed");
+      if (*buffer_size < sizeof(uint64_t)) {
+        *buffer_size = sizeof(uint64_t);
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      uint64_t* buffer_data_ptr = buffer_ptr.as<uint64_t*>();
+      *buffer_data_ptr = 0;
+      return 0;
+    }
+    case 0x1391: {  // Get ARP Entry
+      XELOGD("NetDll_XNetGetOpt: Get ARP Entry Stubbed");
+      if (*buffer_size < sizeof(X_NET_ARP_ENTRY)) {
+        *buffer_size = sizeof(X_NET_ARP_ENTRY);
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      X_NET_ARP_ENTRY* buffer_data_ptr = buffer_ptr.as<X_NET_ARP_ENTRY*>();
+      buffer_data_ptr->status = 0;
+      std::memset(buffer_data_ptr->mac_address, 0, 6);
+      return 0;
+    }
+    case 0x1392: {  // Get Route Entry
+      XELOGD("NetDll_XNetGetOpt: Get Route Entry Stubbed");
+      if (*buffer_size < sizeof(X_NET_ROUTE_ENTRY)) {
+        std::memset(buffer_ptr, 0, *buffer_size);
+        *buffer_size = 0;
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      X_NET_ROUTE_ENTRY* buffer_data_ptr = buffer_ptr.as<X_NET_ROUTE_ENTRY*>();
+      std::memset(buffer_data_ptr, 0, *buffer_size);
+      return 0;
+    }
+    case 0x1393: {  // SetDomain
+      XELOGD("NetDll_XNetGetOpt: Set Domain Stubbed");
+      if (!*buffer_size || !buffer_size || !buffer_ptr) {
+        return X_ERROR_INVALID_PARAMETER;
+      }
+      std::string* buffer_data_ptr = buffer_ptr.as<std::string*>();
+      std::memset(buffer_data_ptr, 0, *buffer_size);
+      return 0;
+    }
+    case 0x2AF9: {
+      XELOGD("NetDll_XNetGetOpt: 0x2AF9 Stubbed");
+      if (*buffer_size < 0x4) {
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      return 0;
+    }
+    case 0x2AFC: {
+      XELOGD("NetDll_XNetGetOpt: 0x2AFC Stubbed");
+      if (*buffer_size < 0x28) {
+        return X_WSAError::X_WSAEMSGSIZE;
+      }
+      return 0;
+    }
     default:
-      XELOGE("NetDll_XNetGetOpt: option {} unimplemented",
-             static_cast<uint32_t>(option_id));
-      return uint32_t(X_WSAError::X_WSAEINVAL);
+      XELOGE("NetDll_XNetGetOpt: option 0x{:X} unimplemented, size 0x{:X}",
+             option_id.value(), static_cast<uint32_t>(*buffer_size));
+      return X_WSAError::X_WSAEINVAL;
   }
 }
 DECLARE_XAM_EXPORT1(NetDll_XNetGetOpt, kNetworking, kSketchy);
