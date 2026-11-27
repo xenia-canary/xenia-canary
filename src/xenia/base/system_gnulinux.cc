@@ -10,9 +10,12 @@
 #include <alloca.h>
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <cstring>
+#include <fstream>
 #include <string>
+#include <vector>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
@@ -20,6 +23,8 @@
 #include "xenia/base/system.h"
 
 #include <SDL3/SDL.h>
+
+extern char** environ;
 
 namespace xe {
 
@@ -59,6 +64,41 @@ void LaunchWebBrowser(const std::string_view url) { OpenUrl(std::string(url)); }
 void LaunchFileExplorer(const std::filesystem::path& path) {
   std::error_code ec;
   OpenUrl(std::filesystem::absolute(path, ec).string());
+}
+
+bool RestartApplication() {
+  std::ifstream cmdline_file("/proc/self/cmdline", std::ios::binary);
+  if (!cmdline_file.is_open()) {
+    return false;
+  }
+  std::vector<char> cmdline_bytes((std::istreambuf_iterator<char>(cmdline_file)),
+                                  std::istreambuf_iterator<char>());
+  std::vector<std::string> args;
+  size_t start = 0;
+  for (size_t i = 0; i < cmdline_bytes.size(); ++i) {
+    if (cmdline_bytes[i] == '\0') {
+      args.emplace_back(&cmdline_bytes[start], i - start);
+      start = i + 1;
+    }
+  }
+  if (args.empty()) {
+    args.emplace_back("/proc/self/exe");
+  }
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+  const pid_t child_pid = fork();
+  if (child_pid < 0) {
+    return false;
+  }
+  if (child_pid == 0) {
+    execve("/proc/self/exe", argv.data(), environ);
+    _exit(127);
+  }
+  return true;
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
