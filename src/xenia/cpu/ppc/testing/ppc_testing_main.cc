@@ -595,18 +595,18 @@ TestResult RunTestInChildProcess(TestSuite& test_suite, TestCase& test_case) {
 }
 #endif  // !XE_COMPILER_MSVC
 
-void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
+void ProtectedRunTest(TestSuite& test_suite, TestRunner* runner,
                       TestCase& test_case, int& failed_count,
                       int& passed_count) {
 #if XE_COMPILER_MSVC
   try {
-    if (!runner.Setup(test_suite)) {
+    if (!runner->Setup(test_suite)) {
       fprintf(stderr, "  [%s] FAILED SETUP\n", test_case.name.c_str());
       fflush(stderr);
       ++failed_count;
       return;
     }
-    if (runner.Run(test_case)) {
+    if (runner->Run(test_case)) {
       ++passed_count;
     } else {
       fprintf(stderr, "  [%s] FAILED\n", test_case.name.c_str());
@@ -745,7 +745,7 @@ bool RunTests(const std::vector<std::string>& test_names) {
             test_suite.name().c_str(), suite_tests.size(), pct);
     fflush(stdout);
     for (size_t i = 0; i < suite_tests.size(); i++) {
-      ProtectedRunTest(test_suite, runner, *suite_tests[i], failed_count,
+      ProtectedRunTest(test_suite, &runner, *suite_tests[i], failed_count,
                        passed_count);
       ++tests_done;
       if ((i + 1) % 500 == 0 && i + 1 < suite_tests.size()) {
@@ -799,10 +799,6 @@ bool RunTests(const std::vector<std::string>& test_names) {
   std::atomic<size_t> test_index{0};
 
   auto worker = [&]() {
-    // Dummy runner for API compatibility (not used on POSIX)
-    TestRunner* runner_ptr = nullptr;
-    TestRunner& runner = *runner_ptr;
-
     while (true) {
       size_t idx = test_index.fetch_add(1);
       if (idx >= all_tests.size()) {
@@ -813,7 +809,7 @@ bool RunTests(const std::vector<std::string>& test_names) {
       int local_failed = 0;
       int local_passed = 0;
 
-      ProtectedRunTest(*test_suite, runner, *test_case, local_failed,
+      ProtectedRunTest(*test_suite, nullptr, *test_case, local_failed,
                        local_passed);
 
       {

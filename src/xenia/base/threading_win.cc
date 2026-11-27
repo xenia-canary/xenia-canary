@@ -568,10 +568,6 @@ class Win32Thread : public Win32Handle<Thread> {
   ~Win32Thread() = default;
 
   void set_name(std::string name) override {
-    // this can actually happen in some debug builds
-    if (&name == nullptr) {
-      return;
-    }
     xe::threading::set_name(handle_, name);
     Thread::set_name(name);
   }

@@ -8,6 +8,9 @@
  */
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_strings.h"
+
+#include <bit>
+
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 
@@ -413,8 +416,7 @@ int32_t format_core(PPCContext* ppc_context, FormatData& data, ArgList& args,
           floatingpoint:
             flags |= FF_IsSigned;
 
-            int64_t dummy = args.get64();
-            double value = *(double*)&dummy;
+            double value = std::bit_cast<double>(args.get64());
 
             if (value < 0) {
               value = -value;

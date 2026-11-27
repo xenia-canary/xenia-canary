@@ -13,6 +13,7 @@
 #include <mutex>
 
 #include "xenia/base/logging.h"
+#include "xenia/base/math.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/cpu/backend/backend.h"
 #include "xenia/cpu/backend/code_cache.h"
@@ -300,7 +301,9 @@ class Win32StackWalker : public StackWalker {
           // Resolved successfully.
           // TODO(benvanik): stash: module, base, displacement, name?
           frame.host_symbol.address = symbol.info.Address;
-          std::strncpy(frame.host_symbol.name, symbol.info.Name, 256);
+          std::strncpy(frame.host_symbol.name, symbol.info.Name,
+                       xe::countof(frame.host_symbol.name));
+          frame.host_symbol.name[xe::countof(frame.host_symbol.name) - 1] = 0;
         }
       }
     }
