@@ -9,6 +9,7 @@
 
 #include "xenia/gpu/shader_interpreter.h"
 
+#include <bit>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
@@ -346,10 +347,10 @@ void ShaderInterpreter::ExecuteAluInstruction(ucode::AluInstruction instr) {
         float vector_src_component = FlushDenormal(
             vector_src_ptr[ucode::AluInstruction::GetSwizzledComponentIndex(
                 vector_src_swizzle, j)]);
-        *reinterpret_cast<uint32_t*>(&vector_src_component) =
-            (*reinterpret_cast<const uint32_t*>(&vector_src_component) &
+        vector_src_component = std::bit_cast<float>(
+            (std::bit_cast<uint32_t>(vector_src_component) &
              vector_src_absolute_mask) ^
-            vector_src_negate_bit;
+            vector_src_negate_bit);
         vector_operands[i][j] = vector_src_component;
       }
     }
@@ -704,10 +705,9 @@ void ShaderInterpreter::ExecuteAluInstruction(ucode::AluInstruction instr) {
     uint32_t scalar_src_negate_bit = uint32_t(instr.src_negate(3)) << 31;
     for (uint32_t i = 0; i < scalar_operand_component_count; ++i) {
       float scalar_operand = FlushDenormal(scalar_operands[i]);
-      *reinterpret_cast<uint32_t*>(&scalar_operand) =
-          (*reinterpret_cast<const uint32_t*>(&scalar_operand) &
-           scalar_src_absolute_mask) ^
-          scalar_src_negate_bit;
+      scalar_operand = std::bit_cast<float>(
+          (std::bit_cast<uint32_t>(scalar_operand) & scalar_src_absolute_mask) ^
+          scalar_src_negate_bit);
       scalar_operands[i] = scalar_operand;
     }
   }
@@ -1207,7 +1207,7 @@ void ShaderInterpreter::ExecuteVertexFetchInstruction(
       case xenos::VertexFormat::k_32_32_32_32_FLOAT:
       case xenos::VertexFormat::k_32_32_32_FLOAT: {
         for (uint32_t i = 0; i < 4; ++i) {
-          result[i] = *reinterpret_cast<const float*>(&data[i]);
+          result[i] = std::bit_cast<float>(data[i]);
         }
       } break;
       default:

@@ -9,6 +9,7 @@
 
 #include "xenia/ui/graphics_util.h"
 
+#include <bit>
 #include <cmath>
 
 namespace xe {
@@ -29,7 +30,7 @@ int32_t FloatToD3D11Fixed16p8(float f32) {
   if (f32 <= -32768.0f) {
     return -32768 * 256;
   }
-  uint32_t f32_bits = *reinterpret_cast<const uint32_t*>(&f32);
+  uint32_t f32_bits = std::bit_cast<uint32_t>(f32);
   // Copy float32 mantissa bits [22:0] into corresponding bits [22:0] of a
   // result buffer that has at least 24 bits total storage (before reaching
   // rounding step further below). This includes one bit for the hidden 1.
