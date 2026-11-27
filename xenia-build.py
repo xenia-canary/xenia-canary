@@ -1034,7 +1034,7 @@ def discover_commands(subparsers):
     commands = {
         "setup": SetupCommand(subparsers),
         "pull": PullCommand(subparsers),
-        "premake": PremakeCommand(subparsers),
+        "configure": ConfigureCommand(subparsers),
         "build": BuildCommand(subparsers),
         "buildshaders": BuildShadersCommand(subparsers),
         "devenv": DevenvCommand(subparsers),
@@ -1167,14 +1167,14 @@ class PullCommand(Command):
         return 0
 
 
-class PremakeCommand(Command):
-    """'premake' command (now runs cmake configure).
+class ConfigureCommand(Command):
+    """'configure' command: runs cmake configure.
     """
 
     def __init__(self, subparsers, *args, **kwargs):
-        super(PremakeCommand, self).__init__(
+        super(ConfigureCommand, self).__init__(
             subparsers,
-            name="premake",
+            name="configure",
             help_short="Runs cmake configure to update all projects.",
             *args, **kwargs)
         self.parser.add_argument(
@@ -1216,7 +1216,7 @@ class BaseBuildCommand(Command):
             "--force", action="store_true",
             help="Forces a full rebuild.")
         self.parser.add_argument(
-            "--no_premake", action="store_true",
+            "--no-configure", action="store_true",
             help="Skips running cmake configure before building.")
         self.parser.add_argument(
             "--build-tests", action="store_true", default=False,
@@ -1234,7 +1234,7 @@ class BaseBuildCommand(Command):
 
         extra_args = [f"-D{d}" for d in args["cmake_defines"]]
 
-        if not args["no_premake"]:
+        if not args["no_configure"]:
             print("- running cmake configure...")
             ret = run_cmake_configure(build_type=config, cc=args["cc"],
                                       build_tests=args["build_tests"],
@@ -2066,7 +2066,7 @@ class StubCommand(Command):
         super(StubCommand, self).__init__(
             subparsers,
             name="stub",
-            help_short="Create new file(s) in the xenia source tree and run premake",
+            help_short="Create new file(s) in the xenia source tree and run cmake configure",
             *args, **kwargs)
         self.parser.add_argument(
             "--file", default=None,

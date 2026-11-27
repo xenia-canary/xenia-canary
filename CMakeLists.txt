@@ -157,7 +157,7 @@ if(MSVC)
   string(APPEND CMAKE_EXE_LINKER_FLAGS_CHECKED " /INCREMENTAL:NO")
   add_compile_definitions($<$<CONFIG:Checked>:DEBUG>)
 
-  # Debug: use release runtime (/MD) for heap performance, matching premake
+  # Debug: use release runtime (/MD) for heap performance
   string(REPLACE "/MDd" "/MD" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
   string(REPLACE "/MDd" "/MD" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
   add_compile_definitions($<$<CONFIG:Debug>:DEBUG>)
