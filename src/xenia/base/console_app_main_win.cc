@@ -28,6 +28,10 @@ int wmain(int argc_ignored, wchar_t** argv_ignored) {
     return result;
   }
 
+  // Console apps don't load a config file, all cvars come from the command
+  // line.
+  xe::RequestWin32HighPerformance();
+
   result = entry_info.entry_point(args);
 
   xe::ShutdownWin32App();

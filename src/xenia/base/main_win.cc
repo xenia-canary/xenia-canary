@@ -41,6 +41,7 @@ struct Win32TimerStatus {
 };
 
 Win32TimerStatus timer_status;
+bool high_performance_requested = false;
 
 }  // namespace
 
@@ -218,18 +219,35 @@ int InitializeWin32App(const std::string_view app_name) {
 #endif
       XE_BUILD_BRANCH "@" XE_BUILD_COMMIT_SHORT " on " XE_BUILD_DATE);
 
-  // Request high-performance timing and scheduling.
+  return 0;
+}
+
+void RequestWin32HighPerformance() {
+  // Apps loading a config file call this once it is loaded, so the cvars set
+  // in it are respected. Other apps get it after their initialization.
+  if (high_performance_requested) {
+    return;
+  }
+  high_performance_requested = true;
+
   if (cvars::win32_high_resolution_timer) {
     timer_status = RequestWin32HighResolutionTimer();
   }
   if (cvars::win32_mmcss) {
     RequestWin32MMCSS();
   }
-
-  return 0;
 }
 
 void LogWin32StartupStatus() {
+  if (!cvars::win32_high_resolution_timer) {
+    XELOGI(
+        "Host timer resolution left unchanged (win32_high_resolution_timer "
+        "is disabled)");
+  }
+  if (!cvars::win32_mmcss) {
+    XELOGI("MMCSS scheduling not requested (win32_mmcss is disabled)");
+  }
+
   if (timer_status.throttling_opt_out_skipped) {
     XELOGI("Timer resolution throttling opt-out not needed before Windows 11");
   } else if (timer_status.throttling_opt_out_error != ERROR_SUCCESS) {

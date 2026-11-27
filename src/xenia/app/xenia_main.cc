@@ -503,6 +503,11 @@ bool EmulatorApp::OnInitialize() {
 
   config::SetupConfig(storage_root);
 
+#if XE_PLATFORM_WIN32
+  // The Win32 performance cvars may be set in the config file.
+  xe::RequestWin32HighPerformance();
+#endif  // XE_PLATFORM_WIN32
+
 #if XE_ARCH_AMD64 == 1
   amd64::InitFeatureFlags();
 #elif XE_ARCH_ARM64 == 1
