@@ -18,6 +18,13 @@ namespace kernel {
 namespace xam {
 namespace apps {
 
+struct X_DEVICE_RENAME {
+  xe::be<uint32_t> device_id;
+  xe::be<uint32_t> name_ptr;  // wchar_t*
+  xe::be<uint32_t> name_size;
+};
+static_assert_size(X_DEVICE_RENAME, 0xC);
+
 struct X_NUI_TITLE_INITIALIZE_DATA {
   xe::be<uint64_t> xam_version;
   xe::be<uint64_t> xtl_version;
