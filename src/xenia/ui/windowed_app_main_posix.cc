@@ -18,12 +18,8 @@
 #include "xenia/ui/windowed_app_context_gtk.h"
 
 int main(int argc_pre_gtk, char** argv_pre_gtk) {
-  // Before touching anything GTK+, make sure that when running on Wayland,
-  // we'll still get an X11 (Xwayland) window
-  // also allow users to override this
-  if (!secure_getenv("GDK_BACKEND")) {
-    setenv("GDK_BACKEND", "x11", 1);
-  }
+  // GTKWindow creates Vulkan presentation surfaces through XCB.
+  gdk_set_allowed_backends("x11");
 
   // Initialize GTK+, which will handle and remove its own arguments from argv.
   // Both GTK+ and Xenia use --option=value argument format (see man
@@ -35,7 +31,10 @@ int main(int argc_pre_gtk, char** argv_pre_gtk) {
   char** argv_post_gtk = argv_pre_gtk;
   if (!gtk_init_check(&argc_post_gtk, &argv_post_gtk)) {
     // Logging has not been initialized yet.
-    std::fputs("Failed to initialize GTK+\n", stderr);
+    std::fputs(
+        "Failed to initialize GTK+ with X11. Check that an X11 or "
+        "XWayland display is available and GDK_BACKEND allows x11.\n",
+        stderr);
     return EXIT_FAILURE;
   }
 
