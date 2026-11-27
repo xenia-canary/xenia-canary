@@ -572,10 +572,14 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
 
   auto thread_state = guest_context->thread_state;
 
+  // Bit 32 marks a tail return, the only possible longjmp
+  const bool is_tail_return = (target_address >> 32) & 1;
+  target_address = static_cast<uint32_t>(target_address);
+
   // TODO(benvanik): required?
   assert_not_zero(target_address);
 
-  if (cvars::enable_host_guest_stack_synchronization) {
+  if (cvars::enable_host_guest_stack_synchronization && is_tail_return) {
     // Not added to the indirection table, so each jump to the address comes
     // back through this
     uint64_t longjmp_address = ResolveLongjmpTarget(
@@ -760,15 +764,18 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
   // Load the pointer to the indirection table maintained in X64CodeCache.
   // The target dword will either contain the address of the generated code
   // or a thunk to ResolveAddress.
+  const bool is_tail_return = (instr->flags & hir::CALL_TAIL) &&
+                              (instr->flags & hir::CALL_POSSIBLE_RETURN);
+
   if (code_cache_->has_indirection_table()) {
-    if (reg.cvt32() != ebx) {
-      mov(ebx, reg.cvt32());
-    }
+    // Always written so the upper half of rbx is clear
+    mov(ebx, reg.cvt32());
     mov(eax, dword[ebx]);
 
-    if (cvars::enable_host_guest_stack_synchronization &&
-        (instr->flags & hir::CALL_TAIL) &&
-        (instr->flags & hir::CALL_POSSIBLE_RETURN)) {
+    if (cvars::enable_host_guest_stack_synchronization && is_tail_return) {
+      // Mark a tail return for ResolveFunction
+      bts(rbx, 32);
+
       // A return to another address with the guest stack pointer above this
       // function's may be a longjmp. Resolve it even when the address has
       // been compiled as a function of its own, so ResolveFunction can find
@@ -789,6 +796,9 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
     // Old-style resolve.
     // Not too important because indirection table is almost always available.
     mov(edx, reg.cvt32());
+    if (cvars::enable_host_guest_stack_synchronization && is_tail_return) {
+      bts(rdx, 32);
+    }
     mov(rax, reinterpret_cast<uint64_t>(ResolveFunction));
     mov(rcx, GetContextReg());
     call(rax);
