@@ -92,7 +92,7 @@ class EmulatorWindow {
 
   void TakeScreenshot();
   void ExportScreenshot(const xe::ui::RawImage& image);
-  void SaveImage(const std::filesystem::path& path,
+  bool SaveImage(const std::filesystem::path& path,
                  const xe::ui::RawImage& image);
 
   void ToggleProfilesConfigDialog();

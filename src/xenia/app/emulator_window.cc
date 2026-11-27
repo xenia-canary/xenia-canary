@@ -1183,17 +1183,23 @@ void EmulatorWindow::OnMouseUp(const ui::MouseEvent& e) {
 }
 
 void EmulatorWindow::TakeScreenshot() {
-  xe::ui::RawImage image;
-
-  imgui_drawer_->EnableNotifications(false);
-
-  if (!GetGraphicsSystemPresenter()->CaptureGuestOutput(image) ||
-      GetGraphicsSystemPresenter() == nullptr) {
+  ui::Presenter* presenter = GetGraphicsSystemPresenter();
+  if (!presenter) {
     XELOGE("Failed to capture guest output for screenshot");
     return;
   }
 
+  xe::ui::RawImage image;
+
+  imgui_drawer_->EnableNotifications(false);
+  const bool captured = presenter->CaptureGuestOutput(image);
   imgui_drawer_->EnableNotifications(true);
+
+  if (!captured) {
+    XELOGE("Failed to capture guest output for screenshot");
+    return;
+  }
+
   ExportScreenshot(image);
 }
 
@@ -1214,17 +1220,19 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
     return;
   }
 
-  // Find where xenia.exe or xenia_canary.exe is located and create a
-  // screenshots folder
-  auto screenshot_path =
-      (xe::filesystem::GetExecutableFolder() / "screenshots" / title_id);
-
-  if (!std::filesystem::exists(screenshot_path)) {
-    std::filesystem::create_directories(screenshot_path);
+  auto screenshot_path = emulator()->storage_root() / "screenshots" / title_id;
+  std::error_code error;
+  std::filesystem::create_directories(screenshot_path, error);
+  if (error) {
+    XELOGE("Failed to create screenshot directory {}: {}", screenshot_path,
+           error.message());
+    return;
   }
 
   std::string filename = fmt::format("{} - {}.png", title_id, datetime);
-  SaveImage(screenshot_path / filename, image);
+  if (!SaveImage(screenshot_path / filename, image)) {
+    return;
+  }
 
   const std::string notification_text =
       fmt::format("Screenshot saved: {}", filename);
@@ -1236,12 +1244,12 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
 }
 
 // Converts a RawImage into a PNG file
-void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
+bool EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
                                const xe::ui::RawImage& image) {
   auto file = std::ofstream(filepath, std::ios::binary);
   if (!file.is_open()) {
     XELOGE("Failed to open file for writing: {}", filepath);
-    return;
+    return false;
   }
 
   auto result = stbi_write_png_to_func(
@@ -1251,10 +1259,12 @@ void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
       },
       &file, image.width, image.height, 4, image.data.data(),
       (int)image.stride);
-  if (result == 0) {
+  file.close();
+  if (result == 0 || !file) {
     XELOGE("Failed to write PNG to file: {}", filepath);
-    return;
+    return false;
   }
+  return true;
 }
 
 void EmulatorWindow::ToggleFullscreenOnDoubleClick() {
