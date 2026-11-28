@@ -403,7 +403,14 @@ elseif(SDL3_FRAMEWORK)
   target_link_libraries(SDL3 INTERFACE "${SDL3_FRAMEWORK}")
 else()
   # Only the subsystems xenia uses: audio, events and gamepads, plus video for
-  # message boxes.
+  # message boxes on Linux.
+  if(WIN32)
+    set(SDL_VIDEO OFF)
+    set(SDL_HAPTIC OFF)
+    set(SDL_POWER OFF)
+    set(SDL_SENSOR OFF)
+  endif()
+
   set(SDL_GPU OFF)
   set(SDL_RENDER OFF)
   set(SDL_CAMERA OFF)
