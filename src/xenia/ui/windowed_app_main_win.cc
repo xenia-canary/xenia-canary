@@ -341,6 +341,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
     xe::InitializeWin32App(app->GetName());
 
     if (app->OnInitialize()) {
+      // No-op if the app already did it after loading its config file.
+      xe::RequestWin32HighPerformance();
       xe::ConsoleWindow::OpenIfEnabled();
       result = app_context.RunMainMessageLoop();
     } else {

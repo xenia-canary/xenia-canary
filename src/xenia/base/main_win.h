@@ -22,6 +22,10 @@ bool ParseWin32LaunchArguments(
     std::vector<std::string>* args_out);
 // InitializeWin32App uses cvars, call ParseWin32LaunchArguments before.
 int InitializeWin32App(const std::string_view app_name);
+// Requests the high-resolution timer and MMCSS scheduling if the cvars allow
+// it. Call after the config file has been loaded, as the cvars may come from
+// it. Only the first call has an effect.
+void RequestWin32HighPerformance();
 void LogWin32StartupStatus();
 void ShutdownWin32App();
 
