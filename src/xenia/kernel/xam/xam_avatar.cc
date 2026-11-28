@@ -8,6 +8,9 @@
  */
 
 #include "xenia/kernel/xam/xam_avatar.h"
+
+#include <cstring>
+
 #include "xenia/base/logging.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
@@ -125,11 +128,26 @@ dword_result_t XamAvatarGetManifestsByXuid_entry(
 }
 DECLARE_XAM_EXPORT1(XamAvatarGetManifestsByXuid, kAvatars, kStub)
 
+namespace {
+// Minimum non-zero sizes for an empty XAVATAR_ASSETS buffer while avatar asset
+// loading is stubbed. Returning 0 causes titles that still inspect the result
+// after XamAvatarGetAssets fails (e.g. Kinect Sports 4D5308C9) to allocate 0
+// bytes and read garbage component counts from adjacent heap memory.
+constexpr uint32_t kEmptyAvatarAssetsSize = 0x100;
+constexpr uint32_t kEmptyAvatarGpuResourceSize = 0x1000;
+// Offset inside the result buffer for a zeroed empty skeleton (0 bones).
+constexpr uint32_t kEmptyAvatarSkeletonOffset = 0x80;
+}  // namespace
+
 dword_result_t XamAvatarGetAssetsResultSize_entry(
     dword_t avatar_component_mask, lpdword_t result_buffer_size_ptr,
     lpdword_t gpu_resource_buffer_size_ptr) {
-  *result_buffer_size_ptr = 0;
-  *gpu_resource_buffer_size_ptr = 0;
+  if (result_buffer_size_ptr) {
+    *result_buffer_size_ptr = kEmptyAvatarAssetsSize;
+  }
+  if (gpu_resource_buffer_size_ptr) {
+    *gpu_resource_buffer_size_ptr = kEmptyAvatarGpuResourceSize;
+  }
 
   return X_STATUS_SUCCESS;
 }
@@ -140,6 +158,17 @@ dword_result_t XamAvatarGetAssets_entry(
     dword_t avatar_component_mask, dword_t flags, lpdword_t result_buffer_ptr,
     lpdword_t gpu_resource_buffer_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // Populate an empty XAVATAR_ASSETS (component count 0) with a valid pointer
+  // at +0 to a zeroed 0-bone skeleton inside the same buffer, so titles that
+  // still read the header or skeleton pointer after failure (e.g. Kinect Sports
+  // 4D5308C9) do not corrupt memory or dereference null.
+  if (result_buffer_ptr) {
+    std::memset(reinterpret_cast<void*>(result_buffer_ptr.host_address()), 0,
+                kEmptyAvatarAssetsSize);
+    *result_buffer_ptr =
+        result_buffer_ptr.guest_address() + kEmptyAvatarSkeletonOffset;
+  }
+
   // 58410907 doesn't crash if we return failure.
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediateEx(
