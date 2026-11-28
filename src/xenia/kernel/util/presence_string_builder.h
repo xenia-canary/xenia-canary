@@ -14,7 +14,6 @@
 #include <map>
 #include <optional>
 #include <queue>
-#include <regex>
 #include <string>
 #include <string_view>
 
@@ -37,11 +36,6 @@ class AttributeStringFormatter {
 
  private:
   enum class AttributeType { Context = 0, Property = 1, Unknown = 255 };
-
-  const std::regex presence_id_extract_from_specifier =
-      std::regex("\\{c(\\d+)\\}");
-  const std::regex format_specifier_replace_fragment_regex_ =
-      std::regex(R"(\{c\d+\}|\{p0x\d+\})");
 
   bool ParseAttributeString();
   void BuildPresenceString();

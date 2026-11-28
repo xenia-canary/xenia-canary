@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <map>
 #include <optional>
-#include <regex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -115,9 +114,6 @@ class PatchDB {
   bool ReadPatchData(std::vector<PatchDataEntry>& patch_data,
                      const std::pair<std::string, PatchData> data_type,
                      const toml::table* patch_fields) const;
-
-  inline static const std::regex patch_filename_regex_ =
-      std::regex("^[A-Fa-f0-9]{8}.*\\.patch\\.toml$");
 
   const std::map<std::string, PatchData> patch_data_types_size_ = {
       {"string", PatchData(0, PatchDataType::kString)},

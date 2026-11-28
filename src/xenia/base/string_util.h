@@ -14,8 +14,8 @@
 #include <charconv>
 #include <cstddef>
 #include <cstring>
-#include <regex>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "third_party/fmt/include/fmt/format.h"
@@ -146,11 +146,13 @@ inline bool hex_string_to_array(std::vector<uint8_t>& output_array,
 inline std::string BoolToString(bool value) { return value ? "true" : "false"; }
 
 inline std::string ltrim(const std::string& value) {
-  return std::regex_replace(value, std::regex("^\\s+"), std::string(""));
+  const size_t begin = value.find_first_not_of(" \t\n\v\f\r");
+  return begin == std::string::npos ? std::string() : value.substr(begin);
 }
 
 inline std::string rtrim(const std::string& value) {
-  return std::regex_replace(value, std::regex("\\s+$"), std::string(""));
+  const size_t last = value.find_last_not_of(" \t\n\v\f\r");
+  return last == std::string::npos ? std::string() : value.substr(0, last + 1);
 }
 
 inline std::string trim(const std::string& value) {

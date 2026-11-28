@@ -14,7 +14,6 @@
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -140,8 +139,9 @@ struct FileInfo {
 std::optional<FileInfo> GetInfo(const std::filesystem::path& path);
 std::vector<FileInfo> ListFiles(const std::filesystem::path& path);
 std::vector<FileInfo> ListDirectories(const std::filesystem::path& path);
+// Keeps the files whose whole name matches the ECMAScript regular expression.
 std::vector<FileInfo> FilterByName(const std::vector<FileInfo>& files,
-                                   const std::regex pattern);
+                                   std::string_view pattern);
 std::vector<FileInfo> FindFileWithName(const std::filesystem::path& path,
                                        std::string_view name,
                                        bool recursive = false);

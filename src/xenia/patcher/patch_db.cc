@@ -14,6 +14,8 @@
 
 #include "xenia/patcher/patch_db.h"
 
+#include <regex>
+
 DEFINE_bool(apply_patches, true, "Enables custom patching functionality",
             "General");
 
@@ -36,11 +38,13 @@ void PatchDB::LoadPatches() {
   const std::vector<xe::filesystem::FileInfo> patch_files =
       filesystem::ListFiles(patches_directory);
 
+  const std::regex patch_filename_regex("^[A-Fa-f0-9]{8}.*\\.patch\\.toml$");
+
   for (const xe::filesystem::FileInfo& patch_file : patch_files) {
     // Skip files that doesn't have only title_id as name and .patch as
     // extension
     if (!std::regex_match(path_to_utf8(patch_file.name),
-                          patch_filename_regex_)) {
+                          patch_filename_regex)) {
       XELOGE("PatchDB: Skipped loading file {} due to incorrect filename",
              patch_file.name);
       continue;

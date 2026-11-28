@@ -707,8 +707,7 @@ X_STATUS Emulator::DataMigration(const uint64_t xuid) {
   // Savefiles must go to user specific directory
   // Everything else goes to common
   const auto titles_to_move = xe::filesystem::FilterByName(
-      xe::filesystem::ListDirectories(content_root_),
-      std::regex("[A-Fa-f0-9]{8}"));
+      xe::filesystem::ListDirectories(content_root_), "[A-Fa-f0-9]{8}");
 
   for (const auto& title : titles_to_move) {
     if (xe::path_to_utf8(title.name) == "FFFE07D1" ||
@@ -719,7 +718,7 @@ X_STATUS Emulator::DataMigration(const uint64_t xuid) {
 
     const auto content_type_dirs = xe::filesystem::FilterByName(
         xe::filesystem::ListDirectories(title.path / title.name),
-        std::regex("[A-Fa-f0-9]{8}"));
+        "[A-Fa-f0-9]{8}");
 
     for (const auto& content_type : content_type_dirs) {
       const std::string used_xuid =

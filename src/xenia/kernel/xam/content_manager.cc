@@ -258,7 +258,7 @@ std::unordered_set<uint32_t> ContentManager::FindPublisherTitleIds(
   auto publisher_entries = xe::filesystem::FilterByName(
       xe::filesystem::ListDirectories(root_path_ /
                                       fmt::format("{:016X}", xuid)),
-      std::regex(publisher_id_regex));
+      publisher_id_regex);
 
   for (const auto& entry : publisher_entries) {
     std::filesystem::path path_to_publisher_dir =
@@ -295,8 +295,7 @@ std::vector<XCONTENT_DATA_INTERNAL> ContentManager::ListContent(
 
   if (content_type == XContentType::kProfile) {
     const auto xuid_dir = xe::filesystem::FilterByName(
-        xe::filesystem::ListDirectories(root_path_),
-        std::regex("[A-Fa-f0-9]{16}"));
+        xe::filesystem::ListDirectories(root_path_), "[A-Fa-f0-9]{16}");
 
     for (const auto& xuid : xuid_dir) {
       auto package_root =
@@ -318,16 +317,14 @@ std::vector<XCONTENT_DATA_INTERNAL> ContentManager::ListContent(
   if (content_flags & XContentFlag::kEnumerateAllProfiles ||
       content_type == XContentType::kAll) {
     const auto xuid_dir = xe::filesystem::FilterByName(
-        xe::filesystem::ListDirectories(root_path_),
-        std::regex("[A-Fa-f0-9]{16}"));
+        xe::filesystem::ListDirectories(root_path_), "[A-Fa-f0-9]{16}");
 
     for (const auto& xuid : xuid_dir) {
       xuids.emplace(xe::string_util::from_string<uint64_t>(
           xe::path_to_utf8(xuid.name), true));
 
       const auto titles = xe::filesystem::FilterByName(
-          xe::filesystem::ListDirectories(xuid.path),
-          std::regex("[A-Fa-f0-9]{8}"));
+          xe::filesystem::ListDirectories(xuid.path), "[A-Fa-f0-9]{8}");
 
       for (const auto& title : titles) {
         title_ids.emplace(xe::string_util::from_string<uint32_t>(
@@ -352,7 +349,7 @@ std::vector<XCONTENT_DATA_INTERNAL> ContentManager::ListContent(
   if (title_id == kDashboardID && xuid == 0) {
     const auto common_titles = xe::filesystem::FilterByName(
         xe::filesystem::ListDirectories(root_path_ / kCommonContentDirectory),
-        std::regex("[A-Fa-f0-9]{8}"));
+        "[A-Fa-f0-9]{8}");
 
     for (const auto& title : common_titles) {
       title_ids.emplace(xe::string_util::from_string<uint32_t>(

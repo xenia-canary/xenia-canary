@@ -8,6 +8,9 @@
  */
 
 #include "xenia/kernel/util/presence_string_builder.h"
+
+#include <regex>
+
 #include "third_party/fmt/include/fmt/format.h"
 
 #include "xenia/base/string.h"
@@ -15,6 +18,20 @@
 namespace xe {
 namespace kernel {
 namespace util {
+
+namespace {
+
+const std::regex& PresenceIdExtractFromSpecifierRegex() {
+  static const std::regex regex("\\{c(\\d+)\\}");
+  return regex;
+}
+
+const std::regex& FormatSpecifierReplaceFragmentRegex() {
+  static const std::regex regex(R"(\{c\d+\}|\{p0x\d+\})");
+  return regex;
+}
+
+}  // namespace
 
 AttributeStringFormatter::~AttributeStringFormatter() {}
 
@@ -81,7 +98,7 @@ std::optional<uint32_t> AttributeStringFormatter::GetAttributeIdFromSpecifier(
     const AttributeStringFormatter::AttributeType specifier_type) const {
   std::smatch string_match;
   if (std::regex_search(specifier, string_match,
-                        presence_id_extract_from_specifier)) {
+                        PresenceIdExtractFromSpecifierRegex())) {
     return std::make_optional<uint32_t>(stoi(string_match[1].str()));
   }
 
@@ -142,7 +159,7 @@ std::queue<std::string> AttributeStringFormatter::GetPresenceFormatSpecifiers()
   std::string attribute_string = attribute_string_;
 
   while (std::regex_search(attribute_string, match,
-                           format_specifier_replace_fragment_regex_)) {
+                           FormatSpecifierReplaceFragmentRegex())) {
     for (const auto& presence : match) {
       format_specifiers.emplace(presence);
     }

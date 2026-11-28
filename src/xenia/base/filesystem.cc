@@ -9,6 +9,8 @@
 
 #include "xenia/base/filesystem.h"
 
+#include <algorithm>
+#include <regex>
 #include <utility>
 
 #include "xenia/base/string_util.h"
@@ -52,15 +54,16 @@ std::vector<FileInfo> ListDirectories(const std::filesystem::path& path) {
 }
 
 std::vector<FileInfo> FilterByName(const std::vector<FileInfo>& files,
-                                   const std::regex pattern) {
+                                   std::string_view pattern) {
+  const std::regex name_regex(pattern.begin(), pattern.end());
   std::vector<FileInfo> filtered_entries = {};
 
   std::ranges::copy_if(files, std::back_inserter(filtered_entries),
-                       [pattern](const FileInfo& file) {
+                       [&name_regex](const FileInfo& file) {
                          // path::string() converts through the ANSI code page
                          // on Windows and throws on names it can't represent.
                          return std::regex_match(
-                             path_to_utf8(file.name.filename()), pattern);
+                             path_to_utf8(file.name.filename()), name_regex);
                        });
   return filtered_entries;
 }
@@ -76,7 +79,7 @@ std::vector<FileInfo> FindFileWithName(const std::filesystem::path& path,
   }
 
   if (!recursive) {
-    return FilterByName(ListFiles(path), std::regex(std::string(name)));
+    return FilterByName(ListFiles(path), name);
   }
 
   const std::string file_name = xe::utf8::lower_ascii(name);

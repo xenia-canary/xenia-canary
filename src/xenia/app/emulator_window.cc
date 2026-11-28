@@ -9,6 +9,8 @@
 
 #include "xenia/app/emulator_window.h"
 
+#include <regex>
+
 #include "third_party/imgui/imgui.h"
 #include "third_party/stb/stb_image_write.h"
 #if defined(__clang__)

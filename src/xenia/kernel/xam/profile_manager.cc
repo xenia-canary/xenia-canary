@@ -403,7 +403,7 @@ std::vector<uint64_t> ProfileManager::FindProfiles() const {
   auto profiles_directory = xe::filesystem::FilterByName(
       xe::filesystem::ListDirectories(
           kernel_state_->emulator()->content_root()),
-      std::regex("[0-9A-F]{16}"));
+      "[0-9A-F]{16}");
 
   for (const auto& profile : profiles_directory) {
     const std::string profile_xuid = xe::path_to_utf8(profile.name);

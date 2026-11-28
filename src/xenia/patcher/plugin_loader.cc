@@ -42,8 +42,7 @@ void PluginLoader::LoadConfigs() {
   std::vector<xe::filesystem::FileInfo> dir_files =
       xe::filesystem::ListDirectories(plugins_root_);
 
-  dir_files =
-      xe::filesystem::FilterByName(dir_files, std::regex("[A-Fa-f0-9]{8}"));
+  dir_files = xe::filesystem::FilterByName(dir_files, "[A-Fa-f0-9]{8}");
 
   for (const auto& entry : dir_files) {
     const uint32_t title_id = string_util::from_string<uint32_t>(
