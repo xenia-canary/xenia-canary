@@ -25,6 +25,8 @@ class Patcher {
                             const std::optional<uint64_t> hash);
 
   bool IsAnyPatchApplied() { return is_any_patch_applied_; }
+  // Called when the title exits, patches are applied again on next launch.
+  void Reset() { is_any_patch_applied_ = false; }
 
  private:
   PatchDB* patch_db_;

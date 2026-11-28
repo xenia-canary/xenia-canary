@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_video.h"
 
+#include <cstring>
+
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/graphics_system.h"
@@ -550,6 +552,14 @@ void VdSwap_entry(
 DECLARE_XBOXKRNL_EXPORT3(VdSwap, kVideo, kImplemented, kHighFrequency,
                          kImportant);
 
+static constexpr uint32_t pVdGlobalDevice = 0x801E6FC4;
+static constexpr uint32_t pVdGlobalXamDevice = 0x801E6FC8;
+
+void ResetVideoVariables(Memory* memory) {
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice), 0);
+  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalXamDevice), 0);
+}
+
 void RegisterVideoExports(xe::cpu::ExportResolver* export_resolver,
                           KernelState* kernel_state) {
   auto memory = kernel_state->memory();
@@ -557,17 +567,15 @@ void RegisterVideoExports(xe::cpu::ExportResolver* export_resolver,
   // VdGlobalDevice (4b)
   // Pointer to the title's D3D device. D3D stores the device here when it
   // creates it and checks it's null before, so it starts null.
-  const uint32_t pVdGlobalDevice = 0x801E6FC4;
   export_resolver->SetVariableMapping("xboxkrnl.exe", ordinals::VdGlobalDevice,
                                       pVdGlobalDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalDevice), 0);
 
   // VdGlobalXamDevice (4b)
   // Pointer to the XAM D3D device, which we don't have.
-  const uint32_t pVdGlobalXamDevice = 0x801E6FC8;
   export_resolver->SetVariableMapping(
       "xboxkrnl.exe", ordinals::VdGlobalXamDevice, pVdGlobalXamDevice);
-  xe::store_and_swap<uint32_t>(memory->TranslateVirtual(pVdGlobalXamDevice), 0);
+
+  ResetVideoVariables(memory);
 
   // VdGpuClockInMHz (4b)
   // GPU clock. Xenos is 500MHz. Hope nothing is relying on this timing...

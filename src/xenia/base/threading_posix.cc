@@ -102,12 +102,10 @@ timespec DurationToTimeSpec(std::chrono::duration<_Rep, _Period> duration) {
 enum class SignalType {
   kThreadSuspend,
   kThreadUserCallback,
-#if XE_PLATFORM_ANDROID
-  // pthread_cancel is not available on Android, using a signal handler for
-  // simplified PTHREAD_CANCEL_ASYNCHRONOUS-like behavior - not disabling
-  // cancellation currently, so should be enough.
+  // Interrupts a thread whose termination was requested, so it exits if it
+  // was stopped at a safe point. Not using pthread_cancel, as asynchronous
+  // cancellation unwinding through a noexcept frame aborts the process.
   kThreadTerminate,
-#endif
   k_Count
 };
 
@@ -133,7 +131,14 @@ void install_signal_handler(SignalType type) {
     return;  // Already installed
   }
   struct sigaction action{};
-  action.sa_flags = SA_SIGINFO | SA_RESTART;
+  action.sa_flags = SA_SIGINFO;
+
+  // Blocking system calls of a thread being terminated return EINTR, so it can
+  // get back to a point where it can exit.
+  if (type != SignalType::kThreadTerminate) {
+    action.sa_flags |= SA_RESTART;
+  }
+
   action.sa_sigaction = signal_handler;
   sigemptyset(&action.sa_mask);
   if (sigaction(GetSystemSignal(type), &action, nullptr) != 0) {
@@ -141,6 +146,37 @@ void install_signal_handler(SignalType type) {
     signal_handler_installed[static_cast<size_t>(type)] = false;
   }
 }
+
+std::atomic<TerminationSafeCodeCheck> termination_safe_code_check = nullptr;
+
+void SetTerminationSafeCodeCheck(TerminationSafeCodeCheck check) {
+  termination_safe_code_check = check;
+}
+
+class PosixConditionBase;
+
+static bool IsTerminationRequested();
+static void ExitIfTerminationRequested();
+static void RegisterTerminableWait(PosixConditionBase* condition);
+static void UnregisterTerminableWait();
+static void EnterBlockingCall();
+static void LeaveBlockingCall();
+
+// Marks a wait or a sleep. A thread suspended inside it is at a safe point:
+// once terminated it exits there without returning to its caller (see
+// Thread::IsAtTerminationSafePoint).
+struct TerminableBlockingScope {
+  TerminableBlockingScope() { EnterBlockingCall(); }
+  ~TerminableBlockingScope() { LeaveBlockingCall(); }
+};
+
+// Lets Terminate wake the calling thread while it waits on the condition.
+struct TerminableWaitScope {
+  explicit TerminableWaitScope(PosixConditionBase* condition) {
+    RegisterTerminableWait(condition);
+  }
+  ~TerminableWaitScope() { UnregisterTerminableWait(); }
+};
 
 // TODO(dougvj)
 void EnableAffinityConfiguration() {}
@@ -163,12 +199,17 @@ static void SleepFor(timespec rqtp) {
   auto p_rqtp = &rqtp;
   auto p_rmtp = &rmtp;
   int ret = 0;
+  TerminableBlockingScope blocking_scope;
+
   do {
+    // Termination interrupts the sleep with EINTR.
+    ExitIfTerminationRequested();
     ret = nanosleep(p_rqtp, p_rmtp);
     // Swap requested for remaining in case of signal interruption
     // in which case, we start sleeping again for the remainder
     std::swap(p_rqtp, p_rmtp);
   } while (ret == -1 && errno == EINTR);
+  ExitIfTerminationRequested();
 }
 
 void Sleep(std::chrono::microseconds duration) {
@@ -376,40 +417,68 @@ class PosixConditionBase {
   // of an alertable wait do.
   WaitResult Wait(std::chrono::milliseconds timeout,
                   std::optional<uint64_t> since = std::nullopt) {
-    bool executed;
+    TerminableBlockingScope blocking_scope;
+    // A thread being terminated exits instead of blocking. If termination is
+    // requested while it waits, Terminate wakes it through NotifyTermination.
+    ExitIfTerminationRequested();
 
-    // Handle robust mutex locking
-    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
-    int lock_result = pthread_mutex_lock(native_mutex);
-    if (lock_result == EOWNERDEAD) {
-      // Recover from dead owner
-      pthread_mutex_consistent(native_mutex);
-    } else if (lock_result != 0) {
-      return WaitResult::kFailed;
+    WaitResult result = WaitResult::kTimeout;
+
+    {
+      // Polls don't block, so they need no waking and skip the registration.
+      // Unregistered only once the mutex is released, so Terminate (which
+      // takes the registration lock, then the mutex) can't deadlock with it.
+      std::optional<TerminableWaitScope> wait_scope;
+
+      if (timeout != std::chrono::milliseconds::zero()) {
+        wait_scope.emplace(this);
+      }
+
+      if (!LockNativeMutex()) {
+        return WaitResult::kFailed;
+      }
+
+      std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
+
+      const uint64_t start = since ? *since : release_count();
+      auto released = [this, start] {
+        return this->signaled() || release_count() != start;
+      };
+      auto predicate = [&released] {
+        return released() || IsTerminationRequested();
+      };
+
+      if (!predicate()) {
+        if (timeout == std::chrono::milliseconds::max()) {
+          cond_.wait(lock, predicate);
+        } else {
+          cond_.wait_for(lock, timeout, predicate);
+        }
+      }
+
+      if (released()) {
+        post_execution();
+        result =
+            TakeAbandoned() ? WaitResult::kAbandoned : WaitResult::kSuccess;
+      }
+    }
+
+    // Even if the wait was satisfied: a thread suspended in it as it was
+    // terminated must not run on.
+    ExitIfTerminationRequested();
+    return result;
+  }
+
+  // Wakes the threads waiting on this condition so a thread being terminated
+  // can exit. Doesn't block, the mutex may be held by a thread suspended for
+  // good. Terminate is then called again to retry.
+  void NotifyTermination() {
+    if (!TryLockNativeMutex()) {
+      return;
     }
 
     std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
-
-    const uint64_t start = since ? *since : release_count();
-    auto predicate = [this, start] {
-      return this->signaled() || release_count() != start;
-    };
-
-    if (predicate()) {
-      executed = true;
-    } else {
-      if (timeout == std::chrono::milliseconds::max()) {
-        cond_.wait(lock, predicate);
-        executed = true;  // Did not time out;
-      } else {
-        executed = cond_.wait_for(lock, timeout, predicate);
-      }
-    }
-    if (executed) {
-      post_execution();
-      return TakeAbandoned() ? WaitResult::kAbandoned : WaitResult::kSuccess;
-    }
-    return WaitResult::kTimeout;
+    cond_.notify_all();
   }
 
   // since holds each handle's release count from an earlier wait, as the
@@ -429,6 +498,18 @@ class PosixConditionBase {
       return std::make_pair(result, 0);
     }
 
+    TerminableBlockingScope blocking_scope;
+    auto result =
+        WaitMultipleBlocking(handles, wait_all, timeout, start_counts);
+    ExitIfTerminationRequested();
+    return result;
+  }
+
+ private:
+  static std::pair<WaitResult, size_t> WaitMultipleBlocking(
+      const std::vector<PosixConditionBase*>& handles, bool wait_all,
+      std::chrono::milliseconds timeout,
+      const std::vector<uint64_t>& start_counts) {
     // Check the handles in turn and block on the multi-object epoch between
     // checks.
     auto start_time = std::chrono::steady_clock::now();
@@ -444,6 +525,9 @@ class PosixConditionBase {
       }
     } multi_wait_registration;
     while (true) {
+      // Terminate bumps the epoch, waking the wait below.
+      ExitIfTerminationRequested();
+
       // A signal while the handles are read changes the epoch, and the wait
       // below then returns at once.
       uint32_t epoch_before_check =
@@ -460,23 +544,13 @@ class PosixConditionBase {
       bool all_locked = true;
 
       for (size_t i = 0; i < handles.size(); ++i) {
-        // Try to lock, handling robust mutex EOWNERDEAD case
-        auto native_mutex =
-            static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());
-        int result = pthread_mutex_trylock(native_mutex);
-
-        if (result == 0 || result == EOWNERDEAD) {
-          // Successfully acquired lock or recovered from dead owner
-          if (result == EOWNERDEAD) {
-            // Make mutex consistent after previous owner died
-            pthread_mutex_consistent(native_mutex);
-          }
-          locks.emplace_back(handles[i]->mutex_, std::adopt_lock);
-        } else {
+        if (!handles[i]->TryLockNativeMutex()) {
           // Couldn't acquire lock
           all_locked = false;
           break;
         }
+
+        locks.emplace_back(handles[i]->mutex_, std::adopt_lock);
       }
 
       // If we couldn't acquire all locks, release what we have and retry
@@ -552,6 +626,7 @@ class PosixConditionBase {
     }
   }
 
+ public:
   static std::vector<uint64_t> ReleaseCounts(
       const std::vector<PosixConditionBase*>& handles) {
     std::vector<uint64_t> counts;
@@ -573,6 +648,28 @@ class PosixConditionBase {
   // True once for the wait that takes a mutant left by a thread that exited
   // holding it.
   virtual bool TakeAbandoned() { return false; }
+
+  bool LockNativeMutex() {
+    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
+    return RecoverNativeMutexLock(native_mutex,
+                                  pthread_mutex_lock(native_mutex));
+  }
+
+  bool TryLockNativeMutex() {
+    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
+    return RecoverNativeMutexLock(native_mutex,
+                                  pthread_mutex_trylock(native_mutex));
+  }
+
+  static bool RecoverNativeMutexLock(pthread_mutex_t* native_mutex,
+                                     int lock_result) {
+    if (lock_result == EOWNERDEAD) {
+      pthread_mutex_consistent(native_mutex);
+    } else if (lock_result != 0) {
+      return false;
+    }
+    return true;
+  }
 
   std::condition_variable cond_;
   std::mutex mutex_;
@@ -970,7 +1067,8 @@ class PosixCondition<Thread> final : public PosixConditionBase {
         signaled_(false),
         exit_code_(0),
         state_(State::kRunning),
-        suspend_count_(0) {
+        suspend_count_(0),
+        adopted_(true) {
     sem_init(&suspend_sem_, 0, 0);
 #if XE_PLATFORM_ANDROID
     android_pre_api_26_name_[0] = '\0';
@@ -1240,10 +1338,10 @@ class PosixCondition<Thread> final : public PosixConditionBase {
     }
 
     if (is_current_thread) {
-      // Self-suspension: Instead of sending a signal, directly call
-      // WaitSuspended. This avoids the signal handler complexity for the
-      // self-suspend case.
-      WaitSuspended();
+      // Self-suspension: Instead of sending a signal, directly park. This
+      // avoids the signal handler complexity for the self-suspend case. The
+      // caller may hold host locks, so it doesn't exit from here.
+      ParkSuspended(false);
       return true;
     }
 
@@ -1253,45 +1351,89 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   }
 
   void Terminate(int exit_code) {
-    bool is_current_thread = pthread_self() == thread_;
+    if (pthread_self() == thread_) {
+      pending_exit_code_ = exit_code;
+      ExitCurrentThread();
+    }
+
+    WaitStarted();
+    // Held until the signal is sent: the thread marks itself finished under it
+    // as it exits, so it can't have exited (and been joined) meanwhile.
+    std::unique_lock lock(state_mutex_);
+
+    if (state_ == State::kFinished) {
+      return;
+    }
+
+    // Killing the thread wherever it is may abort the process (an unwind
+    // through a noexcept frame) or leave locks held. Ask it to exit instead,
+    // and wake it from waits, and from a suspension at a safe point (see
+    // ParkSuspended), so it exits there. A running thread exits at its next
+    // safe point.
+    if (!terminate_requested_) {
+      pending_exit_code_ = exit_code;
+      terminate_requested_ = true;
+    }
+
+    sem_post(&suspend_sem_);
+
+    {
+      std::lock_guard wait_lock(wait_mutex_);
+
+      if (waiting_on_) {
+        waiting_on_->NotifyTermination();
+      }
+    }
+
+    NotifyMultiObjectWaiters();
+    pthread_kill(thread_, GetSystemSignal(SignalType::kThreadTerminate));
+  }
+
+  // False once the thread unwinds, so a wait or a sleep in a destructor on the
+  // way doesn't start another unwind (which aborts the process).
+  bool termination_requested() const {
+    return terminate_requested_ && !exiting_;
+  }
+
+  // Unwinds the calling thread, which must be this thread. ThreadStartRoutine
+  // signals the handle on the way out.
+  [[noreturn]] void ExitCurrentThread() {
+    exiting_ = true;
+
+    if (adopted_) {
+      OnExit();
+    }
+
+    pthread_exit(reinterpret_cast<void*>(
+        static_cast<intptr_t>(pending_exit_code_.load())));
+  }
+
+  void RegisterWait(PosixConditionBase* condition) {
+    std::lock_guard lock(wait_mutex_);
+    waiting_on_ = condition;
+  }
+
+  void UnregisterWait() {
+    std::lock_guard lock(wait_mutex_);
+    waiting_on_ = nullptr;
+  }
+
+  // Called on the thread itself as it exits, by returning or unwinding.
+  void OnExit() {
     {
       std::unique_lock lock(state_mutex_);
-      if (state_ == State::kFinished) {
-        if (is_current_thread) {
-          // Another thread's Terminate() raced ours and already marked us
-          // finished. Its pthread_cancel is not guaranteed to arrive, and
-          // this loop burned a core waiting for it. Leave under our own
-          // power instead.
-          XELOGW("PosixThread::Terminate: thread was already finished");
-          lock.unlock();
-          pthread_exit(reinterpret_cast<void*>(exit_code));
-        }
-        return;
-      }
       state_ = State::kFinished;
     }
 
-    {
-      std::lock_guard lock(mutex_);
+    if (!LockNativeMutex()) {
+      return;
+    }
 
-      exit_code_ = exit_code;
-      signaled_ = true;
-      cond_.notify_all();
-      NotifyMultiObjectWaiters();
-    }
-    if (is_current_thread) {
-      pthread_exit(reinterpret_cast<void*>(exit_code));
-    }
-#ifdef XE_PLATFORM_ANDROID
-    if (pthread_kill(thread_, GetSystemSignal(SignalType::kThreadTerminate)) !=
-        0) {
-      assert_always();
-    }
-#else
-    if (pthread_cancel(thread_) != 0) {
-      assert_always();
-    }
-#endif
+    std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
+    exit_code_ = pending_exit_code_;
+    signaled_ = true;
+    cond_.notify_all();
+    NotifyMultiObjectWaiters();
   }
 
   void WaitStarted() const {
@@ -1300,17 +1442,86 @@ class PosixCondition<Thread> final : public PosixConditionBase {
                        [this] { return state_ != State::kUninitialized; });
   }
 
+  // Only changed by the thread itself, and read by it from the suspend signal
+  // handler.
+  void EnterBlockingCall() {
+    blocking_depth_.store(blocking_depth_.load(std::memory_order_relaxed) + 1,
+                          std::memory_order_relaxed);
+    std::atomic_signal_fence(std::memory_order_seq_cst);
+  }
+  void LeaveBlockingCall() {
+    std::atomic_signal_fence(std::memory_order_seq_cst);
+    blocking_depth_.store(blocking_depth_.load(std::memory_order_relaxed) - 1,
+                          std::memory_order_relaxed);
+  }
+
+  // Whether the thread, interrupted at host_pc, can exit there once
+  // terminated: it is in a wait or a sleep (which exits once the signal
+  // handler returns), in code accepted by the TerminationSafeCodeCheck, or
+  // already unwinding. Called on the thread itself, from a signal handler.
+  bool IsSafeToExitAt(uintptr_t host_pc) const {
+    if (exiting_ || blocking_depth_.load(std::memory_order_relaxed) != 0) {
+      return true;
+    }
+
+    TerminationSafeCodeCheck check = termination_safe_code_check;
+    return check && host_pc && check(host_pc);
+  }
+
+  // Suspends the calling thread. Whether it can exit where it is suspended is
+  // published for IsAtTerminationSafePoint, and if it can, termination ends
+  // the suspension. Otherwise it stays suspended until resumed: running on
+  // after the title is gone is worse than never exiting.
+  void ParkSuspended(bool can_exit) {
+    parked_can_exit_.store(can_exit, std::memory_order_relaxed);
+    parked_.store(true, std::memory_order_release);
+    WaitSuspended(can_exit);
+    parked_.store(false, std::memory_order_release);
+  }
+
+  bool IsAtTerminationSafePoint() {
+    // The suspend signal is delivered asynchronously, give the thread a moment
+    // to stop in its handler.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(10);
+
+    while (!parked_.load(std::memory_order_acquire)) {
+      {
+        std::unique_lock lock(state_mutex_);
+
+        if (state_ == State::kFinished) {
+          return true;
+        }
+
+        if (state_ != State::kSuspended) {
+          return false;
+        }
+      }
+
+      if (std::chrono::steady_clock::now() >= deadline) {
+        return false;
+      }
+
+      sched_yield();
+    }
+
+    return parked_can_exit_.load(std::memory_order_relaxed);
+  }
+
   /// Set state to suspended and wait until it is reset by another thread.
   /// Uses sem_wait which is async-signal-safe, allowing this to be called
   /// from a signal handler (e.g., the SIGRTMIN suspend signal handler)
   /// without risking deadlock or heap corruption from non-reentrant
   /// mutex/condvar operations.
-  void WaitSuspended() {
+  void WaitSuspended(bool exit_on_termination) {
     // The suspend signal does not queue, and a Resume() whose sem_post lands
     // before the signal is delivered leaves a token behind. Re-check the
     // count rather than trusting one token, or that stale post releases the
     // next suspend immediately.
-    while (suspend_count_.load(std::memory_order_acquire) > 0) {
+    // A thread being terminated where it can exit resumes to do so.
+    while (suspend_count_.load(std::memory_order_acquire) > 0 &&
+           !(exit_on_termination &&
+             terminate_requested_.load(std::memory_order_acquire))) {
       int ret;
       do {
         ret = sem_wait(&suspend_sem_);
@@ -1350,6 +1561,21 @@ class PosixCondition<Thread> final : public PosixConditionBase {
   std::atomic<uint32_t> suspend_count_;
   std::atomic<bool> joined_{false};  // Prevents a second pthread_join
   sem_t suspend_sem_;  // Async-signal-safe suspend/resume semaphore
+  // Set by Terminate from another thread, read by the thread at safe points
+  // and from signal handlers.
+  std::atomic<bool> terminate_requested_{false};
+  std::atomic<int> pending_exit_code_{0};
+  // Condition the thread is blocked on, so Terminate can wake it.
+  std::mutex wait_mutex_;
+  PosixConditionBase* waiting_on_ = nullptr;
+  std::atomic<bool> exiting_{false};
+  // Waits and sleeps the thread is in, see TerminableBlockingScope.
+  std::atomic<uint32_t> blocking_depth_{0};
+  // Whether the thread is stopped in ParkSuspended, and can exit there.
+  std::atomic<bool> parked_{false};
+  std::atomic<bool> parked_can_exit_{false};
+  // Wraps a thread not started by ThreadStartRoutine.
+  bool adopted_ = false;
   mutable std::mutex state_mutex_;
   mutable std::mutex callback_mutex_;
   mutable std::condition_variable state_signal_;
@@ -1655,9 +1881,11 @@ class PosixThread final : public PosixConditionHandle<Thread> {
     return handle_.Suspend(out_previous_suspend_count);
   }
 
-  void Terminate(int exit_code) override { handle_.Terminate(exit_code); }
+  bool IsAtTerminationSafePoint() override {
+    return handle_.IsAtTerminationSafePoint();
+  }
 
-  void WaitSuspended() { handle_.WaitSuspended(); }
+  void Terminate(int exit_code) override { handle_.Terminate(exit_code); }
 };
 
 thread_local PosixThread* current_thread_ = nullptr;
@@ -1667,11 +1895,6 @@ bool RunPendingUserCallback() {
 }
 
 void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
-#if !XE_PLATFORM_ANDROID
-  if (pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, nullptr) != 0) {
-    assert_always();
-  }
-#endif
   threading::set_name("");
 
   auto start_data = static_cast<ThreadStartData*>(parameter);
@@ -1685,6 +1908,17 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
 
   current_thread_ = thread;
   thread->handle_.tid_ = static_cast<pid_t>(syscall(SYS_gettid));
+
+  // Signals the handle once the thread exits, whether the start routine
+  // returns or the thread unwinds from Terminate or Exit.
+  struct ExitNotifier {
+    PosixThread* thread;
+    ~ExitNotifier() {
+      thread->handle_.OnExit();
+      current_thread_ = nullptr;
+    }
+  } exit_notifier{thread};
+
   {
     std::unique_lock lock(thread->handle_.state_mutex_);
     thread->handle_.state_ =
@@ -1698,35 +1932,88 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
 
   if (create_suspended) {
     // Wait on the semaphore Resume posts when the suspend count reaches zero.
-    thread->handle_.WaitSuspended();
+    // Nothing has run yet, so it can exit from here.
+    thread->handle_.ParkSuspended(true);
   }
+
+  // Terminated before it was resumed.
+  ExitIfTerminationRequested();
 
   start_routine();
 
-  {
-    std::unique_lock lock(thread->handle_.state_mutex_);
-    thread->handle_.state_ = State::kFinished;
-  }
-
-  {
-    std::unique_lock lock(thread->handle_.mutex_);
-    thread->handle_.exit_code_ = 0;
-    thread->handle_.signaled_ = true;
-    thread->handle_.cond_.notify_all();
-    NotifyMultiObjectWaiters();
-  }
-
-  current_thread_ = nullptr;
   return nullptr;
+}
+
+static bool IsTerminationRequested() {
+  return current_thread_ &&
+         current_thread_->condition().termination_requested();
+}
+
+static void ExitIfTerminationRequested() {
+  if (IsTerminationRequested()) {
+    current_thread_->condition().ExitCurrentThread();
+  }
+}
+
+static void RegisterTerminableWait(PosixConditionBase* condition) {
+  if (current_thread_) {
+    current_thread_->condition().RegisterWait(condition);
+  }
+}
+
+static void UnregisterTerminableWait() {
+  if (current_thread_) {
+    current_thread_->condition().UnregisterWait();
+  }
+}
+
+static void EnterBlockingCall() {
+  if (current_thread_) {
+    current_thread_->condition().EnterBlockingCall();
+  }
+}
+
+static void LeaveBlockingCall() {
+  if (current_thread_) {
+    current_thread_->condition().LeaveBlockingCall();
+  }
+}
+
+static uintptr_t GetInterruptedPc(void* signal_context) {
+#if XE_PLATFORM_MAC
+  // Not implemented, threads only exit at blocking waits and sleeps.
+  return 0;
+#elif XE_ARCH_AMD64
+  return static_cast<uintptr_t>(
+      static_cast<ucontext_t*>(signal_context)->uc_mcontext.gregs[REG_RIP]);
+#elif XE_ARCH_ARM64
+  return static_cast<uintptr_t>(
+      static_cast<ucontext_t*>(signal_context)->uc_mcontext.pc);
+#else
+  return 0;
+#endif
+}
+
+// Exits the calling thread if its termination was requested and the signal
+// interrupted it where it can be unwound from (JIT code). Otherwise it keeps
+// running until a safe point, or until Terminate interrupts it again.
+static void ExitIfTerminationSafe(void* signal_context) {
+  if (!IsTerminationRequested()) {
+    return;
+  }
+
+  TerminationSafeCodeCheck check = termination_safe_code_check;
+
+  if (check && check(GetInterruptedPc(signal_context))) {
+    current_thread_->condition().ExitCurrentThread();
+  }
 }
 
 std::unique_ptr<Thread> Thread::Create(CreationParameters params,
                                        std::function<void()> start_routine) {
   install_signal_handler(SignalType::kThreadSuspend);
   install_signal_handler(SignalType::kThreadUserCallback);
-#if XE_PLATFORM_ANDROID
   install_signal_handler(SignalType::kThreadTerminate);
-#endif
   auto thread = std::make_unique<PosixThread>();
   if (!thread->Initialize(params, std::move(start_routine))) {
     return nullptr;
@@ -1781,7 +2068,14 @@ static void signal_handler(int signal, siginfo_t* info, void* context) {
         // before the thread has initialized or after it has exited
         return;
       }
-      current_thread_->WaitSuspended();
+
+      auto& condition = current_thread_->condition();
+      // Terminate wakes the thread only if it can exit where it is suspended.
+      condition.ParkSuspended(
+          condition.IsSafeToExitAt(GetInterruptedPc(context)));
+      // In JIT code it exits here, in a wait or a sleep once the handler
+      // returns.
+      ExitIfTerminationSafe(context);
     } break;
     case SignalType::kThreadUserCallback: {
       assert_not_null(info->si_value.sival_ptr);
@@ -1792,11 +2086,9 @@ static void signal_handler(int signal, siginfo_t* info, void* context) {
         user_callback_ran_ = true;
       }
     } break;
-#if XE_PLATFORM_ANDROID
     case SignalType::kThreadTerminate: {
-      pthread_exit(reinterpret_cast<void*>(-1));
+      ExitIfTerminationSafe(context);
     } break;
-#endif
     default:
       assert_always();
   }

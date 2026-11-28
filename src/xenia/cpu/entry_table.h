@@ -52,6 +52,8 @@ class EntryTable {
   void MarkReady(Entry* entry, Function* function, uint32_t end_address);
   void MarkFailed(Entry* entry);
   void Delete(uint32_t address);
+  // Lets addresses that failed to resolve be resolved again.
+  void DeleteFailed();
 
   std::vector<Function*> FindWithAddress(uint32_t address);
 

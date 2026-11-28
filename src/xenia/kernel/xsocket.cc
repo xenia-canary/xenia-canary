@@ -84,6 +84,11 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
 }
 
 X_STATUS XSocket::Close() {
+  // Already closed when the title exited.
+  if (native_handle_ == uint64_t(-1)) {
+    return X_STATUS_SUCCESS;
+  }
+
 #if XE_PLATFORM_WIN32
   int ret = closesocket(native_handle_);
 #else
@@ -94,6 +99,7 @@ X_STATUS XSocket::Close() {
     return X_STATUS_UNSUCCESSFUL;
   }
 
+  native_handle_ = uint64_t(-1);
   return X_STATUS_SUCCESS;
 }
 

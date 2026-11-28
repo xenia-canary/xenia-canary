@@ -31,6 +31,7 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
       kernel_state, content_manager_.get(), user_tracker_.get());
   achievement_manager_ = std::make_unique<AchievementManager>();
 
+  LoadOnlineSchema();
   LoadLanguageLocaleFallback();
   LoadLanguageTypefacePatch();
   LoadIptvServiceName();
@@ -47,6 +48,36 @@ void XamState::SetUIActive(bool active) {
 
   if (auto input_system = kernel_state_->emulator()->input_system()) {
     ui_input_filter_.OnUIClosed(input_system);
+  }
+}
+
+void XamState::LoadOnlineSchema() {
+  constexpr uint8_t schema_bin[] = {
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00,
+      0x00, 0x2C, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x2C, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18,
+  };
+
+  constexpr uint32_t schema_data_address = 0x80E00000;
+
+  if (kernel_state_->memory()
+          ->LookupHeap(0x80000000)
+          ->AllocFixed(schema_data_address,
+                       sizeof(XONLINE_SCHEMA_DATA) + sizeof(schema_bin), 0x1000,
+                       kMemoryAllocationCommit,
+                       kMemoryProtectRead | kMemoryProtectWrite)) {
+    online_schema_data_address = schema_data_address;
+
+    XONLINE_SCHEMA_DATA* schema_ptr =
+        kernel_state_->memory()->TranslateVirtual<XONLINE_SCHEMA_DATA*>(
+            schema_data_address);
+
+    std::memcpy(schema_ptr + 1, schema_bin, sizeof(schema_bin));
+
+    schema_ptr->schema_ptr = kernel_state_->memory()->HostToGuestVirtual(
+        std::to_address(schema_ptr + 1));
+    schema_ptr->schema_size = sizeof(schema_bin);
   }
 }
 
