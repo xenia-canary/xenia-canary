@@ -9,6 +9,8 @@
 
 #include "xenia/cpu/module.h"
 
+#include <fstream>
+
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/cpu/processor.h"

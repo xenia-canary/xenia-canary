@@ -565,7 +565,7 @@ dword_result_t XamShowDeviceSelectorUI_entry(
   std::string title = "Select storage device";
   std::string desc = "";
 
-  cxxopts::OptionNames buttons;
+  std::vector<std::string> buttons;
   for (auto& device_info : devices) {
     buttons.push_back(to_utf8(device_info->name));
   }
@@ -707,7 +707,7 @@ dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
 
   std::string title = "Xbox Marketplace";
   std::string desc = "";
-  cxxopts::OptionNames buttons;
+  std::vector<std::string> buttons;
 
   switch (ui_type) {
     case X_MARKETPLACE_ENTRYPOINT::ContentList:
@@ -855,7 +855,7 @@ dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
 
   std::string title = "Xbox Marketplace";
   std::string desc = "";
-  cxxopts::OptionNames buttons = {"OK"};
+  std::vector<std::string> buttons = {"OK"};
 
   switch (ui_type) {
     case X_MARKETPLACE_DOWNLOAD_ITEMS_ENTRYPOINTS::FREEITEMS:

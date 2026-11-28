@@ -11,6 +11,7 @@
 #define XENIA_BASE_VEC128_H_
 
 #include <cstddef>
+#include <iosfwd>
 #include <string>
 
 #include "xenia/base/math.h"

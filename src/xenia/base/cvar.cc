@@ -9,6 +9,14 @@
 
 #include "xenia/base/cvar.h"
 #include <iostream>
+
+#include "third_party/cxxopts/include/cxxopts.hpp"
+#include "third_party/tomlplusplus/include/toml++/toml.hpp"
+
+static_assert(TOML_LIB_MAJOR == 3,
+              "Update the toml++ inline namespace forward-declared in "
+              "xenia/base/toml_fwd.h");
+
 // https://github.com/nemtrif/utfcpp/issues/85
 #if defined(_MSVC_LANG) && _MSVC_LANG > __cplusplus
 #define UTF_CPP_CPLUSPLUS _MSVC_LANG
@@ -31,6 +39,67 @@ std::map<std::string, ICommandVar*>* CmdVars;
 std::map<std::string, IConfigVar*>* ConfigVars;
 std::multimap<uint32_t, const IConfigVarUpdate*>* IConfigVarUpdate::updates_;
 std::vector<std::string>* config_type_mismatch_warnings = nullptr;
+
+namespace detail {
+
+namespace {
+
+template <typename T>
+void AddLaunchOptionOfType(cxxopts::Options* options, const std::string& group,
+                           const std::string& name,
+                           const std::string& description) {
+  options->add_options(group)(name, description, cxxopts::value<T>());
+}
+
+template <typename T>
+T GetLaunchOptionOfType(cxxopts::ParseResult* result, const std::string& name) {
+  return (*result)[name].template as<T>();
+}
+
+}  // namespace
+
+#define XE_CVAR_DEFINE_TYPE_HELPERS(type)                                     \
+  void AddLaunchOption(cxxopts::Options* options, const std::string& group,   \
+                       const std::string& name,                               \
+                       const std::string& description, const type*) {         \
+    AddLaunchOptionOfType<type>(options, group, name, description);           \
+  }                                                                           \
+  type GetLaunchOption(cxxopts::ParseResult* result, const std::string& name, \
+                       const type*) {                                         \
+    return GetLaunchOptionOfType<type>(result, name);                         \
+  }                                                                           \
+  std::optional<type> GetConfigValue(const toml::node* node, const type*) {   \
+    return node->value<type>();                                               \
+  }
+XE_CVAR_DEFINE_TYPE_HELPERS(bool)
+XE_CVAR_DEFINE_TYPE_HELPERS(int32_t)
+XE_CVAR_DEFINE_TYPE_HELPERS(uint32_t)
+XE_CVAR_DEFINE_TYPE_HELPERS(int64_t)
+XE_CVAR_DEFINE_TYPE_HELPERS(uint64_t)
+XE_CVAR_DEFINE_TYPE_HELPERS(double)
+XE_CVAR_DEFINE_TYPE_HELPERS(std::string)
+#undef XE_CVAR_DEFINE_TYPE_HELPERS
+
+// Paths are passed as strings on the command line and in the config.
+void AddLaunchOption(cxxopts::Options* options, const std::string& group,
+                     const std::string& name, const std::string& description,
+                     const std::filesystem::path*) {
+  AddLaunchOptionOfType<std::string>(options, group, name, description);
+}
+
+std::filesystem::path GetLaunchOption(cxxopts::ParseResult* result,
+                                      const std::string& name,
+                                      const std::filesystem::path*) {
+  return xe::to_path(GetLaunchOptionOfType<std::string>(result, name));
+}
+
+std::optional<std::filesystem::path> GetConfigValue(
+    const toml::node* node, const std::filesystem::path*) {
+  return xe::to_path(
+      xe::utf8::fix_path_separators(node->as_string()->value_or("")));
+}
+
+}  // namespace detail
 
 void PrintHelpAndExit() {
   std::cout << options.help({""}) << std::endl;

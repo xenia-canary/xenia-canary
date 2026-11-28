@@ -9,6 +9,7 @@
 
 #include "xenia/debug/ui/debug_window.h"
 
+#include <cfloat>
 #include <cinttypes>
 
 #include "third_party/capstone/include/capstone/capstone.h"

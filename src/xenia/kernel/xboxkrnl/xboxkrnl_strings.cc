@@ -10,6 +10,8 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_strings.h"
 
 #include <bit>
+#include <iomanip>
+#include <sstream>
 
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"

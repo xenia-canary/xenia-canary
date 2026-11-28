@@ -10,28 +10,62 @@
 #ifndef XENIA_CVAR_H_
 #define XENIA_CVAR_H_
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "third_party/cxxopts/include/cxxopts.hpp"
 #include "third_party/fmt/include/fmt/format.h"
-#include "third_party/tomlplusplus/include/toml++/toml.hpp"
 #include "xenia/base/assert.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string_util.h"
+#include "xenia/base/toml_fwd.h"
 
 #if XE_PLATFORM_ANDROID
 #include <jni.h>
 #endif  // XE_PLATFORM_ANDROID
+
+// cxxopts is large and only cvar.cc parses launch options, so only the types
+// the interfaces below mention are declared here.
+namespace cxxopts {
+class Options;
+class ParseResult;
+}  // namespace cxxopts
 
 namespace cvar {
 
 namespace toml_internal {
 std::string EscapeString(const std::string_view str);
 }
+
+namespace detail {
+
+// The parts of the variable templates that touch cxxopts or toml++, defined in
+// cvar.cc for every supported variable type. The type is selected by a null
+// pointer, so a variable of an unsupported type fails to compile.
+#define XE_CVAR_DECLARE_TYPE_HELPERS(type)                                    \
+  void AddLaunchOption(cxxopts::Options* options, const std::string& group,   \
+                       const std::string& name,                               \
+                       const std::string& description, const type*);          \
+  type GetLaunchOption(cxxopts::ParseResult* result, const std::string& name, \
+                       const type*);                                          \
+  std::optional<type> GetConfigValue(const toml::node* node, const type*);
+XE_CVAR_DECLARE_TYPE_HELPERS(bool)
+XE_CVAR_DECLARE_TYPE_HELPERS(int32_t)
+XE_CVAR_DECLARE_TYPE_HELPERS(uint32_t)
+XE_CVAR_DECLARE_TYPE_HELPERS(int64_t)
+XE_CVAR_DECLARE_TYPE_HELPERS(uint64_t)
+XE_CVAR_DECLARE_TYPE_HELPERS(double)
+XE_CVAR_DECLARE_TYPE_HELPERS(std::string)
+XE_CVAR_DECLARE_TYPE_HELPERS(std::filesystem::path)
+#undef XE_CVAR_DECLARE_TYPE_HELPERS
+
+}  // namespace detail
 
 // Track config values that had type mismatches during loading
 extern std::vector<std::string>* config_type_mismatch_warnings;
@@ -119,38 +153,23 @@ const std::string& CommandVar<T>::description() const {
 }
 template <class T>
 void CommandVar<T>::AddToLaunchOptions(cxxopts::Options* options) {
-  options->add_options()(name_, description_, cxxopts::value<T>());
-}
-template <>
-inline void CommandVar<std::filesystem::path>::AddToLaunchOptions(
-    cxxopts::Options* options) {
-  options->add_options()(name_, description_, cxxopts::value<std::string>());
+  detail::AddLaunchOption(options, std::string(), name_, description_,
+                          static_cast<const T*>(nullptr));
 }
 template <class T>
 void ConfigVar<T>::AddToLaunchOptions(cxxopts::Options* options) {
-  options->add_options(category_)(this->name_, this->description_,
-                                  cxxopts::value<T>());
-}
-template <>
-inline void ConfigVar<std::filesystem::path>::AddToLaunchOptions(
-    cxxopts::Options* options) {
-  options->add_options(category_)(this->name_, this->description_,
-                                  cxxopts::value<std::string>());
+  detail::AddLaunchOption(options, category_, this->name_, this->description_,
+                          static_cast<const T*>(nullptr));
 }
 template <class T>
 void CommandVar<T>::LoadFromLaunchOptions(cxxopts::ParseResult* result) {
-  T value = (*result)[name_].template as<T>();
-  SetCommandLineValue(value);
-}
-template <>
-inline void CommandVar<std::filesystem::path>::LoadFromLaunchOptions(
-    cxxopts::ParseResult* result) {
-  std::string value = (*result)[name_].template as<std::string>();
-  SetCommandLineValue(xe::to_path(value));
+  SetCommandLineValue(
+      detail::GetLaunchOption(result, name_, static_cast<const T*>(nullptr)));
 }
 template <class T>
 void ConfigVar<T>::LoadConfigValue(const toml::node* result) {
-  auto value_opt = result->value<T>();
+  auto value_opt =
+      detail::GetConfigValue(result, static_cast<const T*>(nullptr));
   if (value_opt) {
     SetConfigValue(value_opt.value());
   } else {
@@ -161,15 +180,10 @@ void ConfigVar<T>::LoadConfigValue(const toml::node* result) {
     config_type_mismatch_warnings->push_back(this->name_);
   }
 }
-template <>
-inline void ConfigVar<std::filesystem::path>::LoadConfigValue(
-    const toml::node* result) {
-  SetConfigValue(xe::to_path(
-      xe::utf8::fix_path_separators(result->as_string()->value_or(""))));
-}
 template <class T>
 void ConfigVar<T>::LoadGameConfigValue(const toml::node* result) {
-  auto value_opt = result->value<T>();
+  auto value_opt =
+      detail::GetConfigValue(result, static_cast<const T*>(nullptr));
   if (value_opt) {
     SetGameConfigValue(value_opt.value());
   } else {
@@ -179,12 +193,6 @@ void ConfigVar<T>::LoadGameConfigValue(const toml::node* result) {
     }
     config_type_mismatch_warnings->push_back(this->name_);
   }
-}
-template <>
-inline void ConfigVar<std::filesystem::path>::LoadGameConfigValue(
-    const toml::node* result) {
-  SetGameConfigValue(xe::to_path(
-      xe::utf8::fix_path_separators(result->as_string()->value_or(""))));
 }
 template <class T>
 CommandVar<T>::CommandVar(const char* name, T* default_value,
