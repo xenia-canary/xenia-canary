@@ -11,6 +11,7 @@
 #define XENIA_BASE_STRING_KEY_H_
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <variant>
 

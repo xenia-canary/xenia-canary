@@ -9,6 +9,8 @@
 
 #include "xenia/base/chrono.h"
 
+#include "third_party/date/include/date/tz.h"
+
 #define CATCH_CONFIG_ENABLE_CHRONO_STRINGMAKER
 #include "third_party/catch/include/catch.hpp"
 

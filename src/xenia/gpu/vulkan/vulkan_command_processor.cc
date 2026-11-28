@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <sstream>
 #include <thread>
 
 #include "xenia/apu/audio_system.h"

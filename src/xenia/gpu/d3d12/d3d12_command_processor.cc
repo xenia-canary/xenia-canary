@@ -10,6 +10,7 @@
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
 #include <chrono>
 #include <cstring>
+#include <sstream>
 #include <thread>
 #include "xenia/apu/audio_system.h"
 #include "xenia/base/assert.h"

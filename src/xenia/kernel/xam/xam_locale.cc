@@ -18,6 +18,7 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
+#include "third_party/date/include/date/date.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/fmt/include/fmt/xchar.h"
 

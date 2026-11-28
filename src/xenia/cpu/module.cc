@@ -10,6 +10,7 @@
 #include "xenia/cpu/module.h"
 
 #include <fstream>
+#include <sstream>
 
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"

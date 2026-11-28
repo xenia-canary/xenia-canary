@@ -10,6 +10,8 @@
 #ifndef XENIA_KERNEL_UTIL_XFILETIME_H_
 #define XENIA_KERNEL_UTIL_XFILETIME_H_
 
+#include <ctime>
+
 #include "xenia/base/byte_order.h"
 #include "xenia/base/chrono.h"
 

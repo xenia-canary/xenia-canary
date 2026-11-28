@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <cctype>
 #include <ranges>
 
 #include "xenia/base/logging.h"

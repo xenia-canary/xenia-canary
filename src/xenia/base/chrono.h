@@ -10,12 +10,20 @@
 #ifndef XENIA_BASE_CHRONO_H_
 #define XENIA_BASE_CHRONO_H_
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
-
-#include "third_party/date/include/date/tz.h"
+#include <ratio>
 
 #include "xenia/base/clock.h"
+
+// The date library is large, so it's only included where its calendar types or
+// date::clock_cast are used (date/date.h and date/tz.h respectively). This
+// header only needs the conversion template to specialize it below.
+namespace date {
+template <class DstClock, class SrcClock>
+struct clock_time_conversion;
+}  // namespace date
 
 namespace xe {
 using hundrednano = std::ratio<1, 10000000>;
@@ -28,9 +36,6 @@ using hundrednanoseconds = std::chrono::duration<int64_t, hundrednano>;
 //  Don't forget the 89 leap days.
 static constexpr std::chrono::seconds seconds_1601_to_1970 =
     (396 * 365 + 89) * std::chrono::seconds(60 * 60 * 24);
-
-static constexpr date::sys_days filetime_epoch{date::year{1601} /
-                                               date::January / 1};
 
 // TODO(JoelLinn) define xstead_clock xsystem_clock etc.
 
@@ -58,14 +63,10 @@ struct NtSystemClock {
   // time (Jan 1 1601), in seconds. In the spec std::chrono::system_clock's
   // epoch is undefined, but C++20 cements it as Jan 1 1970.
   static constexpr std::chrono::seconds unix_epoch_delta() {
-    using std::chrono::steady_clock;
-    auto filetime_epoch = date::year{1601} / date::month{1} / date::day{1};
-    auto system_clock_epoch = date::year{1970} / date::month{1} / date::day{1};
-    auto fp = static_cast<date::sys_seconds>(
-        static_cast<date::sys_days>(filetime_epoch));
-    auto sp = static_cast<date::sys_seconds>(
-        static_cast<date::sys_days>(system_clock_epoch));
-    return fp.time_since_epoch() - sp.time_since_epoch();
+    using namespace std::chrono;
+    constexpr sys_days nt_epoch = year(1601) / January / 1;
+    constexpr sys_days unix_epoch = year(1970) / January / 1;
+    return nt_epoch - unix_epoch;
   }
 
  public:

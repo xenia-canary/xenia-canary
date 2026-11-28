@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xtimer.h"
 
+#include "third_party/date/include/date/tz.h"
+#include "xenia/base/chrono.h"
 #include "xenia/base/logging.h"
 #include "xenia/cpu/thread_state.h"
 #include "xenia/kernel/kernel_state.h"

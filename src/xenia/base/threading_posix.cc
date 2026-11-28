@@ -9,6 +9,7 @@
 
 #include "xenia/base/threading.h"
 
+#include "third_party/date/include/date/tz.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/chrono_steady_cast.h"
 #include "xenia/base/platform.h"

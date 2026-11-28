@@ -11,7 +11,9 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
 
+#include "third_party/date/include/date/date.h"
 #include "xenia/base/atomic.h"
+#include "xenia/base/chrono.h"
 #include "xenia/base/pe_image.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
@@ -717,12 +719,15 @@ struct X_TIME_FIELDS {
 };
 static_assert_size(X_TIME_FIELDS, 16);
 
+// Jan 1 1601, where NT file times start.
+static constexpr date::sys_days kFiletimeEpoch{date::year{1601} /
+                                               date::January / 1};
+
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtltimetotimefields
 void RtlTimeToTimeFields_entry(lpqword_t time_ptr,
                                pointer_t<X_TIME_FIELDS> time_fields_ptr) {
-  auto tp =
-      xe::chrono::filetime_epoch +
-      xe::chrono::hundrednanoseconds{static_cast<int64_t>(time_ptr.value())};
+  auto tp = kFiletimeEpoch + xe::chrono::hundrednanoseconds{
+                                 static_cast<int64_t>(time_ptr.value())};
   auto dp = date::floor<date::days>(tp);
   auto year_month_day = date::year_month_day{dp};
   auto weekday = date::weekday{dp};
@@ -758,8 +763,7 @@ dword_result_t RtlTimeFieldsToTime_entry(
   }
   auto dp = static_cast<date::sys_days>(year_month_day);
   auto time = std::chrono::duration_cast<xe::chrono::hundrednanoseconds>(
-      (dp - xe::chrono::filetime_epoch) +
-      std::chrono::hours{time_fields_ptr->hour} +
+      (dp - kFiletimeEpoch) + std::chrono::hours{time_fields_ptr->hour} +
       std::chrono::minutes{time_fields_ptr->minute} +
       std::chrono::seconds{time_fields_ptr->second} +
       std::chrono::milliseconds{time_fields_ptr->milliseconds});
