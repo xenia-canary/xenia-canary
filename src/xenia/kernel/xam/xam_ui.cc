@@ -568,7 +568,7 @@ dword_result_t XamShowDeviceSelectorUI_entry(
   kernel_state()->xam_state()->SetUIActive(true);
 
   std::string title = "Select storage device";
-  std::string desc = "";
+  std::string desc = "Choose a storage device for this game's content.";
 
   std::vector<std::string> buttons;
   for (auto& device_info : devices) {
