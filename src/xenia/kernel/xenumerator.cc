@@ -9,8 +9,19 @@
 
 #include "xenia/kernel/xenumerator.h"
 
+#include <unordered_map>
+
+#include "xenia/base/mutex.h"
+
 namespace xe {
 namespace kernel {
+
+namespace {
+std::unordered_map<uint32_t, XEnumerator*>& OwnedEnumerators() {
+  static std::unordered_map<uint32_t, XEnumerator*> owned;
+  return owned;
+}
+}  // namespace
 
 XEnumerator::XEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
                          size_t item_size)
@@ -18,7 +29,27 @@ XEnumerator::XEnumerator(KernelState* kernel_state, size_t items_per_enumerate,
       items_per_enumerate_(items_per_enumerate),
       item_size_(item_size) {}
 
-XEnumerator::~XEnumerator() = default;
+XEnumerator::~XEnumerator() {
+  if (const uint32_t guest_ptr = guest_object()) {
+    auto global_lock = global_critical_region::AcquireDirect();
+    const auto it = OwnedEnumerators().find(guest_ptr);
+    if (it != OwnedEnumerators().end() && it->second == this) {
+      OwnedEnumerators().erase(it);
+    }
+  }
+}
+
+object_ref<XObject> XEnumerator::RetainByGuestObject(KernelState* kernel_state,
+                                                     uint32_t guest_ptr) {
+  auto global_lock = global_critical_region::AcquireDirect();
+  const auto it = OwnedEnumerators().find(guest_ptr);
+  if (it == OwnedEnumerators().end() ||
+      it->second->kernel_state() != kernel_state ||
+      it->second->handles().empty()) {
+    return nullptr;
+  }
+  return retain_object<XObject>(it->second);
+}
 
 X_STATUS XEnumerator::Initialize(uint32_t user_index, uint32_t app_id,
                                  uint32_t open_message, uint32_t close_message,
@@ -42,6 +73,10 @@ X_STATUS XEnumerator::Initialize(uint32_t user_index, uint32_t app_id,
   }
 
   extra_size_ = extra_size;
+  {
+    auto global_lock = global_critical_region::AcquireDirect();
+    OwnedEnumerators()[this->guest_object()] = this;
+  }
   return X_STATUS_SUCCESS;
 }
 

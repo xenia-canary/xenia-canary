@@ -73,6 +73,12 @@ class XEnumerator : public XObject {
                       uint32_t open_message, uint32_t close_message,
                       uint32_t flags);
 
+  // Resolves a live enumerator by its guest object address. X_KENUMERATOR has
+  // no X_DISPATCH_HEADER, so Initialize overwrites offsets +8/+12 where
+  // SetNativePointer stamped the handle signature.
+  static object_ref<XObject> RetainByGuestObject(KernelState* kernel_state,
+                                                 uint32_t guest_ptr);
+
   template <typename T>
   X_STATUS Initialize(uint32_t user_index, uint32_t app_id,
                       uint32_t open_message, uint32_t close_message,
