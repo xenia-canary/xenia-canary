@@ -40,6 +40,10 @@ class XamDialog : public xe::ui::ImGuiDialog {
   std::function<void()> close_callback_ = nullptr;
 };
 
+// Gamerpic fallback: the gamertag's initial on a xuid-coloured tile.
+void xeDrawProfileTile(ImDrawList* draw_list, ImVec2 position, float size,
+                       uint64_t xuid, const std::string& gamertag);
+
 bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           const uint64_t xuid, const uint8_t user_index,
                           const X_XAMACCOUNTINFO* account,

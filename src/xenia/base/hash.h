@@ -11,6 +11,7 @@
 #define XENIA_BASE_HASH_H_
 
 #include <cstddef>
+#include <cstdint>
 
 #include "xenia/base/xxhash.h"
 
@@ -32,6 +33,14 @@ struct XXHasher {
     return static_cast<size_t>(XXH3_64bits(&key, sizeof(key)));
   }
 };
+
+// Spreads every input bit into the result.
+constexpr uint64_t SplitMix64(uint64_t value) {
+  value += 0x9E3779B97F4A7C15ULL;
+  value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  value = (value ^ (value >> 27)) * 0x94D049BB133111EBULL;
+  return value ^ (value >> 31);
+}
 
 }  // namespace hash
 }  // namespace xe

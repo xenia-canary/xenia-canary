@@ -8,7 +8,12 @@
  */
 
 #include "xenia/kernel/xam/xam_ui.h"
+
+#include <cctype>
+#include <cfloat>
+
 #include "xenia/app/emulator_window.h"
+#include "xenia/base/hash.h"
 #include "xenia/base/png_utils.h"
 #include "xenia/base/system.h"
 #include "xenia/hid/input_system.h"
@@ -909,6 +914,40 @@ dword_result_t XamShowForcedNameChangeUI_entry(dword_t user_index) {
 }
 DECLARE_XAM_EXPORT1(XamShowForcedNameChangeUI, kUI, kImplemented);
 
+void xeDrawProfileTile(ImDrawList* draw_list, ImVec2 position, float size,
+                       uint64_t xuid, const std::string& gamertag) {
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const ImVec2 end_position = ImVec2(position.x + size, position.y + size);
+
+  ImVec4 tile_color = style.Colors[ImGuiCol_FrameBg];
+  std::string initial = "-";
+
+  if (xuid) {
+    const float hue =
+        static_cast<float>(xe::hash::SplitMix64(xuid) % 360) / 360.0f;
+    tile_color = ImColor::HSV(hue, 0.45f, 0.55f);
+
+    if (!gamertag.empty()) {
+      initial = static_cast<char>(
+          std::toupper(static_cast<unsigned char>(gamertag.front())));
+    }
+  }
+
+  // GetColorU32 applies the style alpha, so faded profiles fade their tile.
+  draw_list->AddRectFilled(position, end_position,
+                           ImGui::GetColorU32(tile_color), style.FrameRounding);
+
+  ImFont* font = ImGui::GetFont();
+  const float font_size = size * 0.5f;
+  const ImVec2 text_size =
+      font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, initial.c_str());
+
+  draw_list->AddText(font, font_size,
+                     ImVec2(position.x + (size - text_size.x) * 0.5f,
+                            position.y + (size - text_size.y) * 0.5f),
+                     ImGui::GetColorU32(ImGuiCol_Text), initial.c_str());
+}
+
 bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           const uint64_t xuid, const uint8_t user_index,
                           const X_XAMACCOUNTINFO* account,
@@ -931,13 +970,11 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
       ImGui::Image(reinterpret_cast<ImTextureID>(profile_icon),
                    xe::ui::default_image_icon_size);
     } else {
-      if (user_index < XUserMaxUserCount) {
-        const auto icon = imgui_drawer->GetNotificationIcon(user_index);
-        ImGui::Image(reinterpret_cast<ImTextureID>(icon),
-                     xe::ui::default_image_icon_size);
-      } else {
-        ImGui::Dummy(xe::ui::default_image_icon_size);
-      }
+      const ImVec2 tile_position = ImGui::GetCursorScreenPos();
+      ImGui::Dummy(xe::ui::default_image_icon_size);
+      xeDrawProfileTile(ImGui::GetWindowDrawList(), tile_position,
+                        xe::ui::default_image_icon_size.x, xuid,
+                        account->GetGamertagString());
     }
 
     ImGui::SameLine();
